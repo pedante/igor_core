@@ -1,0 +1,54 @@
+id: nc-login-cloudflare
+name: "Login fails behind Cloudflare tunnel"
+priority: high
+last_updated: "2026-03-26"
+stack: nextcloud-docker-cloudflare
+triggers:
+  - login
+  - "access denied"
+  - "access denied after login"
+  - cloudflare
+  - trusted_proxies
+  - CSRF
+  - "cookie check"
+  - "strict cookie"
+  - "keeps asking to login"
+  - "can't login"
+  - "cannot login"
+  - "login loop"
+  - "redirect loop"
+  - "session"
+  - "403 after login"
+steps:
+  - description: "Check HTTP response on login page"
+    command: "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/login"
+    expect: "200"
+    common_fix: "If not 200, check nginx and container status first"
+
+  - description: "Verify trusted_proxies contains Cloudflare IP ranges"
+    command: "docker compose exec -T -u www-data app php occ config:system:get trusted_proxies"
+    expect: "Array with Cloudflare CIDR ranges (173.245.48.0/20, 103.21.244.0/22, etc.)"
+    common_fix: "Set each Cloudflare range as trusted_proxies 0..N with occ config:system:set trusted_proxies N --value=CIDR"
+
+  - description: "Check nginx has HTTP_X_FORWARDED_PROTO https in fastcgi_params"
+    command: "grep -n 'HTTP_X_FORWARDED_PROTO' ./web/nginx.conf"
+    expect: "fastcgi_param HTTP_X_FORWARDED_PROTO https; present in all location blocks"
+    common_fix: "Add fastcgi_param HTTP_X_FORWARDED_PROTO https; to every fastcgi_params block in nginx.conf, then restart web container"
+
+  - description: "Check overwriteprotocol is set to https"
+    command: "docker compose exec -T -u www-data app php occ config:system:get overwriteprotocol"
+    expect: "https"
+    common_fix: "occ config:system:set overwriteprotocol --value=https"
+
+  - description: "Verify login end-to-end via curl (follow redirects)"
+    command: "curl -sI -L http://localhost:8080/login"
+    expect: "HTTP 200 on final response, no redirect loop"
+    common_fix: "If redirect loop: overwrite.cli.url or overwriteprotocol mismatch"
+
+notes: |
+  Common cause: Cloudflare decrypts HTTPS and forwards HTTP to nginx.
+  PHP needs HTTP_X_FORWARDED_PROTO=https in fastcgi_params to treat the
+  connection as HTTPS and set secure cookies. All Cloudflare IPs must be
+  in trusted_proxies or the CSRF check rejects the forwarded headers.
+  Non-ASCII characters in trusted_proxies values (e.g., from copy-paste)
+  cause silent CSRF failures — always verify with occ config:system:get.

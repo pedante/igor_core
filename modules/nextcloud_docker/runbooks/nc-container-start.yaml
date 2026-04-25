@@ -1,0 +1,76 @@
+id: nc-container-start
+name: "Docker container won't start"
+priority: critical
+last_updated: "2026-03-26"
+stack: nextcloud-docker
+triggers:
+  - "container"
+  - "won't start"
+  - "not starting"
+  - "container down"
+  - "container exited"
+  - "exited"
+  - "port conflict"
+  - "port already in use"
+  - "bind: address already in use"
+  - "network conflict"
+  - "failed to start"
+  - "container crash"
+  - "restart loop"
+  - "restarting"
+  - "OOMKilled"
+  - "out of memory"
+  - "permission denied"
+  - "volume"
+steps:
+  - description: "Check container status and exit codes"
+    command: "docker compose ps -a"
+    expect: "All containers Up. If any show Exited(N), that container failed"
+    common_fix: "Note the exit code — Exited(1)=application error, Exited(137)=OOM killed, Exited(139)=segfault"
+
+  - description: "Get recent logs from the failing container"
+    command: "docker compose logs --tail=50 app"
+    expect: "No fatal errors. NC entrypoint should show install/start progress"
+    common_fix: "Replace 'app' with the failing container name. Look for the last error before exit"
+
+  - description: "Check for port conflicts"
+    command: "ss -tlnp | grep -E '8080|9000|5432|6379'"
+    expect: "Only docker-proxy processes on those ports, or empty if containers are down"
+    common_fix: "If another process holds the port: identify with ss -tlnp, stop it, then docker compose up -d"
+
+  - description: "Check available disk space"
+    command: "df -h / /mnt/nextclouddata 2>/dev/null | head -5"
+    expect: "Both filesystems have free space (not 100% used)"
+    common_fix: "If full: docker system prune to clear unused images/volumes; clear logs; free space before restarting"
+
+  - description: "Check available memory"
+    command: "free -h"
+    expect: "Some free or swap available"
+    common_fix: "If OOM: stop non-essential containers, ensure swap is enabled (free -h shows Swap: line with non-zero total)"
+
+  - description: "Check Docker named volumes exist"
+    command: "docker volume ls | grep -E 'pi_nextcloud|pi_db'"
+    expect: "pi_nextcloud and pi_db listed"
+    common_fix: "If missing: volumes were pruned. Data is lost — need full reinstall via install wizard"
+
+  - description: "Check data directory permissions"
+    command: "ls -la /mnt/nextclouddata/next/ 2>/dev/null | head -5"
+    expect: "Owned by 1004:1004 (NC_UID)"
+    common_fix: "chown -R 1004:1004 /mnt/nextclouddata/next/ — wrong ownership prevents app container from writing"
+
+  - description: "Try starting the failed container with verbose output"
+    command: "docker compose up app --no-deps 2>&1 | tail -30"
+    expect: "Container starts successfully and stays up"
+    common_fix: "If entrypoint fails: check NC_ADMIN_PASSWORD / DB credentials in db.env; if already installed, NC_SKIP_INSTALL may need setting"
+
+notes: |
+  Pi 3 specific — most common causes:
+  1. OOM (Exited 137): free memory exhausted, kernel killed the process.
+     Check: dmesg | grep -i oom | tail -10
+     Fix: reduce concurrent containers, ensure 1GB swap on SD card
+  2. Data directory full: Docker overlay2 layers on SD card fill up fast.
+     docker system df shows usage; docker system prune removes unused layers
+  3. NC entrypoint install loop: if entrypoint finds partial install data,
+     it may fail. Check the app logs carefully — the last line before exit is the cause.
+  4. Volume missing: NEVER run docker system prune -a --volumes on a live system.
+     Named volumes pi_nextcloud and pi_db hold all NC state.

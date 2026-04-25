@@ -1,0 +1,11 @@
+NAME: igor_insecure_perms
+DESCRIPTION: Set all Igor secret env files to chmod 600 — removes group/world read access
+SYMPTOM_CODE: igor_insecure_perms
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: find "/home/pi/igor_new/secrets" -name '*.env' -exec chmod 600 {} \; 2>/dev/null; for _kf in ~/.nexus_api_key ~/.nexus_or_key; do [ -f "$_kf" ] && chmod 600 "$_kf"; done; echo 'Permissions corrected'
+CONFIRMED: 2
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-15 02:06:33
+LAST_SEEN: 2026-04-15 14:20:40

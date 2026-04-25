@@ -1,0 +1,11 @@
+NAME: seq_occ_repair
+DESCRIPTION: Run Nextcloud repair (may take 1-2 minutes)
+SYMPTOM_CODE: seq_occ_repair
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T -u www-data app php occ maintenance:repair
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 08:32:45
+LAST_SEEN: 2026-03-21 08:32:45

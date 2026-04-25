@@ -1,0 +1,74 @@
+id: nc-redis-session
+name: "Redis session loss or cache problems"
+priority: high
+last_updated: "2026-03-26"
+stack: nextcloud-docker-redis
+triggers:
+  - redis
+  - session
+  - "session loss"
+  - "logged out"
+  - "keeps logging out"
+  - "session expired"
+  - FLUSHALL
+  - "cache"
+  - "file locking"
+  - "lock"
+  - "memcache"
+  - "memcache.locking"
+  - "memcache.local"
+  - "redis connection"
+  - "redis refused"
+  - "Could not connect to Redis"
+steps:
+  - description: "Check Redis container is running"
+    command: "docker compose ps redis"
+    expect: "redis container listed as Up/running"
+    common_fix: "docker compose up -d redis; check logs: docker compose logs redis --tail=20"
+
+  - description: "Ping Redis from app container"
+    command: "docker compose exec -T app redis-cli -h redis ping"
+    expect: "PONG"
+    common_fix: "If refused: Redis not running or network issue. If command not found: use docker compose exec -T redis redis-cli ping"
+
+  - description: "Check Redis container logs for errors"
+    command: "docker compose logs redis --tail=30"
+    expect: "No error lines; Redis started and listening on port 6379"
+    common_fix: "OOM killed: Redis needs memory. Check: docker stats redis. May need to set maxmemory in redis config"
+
+  - description: "Verify Redis memcache config in config.php"
+    command: "docker compose exec -T -u www-data app php occ config:system:get memcache.local"
+    expect: "\\OC\\Memcache\\Redis"
+    common_fix: "occ config:system:set memcache.local --value='\\OC\\Memcache\\Redis'"
+
+  - description: "Verify Redis locking config"
+    command: "docker compose exec -T -u www-data app php occ config:system:get memcache.locking"
+    expect: "\\OC\\Memcache\\Redis"
+    common_fix: "occ config:system:set memcache.locking --value='\\OC\\Memcache\\Redis'"
+
+  - description: "Check Redis connection parameters in config.php"
+    command: "docker compose exec -T -u www-data app php occ config:system:get redis"
+    expect: "Array with host=redis, port=6379"
+    common_fix: "occ config:system:set redis host --value=redis && occ config:system:set redis port --value=6379 --type=integer"
+
+  - description: "Check Redis memory usage"
+    command: "docker compose exec -T redis redis-cli info memory | grep used_memory_human"
+    expect: "used_memory_human: reasonable value (under 100MB on Pi 3)"
+    common_fix: "If near limit: FLUSHDB (flushes one DB only, safer) or investigate what is stored. FLUSHALL logs everyone out — use only as last resort"
+
+  - description: "Test Redis can store and retrieve a value"
+    command: "docker compose exec -T redis redis-cli SET igor_test ok && docker compose exec -T redis redis-cli GET igor_test"
+    expect: "OK then ok"
+    common_fix: "If SET fails: Redis is read-only or OOM. Check redis.conf maxmemory-policy setting"
+
+notes: |
+  On Pi 3 (1GB RAM), Redis can be killed by OOM killer under memory pressure.
+  Check: dmesg | grep -i oom | tail -5
+
+  Session loss scenarios:
+  - Redis OOM killed → restart restores service but all sessions gone
+  - Wrong host config (e.g. 'localhost' instead of 'redis') → PHP can't connect, falls back to file sessions which don't persist across container restarts
+  - FLUSHALL run manually or by script → all sessions and locks cleared instantly
+
+  After fixing Redis: users need to log back in (sessions can't be restored).
+  File locking errors in nextcloud.log mentioning "lock" or "memcache" are usually Redis connection issues.

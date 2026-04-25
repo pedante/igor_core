@@ -1,0 +1,11 @@
+NAME: seq_flush_redis
+DESCRIPTION: Flush Redis cache database (session data will be cleared)
+SYMPTOM_CODE: seq_flush_redis
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T redis redis-cli FLUSHDB
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 08:31:30
+LAST_SEEN: 2026-03-21 08:31:30

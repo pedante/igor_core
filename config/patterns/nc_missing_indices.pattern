@@ -1,0 +1,11 @@
+NAME: nc_missing_indices
+DESCRIPTION: Add missing database indices. No downtime; query performance will improve.
+SYMPTOM_CODE: nc_missing_indices
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T -u www-data app php occ db:add-missing-indices
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-11 00:44:46
+LAST_SEEN: 2026-04-11 00:44:46

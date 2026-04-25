@@ -1,0 +1,11 @@
+NAME: seq_enable_maintenance
+DESCRIPTION: Enable maintenance mode for upgrade
+SYMPTOM_CODE: seq_enable_maintenance
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data app php occ maintenance:mode --on
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-11 01:13:53
+LAST_SEEN: 2026-04-11 01:13:53

@@ -1,0 +1,11 @@
+NAME: redis_maxmemory_not_set
+DESCRIPTION: Set Redis maxmemory to 100MB — prevents Redis from consuming all available RAM and triggering OOM kills
+SYMPTOM_CODE: redis_maxmemory_not_set
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T ${DIAG_CACHE_SVC:-redis} redis-cli CONFIG SET maxmemory 100mb
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 02:45:53
+LAST_SEEN: 2026-03-21 02:45:53

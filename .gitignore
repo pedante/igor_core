@@ -1,0 +1,98 @@
+# ==============================================================================
+#  Igor — .gitignore
+#  Rule: commit templates and code; never commit runtime data or credentials.
+# ==============================================================================
+
+# ── Secrets & credentials (NEVER commit) ─────────────────────────────────────
+secrets/*.env
+secrets/*.key
+secrets/*.pem
+secrets/gnupg/
+secrets/gpg/
+# Keep example templates — they are documentation
+!secrets/*.example
+
+# Root-level secret fallbacks (legacy — deprecated)
+db.env
+notify.env
+mailcmd.env
+ai_settings.env
+onlyoffice.env
+config.env
+*.key
+*.pem
+*.p12
+
+CLAUDE.md
+.serena/
+.claude/
+
+# ── Runtime data ──────────────────────────────────────────────────────────────
+data/
+mailcmd/
+knowledge/
+
+# Specific runtime files
+scratchpad.txt
+output.log
+state.env
+state.lock
+seen_nonces.txt
+security.log
+status.env
+pending_confirmations.json
+commands.fifo
+results.fifo
+pid
+journal.log
+last_diag.md
+
+# ── GPG key material ──────────────────────────────────────────────────────────
+gnupg/
+**/private-keys-v1.d/
+**/*.gpg
+**/*.kbx
+**/*.kbx~
+**/*.rev
+**/random_seed
+
+# ── User-editable stack configs ───────────────────────────────────────────────
+# Reference defaults live in modules/*/defaults/ (always tracked).
+config/stacks/
+
+# ── Learned knowledge & session data ──────────────────────────────────────────
+config/knowledge/
+
+# ── IDE / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.serena/
+.claude/
+.mcp.json
+CLAUDE.md
+
+# ── Python / test cache ───────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# ── Scratch / temporary ───────────────────────────────────────────────────────
+*.backup
+*.orig
+*.bak
+*.tmp
+*.corrupted_backup
+/tmp/
+
+# ── Audit / internal planning docs ───────────────────────────────────────────
+docs/audit/
+IGOR_AUDIT_PLAN*.md
+audit_secrets.md

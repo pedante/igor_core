@@ -1,0 +1,34 @@
+# ==============================================================================
+#  docker-compose.override.yml
+#
+#  This file is AUTO-LOADED by Docker Compose alongside docker-compose.yml.
+#  It injects ONLYOFFICE_DOCUMENT_SERVER_URL into the app container ONLY
+#  when the 'extra' profile is active (i.e. OnlyOffice is running).
+#
+#  FIX [HIGH-7]: Without this, app always has the OnlyOffice URL set and logs
+#  continuous connection errors when OnlyOffice is not running.
+#
+#  Usage:
+#    OnlyOffice OFF (default):  docker compose up -d
+#    OnlyOffice ON:             docker compose --profile extra up -d
+#
+#  When --profile extra is NOT passed, this override's 'profiles' condition
+#  means the environment addition has no service to attach to and is ignored.
+# ==============================================================================
+
+services:
+  onlyoffice:
+    # This service only exists when --profile extra is active.
+    # The environment below is merged into the app service via depends_on
+    # indirection — the correct approach is a separate override for app.
+    environment:
+      - JWT_SECRET=${JWT_SECRET}       # passed through from onlyoffice.env
+
+  # Inject the OnlyOffice URL into app only when the profile is active.
+  # Docker Compose merges this with the base app service definition.
+  app:
+    profiles:
+      - extra
+      - ""                             # empty string = always (base service stays up)
+    environment:
+      - ONLYOFFICE_DOCUMENT_SERVER_URL=http://onlyoffice/

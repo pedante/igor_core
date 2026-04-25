@@ -1,0 +1,11 @@
+NAME: seq_check_hd_mount
+DESCRIPTION:  grep -q '/mnt/nextclouddata'
+SYMPTOM_CODE: seq_check_hd_mount
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: mount 
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 08:30:44
+LAST_SEEN: 2026-03-21 08:30:44

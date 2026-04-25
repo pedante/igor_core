@@ -1,0 +1,11 @@
+NAME: nc_log_large
+DESCRIPTION: Truncate Nextcloud log file (old entries lost — safe, they are already flagged)
+SYMPTOM_CODE: nc_log_large
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T app truncate -s 0 /var/www/html/data/nextcloud.log
+CONFIRMED: 3
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 00:04:12
+LAST_SEEN: 2026-03-21 02:44:34

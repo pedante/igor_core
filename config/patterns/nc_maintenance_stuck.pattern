@@ -1,0 +1,11 @@
+NAME: nc_maintenance_stuck
+DESCRIPTION: Disable Nextcloud maintenance mode
+SYMPTOM_CODE: nc_maintenance_stuck
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data app php occ maintenance:mode --off
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-11 01:27:12
+LAST_SEEN: 2026-04-11 01:27:12

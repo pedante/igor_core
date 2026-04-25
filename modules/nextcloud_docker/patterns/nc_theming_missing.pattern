@@ -1,0 +1,11 @@
+NAME: nc_theming_missing
+DESCRIPTION: Regenerate theming cache (CSS/JS compiled theme assets)
+SYMPTOM_CODE: nc_theming_missing
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data ${DIAG_APP_SVC:-app} php occ maintenance:theme:update
+CONFIRMED: 3
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 02:05:14
+LAST_SEEN: 2026-03-21 02:44:44

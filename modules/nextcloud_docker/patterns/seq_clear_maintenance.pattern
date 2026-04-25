@@ -1,0 +1,11 @@
+NAME: seq_clear_maintenance
+DESCRIPTION: Disable Nextcloud maintenance mode
+SYMPTOM_CODE: seq_clear_maintenance
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data app php occ maintenance:mode --off
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 08:32:53
+LAST_SEEN: 2026-03-21 08:32:53

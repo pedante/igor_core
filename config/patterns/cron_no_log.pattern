@@ -1,0 +1,11 @@
+NAME: cron_no_log
+DESCRIPTION: Restart cron container to force an immediate execution cycle
+SYMPTOM_CODE: cron_no_log
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose restart ${DIAG_CRON_SVC:-cron}
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-14 16:57:56
+LAST_SEEN: 2026-04-14 16:57:56

@@ -1,0 +1,11 @@
+NAME: nc_db_missing_indices
+DESCRIPTION: Add missing database indices, columns, and primary keys — improves query performance. No downtime.
+SYMPTOM_CODE: nc_db_missing_indices
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T -u www-data ${DIAG_APP_SVC:-app} sh -c 'php occ db:add-missing-indices && php occ db:add-missing-columns && php occ db:add-missing-primary-keys'
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-11 00:46:16
+LAST_SEEN: 2026-04-11 00:46:16

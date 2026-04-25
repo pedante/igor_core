@@ -1,0 +1,175 @@
+# IGOR NEXT nginx.conf.tmpl — rendered by editor module via envsubst
+# Variables substituted at render time: ${NGINX_DOMAIN} ${UPLOAD_MAX} ${FASTCGI_TIMEOUT}
+# All other $variables are nginx runtime variables — do NOT substitute them.
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections 512;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include      /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Alpine nginx mime.types predates .mjs — required for NC 33+ UI
+    types { application/javascript mjs; }
+
+    log_format main '$http_cf_connecting_ip - $remote_user [$time_local] '
+                    '"$request" $status $body_bytes_sent '
+                    '"$http_referer" "$http_user_agent"';
+    access_log /var/log/nginx/access.log main;
+
+    sendfile on; tcp_nopush on; tcp_nodelay on;
+    keepalive_timeout 65;
+    server_tokens off;
+
+    gzip on; gzip_vary on; gzip_min_length 1000; gzip_proxied any;
+    gzip_types text/plain text/css application/json application/javascript
+               text/xml application/xml text/javascript application/wasm;
+    gzip_disable "msie6";
+
+    client_max_body_size ${UPLOAD_MAX};
+    client_body_timeout  600s;
+
+    # Cloudflare real IP ranges (updated March 2026)
+    set_real_ip_from 103.21.244.0/22; set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;   set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;   set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 131.0.72.0/22;   set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 162.158.0.0/15;  set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 173.245.48.0/20; set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 190.93.240.0/20; set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17; set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;  set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;  set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;  set_real_ip_from 2c0f:f248::/32;
+    real_ip_header CF-Connecting-IP;
+
+    upstream php-handler {
+        server app:9000;
+        keepalive 8;
+    }
+
+    server {
+        listen 80;
+        server_name ${NGINX_DOMAIN} _;
+
+        root  /var/www/html;
+        index index.php index.html;
+
+        # Security headers
+        add_header X-Content-Type-Options              "nosniff"            always;
+        add_header X-Frame-Options                     "SAMEORIGIN"         always;
+        add_header X-XSS-Protection                    "1; mode=block"      always;
+        add_header X-Robots-Tag                        "noindex, nofollow"  always;
+        add_header X-Download-Options                  "noopen"             always;
+        add_header X-Permitted-Cross-Domain-Policies   "none"               always;
+        add_header Referrer-Policy                     "no-referrer"        always;
+        add_header Strict-Transport-Security           "max-age=15552000; includeSubDomains" always;
+
+        # Allow large uploads
+        client_max_body_size ${UPLOAD_MAX};
+
+        fastcgi_read_timeout    ${FASTCGI_TIMEOUT};
+        fastcgi_send_timeout    ${FASTCGI_TIMEOUT};
+        fastcgi_connect_timeout  60s;
+        proxy_read_timeout      ${FASTCGI_TIMEOUT};
+        proxy_send_timeout      ${FASTCGI_TIMEOUT};
+
+        # Block hidden files and sensitive paths
+        location ~ /\.                                                             { deny all; }
+        location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:$|/)   { deny all; }
+        location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console)                 { deny all; }
+
+        # .well-known — must come before location / to prevent catch-all interception
+        location ^~ /.well-known {
+            location = /.well-known/carddav { return 301 $scheme://$host/remote.php/dav; }
+            location = /.well-known/caldav  { return 301 $scheme://$host/remote.php/dav; }
+            location = /.well-known/webfinger { return 301 $scheme://$host/index.php/.well-known/webfinger; }
+            location = /.well-known/nodeinfo  { return 301 $scheme://$host/index.php/.well-known/nodeinfo; }
+            return 301 $scheme://$host/index.php$request_uri;
+        }
+
+    
+
+        location /dav { rewrite ^ /remote.php/dav; }
+
+        # Lightweight PHP endpoints (status, cron, public share)
+        location ~ ^/(?:status|cron|public)\.php$ {
+            try_files $fastcgi_script_name =404;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME      $document_root$fastcgi_script_name;
+            fastcgi_param HTTPS                on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+            fastcgi_param modHeadersAvailable  true;
+            fastcgi_param front_controller_active true;
+            fastcgi_pass  php-handler;
+            fastcgi_buffering on; fastcgi_buffers 64 4k; fastcgi_buffer_size 32k;
+            fastcgi_busy_buffers_size 32k; fastcgi_request_buffering off;
+            fastcgi_intercept_errors off;
+        }
+
+        # Main location — MUST use rewrite, NOT try_files (try_files causes 403 on /apps/files/)
+        location / {
+            rewrite ^ /index.php;
+        }
+
+        location ~ ^/(?:dist|build)/ {
+            try_files $uri =404;
+        }
+
+        location ~ ^/(?:core/ajax/update|ocs/v[12]|updater/.+|oc[ms]-provider/.+|ocs-provider/.+)(?:$|/) {
+            rewrite ^ /index.php;
+        }
+
+        # Front controller — handles all NC routing
+        location ~ ^/index\.php(?:$|/) {
+            fastcgi_split_path_info ^(.+?\.php)(/.*)?$;
+            set $path_info $fastcgi_path_info;
+            try_files $fastcgi_script_name =404;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME      $document_root$fastcgi_script_name;
+            fastcgi_param PATH_INFO            $path_info;
+            fastcgi_param HTTPS                on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+            fastcgi_param modHeadersAvailable  true;
+            fastcgi_param front_controller_active true;
+            fastcgi_pass  php-handler;
+            fastcgi_index index.php;
+            fastcgi_buffering on; fastcgi_buffers 64 4k; fastcgi_buffer_size 32k;
+            fastcgi_busy_buffers_size 32k; fastcgi_request_buffering off;
+            fastcgi_intercept_errors off;
+        }
+
+        # WebDAV / CalDAV / CardDAV
+        location ~ ^/remote\.php(?:$|/) {
+            fastcgi_split_path_info ^(.+?\.php)(/.*)?$;
+            set $path_info $fastcgi_path_info;
+            try_files $fastcgi_script_name =404;
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME      $document_root$fastcgi_script_name;
+            fastcgi_param PATH_INFO            $path_info;
+            fastcgi_param HTTPS                on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+            fastcgi_param modHeadersAvailable  true;
+            fastcgi_param front_controller_active true;
+            fastcgi_pass  php-handler;
+            fastcgi_buffering on; fastcgi_buffers 64 4k; fastcgi_buffer_size 32k;
+            fastcgi_busy_buffers_size 32k; fastcgi_request_buffering off;
+            fastcgi_intercept_errors off;
+        }
+
+        # Static assets — long cache lifetime
+        location ~ \.(?:css|js|mjs|map|woff|woff2|svg|gif|png|jpg|ico|ttf|otf|eot)$ {
+            try_files $uri /index.php$request_uri;
+            expires 6M; access_log off;
+            add_header Cache-Control        "public, immutable";
+            add_header X-Content-Type-Options "nosniff"    always;
+            add_header X-Frame-Options        "SAMEORIGIN" always;
+        }
+    }
+}

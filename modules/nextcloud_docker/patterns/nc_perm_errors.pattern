@@ -1,0 +1,11 @@
+NAME: nc_perm_errors
+DESCRIPTION: Fix appdata ownership — resolves NotPermittedException for app store, caching, and preview generation. Users remain connected.
+SYMPTOM_CODE: nc_perm_errors
+SYMPTOM_TEXT: 
+FIX_TIER: CAUTION
+FIX_CMD: sudo find "${NC_DATA:-/mnt/nextclouddata/next}" -maxdepth 1 -name 'appdata_*' -type d -exec chown -R ${NC_UID:-1004}:${NC_GID:-1004} {} \;
+CONFIRMED: 5
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 01:23:38
+LAST_SEEN: 2026-03-26 02:01:02

@@ -1,0 +1,11 @@
+# Browser/JS console noise — patterns matched with grep -iE
+# One pattern per line. Lines starting with # are ignored.
+mapa fuente
+soporte de
+Failed to load resource
+\.js\.map
+net::ERR_
+DevTools
+XMLHttpRequest
+CORS policy
+source map

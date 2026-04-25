@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: shellcheck — lint all shell scripts and BATS files
+  # ────────────────────────────────────────────────────────────────────────────
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on core/
+        # SC2086: unquoted variables — many are intentional in Igor's dynamic dispatch.
+        # SC1090/SC1091: source paths that are dynamic at runtime.
+        # continue-on-error until the first batch-fix pass is complete.
+        continue-on-error: true
+        run: |
+          find core/ -name "*.sh" | sort | xargs shellcheck \
+            --severity=warning \
+            --exclude=SC2086,SC1090,SC1091,SC2034 \
+            --shell=bash
+
+      - name: Run shellcheck on modules/
+        continue-on-error: true
+        run: |
+          find modules/ -name "*.sh" | sort | xargs shellcheck \
+            --severity=warning \
+            --exclude=SC2086,SC1090,SC1091,SC2034 \
+            --shell=bash
+
+      - name: Run shellcheck on igor.sh
+        continue-on-error: true
+        run: |
+          shellcheck \
+            --severity=warning \
+            --exclude=SC2086,SC1090,SC1091,SC2034 \
+            --shell=bash \
+            igor.sh
+
+      - name: Run shellcheck on tests/
+        continue-on-error: true
+        run: |
+          find tests/ -name "*.sh" -o -name "*.bats" | sort | xargs shellcheck \
+            --severity=warning \
+            --exclude=SC2086,SC1090,SC1091,SC2034 \
+            --shell=bash
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: ruff — lint Python files
+  # ────────────────────────────────────────────────────────────────────────────
+  ruff:
+    name: Ruff (Python lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check .
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: tests — run all test suites
+  # ────────────────────────────────────────────────────────────────────────────
+  tests:
+    name: Tests (BATS + bash + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python test deps
+        run: pip install pytest
+
+      - name: Install bats-core
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+
+      # ── Existing bash tests ────────────────────────────────────────────────
+      - name: Run test_igor_core.sh
+        run: bash tests/test_igor_core.sh
+
+      # ── Existing Python tests ──────────────────────────────────────────────
+      - name: Run test_ai_render.py
+        run: pytest tests/test_ai_render.py -v
+
+      # ── BATS: core/ ───────────────────────────────────────────────────────
+      - name: BATS — core/
+        run: bats --tap tests/core/
+
+      # ── BATS: modules/ ────────────────────────────────────────────────────
+      - name: BATS — modules/
+        run: bats --tap tests/modules/
+
+      # ── BATS: integration/ ────────────────────────────────────────────────
+      - name: BATS — integration/
+        run: bats --tap tests/integration/

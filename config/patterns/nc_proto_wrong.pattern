@@ -1,0 +1,11 @@
+NAME: nc_proto_wrong
+DESCRIPTION: Set overwriteprotocol to https (required for Cloudflare tunnel)
+SYMPTOM_CODE: nc_proto_wrong
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data app php occ config:system:set overwriteprotocol --value='https'
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-04-11 00:44:54
+LAST_SEEN: 2026-04-11 00:44:54

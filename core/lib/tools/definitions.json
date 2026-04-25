@@ -1,0 +1,121 @@
+[
+  {
+    "name": "host_command",
+    "description": "Execute a bash command on the Pi host. Use for system inspection (df, free, systemctl, docker, ls, cat, grep, etc).",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The bash command to execute"
+        },
+        "purpose": {
+          "type": "string",
+          "description": "One sentence: why this command is needed for the current investigation"
+        }
+      },
+      "required": ["command", "purpose"]
+    }
+  },
+  {
+    "name": "occ_command",
+    "description": "Execute a Nextcloud occ CLI command inside the app container. Use for Nextcloud config, maintenance, and status checks.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "The occ subcommand and arguments (without the leading 'occ')"
+        },
+        "purpose": {
+          "type": "string",
+          "description": "One sentence: why this occ command is needed"
+        }
+      },
+      "required": ["command", "purpose"]
+    }
+  },
+  {
+    "name": "container_action",
+    "description": "Start, stop, or restart a Docker Compose service container.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["start", "stop", "restart"],
+          "description": "Action to perform"
+        },
+        "name": {
+          "type": "string",
+          "description": "Service name as defined in docker-compose.yml (e.g. 'web', 'app', 'db')"
+        },
+        "purpose": {
+          "type": "string",
+          "description": "One sentence: why this container action is needed"
+        }
+      },
+      "required": ["action", "name", "purpose"]
+    }
+  },
+  {
+    "name": "read_file",
+    "description": "Read the contents of a file on the host. Returns up to `lines` lines from the end of the file.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute or project-relative file path"
+        },
+        "lines": {
+          "type": "integer",
+          "description": "Number of lines to return from end of file (default 50)",
+          "default": 50
+        }
+      },
+      "required": ["path"]
+    }
+  },
+  {
+    "name": "edit_file",
+    "description": "Make an exact string replacement in a file. find must match exactly once.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute or project-relative file path"
+        },
+        "find": {
+          "type": "string",
+          "description": "Exact string to find (must match exactly once in the file)"
+        },
+        "replace": {
+          "type": "string",
+          "description": "Replacement string"
+        }
+      },
+      "required": ["path", "find", "replace"]
+    }
+  },
+  {
+    "name": "reply",
+    "description": "Send a final answer to the user and close the investigation. Use when you have completed the task or have a definitive answer.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "The final reply to show the user"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["FIXED", "NOTHING_TO_FIX", "BLOCKED", "INFO"],
+          "description": "Outcome status: FIXED (verified fix), NOTHING_TO_FIX, BLOCKED (unable to proceed), INFO (informational answer)"
+        }
+      },
+      "required": ["message", "status"]
+    }
+  }
+]

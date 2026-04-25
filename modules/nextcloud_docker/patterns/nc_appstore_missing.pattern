@@ -1,0 +1,11 @@
+NAME: nc_appstore_missing
+DESCRIPTION: Trigger app store cache refresh (runs the background fetcher job that downloads apps.json)
+SYMPTOM_CODE: nc_appstore_missing
+SYMPTOM_TEXT: 
+FIX_TIER: AUTO
+FIX_CMD: docker compose exec -T -u www-data ${DIAG_APP_SVC:-app} php occ background:job:run 'OC\App\AppStore\Fetcher\AppFetcher'
+CONFIRMED: 2
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 02:03:10
+LAST_SEEN: 2026-03-21 02:17:15

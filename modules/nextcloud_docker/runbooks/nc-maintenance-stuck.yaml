@@ -1,0 +1,68 @@
+id: nc-maintenance-stuck
+name: "Nextcloud stuck in maintenance mode"
+priority: high
+last_updated: "2026-03-26"
+stack: nextcloud-docker
+triggers:
+  - maintenance
+  - "maintenance mode"
+  - "stuck in maintenance"
+  - "maintenance mode is enabled"
+  - "under maintenance"
+  - "maintenance page"
+  - "upgrade"
+  - "upgrading"
+  - "upgrade failed"
+  - "upgrade stuck"
+  - "update stuck"
+  - "occ upgrade"
+  - "instance is currently in maintenance mode"
+steps:
+  - description: "Check maintenance mode status"
+    command: "docker compose exec -T -u www-data app php occ maintenance:mode"
+    expect: "Maintenance mode is currently disabled"
+    common_fix: "If enabled, proceed to disable step"
+
+  - description: "Check if this was triggered by a failed upgrade"
+    command: "docker compose exec -T app cat /var/www/html/data/nextcloud.log 2>/dev/null | python3 -c \"import sys,json; [print(json.loads(l).get('message','')[:150]) for l in sys.stdin if l.strip()]\" 2>/dev/null | tail -20"
+    expect: "No migration/upgrade failure errors"
+    common_fix: "If upgrade errors are present: check NC version compatibility; may need to run occ upgrade manually"
+
+  - description: "Disable maintenance mode"
+    command: "docker compose exec -T -u www-data app php occ maintenance:mode --off"
+    expect: "Maintenance mode is currently disabled"
+    common_fix: "If occ itself fails: NC may be mid-upgrade. Check docker compose logs app --tail=30 for upgrade progress"
+
+  - description: "Run occ upgrade if maintenance was triggered by an update"
+    command: "docker compose exec -T -u www-data app php occ upgrade"
+    expect: "Nextcloud is already latest version or upgrade completes successfully"
+    common_fix: "If upgrade fails with DB error: check db container is running and DB credentials in db.env are correct"
+
+  - description: "Verify site is accessible after disabling maintenance"
+    command: "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/status.php"
+    expect: "200"
+    common_fix: "If still 503: maintenance mode may be set in config.php too. Check: docker compose exec app grep maintenance /var/www/html/config/config.php"
+
+  - description: "Check maintenance flag in config.php directly (if occ fails)"
+    command: "docker compose exec app grep -n 'maintenance' /var/www/html/config/config.php"
+    expect: "'maintenance' => false, or not present"
+    common_fix: "If 'maintenance' => true: use occ to turn off. Only edit config.php directly if occ is completely non-functional"
+
+  - description: "Run database repair if upgrade left DB inconsistent"
+    command: "docker compose exec -T -u www-data app php occ maintenance:repair"
+    expect: "Repair steps complete without fatal errors"
+    common_fix: "If repair fails: check for DB errors in output; verify PostgreSQL container is healthy"
+
+notes: |
+  Maintenance mode is set automatically by:
+  1. occ upgrade / occ maintenance:mode --on (manual)
+  2. NC update wizard in the web UI
+  3. Failed upgrade — NC enables maintenance at start of upgrade and
+     doesn't disable it if the upgrade crashes
+
+  On Pi 3: upgrades are slow (10+ minutes). Do NOT interrupt docker compose
+  during an upgrade — use docker compose logs app -f to watch progress.
+
+  If config.php shows 'maintenance' => true but occ can't run (container crash):
+  Start the container, quickly exec in, or temporarily bind-mount config dir to edit.
+  NEVER edit config.php via docker exec cat > — always use occ or a proper bind mount.

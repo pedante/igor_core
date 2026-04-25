@@ -1,0 +1,154 @@
+# ==============================================================================
+#  NEXUS NCP — docker-compose.yml
+#
+#  Secrets live in env files — never in this file.
+#  Required files (not committed to git):
+#    db.env          — PostgreSQL + Nextcloud credentials
+#    onlyoffice.env  — OnlyOffice JWT secret
+#
+#  OnlyOffice is gated behind the 'extra' profile (matches setup.sh toggle):
+#    Disabled (default) : docker compose up -d
+#    Enabled            : docker compose --profile extra up -d
+# ==============================================================================
+name: nextcloud
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # Pinned to major version. Upgrade intentionally, not by accident.
+  # All credentials come from db.env (see db.env.example).
+  db:
+    image: postgres:16-alpine          # FIX [LOW-12]: was unversioned postgres:alpine
+    restart: always
+    volumes:
+      - db:/var/lib/postgresql/data:Z
+    networks:
+      - nextcloud_network
+    env_file:
+      - ../../../secrets/db.env
+
+  # ── Redis (session cache + file locking) ────────────────────────────────────
+  redis:
+    image: redis:7-alpine              # FIX [LOW-13]: was unversioned redis:alpine
+    restart: always
+    networks:
+      - nextcloud_network
+
+  # ── Nextcloud FPM (custom build with UID 1004) ──────────────────────────────
+  app:
+    build: .                           # Dockerfile sets www-data to UID 1004
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html:z
+      - /mnt/nextclouddata/next:/var/www/html/data:rw
+      # NOTE: config.php lives in the named volume — managed by occ, not a bind mount
+      # NOTE: cron volumes must stay in sync with these
+    environment:
+      - POSTGRES_HOST=db
+      - REDIS_HOST=redis
+      # FIX [CRITICAL-7]: ONLYOFFICE_DOCUMENT_SERVER_URL removed from here.
+      # When OnlyOffice is off, this env causes continuous connection error logs.
+      # It is set in docker-compose.override.yml (auto-loaded with --profile extra).
+    env_file:
+      - ../../../secrets/db.env  # contains NEXTCLOUD_ADMIN_USER/PASSWORD,
+                                       # POSTGRES_USER/PASSWORD/DB, TRUSTED_DOMAINS
+    depends_on:
+      - db
+      - redis
+    networks:
+      - nextcloud_network
+
+  # ── Nginx (reverse proxy for FPM) ───────────────────────────────────────────
+  # Host port 8080 → container 80. Cloudflare tunnel points to localhost:8080.
+  web:
+    image: nginx:alpine-slim
+    restart: always
+    ports:
+      - "8080:80"
+    # Remove conf.d/default.conf on startup — the alpine image entrypoint
+    # generates it and nginx loads it alongside our nginx.conf, causing
+    # duplicate server blocks and 403 on directory-style URLs like /apps/files/
+    entrypoint: >
+      sh -c "rm -f /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/nginx.conf:ro
+      - nextcloud:/var/www/html:z,ro
+      # FIX [CRITICAL-5]: data volume added so Nginx can serve file downloads
+      # and previews directly without proxying through PHP-FPM.
+      - /mnt/nextclouddata/next:/var/www/html/data:ro
+    depends_on:
+      - app
+    networks:
+      - nextcloud_network
+
+  # ── Nextcloud Cron (background jobs) ────────────────────────────────────────
+  cron:
+    build: .
+    restart: always
+    volumes:
+      - nextcloud:/var/www/html:z
+      - /mnt/nextclouddata/next:/var/www/html/data:rw
+      # NOTE: config.php lives in the named volume — keep in sync with app above
+    environment:
+      - POSTGRES_HOST=db               # FIX [CRITICAL-4]: cron needs DB+Redis env
+      - REDIS_HOST=redis               # FIX [CRITICAL-4]: was missing entirely
+      # REMOVED: PREVIEW_IMAGINARY_URL — no imaginary service exists in this stack
+    env_file:
+      - ../../../secrets/db.env  # FIX [CRITICAL-4]: was missing entirely
+    entrypoint: /cron.sh
+    depends_on:
+      - db
+      - redis
+    networks:
+      - nextcloud_network
+
+  # ── OnlyOffice Document Server ───────────────────────────────────────────────
+  # GATED behind 'extra' profile — matches setup.sh ENABLE_ONLYOFFICE toggle.
+  # On Pi 3 (1GB RAM) this service alone needs ~1–1.5GB. Only start when needed.
+  #
+  # Start with:  docker compose --profile extra up -d
+  # Stop with:   docker compose --profile extra down  (or toggle via setup.sh)
+  #
+  # FIX [CRITICAL-2]: JWT_SECRET moved to onlyoffice.env — NEVER hardcode it here.
+  # FIX [CRITICAL-3]: profiles: [extra] prevents this from starting by default.
+  # FIX [MEDIUM-9]:   WOPI_ENABLED (was typo'd WOPY_ENABLED).
+  onlyoffice:
+    image: onlyoffice/documentserver:7.5.1
+    container_name: onlyoffice_documentserver
+    restart: always
+    profiles:
+      - extra                          # FIX [CRITICAL-3]: was always-on, would OOM Pi 3
+    expose:
+      - "80"                           # internal only — app reaches via http://onlyoffice/
+    environment:
+      - JWT_ENABLED=true
+      - JWT_HEADER=Authorization
+      - WOPI_ENABLED=false             # FIX [MEDIUM-9]: was WOPY_ENABLED (typo, ignored silently)
+    env_file:
+      - ../../../secrets/onlyoffice.env  # FIX [CRITICAL-2]: JWT_SECRET lives here, not above
+    networks:
+      - nextcloud_network
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  db:
+    external: true
+    name: nextcloud_db
+  nextcloud:
+    external: true
+    name: nextcloud_data
+  onlyoffice_data:
+    external: true
+    name: nextcloud_onlyoffice_data
+  onlyoffice_logs:
+    external: true
+    name: nextcloud_onlyoffice_logs
+
+# ── Network ───────────────────────────────────────────────────────────────────
+# No fixed subnet — Docker assigns automatically (fixed subnets conflict across project renames).
+networks:
+  nextcloud_network:
+    driver: bridge

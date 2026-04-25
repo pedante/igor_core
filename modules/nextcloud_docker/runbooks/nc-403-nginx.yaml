@@ -1,0 +1,62 @@
+id: nc-403-nginx
+name: "App page 403 or 404 (nginx routing)"
+priority: high
+last_updated: "2026-03-26"
+stack: nextcloud-docker-nginx
+triggers:
+  - "403"
+  - "404"
+  - forbidden
+  - "app page"
+  - "apps/files"
+  - "apps/photos"
+  - "apps/contacts"
+  - "try_files"
+  - nginx
+  - routing
+  - "directory url"
+  - "location block"
+  - "not found"
+  - "white page"
+  - "blank page"
+  - "page not found"
+steps:
+  - description: "Check if conf.d/default.conf exists (causes second server block = 403)"
+    command: "docker compose exec web ls /etc/nginx/conf.d/"
+    expect: "Empty output — if default.conf is listed, that is the cause"
+    common_fix: "The Docker entrypoint should delete it. If present: docker compose restart web; or remove it manually and reload"
+
+  - description: "Verify location / uses rewrite not try_files"
+    command: "grep -n 'location /' ./web/nginx.conf | head -5"
+    expect: "location / block present"
+    common_fix: "Check the body of the location / block next"
+
+  - description: "Check rewrite vs try_files in location / block"
+    command: "grep -A5 'location / {' ./web/nginx.conf"
+    expect: "rewrite ^ /index.php; — NOT try_files"
+    common_fix: "Replace try_files with: rewrite ^ /index.php; — then restart web container. try_files causes 403 on all /apps/ directory-style URLs"
+
+  - description: "Verify .well-known block exists before location /"
+    command: "grep -n 'well-known\\|location /' ./web/nginx.conf | head -10"
+    expect: ".well-known block appears BEFORE location / in the file"
+    common_fix: "Move location ^~ /.well-known block above location / — otherwise NC admin warnings appear and some clients fail"
+
+  - description: "Test the failing URL directly"
+    command: "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/apps/files/"
+    expect: "200"
+    common_fix: "If 403: nginx routing issue (try_files or conf.d/default.conf). If 404: app not enabled — occ app:enable files"
+
+  - description: "Reload nginx config after any edits"
+    command: "docker compose exec web nginx -s reload"
+    expect: "No output (success) or: signal process started"
+    common_fix: "If error: run nginx -T to check syntax, fix error, then reload again"
+
+notes: |
+  Two distinct 403 causes:
+  1. conf.d/default.conf present — creates a second server block; nginx serves default
+     403 for directory requests. Entrypoint deletes it but a manual exec can recreate it.
+  2. try_files in location / — try_files $uri $uri/ /index.php causes 403 on /apps/files/
+     because the directory exists in the container but isn't directly serveable.
+     The correct pattern is unconditional: rewrite ^ /index.php;
+  occ overwrite.* settings do NOT affect nginx routing. If you see 403 on app pages,
+  fix nginx first before touching occ.

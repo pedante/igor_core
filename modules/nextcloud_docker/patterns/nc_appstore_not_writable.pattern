@@ -1,0 +1,11 @@
+NAME: nc_appstore_not_writable
+DESCRIPTION: Fix ownership drift — app store directory not writable by www-data. Chowns NC data dir and restarts app.
+SYMPTOM_CODE: nc_appstore_not_writable
+SYMPTOM_TEXT: 
+FIX_TIER: CAUTION
+FIX_CMD: sudo chown -R 1004:1004 "/mnt/nextclouddata/next" && docker compose restart ${DIAG_APP_SVC:-app}
+CONFIRMED: 2
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 02:05:04
+LAST_SEEN: 2026-03-21 02:18:36

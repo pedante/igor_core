@@ -1,0 +1,11 @@
+NAME: db_vacuum_stale
+DESCRIPTION: Run VACUUM ANALYZE — reclaims dead tuples and updates query planner statistics. No downtime; runs while service is live.
+SYMPTOM_CODE: db_vacuum_stale
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose exec -T ${DIAG_DB_SVC:-db} psql -U 'nextcloud' -d 'nextcloud' -c 'VACUUM ANALYZE;'
+CONFIRMED: 3
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 02:45:27
+LAST_SEEN: 2026-03-26 02:02:14

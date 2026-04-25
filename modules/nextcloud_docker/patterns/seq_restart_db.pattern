@@ -1,0 +1,11 @@
+NAME: seq_restart_db
+DESCRIPTION: Restart database container (recovery from unclean shutdown)
+SYMPTOM_CODE: seq_restart_db
+SYMPTOM_TEXT: 
+FIX_TIER: SAFE
+FIX_CMD: docker compose restart db
+CONFIRMED: 1
+FAILED: 0
+AUTO_ELIGIBLE: false
+CREATED: 2026-03-21 08:31:20
+LAST_SEEN: 2026-03-21 08:31:20
