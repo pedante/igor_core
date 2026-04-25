@@ -625,7 +625,8 @@ def mode_call():
             })
             resp = conn.getresponse()
         except Exception as e:
-            _emit_error(f"connection failed: {e}"); return
+            _emit_error(f"connection failed: {e}")
+            return
 
         if resp.status != 200:
             _emit_error(f"HTTP {resp.status}: {resp.read().decode()[:300]}"); return
@@ -731,7 +732,8 @@ def mode_call():
             })
             resp = conn.getresponse()
         except Exception as e:
-            _emit_error(f"connection failed: {e}"); return
+             _emit_error(f"connection failed: {e}")
+             return
 
         if resp.status != 200:
             _emit_error(f"HTTP {resp.status}: {resp.read().decode()[:300]}"); return
@@ -837,7 +839,8 @@ def mode_call():
             })
             resp = conn.getresponse()
         except Exception as e:
-            _emit_error(f"Ollama connection failed ({ollama_host}): {e}"); return
+            _emit_error(f"Ollama connection failed ({ollama_host}): {e}")
+            return
 
         if resp.status != 200:
             _emit_error(f"Ollama HTTP {resp.status}: {resp.read().decode()[:300]}"); return
