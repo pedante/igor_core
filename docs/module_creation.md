@@ -45,12 +45,20 @@
 
 Igor modules are self-contained Bash packages that extend the core platform with domain-specific functionality. The module loader (`core/lib/module_loader.sh`) discovers, validates, and loads modules at startup.
 
+Discovery means installed, not active. `config/modules.conf` contains data-only
+`name=enabled` or `name=disabled` entries; omitted modules remain enabled for
+compatibility. `bash igor.sh --enable NAME` and `--disable NAME` write this policy
+for subsequent Igor processes. Restart existing sessions after changing policy.
+An enabled module becomes active only after dependencies and registration succeed.
+See [module lifecycle](module_lifecycle.md) for ownership, AI trust, and removal
+semantics.
+
 **Load sequence:**
 
 1. `igor_discover_modules` — scan `modules/*/module.conf`, populate `_IGOR_MODULE_DIRS`
-2. `igor_sort_modules` — topological sort by `depends_on`
+2. `igor_sort_modules` — topological sort by `depends_on` and `required_modules`
 3. `igor_load_module <name>` — for each module in order:
-   - Check required binaries and modules
+   - Check activation policy, required binaries and modules
    - `bash -n` syntax check
    - `source module.sh`
    - Call `<name>__register()`
@@ -61,7 +69,7 @@ Igor modules are self-contained Bash packages that extend the core platform with
 
 Hooks registered via `igor_register_hook` are stored in `_IGOR_HOOKS[hook_name]="fn1 fn2"`. When Igor runs `igor_run_all_hooks "hook_name"`, each function is called in a `bash -c` subprocess with a 30-second timeout (`IGOR_HOOK_TIMEOUT` to override). Failures are logged but do not stop subsequent hooks.
 
-**Important:** because `igor_run_all_hooks` executes hooks in subshells, hooks cannot modify the caller's global variables. Hooks that must stay in-process (e.g. `health_gate`, `role_check_app`, `alert_hook`, `rollback_handler`) are dispatched via `igor_get_hooks` and called directly in the parent shell.
+**Important:** only the hook function definition is copied into the fresh Bash process. Helpers must be exported or explicitly sourced by the hook; unexported shell variables are unavailable. Test hooks through their actual dispatcher, not only by direct calls. Because `igor_run_all_hooks` executes hooks in subshells, hooks cannot modify the caller's global variables. Hooks that must stay in-process (e.g. `health_gate`, `role_check_app`, `alert_hook`, `rollback_handler`) are dispatched via `igor_get_hooks` and called directly in the parent shell.
 
 ---
 
@@ -116,42 +124,43 @@ The only strictly required files are `module.conf` and `module.sh`. Everything e
 
 ## module.conf — Manifest File
 
-A simple `key=value` INI file. Section headers (`[section]`) are supported but not mandatory — the parser reads the first matching key regardless of section.
+A simple `key=value` INI file. The parser reads the first matching key regardless
+of section and retains inline comments as part of the value. Put comments on
+separate lines. Repository tests require `[module]`, `[dependencies]`, nonempty
+`name` and `display_name`, a numeric `X.Y.Z` version, and `requires_core`.
+The runtime parser is more permissive; `requires_core` is metadata and is not
+currently enforced. Use `required_modules` for mandatory dependencies (including
+ordering). `depends_on` alone remains an ordering preference. Disabled dependencies
+are never automatically enabled.
 
 ```ini
 [module]
-name=my_module                        # Internal name (used for function prefixes)
-display_name=My Module                # Human label shown in menus
+name=my_module
+display_name=My Module
 version=1.0.0
 description=Short description of what this module does
-requires_core=1.0.0                   # Minimum Igor core version
-depends_on=system                     # Comma-separated module names to load first
-menu_section=My Domain                # Group label in the main menu
-menu_priority=60                      # Lower = higher in menu (nextcloud_docker=50)
+requires_core=1.0.0
+depends_on=system
+menu_section=My Domain
+menu_priority=60
 menu_items=S:SETUP,1:STATUS,2:SERVICES
-
-# Stack config — omit if the module has no user-editable service files
-stack_dir=my_service                  # Relative to config/stacks/; sets MY_MODULE_STACK_DIR
+stack_dir=my_service
 
 [config]
-# Files loaded by igor_load_config / igor_validate_module_config
-variables_file=config/variables/my_module.env   # Non-sensitive defaults
-secrets_files=secrets/my_module.env             # Credentials (chmod 600)
+variables_file=config/variables/my_module.env
+secrets_files=secrets/my_module.env
 
 [secrets]
-# Variables expected from secrets_files (informational — used by future validators)
 variables=MY_API_KEY,MY_DB_PASS
-# Patterns for credential scrubbing before API calls
 scrub_patterns=MY_API_KEY=[^[:space:]]+
 
 [panels]
-# --extra TUI panel definitions: id:command:description
 panels=my-log:docker compose logs -f --tail=50 my_svc:Live service logs
 
 [dependencies]
-required_bins=curl,docker             # All must exist on PATH or module is skipped
-optional_bins=jq:jq:JSON processing  # format: bin[:apt-package[:description]]
-required_modules=                     # Module names that must be loaded first
+required_bins=curl,docker
+optional_bins=jq:jq:JSON processing
+required_modules=
 optional_modules=system:System integration
 ```
 
@@ -159,14 +168,17 @@ optional_modules=system:System integration
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `name` | No* | Module name. Falls back to directory basename if omitted |
-| `display_name` | No | Human label. Falls back to `name` |
+| `name` | Yes (tests) | Use the directory name and function prefix; loader has a basename fallback |
+| `display_name` | Yes (tests) | Human label |
+| `version` | Yes (tests) | Numeric `X.Y.Z` |
+| `requires_core` | Yes (tests) | Compatibility metadata; not checked by the loader |
 | `depends_on` | No | Comma/space-separated module names. Loader does topological sort |
 | `stack_dir` | No | If set, `MY_MODULE_STACK_DIR` is exported pointing to `config/stacks/<stack_dir>/` |
-| `variables_file` | No | Relative to `IGOR_DIR`. Loaded by `igor_load_config` step 1 |
-| `secrets_files` | No | Relative to `IGOR_DIR`. Loaded with permissions check (must be 600) |
+| `variables_file` | No | Relative to `IGOR_DIR`; use `config/variables/<name>.env`. Declares a file to validate |
+| `secrets_files` | No | Relative to `IGOR_DIR`; use `secrets/<name>.env`. Secrets must have mode 600 |
 | `required_bins` | No | Module is skipped entirely if any listed binary is absent from PATH |
 | `required_modules` | No | Module is skipped if any listed module failed to load |
+| `provides` | No | Comma/space-separated operational capabilities exposed only while the module is active |
 
 ---
 
@@ -207,7 +219,7 @@ my_module__register() {
 
 ## The `__register()` Function
 
-`igor_load_module` calls `<name>__register()` after sourcing the file. This function's only job is to call `igor_register_hook` for every hook the module provides.
+`igor_load_module` calls `<name>__register()` after sourcing the file. This function registers hooks and any menu entries; it should not perform installation or interactive work.
 
 ```bash
 my_module__register() {
@@ -230,7 +242,7 @@ These are not registered hooks — they are called by the module loader by conve
 |----------|-----------|---------|
 | `<name>__register()` | `igor_load_module` at startup | Register hooks. **Required.** |
 | `<name>__install()` | `igor_module_install <name>` | First-run setup. Bootstrap stack dir, create secrets template, install packages. Must be idempotent. |
-| `<name>__upgrade()` | `igor_module_upgrade <name>` | Post-update migration. Run after `git pull` when module version changes. |
+| `<name>__upgrade()` | `igor_module_upgrade <name>` | Explicit post-update migration via `bash igor.sh --upgrade <name>`; no automatic version comparison. |
 | `<name>__uninstall()` | `igor_module_remove <name>` | Cleanup. User must type YES before this is called. |
 
 ```bash
@@ -269,7 +281,7 @@ my_module__uninstall() {
 
 ### Hook: `health`
 
-**Invoked by:** `core/lib/ui.sh` header display; any code that reads health status.
+**Invoked by:** explicit callers. The current header does not dispatch `health`; it displays the healing score and `status_line` hooks.
 
 **Execution:** subshell via `igor_run_all_hooks`. Output captured.
 
@@ -304,7 +316,7 @@ my_module__health() {
 }
 ```
 
-The output feeds directly into the Igor header display alongside other module status lines.
+The output is available to explicit callers. For header display, implement `status_line`; registering `health` alone does not display it.
 
 ---
 
@@ -341,9 +353,9 @@ my_module__status_line() {
 
 ### Hook: `menu_header`
 
-**Invoked by:** main menu display code before listing items.
+**Invoked by:** the fzf main-menu display before listing items. The plain-text renderer uses manifest labels.
 
-**Execution:** subshell via `igor_run_all_hooks "menu_header"`.
+**Execution:** command substitution in the main-menu renderer. The current renderer uses the first registered header for all module sections; per-module routing is not implemented.
 
 **Must output:** a single line — the section title to display above this module's menu items. Return the `display_name` when healthy; a status summary when degraded.
 
@@ -372,7 +384,7 @@ my_module__menu_header() {
 
 **Invoked by:** Igor Diagnose aggregator (`core/lib/diagnose_runner.sh`).
 
-**Execution:** subshell via `igor_run_all_hooks "diagnose"`.
+**Execution:** a fresh Bash process through `igor_diagnose_collect`, with a 60-second default timeout (`--timeout` overrides it). Only the hook definition is copied, so helper dependencies must be exported or sourced.
 
 **Must output:** one line per check: `CHECK:<name>:<status>:<message>`
 - `status` is one of: `ok`, `warn`, `fail`, `skip`
@@ -594,7 +606,7 @@ my_module__ai_context() {
 
 **Invoked by:** `core/ai/context.sh:122` inside `_ai_load_base_prompt()` — subshell. Output is passed to `ai_render.py` as `IGOR_MODULE_KNOWLEDGE`.
 
-**Purpose:** Static architectural knowledge that the AI must always have — architecture, critical rules, command patterns, decision trees. This is injected into the system prompt (not the context), so it persists across the session.
+**Purpose:** Static architectural reference information: architecture, command patterns, and decision trees. Active module output is sent as untrusted reference data, separately from Igor's policy. It cannot change approval rules. Minimal-context policy omits this hook.
 
 **Must output:** plain text. No JSON, no special format. Markdown headings with `━━━` separators work well for clarity.
 
@@ -643,7 +655,7 @@ EOF
 
 **Invoked by:** `core/ai/context.sh:121` — subshell. Output passed to `ai_render.py` as `IGOR_MODULE_TIERS`.
 
-**Purpose:** Tell the AI which commands are READ-only (auto-run) vs. CHANGE (confirm) vs. DESTROY (type YES). These rules govern the AI's tool execution gating. Without this hook the AI uses conservative defaults.
+**Purpose:** Provide advisory descriptions of command tiers as untrusted reference data. The deterministic dispatcher and registered capability tiers govern execution; this hook cannot authorize commands or override classification. Minimal-context policy omits it.
 
 **Must output:** plain text with READ / CHANGE / DESTROY sections.
 
@@ -682,62 +694,19 @@ EOF
 
 ### Hook: `ai_tools`
 
-**Invoked by:** `core/ai/ai_router.sh:51` — subshell. Output is a compact single-line JSON array consumed by `ai_render.py`, which formats tools for the active provider (XML tags for Anthropic, OpenAI schema for OpenRouter).
+**Status:** Legacy registration is tolerated, but the AI router no longer consumes
+this hook. A JSON declaration never supplied an executor for arbitrary tool names,
+and letting module prose define privileged tools created a second source of truth.
 
-**Purpose:** Declare custom tool tags the AI can use beyond the core set (`<host>`, `<occ>`, `<container>`, `<edit_file>`, `<read_log>`, `<run_igor_action>`). Use this when your module needs a named, domain-specific tool with its own tier and documentation.
+Use [`ai_capabilities`](#hook-ai_capabilities) to register a module-owned leaf
+action and its enforced tier. Igor exposes it through `run_igor_action`, subject
+to active ownership and administrator policy. Core schemas derive from the
+dispatcher's supported fields. `occ` and `container` additionally require active
+providers of the `nextcloud` and `docker` capabilities, respectively.
 
-**Must output:** a single-line JSON array with one object per tool.
-
-#### Tool object schema
-
-```json
-{
-    "name": "tool_id",
-    "display": "Human label",
-    "description": "When and why to use this tool — shown in AI system prompt",
-    "tier": "READ | CHANGE | DESTROY",
-    "xml_tag": "xml_tag_name",
-    "xml_content": "what goes inside the tag",
-    "xml_attrs_example": "attr=\"value\"",
-    "xml_example": "<xml_tag_name>content</xml_tag_name>",
-    "notes": ["Constraint 1", "Constraint 2"],
-    "openai_params": {
-        "param_name": {
-            "type": "string",
-            "description": "What this parameter means"
-        }
-    }
-}
-```
-
-```bash
-my_module__ai_tools() {
-    printf '%s\n' '[
-        {
-            "name": "my_cli_command",
-            "display": "My Service CLI",
-            "description": "Run my-cli commands inside the app container. Use for ALL config, users, maintenance.",
-            "tier": "CHANGE",
-            "xml_tag": "my_cli",
-            "xml_content": "subcommand",
-            "xml_example": "maintenance:on",
-            "notes": ["Never edit config.json directly — always use my-cli config set"],
-            "openai_params": {
-                "command": {
-                    "type": "string",
-                    "description": "The my-cli subcommand to run"
-                }
-            }
-        }
-    ]'
-}
-```
-
-If your module adds no new tools (using only core `<host>` and `<container>` tags), return zero output or an empty array:
-
-```bash
-my_module__ai_tools() { return 0; }
-```
+Do not place instructions, runtime logs, credentials, or arbitrary schemas in
+tool metadata. Use the reference-data hooks for descriptions and observations.
+See the [AI architecture report](../aireport.md) for migration details and limits.
 
 ---
 
@@ -775,7 +744,7 @@ The `confirmed` and `failed` counters are for display — the healing subsystem'
 
 ### Hook: `ai_capabilities`
 
-**Invoked by:** `igor_load_capabilities()` in `core/lib/module_loader.sh` — called directly (not via `igor_run_all_hooks`). Called once at AI session start from `menu_ai()`.
+**Invoked by:** `igor_load_capabilities()` in `core/lib/module_loader.sh` — collected through command substitution, not the fresh-Bash dispatcher. Parent-shell mutations do not propagate. Called once at AI session start from `menu_ai()`.
 
 **Purpose:** Declare non-interactive leaf functions that the AI can invoke directly via the `<run_igor_action>action_name</run_igor_action>` tool tag. The AI uses the problem keywords to choose the right action when the user describes a symptom.
 
@@ -947,7 +916,7 @@ my_module__restore() {
 
 ### Hook: `recovery`
 
-**Invoked by:** the recovery framework for general recovery callbacks (distinct from backup/restore). Currently used as a catch-all registration point; most modules delegate to a separate `_recovery_hooks()` function.
+**Status:** reserved registration point; no production dispatcher currently calls this hook. Use `backup`, `restore`, or `rollback_handler` for implemented recovery integration.
 
 ```bash
 my_module__recovery() {
@@ -1042,7 +1011,7 @@ my_module__notify_sources() {
 
 ### Hook: `notify_events`
 
-**Invoked by:** `core/notify/core.sh:52` inside `_notify_collect_module_events()` via `igor_get_hooks "notify_events"` — called in-process.
+**Invoked by:** `core/notify/core.sh:52` inside `_notify_collect_module_events()` via `igor_get_hooks "notify_events"` — output collected through process substitution (shell state changes do not propagate).
 
 **Purpose:** Declare what events this module can emit so Igor's notification settings menu can show them with per-event enable/disable toggles. The notify subsystem auto-creates `NOTIFY_ON_<VAR_SUFFIX>` config flags.
 
@@ -1075,7 +1044,7 @@ declare -f notify_event &>/dev/null && \
 
 ### Hook: `mailcmd`
 
-**Invoked by:** the mailcmd subsystem to get the list of email command verbs this module handles.
+**Status:** reserved for the mailcmd subsystem, which is absent from this tree. Registering verbs does not currently enable email commands.
 
 **Must output:** a space-separated list of verb strings that can appear in the subject line of a GPG-signed email command.
 
@@ -1091,7 +1060,7 @@ my_module__mailcmd_verbs() {
 }
 ```
 
-Each verb maps to a handler function in the mailcmd dispatch table. Implement the handler in your module and register it with the mailcmd dispatch system.
+The example describes the intended verb format only; there is no available mailcmd dispatch table to integrate with in this tree.
 
 ---
 
@@ -1099,7 +1068,12 @@ Each verb maps to a handler function in the mailcmd dispatch table. Implement th
 
 Check plugins are independent shell scripts placed in `modules/<name>/checks/*.sh`. They are discovered automatically by `_healing_discover_checks()` which globs `modules/*/checks/*.sh`, skipping files prefixed with `_`.
 
-Each check runs in a subshell via `_healing_run_check()`. The subshell re-sources `core/lib/ui.sh`, `core/lib/helpers.sh`, and `core/lib/config.sh` before calling your `run_check()`.
+Discovery scans files regardless of whether the owning module loaded successfully; checks must guard unavailable dependencies. Each check runs in a subshell via `_healing_run_check()`. The subshell re-sources `core/lib/ui.sh`, `core/lib/helpers.sh`, and `core/lib/config.sh` before calling your `run_check()`.
+
+The separate `igor_diagnose_collect` aggregator executes check scripts directly
+and accepts `CHECK:name:status:message`, not `CHECK_RESULT`. A healing plugin that
+only defines `run_check()` produces no output there. Register a `diagnose` hook
+for diagnostic integration; do not assume these two protocols are interchangeable.
 
 ### Check file structure
 
@@ -1197,7 +1171,12 @@ Igor loads configuration in six steps (`core/lib/config_loader.sh`):
 | 2 | `secrets/*.env` | Credentials — gitignored, must be chmod 600 |
 | 3 | `secrets/*.key` | API keys — exported as `<STEM>_API_KEY` |
 | 4 | Root-level `*.env` | Deprecated backward compat |
-| 5 | Module config validation | `igor_validate_module_config` per loaded module |
+| 5 | Module config validation | `igor_validate_module_config` per loaded module; startup repeats validation after module loading |
+
+The loader scans the standard directories, not arbitrary paths declared in a
+manifest. `variables_file` and `secrets_files` are existence-validation declarations;
+keep the declared files in those directories. Root-level legacy env files load
+last and can override newer settings; migrate them away.
 
 ### Adding your module's config
 
@@ -1304,11 +1283,20 @@ my_module__register() {
 Parameters:
 - `key` — character(s) the user types at the main menu
 - `label` — description shown in the recent-items list and dispatch display
-- `load_type` — `"module"` (calls `igor_load_module`) or `"subsystem"` (calls `igor_load_subsystem`)
+- `load_type` — `"module"` (discovered module or legacy feature file) or `"subsystem"` (calls `_igor_load_subsystem`)
 - `load_arg` — module name (for `module` type) or `"subsystem_id path/to/core.sh"` (for `subsystem` type)
 - `menu_func` — function to call after loading (typically `menu_my_module`)
 
-The main menu's `menu_items` field in `module.conf` declares the items shown *inside* the module's own menu (not the Igor main menu entry itself).
+`menu_items` controls rendering in the Igor main menu. It accepts legacy
+`KEY:LABEL` entries and label-only entries with automatically assigned keys.
+Registration through `igor_register_menu_item` controls dispatch separately;
+registering a callback alone does not render it. Prefer explicit `KEY:LABEL`
+entries with matching registry keys. Core reserved keys take precedence.
+
+For `load_type=module`, discovered module names use `igor_load_module`;
+legacy feature-file arguments use `_igor_load_module` (a filename search across
+module directories). Give lazy-loaded feature files distinctive names to avoid
+collisions. The renderer's label-only numbering is not a general callback map.
 
 ### The `menu_my_module()` function
 
@@ -1434,8 +1422,11 @@ Functions available to all modules after `module_loader.sh` is sourced:
 # Check if a binary is available on PATH
 igor_has_bin docker          # → 0 (found) or 1 (not found)
 
-# Check if a module has been successfully loaded
+# Check if a module is enabled and successfully active
 igor_has_module system       # → 0 (loaded) or 1 (not loaded)
+
+igor_active_modules          # print active module names
+igor_has_capability docker   # active module declares provides=docker
 
 # Register a hook function
 igor_register_hook "health" "my_module__health"
@@ -1507,9 +1498,11 @@ name=my_service
 display_name=My Service
 version=1.0.0
 description=Manages my_service on Docker
+requires_core=1.0.0
 depends_on=system
 menu_section=My Domain
 menu_priority=60
+menu_items=m:MY SERVICE
 stack_dir=my_service
 
 [config]
@@ -1519,7 +1512,16 @@ secrets_files=secrets/my_service.env
 [dependencies]
 required_bins=curl
 optional_bins=docker:docker.io:Docker Engine
+required_modules=system
 ```
+
+**`config/variables/my_service.env`:**
+```bash
+MY_SERVICE_PORT=9000
+```
+
+Create `secrets/my_service.env` locally with mode `600` (or run the install
+lifecycle below). Do not commit real credentials.
 
 **`modules/my_service/module.sh`:**
 ```bash
@@ -1529,6 +1531,7 @@ optional_bins=docker:docker.io:Docker Engine
 # =============================================================================
 
 my_service__register() {
+    igor_register_menu_item "m" "MY SERVICE" "module" "my_service" "menu_my_service"
     igor_register_hook "health"          "my_service__health"
     igor_register_hook "status_line"     "my_service__status_line"
     igor_register_hook "diagnose"        "my_service__diagnose"
@@ -1740,3 +1743,18 @@ run_check() {
         || echo "CHECK_RESULT WARN my_http HTTP ${code:-timeout} from /health"
 }
 ```
+
+
+## Validation before contributing
+
+Run `bash -n` on changed shell scripts, `bats tests/modules/`, and
+`bash tests/run_all.sh` from the repository root. Use ShellCheck with the CI
+flags in `.github/workflows/ci.yml`; run `ruff check .` for Python changes.
+The test runner skips BATS when unavailable, so inspect skips as well as status.
+Manifest tests discover modules automatically; hook contract tests name modules
+explicitly. Add probes for new modules, including actual dispatcher execution.
+Some existing tests require `nextcloud_docker` even when absent from the checkout.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for review expectations. The architecture
+split is incomplete: core diagnostics and some system checks still contain
+Nextcloud assumptions. Keep new service-specific behavior in its module.

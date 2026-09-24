@@ -232,16 +232,15 @@ igor_validate_module_config() {
     fi
 
     local _any_missing=0
-    local _vars_root="${IGOR_DIR:-$_IGOR_CFG_DIR}/variables"
-    local _sec_root="${IGOR_DIR:-$_IGOR_CFG_DIR}/secrets"
+    local _root="${IGOR_DIR:-$_IGOR_CFG_DIR}"
 
     # Check variables_file
     local _vars_file
     _vars_file="$(_cfg_read_conf "$_dir" "variables_file" 2>/dev/null || echo "")"
     if [ -n "$_vars_file" ]; then
-        local _vpath="${_vars_root}/${_vars_file}"
+        local _vpath="${_root}/${_vars_file}"
         if [ ! -f "$_vpath" ]; then
-            _cfg_log warn "Module $_name: variables_file not found: variables/${_vars_file}"
+            _cfg_log warn "Module $_name: variables_file not found: ${_vars_file}"
             _any_missing=1
         fi
     fi
@@ -253,9 +252,9 @@ igor_validate_module_config() {
     local _sf
     for _sf in $_sec_files; do
         [ -n "$_sf" ] || continue
-        local _spath="${_sec_root}/${_sf}"
+        local _spath="${_root}/${_sf}"
         if [ ! -f "$_spath" ]; then
-            _cfg_log warn "Module $_name: secrets_file not found: secrets/${_sf}"
+            _cfg_log warn "Module $_name: secrets_file not found: ${_sf}"
             _any_missing=1
         fi
     done
@@ -330,6 +329,7 @@ igor_load_config() {
     _cfg_load_key_files       # Then secrets/*.key (API keys)
     _cfg_load_legacy_root_env # Backward compatibility
     _cfg_validate_all_loaded_modules
+    _IGOR_CONFIG_LOADED=true
 }
 
 # ---------------------------------------------------------------------------

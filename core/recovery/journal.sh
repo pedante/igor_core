@@ -394,6 +394,14 @@ journal_rollback() {
 journal_detect_app_changes() {
     local GRN='\033[0;32m' YEL='\033[1;33m' NC='\033[0m'
 
+    # App-list monitoring belongs to nextcloud_docker.  A disabled module must
+    # not cause the core journal to probe an unrelated HTTP endpoint or Docker
+    # Compose project.
+    if ! declare -f igor_has_module >/dev/null 2>&1 ||
+       ! igor_has_module nextcloud_docker; then
+        return 0
+    fi
+
     # Skip if NC is not running (quick 2s check)
     local http_code; http_code=$(curl -s -o /dev/null -w "%{http_code}" \
         --max-time 2 "http://localhost:${IGOR_WEB_PORT:-8080}/status.php" 2>/dev/null || echo "000")

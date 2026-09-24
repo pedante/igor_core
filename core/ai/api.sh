@@ -1,5 +1,29 @@
 #!/bin/bash
 # ==============================================================================
+
+source "$(dirname "${BASH_SOURCE[0]}")/control.sh"
+
+_ai_prepare_transport() {
+    [ "${IGOR_AI_ENABLED:-true}" = true ] || { printf 'ERROR: AI disabled by policy\n'; return 1; }
+    case "${NEXUS_PROVIDER:-anthropic}" in
+        anthropic|openrouter|ollama) ;;
+        *) printf 'ERROR: Unsupported AI provider\n'; return 1 ;;
+    esac
+    [ -n "${IGOR_AI_REQUEST_ID:-}" ] || ai_begin_request || return 1
+    ai_export_privacy_map || return 1
+    source "${_AI_CONTROL_DIR}/ai_router.sh"
+    ai_router_format_tools || return 1
+    # Copy-ready commands and history summaries are isolated text requests.
+    # Router regeneration must not silently re-enable native tools for them.
+    if [ "${IGOR_AI_TEXT_ONLY:-false}" = true ]; then
+        NEXUS_TOOLS_JSON='[]'
+        IGOR_MODULE_TOOLS=''
+        export NEXUS_TOOLS_JSON IGOR_MODULE_TOOLS
+    fi
+    IGOR_AI_CATALOG=$(ai_catalog_json) || return 1
+    export IGOR_AI_CATALOG IGOR_AI_ENABLED IGOR_AI_ALLOWED_TOOLS IGOR_AI_DISABLED_ACTIONS
+    export IGOR_AI_CONTEXT IGOR_AI_AUDIT
+}
 #  IGOR — ai/api.sh
 #  Python bridge for AI API calls.
 #
@@ -23,7 +47,7 @@
 # ==============================================================================
 
 # ── Append a message to the conversation JSON ─────────────────────────────────
-# Preserves first 2 messages as anchors when trimming old context.
+# Preserves complete turns and the initial exchange when safe.
 _nexus_py_append() {
     NEXUS_CONV="$1" NEXUS_ROLE="$2" NEXUS_MSG="$3" \
     python3 "${IGOR_DIR}/core/ai/ai_engine.py" append
@@ -141,6 +165,7 @@ _nexus_spinner_stop() {
 # Sources the active provider file from ai/providers/ before calling.
 # Returns raw output with REPLY_START/REPLY_END markers, TOOL_B64, TOKENS_* lines.
 _nexus_api_call() {
+    _ai_prepare_transport || return 1
     # Source active provider for any provider-specific config/validation
     local _provider_file="${IGOR_DIR}/core/ai/providers/${NEXUS_PROVIDER:-anthropic}.sh"
     [ -f "$_provider_file" ] && source "$_provider_file"
@@ -176,47 +201,15 @@ _nexus_api_call() {
 
     _nexus_spinner_stop
 
-    # ── Provider fallback — try alternate provider if primary fails ───────────
-    # Triggers when result is empty or starts with ERROR:
-    # Only attempts if the fallback provider's key file exists.
-    if [ -z "$_result" ] || [[ "$_result" == ERROR:* ]]; then
-        local _primary="${NEXUS_PROVIDER:-anthropic}"
-        local _fallback_provider _fallback_key
-        local _sec="${IGOR_DIR}/secrets"
-        if [ "$_primary" = "anthropic" ]; then
-            _fallback_provider="openrouter"
-            _fallback_key="${OPENROUTER_API_KEY:-}"
-            [ -z "$_fallback_key" ] && [ -f "${_sec}/openrouter.key" ] \
-                && _fallback_key=$(tr -d '[:space:]' < "${_sec}/openrouter.key" 2>/dev/null)
-            [ -z "$_fallback_key" ] \
-                && _fallback_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
-        else
-            _fallback_provider="anthropic"
-            _fallback_key="${ANTHROPIC_API_KEY:-}"
-            [ -z "$_fallback_key" ] && [ -f "${_sec}/anthropic.key" ] \
-                && _fallback_key=$(tr -d '[:space:]' < "${_sec}/anthropic.key" 2>/dev/null)
-            [ -z "$_fallback_key" ] \
-                && _fallback_key=$(cat "$HOME/.nexus_api_key" 2>/dev/null)
-        fi
-
-        if [ -n "$_fallback_key" ]; then
-            printf '\r\033[K  \033[33m⚠  Primary provider (%s) failed — trying %s...\033[0m\n' \
-                "$_primary" "$_fallback_provider" >&2
-            local _fallback_result
-            _fallback_result=$(NEXUS_PROVIDER="$_fallback_provider" \
-                NEXUS_API_KEY="$_fallback_key" \
-                _nexus_api_call_raw)
-            if [ -n "$_fallback_result" ] && [[ "$_fallback_result" != ERROR:* ]]; then
-                _result="$_fallback_result"
-            fi
-        fi
-    fi
+    # Provider selection is an administrator decision. A failure must not send
+    # the same operational data to another company merely because a key exists.
 
     printf '%s' "$_result"
 }
 
 # ── Internal: raw API call without spinner or fallback (used by fallback path) ─
 _nexus_api_call_raw() {
+    _ai_prepare_transport || return 1
     local _provider_file="${IGOR_DIR}/core/ai/providers/${NEXUS_PROVIDER:-anthropic}.sh"
     [ -f "$_provider_file" ] && source "$_provider_file"
 
@@ -275,6 +268,8 @@ _nexus_parse_result() {
     _in_ref=0
     _out_ref=0
     IGOR_RESPONSE_TRUNCATED=false
+    IGOR_PROVIDER_ERROR=false
+    IGOR_ERROR_KIND=""
     [ -n "$_explain_ref_name"    ] && printf -v "$_explain_ref_name"    ""
     [ -n "$_think_ref_name"      ] && printf -v "$_think_ref_name"      ""
     [ -n "$_scratchpad_ref_name" ] && printf -v "$_scratchpad_ref_name" ""
@@ -323,6 +318,8 @@ _nexus_parse_result() {
             TOKENS_IN:\ *)  _in_ref="${line#TOKENS_IN: }" ;;
             TOKENS_OUT:\ *) _out_ref="${line#TOKENS_OUT: }" ;;
             TRUNCATED:\ *)  IGOR_RESPONSE_TRUNCATED=true ;;
+            PROVIDER_ERROR:\ *) IGOR_PROVIDER_ERROR=true ;;
+            ERROR_KIND:\ *) IGOR_ERROR_KIND="${line#ERROR_KIND: }" ;;
             ASSISTANT_MSG_B64:\ *)
                 if [ -n "$_asst_msg_ref_name" ]; then
                     local decoded_asst
@@ -393,4 +390,3 @@ _ai_validate_tool_call() {
         printf '%s\n' "$_raw"
     fi
 }
-

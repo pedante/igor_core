@@ -69,11 +69,33 @@ igor_diagnose_collect() {
         local _check_script
         for _check_script in "${_modules_root}"/*/checks/*.sh; do
             [ -f "$_check_script" ] || continue
+            local _module_name="${_check_script#"${_modules_root}/"}"
+            _module_name="${_module_name%%/*}"
+            if declare -f igor_has_module >/dev/null 2>&1; then
+                igor_has_module "$_module_name" || continue
+            else
+                # A directory is only an installed artifact.  Without the
+                # loader there is no activation authority, so skip it.
+                continue
+            fi
             bash -n "$_check_script" 2>/dev/null || continue   # skip broken scripts
-            _out=$(timeout "$_script_timeout" bash "$_check_script" 2>/dev/null)
+            # Check plugins follow the healing contract and define run_check;
+            # they are not necessarily self-executing.  Invoke that contract
+            # in the isolated process, while retaining support for legacy
+            # scripts which print CHECK: lines directly.
+            _out=$(timeout "$_script_timeout" bash -c \
+                'source "$1" 2>/dev/null || exit 0; if declare -f run_check >/dev/null 2>&1; then run_check; fi' \
+                _ "$_check_script" 2>/dev/null)
             while IFS= read -r _line; do
-                [[ "$_line" =~ ^CHECK:[^:]+:(ok|warn|fail|skip): ]] && \
+                if [[ "$_line" =~ ^CHECK:[^:]+:(ok|warn|fail|skip): ]]; then
                     _results+=("$_line")
+                elif [[ "$_line" =~ ^CHECK_RESULT[[:space:]]+(OK|WARN|FAIL|CRITICAL)[[:space:]]+([^[:space:]]+)[[:space:]]*(.*)$ ]]; then
+                    local _severity="${BASH_REMATCH[1]}" _code="${BASH_REMATCH[2]}" _message="${BASH_REMATCH[3]}" _status
+                    case "$_severity" in
+                        OK) _status=ok ;; WARN) _status=warn ;; FAIL|CRITICAL) _status=fail ;;
+                    esac
+                    _results+=("CHECK:${_code}:${_status}:${_message}")
+                fi
             done <<< "$_out"
         done
     fi

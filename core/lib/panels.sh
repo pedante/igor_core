@@ -45,6 +45,9 @@ igor_has_tmux() {
 igor_panels_load_modules() {
     local _mod _dir _conf
     for _mod in "${!_IGOR_LOADED_MODULES[@]:-}"; do
+        if declare -f igor_has_module >/dev/null 2>&1; then
+            igor_has_module "$_mod" || continue
+        fi
         _dir="${_IGOR_MODULE_DIRS[$_mod]:-}"
         [ -z "$_dir" ] && continue
         _conf="${_dir}/module.conf"
@@ -87,6 +90,9 @@ _panels_parse_conf() {
 _panels_register_all() {
     local _mod _dir _conf _line _name _cmd _desc
     for _mod in "${!_IGOR_LOADED_MODULES[@]:-}"; do
+        if declare -f igor_has_module >/dev/null 2>&1; then
+            igor_has_module "$_mod" || continue
+        fi
         _dir="${_IGOR_MODULE_DIRS[$_mod]:-}"
         [ -z "$_dir" ] && continue
         _conf="${_dir}/module.conf"

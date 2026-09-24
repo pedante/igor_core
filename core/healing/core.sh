@@ -21,6 +21,7 @@
 _HEALING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _HEALING_CHECKS_DIR="${IGOR_DIR:-${_HEALING_DIR}/..}/modules"
 _HEALING_CACHE_FILE="${IGOR_DIR:-${_HEALING_DIR}/../..}/data/alerts/health_cache.txt"
+declare -ga _HEALING_CHECK_FILES=()
 
 # Guard: prevent health_check_full from running more than once at startup.
 # Set to true by the first call; subsequent calls during the same process skip
@@ -41,11 +42,27 @@ fi
 # Files starting with _ are skipped (documentation/contract only).
 _healing_discover_checks() {
     local checks=()
+    _HEALING_CHECK_FILES=()
     for f in "${_HEALING_CHECKS_DIR}"/*/checks/*.sh; do
         [ -f "$f" ] || continue
         [[ "$(basename "$f")" == _* ]] && continue
+        # A module directory being present means installed, not active.  Keep
+        # disabled modules out of healing (including when this helper runs in
+        # a subprocess and only the exported active set is available).
+        local module_name="${f#"${_HEALING_CHECKS_DIR}/"}"
+        module_name="${module_name%%/*}"
+        if declare -f igor_has_capability >/dev/null 2>&1; then
+            igor_has_capability "${module_name}" || continue
+        elif declare -f igor_has_module >/dev/null 2>&1; then
+            igor_has_module "$module_name" || continue
+        else
+            # Standalone healing callers have no activation authority.  Do
+            # not execute installed module checks without the loader.
+            continue
+        fi
         checks+=("$f")
     done
+    _HEALING_CHECK_FILES=("${checks[@]}")
     echo "${checks[@]}"
 }
 
@@ -95,8 +112,8 @@ health_check_full() {
     : > "$_HEALING_CACHE_FILE"
 
     local all_results=()
-    local check_files_str; check_files_str=$(_healing_discover_checks)
-    read -ra _check_files <<< "$check_files_str"
+    _healing_discover_checks >/dev/null
+    local _check_files=("${_HEALING_CHECK_FILES[@]}")
 
     if [ "$show_output" = "true" ]; then
         step "Running health checks..."

@@ -54,7 +54,7 @@ confirm() {
 ask() {
     local prompt="$1" default="$2" secret="${3:-}" val
     [ -n "$default" ] && { local dp="$default"; [ "$secret" = "secret" ] && dp="****"; prompt="${prompt} [${dp}]"; }
-    [ "$secret" = "secret" ] && { read -rsp "  ${prompt}: " val; echo ""; } || read -rp "  ${prompt}: " val
+    [ "$secret" = "secret" ] && { read -rsp "  ${prompt}: " val; echo "" >&2; } || read -rp "  ${prompt}: " val
     echo "${val:-$default}"
 }
 
@@ -186,8 +186,18 @@ except:
         echo -e "  ${MAG}●${NC} AI hybrid ${GRN}${BOLD}ON${NC}  —  type a question or /menu to clear"
     fi
 
-    groups 2>/dev/null | grep -q docker || \
+    # Docker access is relevant only when a Docker capability is active.  A
+    # system-only installation should not warn about an optional container
+    # runtime merely because this shared header is rendered.
+    local _docker_ui_enabled=false
+    if declare -f igor_has_capability >/dev/null 2>&1; then
+        igor_has_capability docker && _docker_ui_enabled=true
+    elif command -v docker >/dev/null 2>&1; then
+        _docker_ui_enabled=true
+    fi
+    if $_docker_ui_enabled && ! groups 2>/dev/null | grep -q docker; then
         echo -e "\n  ${RED}${BOLD}!! Not in docker group — log out and back in !!${NC}"
+    fi
     echo ""
 }
 

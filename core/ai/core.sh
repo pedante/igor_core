@@ -22,16 +22,88 @@ _AI_DIR="${IGOR_DIR}/core/ai"
 source "${_AI_DIR}/scrub.sh"
 source "${_AI_DIR}/knowledge.sh"
 source "${_AI_DIR}/api.sh"
+source "${_AI_DIR}/keys.sh"
 source "${_AI_DIR}/cost.sh"
 source "${_AI_DIR}/safety.sh"
 source "${_AI_DIR}/context.sh"
+
+# Keep provider turns atomic. These helpers pass JSON as data, never shell code.
+_ai_tx_record() {
+    local _owner=core _name _action
+    read -r _name _action < <(printf '%s' "$1" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("tool",""),d.get("cmd",""))' 2>/dev/null)
+    if declare -f ai_tool_owner >/dev/null 2>&1; then
+        _owner=$(ai_tool_owner "$_name")
+    fi
+    if [ "$_name" = run_igor_action ] && declare -p _IGOR_CAPABILITY_OWNERS >/dev/null 2>&1; then
+        _owner="${_IGOR_CAPABILITY_OWNERS[$_action]:-core}"
+    fi
+    IGOR_TX_CALL_JSON="$1" IGOR_TX_OUTPUT="$2" IGOR_TX_DISPATCH_RC="$3" \
+        IGOR_TX_OWNER="$_owner" IGOR_TX_META_FILE="${IGOR_AI_TOOL_META_FILE:-}" \
+        python3 "${_AI_DIR}/transactions.py" record-env
+}
+
+_ai_tx_append_result() {
+    IGOR_TX_RESULTS_JSON="$1" IGOR_TX_RESULT_JSON="$2" \
+        python3 "${_AI_DIR}/transactions.py" append-result-env
+}
+
+_ai_tx_complete() {
+    IGOR_TX_HISTORY_JSON="$1" IGOR_TX_ASSISTANT_JSON="$2" \
+        IGOR_TX_FORMAT="$3" IGOR_TX_CALLS_JSON="$4" \
+        IGOR_TX_RESULTS_JSON="$5" python3 "${_AI_DIR}/transactions.py" complete-env
+}
+
+_ai_tx_calls_json() {
+    printf '%s\0' "$@" | python3 -c 'import json,sys; values=sys.stdin.read().split("\0")[:-1]; print(json.dumps([json.loads(item) for item in values if item]))'
+}
+
+_ai_tx_result_state() {
+    printf '%s' "$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["execution_status"])'
+}
+
+_ai_tx_result_tier() {
+    printf '%s' "$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])'
+}
+
+_ai_tx_batch_changed() {
+    printf '%s' "$1" | python3 -c 'import json,sys; print("true" if any(r.get("classification") in ("CHANGE","DESTROY") and r.get("approval_status") != "denied" for r in json.load(sys.stdin)) else "false")'
+}
+
+_ai_session_route() {
+    python3 "${_AI_DIR}/session_commands.py" lookup "$1" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+if not d.get("matched"): print("")
+elif not d.get("valid", True): print("INVALID:" + d.get("reason", "invalid arguments"))
+else: print(d["command"]["name"] + (" " + " ".join(d["arguments"]) if d["arguments"] else ""))
+'
+}
+
+# Return 2 when the scrubber completes but its heuristic validator warns.
+# Last-mile request redaction remains the transport authority.
+_ai_scrub_context_for_display() {
+    local _runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}" _warnings _rc=0 _scrubbed
+    mkdir -p -- "$_runtime" || return 1
+    [ -d "$_runtime" ] && [ ! -L "$_runtime" ] && [ -O "$_runtime" ] || return 1
+    chmod 700 -- "$_runtime" || return 1
+    _warnings=$(mktemp "${_runtime}/.scrub-warnings.XXXXXX") || return 1
+    _scrubbed=$(ai_scrub_outbound "$1" 2>"$_warnings") || _rc=$?
+    if [ "$_rc" -eq 0 ]; then
+        _load_scrub_config
+        _validate_scrubbing "$_scrubbed" 2>>"$_warnings" || _rc=2
+    fi
+    printf '%s\n' "$_scrubbed"
+    [ "$_rc" -eq 0 ] && [ -s "$_warnings" ] && _rc=2
+    rm -f -- "$_warnings"
+    return "$_rc"
+}
 
 # ── IPC / --extra runtime helpers ─────────────────────────────────────────────
 
 # Write current AI session state to runtime/state.env for --extra lenses.
 # Called after each API exchange and after settings changes.
 _ai_update_state() {
-    local rt="${IGOR_DIR}/data/runtime"
+    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
     mkdir -p "$rt" 2>/dev/null || true
     local conv_len=0
     [ -n "$conversation" ] && \
@@ -48,6 +120,7 @@ _ai_update_state() {
         echo "AI_SESSION_INPUT_TOKENS=${AI_SESSION_INPUT_TOKENS:-0}"
         echo "AI_SESSION_OUTPUT_TOKENS=${AI_SESSION_OUTPUT_TOKENS:-0}"
         echo "conversation_length=${conv_len}"
+        echo "AI_SESSION_STATE=${_AI_SESSION_STATE:-investigating}"
         echo "health_score=${_LAST_HEALTH_SCORE:-?}"
         echo "nc_running=${_LAST_NC_RUNNING:-?}"
         echo "tunnel_status=${_LAST_TUNNEL_STATUS:-?}"
@@ -58,29 +131,82 @@ _ai_update_state() {
 
 # Mark AI session as inactive in state.env (called on exit).
 _ai_clear_session_active() {
-    local rt="${IGOR_DIR}/data/runtime"
+    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
     local _sf="${rt}/state.env"
     [ -f "$_sf" ] && sed -i 's/^AI_SESSION_ACTIVE=.*/AI_SESSION_ACTIVE=0/' "$_sf" 2>/dev/null || true
 }
 
+_ai_set_session_state() {
+    case "$1" in
+        completed|tools_requested|awaiting_approval|tool_running|tool_succeeded|tool_failed|action_denied|provider_failed|malformed_response|payload_blocked|configuration_error|continuation_limit|stopped_by_user|repeated_action|no_further_action|investigating) ;;
+        *) return 1 ;;
+    esac
+    _AI_SESSION_STATE="$1"
+    [ -n "${session_file:-}" ] && printf '[STATE] %s\n' "$1" >> "$session_file"
+    _ai_update_state
+}
+
+_ai_error_state() {
+    case "${IGOR_ERROR_KIND:-}" in
+        payload_blocked|configuration_error|malformed_response)
+            printf '%s' "$IGOR_ERROR_KIND" ;;
+        *) printf 'provider_failed' ;;
+    esac
+}
+
 # Write conversation JSON to runtime/conversation.json for --extra Lens 6.
 _ai_write_conversation() {
-    local rt="${IGOR_DIR}/data/runtime"
-    [ -n "$conversation" ] && \
-        printf '%s' "$conversation" > "${rt}/conversation.json" 2>/dev/null || true
+    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    [ -n "$conversation" ] || return 0
+    local _private
+    _private=$(printf '%s' "$conversation" | python3 "${_AI_DIR}/transactions.py" private) || {
+        warn "Conversation snapshot rejected because its tool transaction is incomplete."
+        return 1
+    }
+    local _tmp
+    _tmp=$(mktemp "${rt}/.conversation.XXXXXX" 2>/dev/null) || return 0
+    chmod 600 "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    printf '%s' "$_private" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    mv -f -- "$_tmp" "${rt}/conversation.json" 2>/dev/null || rm -f -- "$_tmp"
+}
+
+# Persist model scratchpad state as private local data. Keep the JSON shape for
+# evidence/status consumers, but scrub and atomically replace the file.
+_ai_write_scratchpad() {
+    local _content="$1" _target="${IGOR_DIR}/data/scratchpad.txt" _private _tmp
+    [ -n "$_content" ] || return 0
+    if declare -f ai_private_text >/dev/null 2>&1; then
+        _private=$(printf '%s' "$_content" | ai_private_text 2>/dev/null) || return 0
+    else
+        _private=$(ai_scrub_outbound "$_content" 2>/dev/null) || return 0
+    fi
+    _tmp=$(mktemp "${_target}.XXXXXX" 2>/dev/null) || return 0
+    chmod 600 "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    printf '%s\n' "$_private" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    mv -f -- "$_tmp" "$_target" 2>/dev/null || rm -f -- "$_tmp"
 }
 
 # Append a line to runtime/output.log for --extra Lens 1.
 _ai_log_output() {
     local rt="${IGOR_DIR}/data/runtime"
     local line="$1"
-    printf '%s\n' "$line" >> "${rt}/output.log" 2>/dev/null || true
-    # Rotate at ~500KB
-    local size; size=$(stat -c%s "${rt}/output.log" 2>/dev/null || echo 0)
-    if [ "$size" -gt 512000 ]; then
-        tail -n 200 "${rt}/output.log" > "${rt}/output.log.tmp" 2>/dev/null && \
-            mv "${rt}/output.log.tmp" "${rt}/output.log" 2>/dev/null || true
+    local _private
+    _private=$(printf '%s' "$line" | ai_private_text 2>/dev/null) || return 0
+    local _tmp
+    _tmp=$(mktemp "${rt}/.output.XXXXXX" 2>/dev/null) || return 0
+    chmod 600 "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    if [ -f "${rt}/output.log" ] && [ ! -L "${rt}/output.log" ]; then
+        cat -- "${rt}/output.log" > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
     fi
+    printf '%s\n' "$_private" >> "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 0; }
+    # Bound the private temporary file before replacing the destination.
+    local size; size=$(stat -c%s "$_tmp" 2>/dev/null || echo 0)
+    if [ "$size" -gt 512000 ]; then
+        local _tail
+        _tail=$(tail -n 200 "$_tmp")
+        printf '%s\n' "$_tail" > "$_tmp"
+    fi
+    mv -f -- "$_tmp" "${rt}/output.log" 2>/dev/null || rm -f -- "$_tmp"
 }
 
 # Read steering.txt — returns contents if present, empty string otherwise.
@@ -517,18 +643,20 @@ _ai_trim_with_summary() {
         return 0
     fi
 
-    # Extract the middle messages that would be dropped (msgs[2..-7])
-    local _to_sum
-    _to_sum=$(printf '%s' "$_conv" | python3 -c "
-import sys, json
-msgs = json.loads(sys.stdin.read())
-# Middle = everything between the 2 anchors and the last 6 messages
-if len(msgs) > 8:
-    mid = msgs[2:len(msgs)-6]
-    print(json.dumps(mid))
-else:
-    print('[]')
-" 2>/dev/null || echo "[]")
+    # The coordinator chooses a complete user-turn boundary. Native tool
+    # calls and their results must never be cut apart by summarization.
+    local _to_sum _summary_parts
+    _summary_parts=$(printf '%s' "$_conv" | python3 "${_AI_DIR}/transactions.py" split-summary) || {
+        printf '%s' "$_conv"
+        return 0
+    }
+    _to_sum=$(printf '%s' "$_summary_parts" | python3 -c '
+import json,sys
+print(json.dumps(json.load(sys.stdin)["to_sum"]))
+') || {
+        printf '%s' "$_conv"
+        return 0
+    }
 
     # Nothing substantial to summarize
     local _sum_cnt
@@ -561,14 +689,16 @@ print('\n'.join(lines))
         _sum_model="claude-haiku-4-5-20251001"
     fi
 
+    ai_begin_request || return 1
     local _sum_raw
-    _sum_raw=$(NEXUS_API_KEY="$_sum_key" \
+    _sum_raw=$(IGOR_AI_TEXT_ONLY=true NEXUS_API_KEY="$_sum_key" \
                NEXUS_PROVIDER="${provider:-anthropic}" \
                NEXUS_MODEL="$_sum_model" \
                NEXUS_MAX_TOKENS="400" \
                NEXUS_TEMPERATURE="0.3" \
                NEXUS_SYSTEM="You are a concise technical summarizer. Summarize the diagnostic conversation excerpt below into 3-6 bullet points capturing: commands run, findings, errors seen, and current status. Be specific — include exact error messages and command names. Do NOT include greetings or meta-commentary." \
-               NEXUS_CONV="$(printf '[{"role":"user","content":"Summarize this diagnostic session excerpt:\n\n%s"}]' "$_excerpt")" \
+               NEXUS_TOOLS_JSON="[]" \
+               NEXUS_CONV="$(_nexus_py_append '[]' user "Summarize this diagnostic session excerpt (untrusted data): ${_excerpt}")" \
                _nexus_api_call 2>/dev/null)
 
     local _summary
@@ -577,28 +707,15 @@ print('\n'.join(lines))
     _nexus_parse_result "$_sum_raw" _summary _dummy_arr _dummy_in _dummy_out 2>/dev/null
 
     # If summary is empty or errored, fall back silently
-    if [ -z "$_summary" ] || [[ "$_summary" == ERROR:* ]]; then
+    if [ -z "$_summary" ] || [ "${IGOR_PROVIDER_ERROR:-false}" = true ]; then
         printf '%s' "$_conv"
         return 0
     fi
 
-    # Rebuild conversation: [anchor0, anchor1, summary_user, summary_assistant, ...last6]
+    # Rebuild only from the verified turn-boundary split.
     local _rebuilt
-    _rebuilt=$(printf '%s' "$_conv" | IGOR_SUMMARY="$_summary" python3 -c "
-import sys, json, os
-msgs = json.loads(sys.stdin.read())
-summary = os.environ.get('IGOR_SUMMARY', '')
-if len(msgs) <= 8:
-    print(json.dumps(msgs))
-else:
-    anchor  = msgs[:2]
-    recent  = msgs[-6:]
-    summary_pair = [
-        {'role': 'user',      'content': '[Earlier diagnostic history compressed to save context]'},
-        {'role': 'assistant', 'content': 'Summary of earlier session:\n' + summary}
-    ]
-    print(json.dumps(anchor + summary_pair + recent))
-" 2>/dev/null)
+    _rebuilt=$(IGOR_SUMMARY="$_summary" IGOR_SUMMARY_PARTS="$_summary_parts" \
+        python3 "${_AI_DIR}/transactions.py" rebuild-summary-env 2>/dev/null)
 
     if [ -n "$_rebuilt" ]; then
         echo -e "  ${CYAN}ℹ  History summarized — earlier diagnostics preserved as context.${NC}" >&2
@@ -620,31 +737,6 @@ _ai_append_with_summary() {
         _conv=$(_ai_trim_with_summary "$_conv")
     fi
     _nexus_py_append "$_conv" "$_role" "$_msg"
-}
-
-# ── _ai_write_key PROVIDER KEY ────────────────────────────────────────────────
-# Save an API key to secrets/<provider>.key (primary) AND the legacy ~/.nexus_*
-# path (backward compat). Both files are chmod 600.
-# PROVIDER: "anthropic" | "openrouter"
-_ai_write_key() {
-    local _provider="$1" _key="$2"
-    [ -n "$_key" ] || return 1
-    local _sec_dir="${IGOR_DIR}/secrets"
-    mkdir -p "$_sec_dir" 2>/dev/null || true
-    case "$_provider" in
-        anthropic)
-            printf '%s' "$_key" > "${_sec_dir}/anthropic.key"  2>/dev/null && \
-                chmod 600 "${_sec_dir}/anthropic.key"  2>/dev/null || true
-            printf '%s' "$_key" > "$HOME/.nexus_api_key" 2>/dev/null && \
-                chmod 600 "$HOME/.nexus_api_key" 2>/dev/null || true
-            ;;
-        openrouter)
-            printf '%s' "$_key" > "${_sec_dir}/openrouter.key" 2>/dev/null && \
-                chmod 600 "${_sec_dir}/openrouter.key" 2>/dev/null || true
-            printf '%s' "$_key" > "$HOME/.nexus_or_key"  2>/dev/null && \
-                chmod 600 "$HOME/.nexus_or_key"  2>/dev/null || true
-            ;;
-    esac
 }
 
 # ── [IDEA-02] Infer provider from model name ──────────────────────────────────
@@ -824,9 +916,17 @@ _ai_diagnostic_burst() {
         return 0
     fi
 
-    # Run 4 checks; tolerate failures silently
+    # Run generic checks plus app checks only when an active module provides
+    # the corresponding capability.  A system-only installation must not
+    # probe Docker merely because the user mentioned a problem.
     local _cs _http _logs _mem
-    _cs=$(docker compose ps 2>/dev/null | head -12 || echo "(docker compose ps failed)")
+    if declare -f igor_has_capability >/dev/null 2>&1 && igor_has_capability docker; then
+        _cs=$(docker compose ps 2>/dev/null | head -12 || echo "(docker compose ps failed)")
+        _logs=$(docker compose logs --tail=6 2>/dev/null | tail -6 || echo "(logs unavailable)")
+    else
+        _cs="(Docker diagnostics unavailable — no active module provides docker)"
+        _logs="(Docker diagnostics unavailable — no active module provides docker)"
+    fi
     # HTTP spot-check: use module ai_context hook for app-specific status (no hardcoded NC URL)
     if declare -f igor_run_all_hooks &>/dev/null && \
        [ -n "$(igor_get_hooks "health_gate" 2>/dev/null)" ]; then
@@ -839,7 +939,6 @@ _ai_diagnostic_burst() {
     else
         _http="(no app health module loaded)"
     fi
-    _logs=$(docker compose logs --tail=6 2>/dev/null | tail -6 || echo "(logs unavailable)")
     _mem=$(free -h 2>/dev/null | awk '/^Mem:/{print "RAM: "$2" total, "$7" available"} /^Swap:/{print "Swap: "$2" total, "$4" free"}')
 
     printf '=== AUTO-DIAGNOSTICS (triggered before replying) ===\n'
@@ -848,6 +947,35 @@ _ai_diagnostic_burst() {
     printf 'App log (last 6):\n%s\n\n' "$_logs"
     printf '%s\n' "$_mem"
     printf '=== END AUTO-DIAGNOSTICS ===\n'
+}
+
+# Run a post-change canary through the normal semantic tool dispatcher.  The
+# canary is data supplied by the model, so it must pass the same READ policy
+# and execution gates as every other host command.
+_ai_run_canary_read() {
+    local _cmd="$1" _json
+    if ! declare -f ai_execute_tool >/dev/null 2>&1 || \
+       ! declare -f ai_cmd_is_read >/dev/null 2>&1 || \
+       ! ai_cmd_is_read "$_cmd"; then
+        printf '%s\n' "[CANARY REJECTED: command is not a permitted READ command]"
+        return 1
+    fi
+    _json=$(python3 - "$_cmd" <<'PY'
+import json
+import sys
+print(json.dumps({"tool": "host", "cmd": sys.argv[1]}))
+PY
+    ) || return 1
+    local _result _dispatch_rc=0
+    _result=$(ai_execute_tool "$_json" "Post-fix READ canary") || _dispatch_rc=$?
+    printf '%s\n' "$_result"
+    [ "$_dispatch_rc" -eq 0 ] || return "$_dispatch_rc"
+    # The legacy dispatcher returns shell success when it delivered a result,
+    # even if the command failed. Verification must use its authoritative exit.
+    if [[ "$_result" =~ ^TOOL:host\ EXIT:([0-9]+) ]]; then
+        return "${BASH_REMATCH[1]}"
+    fi
+    return 1
 }
 
 # ── [FIX-3] In-session hypothesis tracker ─────────────────────────────────────
@@ -1050,13 +1178,17 @@ _ai_prompt_interstitial() {
         _tool_count=$(printf '%s' "$_prompt" | grep -c '"name"' 2>/dev/null || true)
     : "${_tool_count:=0}"
 
-    # Dump prompt to a known path for debug inspection (always — cheap, helps diagnose injection)
-    local _prompt_dump="/tmp/igor_prompt_last.txt"
-    printf '%s\n' "$_prompt" > "$_prompt_dump" 2>/dev/null || true
-
-    # Count knowledge sources (=== section headers injected by context gatherer)
+    # Reference context is now a base64 JSON envelope, not visible === headers.
     local _knowledge_count
-    _knowledge_count=$(printf '%s' "$_prompt" | grep -c '^=== ' 2>/dev/null || true)
+    _knowledge_count=$(printf '%s' "$_prompt" | python3 -c '
+import base64,json,re,sys
+match=re.search(r"IGOR_REFERENCE_V1:([A-Za-z0-9+/=]+)",sys.stdin.read())
+try:
+    value=json.loads(base64.b64decode(match.group(1))) if match else {}
+    print(sum(bool(part) for part in value.values()) if isinstance(value,dict) else 0)
+except (ValueError,TypeError):
+    print(0)
+' 2>/dev/null || echo 0)
     : "${_knowledge_count:=0}"
 
     # ── Show prompt summary in right pane; action prompt stays in left pane ─────
@@ -1067,8 +1199,7 @@ _ai_prompt_interstitial() {
                 "Provider" "${_provider}" \
                 "Tools"    "${_tool_count} definitions" \
                 "Sections" "${_knowledge_count} context blocks" \
-                "Size"     "~${_token_est} tokens" \
-                "hint"     "[Enter] start  [v] view  [e] edit  [q] cancel"
+                "Size"     "~${_token_est} tokens"
             echo ""
             echo -e "  ${GRN}[Enter]${NC} start   ${CYAN}[v]${NC} view   ${CYAN}[e]${NC} edit   ${RED}[q]${NC} cancel"
             echo ""
@@ -1077,7 +1208,7 @@ _ai_prompt_interstitial() {
             echo -e "  ${CYAN}${BOLD}━━━ Session Prompt Ready ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo -e "  ${CYAN}Model:${NC}    ${_model}   ${CYAN}Provider:${NC} ${_provider}"
             echo -e "  ${CYAN}Tools:${NC}    ${_tool_count} definitions   ${CYAN}Sections:${NC} ${_knowledge_count}"
-            echo -e "  ${CYAN}Size:${NC}     ~${_token_est} tokens  ${DIM}(dump: ${_prompt_dump})${NC}"
+            echo -e "  ${CYAN}Size:${NC}     ~${_token_est} tokens"
             echo ""
             echo -e "  ${GRN}[Enter]${NC} Start   ${CYAN}[v]${NC} View   ${CYAN}[e]${NC} Edit   ${RED}[q]${NC} Cancel"
             echo ""
@@ -1105,7 +1236,18 @@ _ai_prompt_interstitial() {
             e|E)
                 # Edit prompt — session-local only
                 local _tmp_prompt
-                _tmp_prompt=$(mktemp /tmp/igor_prompt_XXXXXX.md 2>/dev/null || echo "/tmp/igor_prompt_$$.md")
+                local _prompt_runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+                mkdir -p -- "$_prompt_runtime" || { warn "Prompt editor runtime unavailable."; continue; }
+                if [ ! -d "$_prompt_runtime" ] || [ -L "$_prompt_runtime" ] ||
+                   [ ! -O "$_prompt_runtime" ]; then
+                    warn "Prompt editor runtime is not a private owned directory."
+                    continue
+                fi
+                chmod 700 -- "$_prompt_runtime" || { warn "Prompt editor runtime is not private."; continue; }
+                _tmp_prompt=$(mktemp "${_prompt_runtime}/.igor_prompt.XXXXXX") || {
+                    warn "Could not create a private prompt editor file."
+                    continue
+                }
                 printf '%s\n' "$_prompt" > "$_tmp_prompt"
 
                 # Load editor wrapper if not already loaded
@@ -1137,6 +1279,10 @@ _ai_prompt_interstitial() {
 }
 
 menu_ai() {
+    if [ "${IGOR_AI_ENABLED:-true}" != "true" ]; then
+        warn "AI assistant is disabled."
+        return 1
+    fi
     header
 
     # Guard: ensure cost functions are available even if cost.sh failed to source
@@ -1168,7 +1314,7 @@ menu_ai() {
         && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
 
     # ── First-run key setup ────────────────────────────────────────────────────
-    if [ -z "$api_key" ] && [ -z "$or_api_key" ]; then
+    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ]; then
         echo -e "  ${MAG}${BOLD}╔══ IGOR AI ASSISTANT — SETUP ══╗${NC}"
         echo ""
         echo "  No API key found."
@@ -1179,18 +1325,19 @@ menu_ai() {
         local _setup_choice; read -rp "  Which provider? [1/2]: " _setup_choice
         case "$_setup_choice" in
             2)
-                local _or_new; _or_new=$(ask "Paste OpenRouter key (sk-or-...)" "" secret)
+                local _or_new; _or_new=$(_ai_prompt_key openrouter)
                 [ -z "$_or_new" ] && { warn "No key entered — exiting."; pause; return; }
-                _ai_write_key openrouter "$_or_new"
+                _ai_write_key openrouter "$_or_new" || { fail "API key could not be saved."; return 1; }
                 or_api_key="$_or_new"
                 provider="openrouter"
                 ok "OpenRouter key saved to secrets/openrouter.key"
                 ;;
             *)
-                local key; key=$(ask "Paste Anthropic key (sk-ant-...)" "" secret)
+                local key; key=$(_ai_prompt_key anthropic)
                 [ -z "$key" ] && { warn "No key entered — exiting."; pause; return; }
-                _ai_write_key anthropic "$key"
+                _ai_write_key anthropic "$key" || { fail "API key could not be saved."; return 1; }
                 api_key="$key"
+                provider="anthropic"
                 ok "Anthropic key saved to secrets/anthropic.key"
                 ;;
         esac
@@ -1210,12 +1357,12 @@ menu_ai() {
     fi
 
     # Single model - user picks or default
-    local model="claude-sonnet-4-6"
-    local max_tokens=4096
-    executive_mode=false             # no 'local' — visible to ai_execute_tool
-    provider="openrouter"            # default: openrouter
-    IGOR_VERBOSE="true"
-    NEXUS_TEMPERATURE="0.7"
+    local model="${model:-claude-sonnet-4-6}"
+    local max_tokens="${max_tokens:-4096}"
+    executive_mode="${executive_mode:-false}"  # effective administrator setting
+    provider="${provider:-openrouter}"
+    IGOR_VERBOSE="${verbose:-true}"
+    NEXUS_TEMPERATURE="${temperature:-0.7}"
 
     or_api_key="${OPENROUTER_API_KEY:-}"
     [ -z "$or_api_key" ] && [ -f "${_sec}/openrouter.key" ] \
@@ -1223,7 +1370,9 @@ menu_ai() {
     [ -z "$or_api_key" ] && [ -f "$HOME/.nexus_or_key" ] \
         && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
 
-    if [ -f "$AI_SETTINGS_FILE" ]; then
+    # Normal startup already applied defaults, saved settings and private
+    # overrides. Re-reading this file would silently undo that precedence.
+    if [ "${_IGOR_CONFIG_LOADED:-false}" != true ] && [ -f "$AI_SETTINGS_FILE" ]; then
         local sv_model sv_tokens sv_exec sv_provider sv_verbose sv_temp sv_ol_host sv_ol_model
         sv_model=$(   grep "^model="                    "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_tokens=$(  grep "^max_tokens="               "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
@@ -1245,8 +1394,6 @@ menu_ai() {
         [ -n "$sv_temp"     ] && NEXUS_TEMPERATURE="$sv_temp"
         [ -n "$sv_ol_host"  ] && IGOR_OLLAMA_HOST="$sv_ol_host" && export IGOR_OLLAMA_HOST
         [ -n "$sv_ol_model" ] && IGOR_OLLAMA_DEFAULT_MODEL="$sv_ol_model" && export IGOR_OLLAMA_DEFAULT_MODEL
-    else
-        model="claude-sonnet-4-6"  # default model
     fi
     # Normalize model for active provider
     model=$(_ai_model_for_provider "$model" "$provider")
@@ -1262,7 +1409,6 @@ menu_ai() {
             [ -n "${IGOR_OLLAMA_HOST:-}" ] && printf "IGOR_OLLAMA_HOST=%s\n" "$IGOR_OLLAMA_HOST"
             [ -n "${IGOR_OLLAMA_DEFAULT_MODEL:-}" ] && printf "IGOR_OLLAMA_DEFAULT_MODEL=%s\n" "$IGOR_OLLAMA_DEFAULT_MODEL"
         } > "$AI_SETTINGS_FILE"
-        [ -n "$or_api_key" ] && _ai_write_key openrouter "$or_api_key"
         export executive_mode provider IGOR_VERBOSE NEXUS_TEMPERATURE
     }
 
@@ -1357,22 +1503,22 @@ menu_ai() {
         echo -e "  ${CYAN}Press Enter to skip (session will error on first message).${NC}"
         echo ""
         if [ "$provider" = "openrouter" ]; then
-            local _inline_key; read -rsp "  OpenRouter key (sk-or-...): " _inline_key; echo ""
+            local _inline_key; _inline_key=$(_ai_prompt_key openrouter)
             if [ -n "$_inline_key" ]; then
                 if _nexus_validate_or_key "$_inline_key"; then
                     or_api_key="$_inline_key"
-                    _ai_write_key openrouter "$or_api_key"
+                    _ai_write_key openrouter "$or_api_key" || { fail "API key could not be saved."; return 1; }
                     ok "OpenRouter key valid and saved to secrets/openrouter.key"
                 else
                     warn "Key invalid — not saved. Session will fail on first message."
                 fi
             fi
         else
-            local _inline_key; read -rsp "  Anthropic key (sk-ant-...): " _inline_key; echo ""
+            local _inline_key; _inline_key=$(_ai_prompt_key anthropic)
             if [ -n "$_inline_key" ]; then
                 if _nexus_validate_ant_key "$_inline_key"; then
                     api_key="$_inline_key"
-                    _ai_write_key anthropic "$api_key"
+                    _ai_write_key anthropic "$api_key" || { fail "API key could not be saved."; return 1; }
                     ok "Anthropic key valid and saved to secrets/anthropic.key"
                 else
                     warn "Key invalid — not saved. Session will fail on first message."
@@ -1386,16 +1532,17 @@ menu_ai() {
     preflight=$(igor_fzf_pick "AI Assistant" \
         "s:START:Full session — scan server context" \
         "f:FAST:Quick session — skip server scan" \
-        "c:SETTINGS:Provider, model, tokens, temperature" \
+        "c:SETTINGS:Provider, API key, model, tokens, temperature" \
+        "k:API KEY:Replace the current provider key (visible entry)" \
         "o:LOCAL AI:Manage Ollama (models, host, pull)" \
         "l:SESSION LOG:Browse previous AI sessions" \
         "q:BACK:Return to main menu")
     case $? in
         1) return ;;
         2)
-            echo -e "  ${CYAN}s${NC} = start   ${CYAN}f${NC} = fast   ${CYAN}c${NC} = settings   ${CYAN}o${NC} = local AI   ${CYAN}l${NC} = session log   ${CYAN}q${NC} = back"
+            echo -e "  ${CYAN}s${NC} = start   ${CYAN}f${NC} = fast   ${CYAN}c${NC} = settings   ${CYAN}k${NC} = API key   ${CYAN}o${NC} = local AI   ${CYAN}l${NC} = session log   ${CYAN}q${NC} = back"
             echo ""
-            read -rp "  [s/f/c/o/l/q]: " preflight ;;
+            read -rp "  [s/f/c/k/o/l/q]: " preflight ;;
     esac
 
     # IDEA-06: fast/quick mode flag — skip ai_gather_context()
@@ -1403,6 +1550,9 @@ menu_ai() {
     [ "$preflight" = "f" ] || [ "$preflight" = "F" ] && { _quick_mode=true; preflight="s"; }
 
     case "$preflight" in
+        k|K)
+            _ai_change_key "$provider" || return 1
+            ;;
         c|C)
             echo ""
             # ── Provider selection ────────────────────────────────────────────
@@ -1425,74 +1575,12 @@ menu_ai() {
             esac
             case "$pchoice" in
                 1)
-                    provider="anthropic"; ok "Provider → Anthropic"
-                    if [ -z "$api_key" ]; then
-                        echo ""
-                        local _ant_k; _ant_k=$(ask "Paste Anthropic key (sk-ant-...)" "" secret)
-                        if [ -n "$_ant_k" ]; then
-                            echo -e "  ${CYAN}Validating Anthropic key...${NC}"
-                            if _nexus_validate_ant_key "$_ant_k"; then
-                                api_key="$_ant_k"
-                                _ai_write_key anthropic "$api_key"
-                                ok "Anthropic key valid and saved to secrets/anthropic.key"
-                            else
-                                warn "Key invalid or unreachable — not saved. Check the key and try again."
-                            fi
-                        else
-                            warn "No key entered."
-                        fi
-                    else
-                        ok "Anthropic key already saved."
-                        if confirm "  Replace saved Anthropic key?"; then
-                            local _ant_k2; _ant_k2=$(ask "New Anthropic key" "" secret)
-                            if [ -n "$_ant_k2" ]; then
-                                echo -e "  ${CYAN}Validating...${NC}"
-                                if _nexus_validate_ant_key "$_ant_k2"; then
-                                    api_key="$_ant_k2"
-                                    _ai_write_key anthropic "$api_key"
-                                    ok "Key updated and validated."
-                                else
-                                    warn "New key invalid or unreachable — keeping old key."
-                                fi
-                            fi
-                        fi
-                    fi
+                    provider="anthropic"
+                    _ai_change_key "$provider"
                     ;;
                 2)
-                    provider="openrouter"; ok "Provider → OpenRouter"
-                    if [ -z "$or_api_key" ]; then
-                        echo ""
-                        local _or_k; _or_k=$(ask "Paste OpenRouter key (sk-or-...)" "" secret)
-                        if [ -n "$_or_k" ]; then
-                            echo -e "  ${CYAN}Validating OpenRouter key...${NC}"
-                            if _nexus_validate_or_key "$_or_k"; then
-                                or_api_key="$_or_k"
-                                _ai_write_key openrouter "$or_api_key"
-                                ok "OpenRouter key valid and saved to secrets/openrouter.key"
-                            else
-                                warn "Key invalid or unreachable — not saved. Check the key and try again."
-                                provider="anthropic"
-                            fi
-                        else
-                            warn "No key entered — reverting to Anthropic."
-                            provider="anthropic"
-                        fi
-                    else
-                        ok "OpenRouter key already saved."
-                        if confirm "  Replace saved OR key?"; then
-                            local _or_k2; _or_k2=$(ask "New OpenRouter key" "" secret)
-                            if [ -n "$_or_k2" ]; then
-                                echo -e "  ${CYAN}Validating...${NC}"
-                                if _nexus_validate_or_key "$_or_k2"; then
-                                    or_api_key="$_or_k2"
-                                    _ai_write_key openrouter "$or_api_key"
-                                    ok "Key updated and validated."
-                                else
-                                    warn "New key invalid or unreachable — keeping old key."
-                                fi
-                            fi
-                        fi
-                    fi
+                    provider="openrouter"
+                    _ai_change_key "$provider"
                     ;;
                 3)
                     provider="ollama"
@@ -1889,7 +1977,7 @@ mkdir -p "$session_dir"
     local session_id; session_id=$(basename "$session_file" .log)
 
     # ── Create IPC FIFO for --extra TUI ──────────────────────────────────────
-    local _rt_dir="${IGOR_DIR}/data/runtime"
+    local _rt_dir="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
     local _fifo_path="${_rt_dir}/commands.fifo"
     mkdir -p "$_rt_dir"
     [ -p "$_fifo_path" ] && rm -f "$_fifo_path"
@@ -1926,7 +2014,7 @@ mkdir -p "$session_dir"
 
     # ── Load saved scratchpad from last session ────────────────────────────────
     local _scratchpad_file="${IGOR_DIR}/data/scratchpad.txt"
-    if [ -f "$_scratchpad_file" ]; then
+    if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -f "$_scratchpad_file" ]; then
         echo -e "  ${YEL}ℹ  Resuming investigation state from last session (type 'solved' to clear)${NC}"
         echo ""
     fi
@@ -1982,9 +2070,17 @@ mkdir -p "$session_dir"
         declare -f igor_load_capabilities &>/dev/null && igor_load_capabilities 2>/dev/null || true
         system_context=$(ai_gather_context)
         ai_scrub_build_table
-        scrubbed_context=$(ai_scrub_outbound "$system_context")
-        echo -e "  ${GRN}✔ Server state captured and scrubbed.${NC}"
-        echo -e "  ${CYAN}i${NC}  Sensitive values replaced with [IGOR:TOKENS] before API call."
+        local _context_scrub_status=0
+        scrubbed_context=$(_ai_scrub_context_for_display "$system_context") || _context_scrub_status=$?
+        if [ "$_context_scrub_status" -eq 2 ]; then
+            echo -e "  ${YEL}⚠ Server state captured; scrub validation found sensitive-looking content.${NC}"
+            echo -e "  ${CYAN}i${NC}  Request redaction will check the final provider payload."
+        elif [ "$_context_scrub_status" -ne 0 ]; then
+            warn "Could not scrub server context; stopping AI setup."
+            return 1
+        else
+            echo -e "  ${GRN}✔ Server state captured; scrub validation passed.${NC}"
+        fi
         echo ""
         # [FIX-1] Record when context was gathered for auto-refresh
         _context_captured_at=$(date +%s)
@@ -2009,6 +2105,7 @@ mkdir -p "$session_dir"
     local _hypothesis_block=""
 
     local conversation="[]"
+    local _AI_SESSION_STATE="investigating"
 
     {
         echo "=== IGOR AI SESSION ==="
@@ -2174,12 +2271,24 @@ mkdir -p "$session_dir"
         fi
 
         # P3-1: Match runbook on first substantive message (session-sticky)
-        if [ -z "$_active_runbook" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -z "$_active_runbook" ]; then
             _active_runbook=$(_ai_match_runbook "$user_input")
             [ -n "$_active_runbook" ] && \
                 echo -e "  ${CYAN}ℹ  Runbook matched — diagnostic steps injected.${NC}"
         fi
 
+        # Parse local session commands before any ordinary request can reach
+        # the model. The same registry supplies help and input boundaries.
+        local _builtin_route
+        _builtin_route=$(_ai_session_route "$user_input") || {
+            warn "Session command registry unavailable."
+            continue
+        }
+        if [[ "$_builtin_route" == INVALID:* ]]; then
+            warn "Invalid session command: ${_builtin_route#INVALID:}"
+            continue
+        fi
+        [ -n "$_builtin_route" ] && user_input="$_builtin_route"
         # ── Built-in session commands ─────────────────────────────────────────
         case "$user_input" in
             exit|quit|q)
@@ -2246,39 +2355,7 @@ except: print('unknown')
                 echo ""; continue ;;
             help)
                 echo ""
-                echo -e "  ${YEL}── Session ────────────────────────────────────────────────────${NC}"
-                echo -e "  ${CYAN}exit/quit${NC}           end session (offers WIP/log save)"
-                echo -e "  ${CYAN}refresh${NC}             re-scan server + reload knowledge"
-                echo -e "  ${CYAN}stats${NC}               token count, conversation size, cost"
-                echo -e "  ${CYAN}solved / new${NC}        clear investigation + WIP, start fresh topic"
-                echo -e "  ${CYAN}exec on/off${NC}         toggle TIER 2 auto-run"
-                echo -e "  ${CYAN}quiet on/off${NC}        toggle quiet loop (hides READ steps, shows final answer)"
-                echo -e "  ${CYAN}verbose on/off${NC}      toggle reasoning display"
-                echo -e "  ${CYAN}settings${NC}            show current config"
-                echo -e "  ${CYAN}continue${NC}            resume after hitting the 5-step limit"
-                echo ""
-                echo -e "  ${YEL}── Mode ───────────────────────────────────────────────────────${NC}"
-                echo ""
-                echo -e "  ${YEL}── Hypothesis tracking ────────────────────────────────────────${NC}"
-                echo -e "  ${CYAN}hypo${NC}                show numbered hypothesis list"
-                echo -e "  ${CYAN}hypo add \"text\"${NC}     inject [USER FOCUS] direction Igor must prioritise"
-                echo -e "  ${CYAN}hypo del N${NC}          remove hypothesis #N"
-                echo -e "  ${CYAN}hypo edit N \"text\"${NC}  rewrite hypothesis #N"
-                echo -e "  ${CYAN}hypo pin N${NC}          pin #N (never auto-trimmed)"
-                echo -e "  ${CYAN}hypo clear${NC}          reset all hypotheses"
-                echo ""
-                echo -e "  ${YEL}── Commands ───────────────────────────────────────────────────${NC}"
-                echo -e "  ${CYAN}/cmd <description>${NC}  get copy-ready command with real values filled in"
-                echo -e "  ${CYAN}--extra${NC}             run 'bash igor.sh --extra' in a 2nd terminal"
-                echo -e "  ${CYAN}undo${NC}                reverse last CHANGE in this session"
-                echo -e "  ${CYAN}undo all${NC}            reverse all CHANGEs (newest first)"
-                echo -e "  ${CYAN}undo list${NC}           show reversible changes"
-                echo ""
-                echo -e "  ${YEL}── Session history ────────────────────────────────────────────${NC}"
-                echo -e "  ${CYAN}history${NC}             list recent sessions (date, problem, outcome)"
-                echo -e "  ${CYAN}history <id>${NC}        show full post-mortem for a session"
-                echo -e "  ${CYAN}replay <id>${NC}         show step-by-step command log for a session"
-                echo -e "  ${CYAN}canary dismiss${NC}      clear pending post-fix canary alert"
+                python3 "${_AI_DIR}/session_commands.py" help
                 echo ""; continue ;;
             "settings autostart on")
                 AI_AUTOSTART=true; _ai_save_settings
@@ -2370,6 +2447,9 @@ PYEOF
             "canary dismiss")
                 rm -f "${IGOR_DIR}/data/runtime/canary_alert.json" 2>/dev/null
                 echo -e "  ${GRN}✔ Canary alert cleared.${NC}"; echo ""; continue ;;
+            apikey)
+                _ai_change_key "$provider"
+                continue ;;
             settings)
                 echo ""
                 local _el2 _p2
@@ -2560,16 +2640,32 @@ Do NOT repeat these failed approaches. Try a different method."
                 local _cmd_scrubbed_desc; _cmd_scrubbed_desc=$(ai_scrub_outbound "$_cmd_desc")
                 local _cmd_directive="OUTPUT ONLY: a single copy-ready shell command that does exactly: ${_cmd_scrubbed_desc}. No explanation, no markdown, no prefix, no suffix — the shell command line only."
                 local _cmd_conv; _cmd_conv=$(_nexus_py_append "[]" "user" "$_cmd_directive")
+                local _cmd_previous_temperature="${NEXUS_TEMPERATURE:-0.7}"
+                local _cmd_previous_tools="${NEXUS_TOOLS_JSON:-[]}"
                 export NEXUS_API_KEY="$_cmd_key" NEXUS_PROVIDER="$provider" NEXUS_MODEL="$model"
-                export NEXUS_MAX_TOKENS="256" NEXUS_TEMPERATURE="0.2"
+                export NEXUS_MAX_TOKENS="256" NEXUS_TEMPERATURE="0.2" NEXUS_TOOLS_JSON="[]"
                 export NEXUS_SYSTEM="$system_prompt" NEXUS_CONV="$_cmd_conv"
-                local _cmd_raw; _cmd_raw=$(_nexus_api_call)
+                ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+                local _cmd_raw
+                if ! _cmd_raw=$(IGOR_AI_TEXT_ONLY=true _nexus_api_call); then
+                    export NEXUS_MAX_TOKENS="$max_tokens" NEXUS_TEMPERATURE="$_cmd_previous_temperature"
+                    export NEXUS_TOOLS_JSON="$_cmd_previous_tools"
+                    warn "Copy-ready command request could not be sent."
+                    continue
+                fi
                 # Restore max_tokens/temperature
-                export NEXUS_MAX_TOKENS="$max_tokens" NEXUS_TEMPERATURE="${NEXUS_TEMPERATURE:-0.7}"
+                export NEXUS_MAX_TOKENS="$max_tokens" NEXUS_TEMPERATURE="$_cmd_previous_temperature"
+                export NEXUS_TOOLS_JSON="$_cmd_previous_tools"
                 local _cmd_reply _cmd_cmds _cmd_in _cmd_out
                 declare -a _cmd_cmds=()
                 _nexus_parse_result "$_cmd_raw" _cmd_reply _cmd_cmds _cmd_in _cmd_out
                 ai_add_cost "$_cmd_in" "$_cmd_out"
+                if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ] || [ ${#_cmd_cmds[@]} -gt 0 ] ||
+                   [ -z "$_cmd_reply" ]; then
+                    warn "Could not generate a copy-ready command."
+                    echo ""
+                    continue
+                fi
                 # Unscrub real values and strip whitespace/newlines
                 local _cmd_clean; _cmd_clean=$(ai_unscrub_inbound "$_cmd_reply" 2>/dev/null || printf '%s' "$_cmd_reply")
                 _cmd_clean=$(printf '%s' "$_cmd_clean" | tr -d '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
@@ -2591,73 +2687,6 @@ Do NOT repeat these failed approaches. Try a different method."
         local _intent_handled=false
         local _lower; _lower=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
 
-        # NC admin panel warnings pasted as input
-        if echo "$user_input" | grep -qE "occ |índices|MIME|well-known|OCS|ocs-provider|mantenimiento|ventana"; then
-            user_input="Fix these Nextcloud admin panel warnings. Run the appropriate occ commands:
-
-${user_input}"
-        fi
-
-        # ── Restore intent: user wants to restore nginx from backup ─────────────
-        if echo "$_lower" | grep -qE "^restore|^rollback|^revert|^undo nginx|restore nginx|restore.*backup|rollback.*nginx"; then
-            echo -e "  ${YEL}↩  Restore requested — listing nginx backups...${NC}"
-            echo ""
-            local _backups; _backups=$(ls -t ./web/nginx.conf.bak.* 2>/dev/null | head -8)
-            if [ -z "$_backups" ]; then
-                echo -e "  ${RED}No nginx backups found at ./web/nginx.conf.bak.*${NC}"
-            else
-                echo -e "  ${CYAN}Available backups (newest first):${NC}"
-                printf '%s\n' "$_backups" | nl -ba | sed 's/^/  /'
-                echo ""
-                echo -ne "  ${YEL}Enter number to restore (Enter = oldest/safest, q = cancel):${NC} "
-                local _rb_choice; IFS= read -r _rb_choice < /dev/tty
-                if [ "$_rb_choice" = "q" ]; then
-                    echo -e "  Cancelled."
-                else
-                    local _target_backup
-                    if [[ "$_rb_choice" =~ ^[0-9]+$ ]]; then
-                        _target_backup=$(printf '%s\n' "$_backups" | sed -n "${_rb_choice}p")
-                    else
-                        _target_backup=$(printf '%s\n' "$_backups" | tail -1)  # oldest = safest
-                    fi
-                    if [ -n "$_target_backup" ] && [ -f "$_target_backup" ]; then
-                        echo -e "  ${YEL}Restoring from: ${_target_backup}${NC}"
-                        cp "$_target_backup" ./web/nginx.conf && \
-                            echo -e "  ${GRN}✔ nginx.conf restored.${NC}" || \
-                            echo -e "  ${RED}✘ Copy failed.${NC}"
-                        echo ""
-                        echo -ne "  ${YEL}Restart web container now? [Y/n]:${NC} "
-                        local _rb_restart; IFS= read -r _rb_restart < /dev/tty
-                        if [[ ! "$_rb_restart" =~ ^[Nn] ]]; then
-                            docker compose restart web 2>&1 | sed 's/^/  /'
-                            echo ""
-                            local _http; _http=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${IGOR_WEB_PORT:-8080}/status.php" 2>/dev/null || echo "??")
-                            echo -e "  ${CYAN}Status after restart: HTTP ${_http}${NC}"
-                        fi
-                    else
-                        echo -e "  ${RED}Backup not found. Check ./web/nginx.conf.bak.* manually.${NC}"
-                    fi
-                fi
-            fi
-            echo ""; _intent_handled=true
-        elif echo "$_lower" | grep -qE "^restart web|^restart the web|^restart container|^restart all"; then
-            echo -e "  ${CYAN}↻  Restarting web container...${NC}"
-            docker compose restart web 2>&1 | sed 's/^/  /'
-            echo ""
-            local _http; _http=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 "http://localhost:${IGOR_WEB_PORT:-8080}/status.php" 2>/dev/null || echo "??")
-            echo -e "  ${CYAN}Status: HTTP ${_http}${NC}"
-            echo ""; _intent_handled=true
-        elif echo "$_lower" | grep -qE "haiku|faster model|cheap(er)? model|use haiku"; then
-            model="claude-haiku-4-5-20251001"; _ai_save_settings; ai_set_cost_rates
-            echo -e "  ${GRN}✔ Switched to Haiku.${NC}"; echo ""; _intent_handled=true
-        elif echo "$_lower" | grep -qE "exec(utive)? (mode )?(on|enable)|auto.?run|be aggressive|just do it"; then
-            executive_mode=true; _ai_save_settings; export executive_mode
-            echo -e "  ${YEL}✔ Executive mode ON.${NC}"; echo ""; _intent_handled=true
-        elif echo "$_lower" | grep -qE "exec(utive)? (mode )?(off|disable)|ask (me )?before"; then
-            executive_mode=false; _ai_save_settings; export executive_mode
-            echo -e "  ${GRN}✔ Executive mode off.${NC}"; echo ""; _intent_handled=true
-        fi
-
         $_intent_handled && continue
 
         # ── Fix 5: Prefix user message if awaiting direction after 5-step limit ─
@@ -2673,7 +2702,10 @@ ${user_input}"
         scrubbed_input=$(ai_scrub_outbound "$user_input")
 
         # [FIX-2] Diagnostic burst: if user reports a problem, auto-run quick checks
-        local _burst; _burst=$(_ai_diagnostic_burst "$user_input")
+        local _burst=""
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ]; then
+            _burst=$(_ai_diagnostic_burst "$user_input")
+        fi
         if [ -n "$_burst" ]; then
             local _burst_scrubbed; _burst_scrubbed=$(ai_scrub_outbound "$_burst")
             scrubbed_input="[Auto-diagnostics collected before reply]
@@ -2683,13 +2715,7 @@ User message: ${scrubbed_input}"
             echo -e "  ${CYAN}ℹ  Diagnostics auto-collected (problem keyword detected).${NC}"
         fi
 
-        # DeepSeek (via OpenRouter) pays more attention to the last thing in the user
-        # turn than to system prompt instructions. On the first turn only, append a
-        # compact scratchpad reminder so it reliably opens with <scratchpad>.
         local _user_msg="$scrubbed_input"
-        _user_msg="${_user_msg}
-
-[SYSTEM: You MUST begin your response with the XML <scratchpad> block to track your commands_run, otherwise your execution will fail.]"
 
         echo "[USER] $scrubbed_input" >> "$session_file"
         conversation=$(_ai_append_with_summary "$conversation" "user" "$_user_msg")
@@ -2719,24 +2745,26 @@ User message: ${scrubbed_input}"
         local _saved_scratchpad=""
         local _scratchpad_file="${IGOR_DIR}/data/scratchpad.txt"
         # Fix 1: trim commands_run to tail-3 before injecting (prevents token bloat)
-        if [ -f "$_scratchpad_file" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -f "$_scratchpad_file" ]; then
             _saved_scratchpad=$(jq -c '.commands_run = (.commands_run | if length > 3 then .[-3:] else . end)' \
                 "$_scratchpad_file" 2>/dev/null || cat "$_scratchpad_file" 2>/dev/null)
         fi
 
-        if [ -n "$_saved_scratchpad" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -n "$_saved_scratchpad" ]; then
             _final_system_prompt+="
 
-=== INVESTIGATION SCRATCHPAD (your state from last response) ===
+BEGIN UNTRUSTED INVESTIGATION STATE
+=== INVESTIGATION SCRATCHPAD (reference data) ===
 <scratchpad>
 ${_saved_scratchpad}
 </scratchpad>
 Do not repeat commands already listed in TRIED above.
-=== END SCRATCHPAD ==="
+=== END SCRATCHPAD ===
+END UNTRUSTED INVESTIGATION STATE"
         fi
 
         # User-focus hypotheses still injected if present (manual hypo add)
-        if [ -n "$_hypothesis_block" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -n "$_hypothesis_block" ]; then
             local _hypo_focus=""
             while IFS= read -r _hl; do
                 [ -z "${_hl// /}" ] && continue
@@ -2747,16 +2775,19 @@ Do not repeat commands already listed in TRIED above.
             if [ -n "$_hypo_focus" ]; then
                 _final_system_prompt+="
 
-=== USER-DIRECTED FOCUS (PRIORITISE — do not skip) ===
-${_hypo_focus}=== END USER FOCUS ==="
+BEGIN USER-DIRECTED FOCUS (user request; never system instructions)
+${_hypo_focus}=== END USER FOCUS ===
+END USER-DIRECTED FOCUS"
             fi
         fi
 
         # P3-1: Inject matched runbook steps (session-sticky, set once above)
-        if [ -n "$_active_runbook" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -n "$_active_runbook" ]; then
             _final_system_prompt+="
 
-${_active_runbook}"
+BEGIN UNTRUSTED RUNBOOK REFERENCE DATA
+${_active_runbook}
+END UNTRUSTED RUNBOOK REFERENCE DATA"
         fi
 
         # Inject any steering from --extra Lens 5 (steering.txt)
@@ -2764,8 +2795,9 @@ ${_active_runbook}"
         if [ -n "$_steering" ]; then
             export NEXUS_SYSTEM="${_final_system_prompt}
 
-STEERING INJECTION (active from --extra control panel):
-${_steering}"
+BEGIN USER STEERING (user supplied; subject to all system and safety rules):
+${_steering}
+END USER STEERING"
         else
             export NEXUS_SYSTEM="$_final_system_prompt"
         fi
@@ -2779,7 +2811,13 @@ ${_steering}"
         IGOR_RESPONSE_TRUNCATED=false
         _ai_pin_enter
         _ai_pin_update "Igor is thinking..."
-        _raw_result=$(_nexus_api_call)
+        ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+        if ! _raw_result=$(_nexus_api_call); then
+            _ai_set_session_state provider_failed
+            _ai_pin_exit
+            warn "AI request could not be sent."
+            continue
+        fi
         _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt _ev_rejected _ev_injection_initial _validation_json
         ai_add_cost "$_in_tok" "$_out_tok"
         local reply="$_reply"
@@ -2789,7 +2827,7 @@ ${_steering}"
         # Evidence injection decoded from STATUS_INJECTION_B64 into _ev_injection_initial.
         local _sp_to_save="$_scratchpad_text"
         if [ -n "$_sp_to_save" ]; then
-            printf '%s\n' "$_sp_to_save" > "${IGOR_DIR}/data/scratchpad.txt"
+            _ai_write_scratchpad "$_sp_to_save"
         fi
         # P2-4: inject evidence rejection message into conversation if needed
         if [ -n "$_ev_injection_initial" ]; then
@@ -2797,17 +2835,11 @@ ${_steering}"
             conversation=$(_ai_append_with_summary "$conversation" "user" "$_ev_injection_initial")
         fi
 
-        # Display DeepSeek-R1 reasoning in verbose mode (never stored in conversation)
-        if [ -n "$_think_text" ] && [ "$IGOR_VERBOSE" = "true" ]; then
-            echo -e "  ${MAG}[thinking]${NC}"
-            echo "$_think_text" | sed 's/^/  /'
-            printf '\033[0m\n'  # reset after raw model text — prevents color bleed
-        fi
-
         # ── Auto-continuation on truncation ──────────────────────────────────
         # If API stopped because max_tokens was hit, silently continue up to 2x.
         if [ "${IGOR_RESPONSE_TRUNCATED:-false}" = "true" ] && [ ${#_cmds[@]} -eq 0 ]; then
             local _trunc_cont=0
+            local _conversation_before_trunc="$conversation" _trunc_failed=false
             while [ "${IGOR_RESPONSE_TRUNCATED:-false}" = "true" ] && [ "$_trunc_cont" -lt 2 ]; do
                 (( _trunc_cont++ ))
                 echo -e "  ${YEL}↩  Response truncated — continuing (${_trunc_cont}/2)...${NC}" >&2
@@ -2816,21 +2848,39 @@ ${_steering}"
                 conversation=$(_ai_append_with_summary "$conversation" "user" "[TRUNCATED — please continue exactly where you left off, no preamble]")
                 export NEXUS_CONV="$conversation"
                 IGOR_RESPONSE_TRUNCATED=false
+                ai_begin_request || { warn "AI request identity unavailable."; return 1; }
                 local _cont_raw; _cont_raw=$(_nexus_api_call)
                 local _cont_reply _cont_cmds _cont_in _cont_out
-                _nexus_parse_result "$_cont_raw" _cont_reply _cont_cmds _cont_in _cont_out
+                local _cont_asst_msg="" _cont_tconv_fmt=""
+                declare -a _cont_cmds=()
+                _nexus_parse_result "$_cont_raw" _cont_reply _cont_cmds _cont_in _cont_out \
+                    _explain_text _think_text _scratchpad_text _cont_asst_msg _cont_tconv_fmt
+                if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
+                    _trunc_failed=true
+                    conversation="$_conversation_before_trunc"
+                    break
+                fi
                 ai_add_cost "$_cont_in" "$_cont_out"
                 reply+="$_cont_reply"
                 # Use any commands found in continuation
-                [ ${#_cont_cmds[@]} -gt 0 ] && _cmds=("${_cont_cmds[@]}")
+                if [ ${#_cont_cmds[@]} -gt 0 ]; then
+                    _cmds=("${_cont_cmds[@]}")
+                    _asst_msg="$_cont_asst_msg"
+                    _tconv_fmt="$_cont_tconv_fmt"
+                fi
             done
+            if [ "$_trunc_failed" = true ]; then
+                _ai_set_session_state "$(_ai_error_state)"
+                warn "Provider request failed during truncated-response recovery."
+                continue
+            fi
             if [ "${IGOR_RESPONSE_TRUNCATED:-false}" = "true" ]; then
                 echo -e "  ${YEL}⚠  Response still truncated after 2 continuations. Raise max_tokens in settings.${NC}"
             fi
         fi
 
         # ── Retry on transient errors ─────────────────────────────────────────
-        if [[ "$reply" == ERROR:* ]]; then
+        if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
             local http_code; http_code=$(echo "$reply" | grep -oE 'HTTP [0-9]+' | awk '{print $2}' | head -1)
             local should_retry=false wait_secs=15
             case "$http_code" in
@@ -2844,41 +2894,30 @@ ${_steering}"
                     && echo -e "  ${YEL}⏳ Rate limited (429) — waiting ${wait_secs}s...${NC}"
                 sleep "$wait_secs"
                 export NEXUS_API_KEY="$_active_key"
+                ai_begin_request || { warn "AI request identity unavailable."; return 1; }
                 _raw_result=$(_nexus_api_call)
-                _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text
+                _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok \
+                    _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt
                 ai_add_cost "$_in_tok" "$_out_tok"
                 reply="$_reply"
             fi
-            if [[ "$reply" == ERROR:* ]]; then
+            if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
+                _ai_set_session_state "$(_ai_error_state)"
                 _ai_pin_exit
                 fail "API error: ${reply#ERROR: }"
+                if [[ "$reply" == *401* ]]; then
+                    warn "Authentication rejected by ${provider}. Type apikey to replace its key, then retry your message."
+                fi
                 echo "[API ERROR] $reply" >> "$session_file"
                 pause; continue
             fi
         fi
 
-        # ── Scratchpad enforcement ───────────────────────────────────────────────
-        # Retry inline (up to 3×) rather than `continue` the session loop.
-        # `continue` here would go back to read user input — wrong.
-        # NOTE: check $_scratchpad_text (populated by _nexus_parse_result from
-        # SCRATCHPAD_B64), NOT $reply — ai_engine.py strips <scratchpad> from
-        # reply_text before emitting, so $reply never contains the tag.
-        local _sp_retries=0
-        while [ -z "$_scratchpad_text" ] \
-           && ! grep -q "^RESULT:" <<< "$reply" \
-           && [ "$_sp_retries" -lt 3 ]; do
-            (( _sp_retries++ ))
-            conversation=$(_ai_append_with_summary "$conversation" "assistant" "$reply")
-            conversation=$(_ai_append_with_summary "$conversation" "user" \
-                "[SYSTEM ERROR] You violated the prompt rules. You MUST begin your response with a <scratchpad> block containing your hypothesis and commands_run. Try again.")
-            export NEXUS_CONV="$conversation"
-            _cmds=()
-            _ai_pin_update "Igor is thinking..."
-            _raw_result=$(_nexus_api_call)
-            _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt _ev_rejected _ev_injection_initial _validation_json
-            ai_add_cost "$_in_tok" "$_out_tok"
-            reply="$_reply"
-        done
+        if [ -z "$reply" ] && [ ${#_cmds[@]} -eq 0 ]; then
+            _ai_set_session_state malformed_response
+            warn "Provider returned no reply or tool calls."
+            continue
+        fi
 
         # Detect unparsed tool tags
         if [ ${#_cmds[@]} -eq 0 ]; then
@@ -2948,9 +2987,36 @@ ${_steering}"
         # ── Execute all commands from response ───────────────────────────────────
         local cmd_output_for_api=""
         local _cmds_ran=0
+        local _initial_results_json='[]' _initial_calls_json _reply_finalized=false
+        local _loop_stop_reason=""
+        _initial_calls_json=$(_ai_tx_calls_json "${_cmds[@]}") || { warn "Invalid tool response."; continue; }
+        [ ${#_cmds[@]} -gt 0 ] && _ai_set_session_state tools_requested
         for _cmd in "${_cmds[@]}"; do
-            local cmd_result
-            cmd_result=$(ai_execute_tool "$_cmd" "$_explain_text")
+            local cmd_result _dispatch_rc=0 _result_json
+            IGOR_AI_TOOL_META_FILE=$(mktemp "${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/.ai-tool-meta.XXXXXX") || {
+                _ai_set_session_state malformed_response
+                warn "Could not create private tool metadata file."
+                break
+            }
+            export IGOR_AI_TOOL_META_FILE
+            if [ "$_reply_finalized" = true ]; then
+                cmd_result="[BLOCKED: earlier reply finalized this tool batch]"
+                _dispatch_rc=1
+            else
+                _ai_set_session_state tool_running
+                cmd_result=$(ai_execute_tool "$_cmd" "$_explain_text") || _dispatch_rc=$?
+            fi
+            _result_json=$(_ai_tx_record "$_cmd" "$cmd_result" "$_dispatch_rc") || {
+                rm -f -- "$IGOR_AI_TOOL_META_FILE"
+                unset IGOR_AI_TOOL_META_FILE
+                warn "Could not record tool result."
+                break
+            }
+            rm -f -- "$IGOR_AI_TOOL_META_FILE"
+            unset IGOR_AI_TOOL_META_FILE
+            _ai_set_session_state "$(_ai_tx_result_state "$_result_json")"
+            _IGOR_LAST_EXEC_TIER=$(_ai_tx_result_tier "$_result_json")
+            _initial_results_json=$(_ai_tx_append_result "$_initial_results_json" "$_result_json") || { warn "Could not collect tool result."; break; }
             echo "[EXECUTE] $_cmd"      >> "$session_file"
             echo "[OUTPUT] $cmd_result" >> "$session_file"
             # P2-1: reply tool signals end of investigation
@@ -2958,8 +3024,7 @@ ${_steering}"
                 local _reply_body="${cmd_result#\[REPLY\] }"
                 echo -e "\n  ${GRN}${_reply_body}${NC}\n"
                 _loop_stop_reason="result"
-                _cmds=()
-                break
+                _reply_finalized=true
             fi
             if [[ "$cmd_result" == *"[BLOCKED BY DENYLIST"* ]]; then
                 # Rewrite denylist block as a visible [SYSTEM REJECTION] so the AI
@@ -2967,22 +3032,40 @@ ${_steering}"
                 local _denied="${cmd_result#\[BLOCKED BY DENYLIST: }"; _denied="${_denied%]}"
                 cmd_output_for_api+="[TOOL RESULT]\n[SYSTEM REJECTION] '${_denied}' is on the safety denylist and cannot be run. Choose a different approach.\n\n"
                 (( _cmds_ran++ ))
-            elif [[ "$cmd_result" != *"[USER SKIPPED"* ]]; then
+            else
                 cmd_output_for_api+="[TOOL RESULT]\n${cmd_result}\n\n"
                 (( _cmds_ran++ ))
             fi
         done
-        # Loop back to API automatically after processing all tools
-
-        if [ ${#_cmds[@]} -gt 1 ]; then
-            echo -e "  ${YEL}ℹ  Igor listed ${#_cmds[@]} actions — running the first now; rest follow as continuation steps.${NC}"
+        if [ "$_cmds_ran" -ne "${#_cmds[@]}" ]; then
+            _ai_set_session_state malformed_response
+            warn "Tool batch incomplete; no partial provider turn was persisted."
+            continue
         fi
 
-        # P2-1: use full content array for native tool_use; string for XML fallback
-        if [ -n "$_asst_msg" ]; then
+        # Commit the assistant and all results together before persistence or
+        # continuation. A crash cannot leave an unmatched native tool call.
+        if [ ${#_cmds[@]} -gt 0 ]; then
+            conversation=$(_ai_tx_complete "$conversation" "${_asst_msg:-$reply}" \
+                "${_tconv_fmt:-xml}" "$_initial_calls_json" "$_initial_results_json") || {
+                _ai_set_session_state malformed_response
+                warn "Provider tool transaction invalid; no partial turn persisted."
+                continue
+            }
+        elif [ -n "$_asst_msg" ]; then
             conversation=$(_nexus_py_append "$conversation" "assistant" "$_asst_msg")
         else
             conversation=$(_ai_append_with_summary "$conversation" "assistant" "$reply")
+        fi
+        if [ "$_reply_finalized" = true ]; then
+            _cmds_ran=0
+            _ai_set_session_state completed
+        elif [ ${#_cmds[@]} -eq 0 ]; then
+            if printf '%s' "$reply" | grep -qE '^RESULT:|^OUTCOME:'; then
+                _ai_set_session_state completed
+            else
+                _ai_set_session_state no_further_action
+            fi
         fi
         _ai_write_conversation   # persist to runtime/conversation.json for --extra Lens 6
         _ai_update_state         # update runtime/state.env for --extra Lens 2/4
@@ -3003,10 +3086,9 @@ except: print(0)
         # ── Agentic continuation loop (up to 5 steps) ─────────────────────────
         local _loop_output="$cmd_output_for_api"
         local _loop_ran=$_cmds_ran
-        local _loop_steps=0 _loop_max=5 _loop_last_cmd="" _loop_has_change=false _loop_stop_reason=""
-        # P2-1: carry-over native format info from one loop step to the next
-        local _prev_fu_asst_msg="$_asst_msg" _prev_fu_tconv_fmt="$_tconv_fmt"
-        local _fu_cmds_with_results=""
+        local _loop_steps=0 _loop_max=5 _loop_last_cmd=""
+        local _loop_has_change
+        _loop_has_change=$(_ai_tx_batch_changed "$_initial_results_json")
         # P1-6: Clear any stale decline signal from a previous loop or crashed session
         rm -f "${IGOR_DIR}/data/runtime/loop_signal.tmp" 2>/dev/null
         # Quiet mode: suppress per-step display for READ-only loops
@@ -3041,56 +3123,19 @@ except: pass
         while [ -n "$_loop_output" ] && [ "$_loop_ran" -gt 0 ] && [ "$_loop_steps" -lt "$_loop_max" ]; do
             (( _loop_steps++ ))
             # Poll --extra IPC commands at each step so pause/resume/steer/model-switch work mid-chain
-            _ai_poll_fifo || break
+            _ai_poll_fifo || { _loop_stop_reason="stopped_by_user"; _ai_set_session_state stopped_by_user; break; }
             # Break if user paused via /stop (IPC or chat command)
-            [ "${_IGOR_PAUSED:-false}" = "true" ] && break
+            [ "${_IGOR_PAUSED:-false}" = "true" ] && {
+                _loop_stop_reason="stopped_by_user"
+                _ai_set_session_state stopped_by_user
+                break
+            }
             # Show "querying..." while we wait for the API
             _ai_pin_update "step ${_loop_steps}/${_loop_max} — querying..."
             [ "$_quiet" = "false" ] && echo -ne "  ${CYAN}   step ${_loop_steps}/${_loop_max}${NC} — querying...\r"
 
-            # P2-1: build tool_result follow-up using format from previous step's parse
-            if [ "$_prev_fu_tconv_fmt" = "anthropic" ] && [ -n "$_prev_fu_asst_msg" ]; then
-                # Anthropic native — build tool_result content array from ID+result pairs
-                local _tool_results_json
-                _tool_results_json=$(printf '%s' "$_fu_cmds_with_results" | python3 -c "
-import sys, json
-results = []
-for line in sys.stdin.read().strip().split('\n'):
-    if '|||' in line:
-        tid, res = line.split('|||', 1)
-        results.append({'type': 'tool_result', 'tool_use_id': tid.strip(), 'content': res.strip()})
-if results:
-    print(json.dumps(results))
-" 2>/dev/null || echo "")
-                if [ -n "$_tool_results_json" ]; then
-                    conversation=$(_nexus_py_append "$conversation" "user" "$_tool_results_json")
-                else
-                    local _fu_msg
-                    _fu_msg=$(printf "Here are the results of the commands that were run:\n\n%s\n\n[SYSTEM: You MUST begin your response with the XML <scratchpad> block to track your commands_run, otherwise your execution will fail.]" "$_loop_output")
-                    conversation=$(_ai_append_with_summary "$conversation" "user" "$_fu_msg")
-                fi
-            elif [ "$_prev_fu_tconv_fmt" = "openai" ] && [ -n "$_prev_fu_asst_msg" ]; then
-                # OpenAI native — one tool message per result
-                while IFS= read -r _pair; do
-                    [ -z "$_pair" ] && continue
-                    local _tid="${_pair%%|||*}"
-                    local _tres="${_pair#*|||}"
-                    local _tmsg; _tmsg=$(python3 -c "
-import json, sys
-tid = sys.argv[1]
-res = sys.argv[2]
-print(json.dumps({'role':'tool','tool_call_id':tid,'content':res}))
-" "$_tid" "$_tres" 2>/dev/null)
-                    [ -n "$_tmsg" ] && conversation=$(_nexus_py_append "$conversation" "tool" "$_tmsg")
-                done <<< "$_fu_cmds_with_results"
-            else
-                # XML fallback: plain string
-                local _fu_msg
-                _fu_msg=$(printf "Here are the results of the commands that were run:\n\n%s\n\n[SYSTEM: You MUST begin your response with the XML <scratchpad> block to track your commands_run, otherwise your execution will fail.]" "$_loop_output")
-                conversation=$(_ai_append_with_summary "$conversation" "user" "$_fu_msg")
-            fi
-            echo "[COMMAND RESULTS SENT BACK TO IGOR]" >> "$session_file"
-            _fu_cmds_with_results=""
+            # The previous assistant/result turn was committed atomically before
+            # this request. Provider history already has every result in order.
 
             local _fu_raw _fu_reply _fu_in _fu_out
             declare -a _fu_cmds=()
@@ -3105,7 +3150,7 @@ print(json.dumps({'role':'tool','tool_call_id':tid,'content':res}))
             export NEXUS_MAX_TOKENS="$max_tokens"
             # Inject current scratchpad so AI retains investigation state across loop steps
             local _loop_sys="$system_prompt"
-            if [ -f "$_scratchpad_file" ]; then
+            if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -f "$_scratchpad_file" ]; then
                 # Fix 1: trim commands_run to tail-3 before injecting (prevents token bloat)
                 local _loop_sp
                 _loop_sp=$(jq -c '.commands_run = (.commands_run | if length > 3 then .[-3:] else . end)' \
@@ -3113,29 +3158,45 @@ print(json.dumps({'role':'tool','tool_call_id':tid,'content':res}))
                 if [ -n "$_loop_sp" ]; then
                     _loop_sys+="
 
-=== INVESTIGATION SCRATCHPAD (your state from last response) ===
+BEGIN UNTRUSTED INVESTIGATION STATE
+=== INVESTIGATION SCRATCHPAD (reference data) ===
 <scratchpad>
 ${_loop_sp}
 </scratchpad>
 ACCUMULATION RULE: Copy ALL TRIED items above into your new scratchpad, then add new ones.
-=== END SCRATCHPAD ==="
+=== END SCRATCHPAD ===
+END UNTRUSTED INVESTIGATION STATE"
                 fi
             fi
             # P3-1: Re-inject runbook in every loop step so AI retains the steps
-            if [ -n "$_active_runbook" ]; then
+            if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -n "$_active_runbook" ]; then
                 _loop_sys+="
 
-${_active_runbook}"
+BEGIN UNTRUSTED RUNBOOK REFERENCE DATA
+${_active_runbook}
+END UNTRUSTED RUNBOOK REFERENCE DATA"
             fi
             export NEXUS_SYSTEM="$_loop_sys"
             # P2-3: compress older tool outputs before each follow-up call
             conversation=$(_nexus_compress_conv "$conversation")
             export NEXUS_CONV="$conversation"
-            _fu_raw=$(_nexus_api_call)
+            ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+            if ! _fu_raw=$(_nexus_api_call); then
+                _loop_stop_reason="provider_failed"
+                _ai_set_session_state provider_failed
+                warn "Provider request could not be sent; tool history was preserved."
+                break
+            fi
             _nexus_parse_result "$_fu_raw" _fu_reply _fu_cmds _fu_in _fu_out _fu_explain _fu_think _fu_scratchpad _fu_asst_msg _fu_tconv_fmt
+            if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
+                _loop_stop_reason="$(_ai_error_state)"
+                _ai_set_session_state "$_loop_stop_reason"
+                warn "Provider request failed; the completed tool turn remains available for retry."
+                break
+            fi
             # Save updated scratchpad from each loop step
             if [ -n "$_fu_scratchpad" ]; then
-                printf '%s\n' "$_fu_scratchpad" > "${IGOR_DIR}/data/scratchpad.txt"
+                _ai_write_scratchpad "$_fu_scratchpad"
             fi
             # P2-4: evidence enforcement — reject status=fixed/not_fixed without evidence_ref
             local _ev_rejected_loop="0"
@@ -3153,7 +3214,7 @@ except:
             fi
 
             # Build step preview string
-            local _step_preview="no action"
+            local _step_preview="response"
             if [ ${#_fu_cmds[@]} -gt 0 ]; then
                 _step_preview=$(printf '%s' "${_fu_cmds[0]}" | python3 -c "
 import sys, json
@@ -3165,17 +3226,12 @@ try:
 except: print(sys.stdin.read()[:60])
 " 2>/dev/null || printf '%s' "${_fu_cmds[0]:0:60}")
             fi
-            _loop_last_cmd="$_step_preview"
+            [ ${#_fu_cmds[@]} -gt 0 ] && _loop_last_cmd="$_step_preview"
 
             if [ "$_quiet" = "false" ]; then
                 # Verbose step display
                 echo -e "  ${CYAN}   step ${_loop_steps}/${_loop_max}${NC} — ${_step_preview}${NC}"
 
-                if [ -n "$_fu_think" ] && [ "$IGOR_VERBOSE" = "true" ]; then
-                    echo -e "  ${MAG}[thinking]${NC}"
-                    echo "$_fu_think" | sed 's/^/  /'
-                    printf '\033[0m\n'  # reset after raw model text — prevents color bleed
-                fi
             else
                 # Quiet mode: single updating status line
                 echo -ne "  ${CYAN}⚙  step ${_loop_steps}/${_loop_max} — ${_step_preview:0:55}${NC}                \r"
@@ -3183,16 +3239,10 @@ except: print(sys.stdin.read()[:60])
             ai_add_cost "$_fu_in" "$_fu_out"
 
             if [ -z "$_fu_reply" ] && [ ${#_fu_cmds[@]} -eq 0 ]; then
-                # Fix 2: empty reply + no commands = truncation or API error
-                if [ "${IGOR_RESPONSE_TRUNCATED:-false}" = "true" ]; then
-                    echo -e "  ${YEL}↩  Response truncated mid-run — recovering from last state...${NC}"
-                    _trunc_recovery_loop=true
-                    _trunc_sp_content=$(cat "${IGOR_DIR}/data/scratchpad.txt" 2>/dev/null || echo "{}")
-                    # don't break — recovery patch applied at end of iteration
-                else
-                    _loop_stop_reason="api_error"
-                    break
-                fi
+                _loop_stop_reason="malformed_response"
+                _ai_set_session_state malformed_response
+                warn "Provider returned no reply or tools."
+                break
             fi
             [ -n "$_fu_reply" ] && echo "[IGOR FOLLOWUP $_loop_steps] $_fu_reply" >> "$session_file"
 
@@ -3214,60 +3264,55 @@ except: print(sys.stdin.read()[:60])
                 fi
             fi
 
-            # ── Scratchpad enforcement (loop steps) — inline retry up to 3× ───────
-            # `continue` wastes a step counter tick and risks exhausting _loop_max before
-            # any tools run. Inline retry keeps _loop_steps stable so tool results get used.
-            # NOTE: check $_fu_scratchpad (from _nexus_parse_result), NOT $_fu_reply —
-            # ai_engine.py strips <scratchpad> from reply_text before emitting.
-            local _fu_sp_retries=0
-            while [ -z "$_fu_scratchpad" ] \
-               && ! grep -q "^RESULT:" <<< "$_fu_reply" \
-               && [ "$_fu_sp_retries" -lt 3 ]; do
-                (( _fu_sp_retries++ ))
-                conversation=$(_ai_append_with_summary "$conversation" "assistant" "$_fu_reply")
-                conversation=$(_ai_append_with_summary "$conversation" "user" \
-                    "[SYSTEM ERROR] You violated the prompt rules. You MUST begin your response with a <scratchpad> block containing your hypothesis and commands_run. Try again.")
-                export NEXUS_CONV="$conversation"
-                _fu_cmds=()
-                _ai_pin_update "step ${_loop_steps}/${_loop_max} — querying..."
-                _fu_raw=$(_nexus_api_call)
-                _nexus_parse_result "$_fu_raw" _fu_reply _fu_cmds _fu_in _fu_out _fu_explain _fu_think _fu_scratchpad _fu_asst_msg _fu_tconv_fmt
-                ai_add_cost "$_fu_in" "$_fu_out"
-            done
-
-            # P2-1: use full content array for native tool_use
-            if [ -n "$_fu_asst_msg" ]; then
-                conversation=$(_nexus_py_append "$conversation" "assistant" "$_fu_asst_msg")
-            else
-                conversation=$(_ai_append_with_summary "$conversation" "assistant" "$_fu_reply")
-            fi
-            # Update carry-over for next iteration's tool_result building
-            _prev_fu_asst_msg="$_fu_asst_msg"
-            _prev_fu_tconv_fmt="$_fu_tconv_fmt"
-
             _loop_output=""
             _loop_ran=0
+            local _follow_runtime_instruction=""
+            local _follow_calls_json _follow_results_json='[]' _follow_reply_finalized=false
+            local _repeat_stop=false
+            _follow_calls_json=$(_ai_tx_calls_json "${_fu_cmds[@]}") || {
+                _loop_stop_reason="malformed_response"
+                _ai_set_session_state malformed_response
+                break
+            }
+            [ ${#_fu_cmds[@]} -gt 0 ] && _ai_set_session_state tools_requested
             for _fu_cmd in "${_fu_cmds[@]}"; do
-                local _fu_cmd_result
+                local _fu_cmd_result _fu_dispatch_rc=0 _fu_result_json
+                IGOR_AI_TOOL_META_FILE=$(mktemp "${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/.ai-tool-meta.XXXXXX") || {
+                    _loop_stop_reason="malformed_response"
+                    _ai_set_session_state malformed_response
+                    break
+                }
+                export IGOR_AI_TOOL_META_FILE
                 _IGOR_LAST_EXEC_TIER=""
                 export IGOR_QUIET_LOOP="$_quiet"
-                _fu_cmd_result=$(ai_execute_tool "$_fu_cmd" "$_fu_explain")
-                # P2-1: reply tool signals end of loop
+                if [ "$_follow_reply_finalized" = true ] || [ "$_repeat_stop" = true ]; then
+                    _fu_cmd_result="[BLOCKED: earlier tool ended this batch]"
+                    _fu_dispatch_rc=1
+                else
+                    _ai_set_session_state tool_running
+                    _fu_cmd_result=$(ai_execute_tool "$_fu_cmd" "$_fu_explain") || _fu_dispatch_rc=$?
+                fi
+                _fu_result_json=$(_ai_tx_record "$_fu_cmd" "$_fu_cmd_result" "$_fu_dispatch_rc") || {
+                    rm -f -- "$IGOR_AI_TOOL_META_FILE"
+                    unset IGOR_AI_TOOL_META_FILE
+                    _loop_stop_reason="malformed_response"
+                    _ai_set_session_state malformed_response
+                    break
+                }
+                rm -f -- "$IGOR_AI_TOOL_META_FILE"
+                unset IGOR_AI_TOOL_META_FILE
+                _ai_set_session_state "$(_ai_tx_result_state "$_fu_result_json")"
+                _IGOR_LAST_EXEC_TIER=$(_ai_tx_result_tier "$_fu_result_json")
+                _follow_results_json=$(_ai_tx_append_result "$_follow_results_json" "$_fu_result_json") || {
+                    _loop_stop_reason="malformed_response"
+                    break
+                }
                 if [[ "$_fu_cmd_result" == "[REPLY]"* ]]; then
                     local _reply_body="${_fu_cmd_result#\[REPLY\] }"
                     echo -e "\n  ${GRN}${_reply_body}${NC}\n"
                     _loop_stop_reason="result"
-                    break 2
+                    _follow_reply_finalized=true
                 fi
-                # P2-1: accumulate native_id|||result pairs for tool_result follow-up
-                local _native_id
-                _native_id=$(printf '%s' "$_fu_cmd" | python3 -c "
-import sys,json
-try: print(json.load(sys.stdin).get('__native_id',''))
-except: print('')
-" 2>/dev/null)
-                [ -n "$_native_id" ] && _fu_cmds_with_results+="${_native_id}|||${_fu_cmd_result}"$'\n'
-                # P1-6: Detect validation-blocked signal (do NOT break — feed result back to AI)
                 if [[ "$_fu_cmd_result" == *"[VALIDATION BLOCKED:"* ]]; then
                     _loop_stop_reason="validation_blocked"
                 fi
@@ -3285,15 +3330,14 @@ except: print('')
                     if [ "${_seen_cmd_hashes[$_cmd_sig]}" -ge 2 ]; then
                         echo -e "\n  ${RED}✘  Igor is stuck — same command+result seen ${_seen_cmd_hashes[$_cmd_sig]}× this session.${NC}"
                         echo -e "  ${YEL}   This approach isn't working. Type a new instruction or try a different angle.${NC}"
-                        _loop_output=""; _loop_ran=0
-                        break
+                        _repeat_stop=true
                     fi
                 fi
                 if [[ "$_fu_cmd_result" == *"[BLOCKED BY DENYLIST"* ]]; then
                     local _fd="${_fu_cmd_result#\[BLOCKED BY DENYLIST: }"; _fd="${_fd%]}"
                     _loop_output+="[TOOL RESULT]\n[SYSTEM REJECTION] '${_fd}' is on the safety denylist and cannot be run. Choose a different approach.\n\n"
                     (( _loop_ran++ ))
-                elif [[ "$_fu_cmd_result" != *"[USER SKIPPED"* ]]; then
+                else
                     _loop_output+="[TOOL RESULT]\n${_fu_cmd_result}\n\n"
                     (( _loop_ran++ ))
                     # Accumulate step for quiet summary
@@ -3303,17 +3347,49 @@ except: print('')
                     # the AI runs a READ command to confirm success before stopping.
                     if [[ "${_IGOR_LAST_EXEC_TIER:-}" == "CHANGE" || "${_IGOR_LAST_EXEC_TIER:-}" == "DESTROY" ]]; then
                         _loop_output="[VERIFY REQUIRED] A change was just applied. Run a READ command to confirm the fix worked before declaring the issue resolved.\n\n${_loop_output}"
+                        _follow_runtime_instruction="A change was applied. Run a READ command to verify it before declaring success."
                     fi
                 fi
             done  # Process all commands from response
+            if [ "$_loop_ran" -ne "${#_fu_cmds[@]}" ] || [ "$_loop_stop_reason" = "malformed_response" ]; then
+                _loop_stop_reason="malformed_response"
+                _ai_set_session_state malformed_response
+                warn "Tool batch incomplete; no partial provider turn was persisted."
+                break
+            fi
+            if [ ${#_fu_cmds[@]} -gt 0 ]; then
+                conversation=$(_ai_tx_complete "$conversation" "${_fu_asst_msg:-$_fu_reply}" \
+                    "${_fu_tconv_fmt:-xml}" "$_follow_calls_json" "$_follow_results_json") || {
+                    _loop_stop_reason="malformed_response"
+                    _ai_set_session_state malformed_response
+                    warn "Provider tool transaction invalid; no partial turn persisted."
+                    break
+                }
+            elif [ -n "$_fu_asst_msg" ]; then
+                conversation=$(_nexus_py_append "$conversation" "assistant" "$_fu_asst_msg")
+            else
+                conversation=$(_ai_append_with_summary "$conversation" "assistant" "$_fu_reply")
+            fi
+            _ai_write_conversation
+            _ai_update_state
+            if [ "$_follow_reply_finalized" = true ] || [ "$_repeat_stop" = true ]; then
+                _loop_output=""
+                _loop_ran=0
+                if [ "$_repeat_stop" = true ]; then
+                    _loop_stop_reason="repeated_action"
+                    _ai_set_session_state repeated_action
+                fi
+            fi
 
             # P2-4: prepend evidence rejection message if status was claimed without proof
             if [ "${_ev_rejected_loop:-0}" = "1" ] && [ -n "$_loop_output" ]; then
                 _loop_output="[SYSTEM: Status claim rejected — no evidence_ref provided. Continue investigating.]\n\n${_loop_output}"
+                _follow_runtime_instruction+=" Status claim rejected because no evidence_ref was provided."
                 echo -e "  ${YEL}⚠  Evidence check: status claim rejected — verification required.${NC}"
             elif [ "${_ev_rejected_loop:-0}" = "1" ]; then
                 # AI claimed fixed/not_fixed but ran no commands — force a verification step
                 _loop_output="[SYSTEM: Status claim rejected — no evidence_ref provided. Run a verification READ command now.]\n\n"
+                _follow_runtime_instruction+=" Status claim rejected because no evidence_ref was provided."
                 _loop_ran=1
                 echo -e "  ${YEL}⚠  Evidence check: status claim rejected — forcing verification step.${NC}"
             fi
@@ -3330,21 +3406,27 @@ except: print('')
                     if [ -z "$_sp_canary_fix3" ] || [ "$_sp_canary_fix3" = "null" ]; then
                         echo -e "  ${YEL}⚠  FIXED claimed without canary_command — rejecting.${NC}"
                         _loop_output="[SYSTEM: You declared STATUS=FIXED but provided no canary_command in your scratchpad. This is required. Add a canary_command (a READ command that verifies the fix worked) and run it. Status reset to investigating.]"$'\n'"${_loop_output}"
+                        _follow_runtime_instruction+=" FIXED claim rejected: no canary command was provided."
                         _loop_ran=1
-                        printf '%s' "$_fu_scratchpad" | python3 -c \
+                        local _sp_reset
+                        _sp_reset=$(printf '%s' "$_fu_scratchpad" | python3 -c \
                             "import sys,json; sp=json.loads(sys.stdin.read()); sp['status']='investigating'; print(json.dumps(sp))" \
-                            2>/dev/null > "${IGOR_DIR}/data/scratchpad.txt"
+                            2>/dev/null || true)
+                        _ai_write_scratchpad "$_sp_reset"
                     else
                         local _canary_out_fix3 _canary_exit_fix3
-                        _canary_out_fix3=$(bash -c "$_sp_canary_fix3" 2>&1)
+                        _canary_out_fix3=$(_ai_run_canary_read "$_sp_canary_fix3" 2>&1)
                         _canary_exit_fix3=$?
                         if [ "$_canary_exit_fix3" -ne 0 ] || [ -z "$_canary_out_fix3" ]; then
                             echo -e "  ${RED}✗ FIXED verification FAILED — forcing re-investigation.${NC}"
                             _loop_output="[SYSTEM: FIXED verification FAILED. Canary: ${_sp_canary_fix3} | Exit: ${_canary_exit_fix3} | Output: ${_canary_out_fix3:0:200}. Status reset to investigating. Do not declare FIXED again without explaining this contradiction.]"$'\n'"${_loop_output}"
+                            _follow_runtime_instruction+=" FIXED verification failed; investigate again."
                             _loop_ran=1
-                            printf '%s' "$_fu_scratchpad" | python3 -c \
+                            local _sp_reset
+                            _sp_reset=$(printf '%s' "$_fu_scratchpad" | python3 -c \
                                 "import sys,json; sp=json.loads(sys.stdin.read()); sp['status']='investigating'; print(json.dumps(sp))" \
-                                2>/dev/null > "${IGOR_DIR}/data/scratchpad.txt"
+                                2>/dev/null || true)
+                            _ai_write_scratchpad "$_sp_reset"
                         else
                             echo -e "  ${GRN}✔ Post-fix canary passed: ${_sp_canary_fix3:0:60}${NC}"
                         fi
@@ -3352,48 +3434,21 @@ except: print('')
                 fi
             fi
 
-            # Fix 2: inject recovery context when truncation was detected this iteration
-            if [ "$_trunc_recovery_loop" = "true" ]; then
-                _loop_output="[SYSTEM: previous API response was truncated before completion. Resume from last known state: ${_trunc_sp_content}. Continue the investigation — do not restart from the beginning.]"
-                _loop_ran=1
+            if [ -n "$_follow_runtime_instruction" ] && [ ${#_fu_cmds[@]} -gt 0 ]; then
+                conversation=$(_ai_append_with_summary "$conversation" "user" \
+                    "Igor session control: ${_follow_runtime_instruction}")
+                _ai_write_conversation
             fi
 
-            # R3-B: Retry up to 2× when AI emits no tool tag (escalating pressure)
-            # Skip retry entirely if the AI emitted a RESULT: block — that's a clean completion.
-            if [ ${#_fu_cmds[@]} -eq 0 ] && printf '%s' "$_fu_reply" | grep -q 'RESULT:'; then
-                _loop_stop_reason="result"
-                break
-            fi
             if [ ${#_fu_cmds[@]} -eq 0 ]; then
-                local _retry_reason="" _retry_attempt=0
-                while [ ${#_fu_cmds[@]} -eq 0 ] && [ "$_retry_attempt" -lt 2 ]; do
-                    (( _retry_attempt++ ))
-                    if [ "$_retry_attempt" -eq 1 ]; then
-                        # First retry: specific diagnosis
-                        if printf '%s' "$_fu_reply" | grep -qiE 'here are the results|results of the commands'; then
-                            _retry_reason="You echoed the tool results back instead of using them. Do NOT repeat the results — they are already in my context. Based on those results, emit exactly ONE tool tag to take the NEXT action."
-                        elif printf '%s' "$_fu_reply" | grep -qE '<[a-z_-]+[[:space:]>]'; then
-                            local _bad_tag; _bad_tag=$(printf '%s' "$_fu_reply" | grep -oE '<[a-z_-]+' | head -1)
-                            echo -e "  ${YEL}  (invalid tag ${_bad_tag}> — retrying)${NC}"
-                            _retry_reason="You used an unknown tool tag '${_bad_tag}>'. Valid tools are: <host>, <occ>, <container action=\"restart\">, <read_log>, <edit_file>. Use exactly ONE of those now."
-                        else
-                            _retry_reason="You did not emit a tool tag. You MUST emit exactly ONE tool tag to continue this task. If the task is complete, emit: <host> echo TASK_COMPLETE </host>"
-                        fi
-                    else
-                        # Second retry: maximum pressure
-                        _retry_reason="CRITICAL: Your response contained no valid tool tag (attempt 2/2). Emit ONE tool tag immediately — nothing else is accepted. Use <host> echo DONE </host> if the task is truly complete, or <host> echo STUCK </host> if you cannot proceed. Any other response will terminate the loop."
-                    fi
-                    conversation=$(_ai_append_with_summary "$conversation" "user" "[CORRECTION attempt ${_retry_attempt}/2] ${_retry_reason}")
-                    export NEXUS_CONV="$conversation"
-                    _fu_raw=$(_nexus_api_call)
-                    _nexus_parse_result "$_fu_raw" _fu_reply _fu_cmds _fu_in _fu_out _fu_explain _fu_think
-                    ai_add_cost "$_fu_in" "$_fu_out"
-                done
-                # If still no tool after 2 retries, break cleanly
-                if [ ${#_fu_cmds[@]} -eq 0 ]; then
-                    echo -e "  ${YEL}ℹ  No further actions — Igor has completed or paused this step.${NC}"
-                    break
+                if printf '%s' "$_fu_reply" | grep -qE '^RESULT:|^OUTCOME:'; then
+                    _loop_stop_reason="result"
+                    _ai_set_session_state completed
+                else
+                    _loop_stop_reason="no_further_action"
+                    _ai_set_session_state no_further_action
                 fi
+                break
             fi
             # Auto-extend READ-only loops: bump limit inside the body so the while
             # condition re-evaluates before exiting. Only triggers when no CHANGE/DESTROY ran.
@@ -3410,7 +3465,10 @@ except: print('')
             rm -f "$_sig_file" 2>/dev/null
         fi
         # Iteration cap overrides any mid-loop signal
-        [ "$_loop_steps" -ge "$_loop_max" ] && _loop_stop_reason="iteration_cap"
+        if [ -z "$_loop_stop_reason" ] && [ "$_loop_steps" -ge "$_loop_max" ]; then
+            _loop_stop_reason="continuation_limit"
+            _ai_set_session_state continuation_limit
+        fi
         # R3-C: After any agentic work, next user message gets priority prefix
         if [ "$_loop_steps" -gt 0 ]; then
             _IGOR_AWAITING_DIRECTION=true
@@ -3437,14 +3495,26 @@ except: print('')
                     echo -e "  ${YEL}  ⏸ Command skipped — type a follow-up to try a different approach.${NC}" ;;
                 DESTROY_DECLINED)
                     echo -e "  ${RED}  ✗ Destructive command not confirmed — loop stopped.${NC}" ;;
-                iteration_cap)
+                continuation_limit)
                     echo -e "  ${YEL}  ⚠ Reached ${_loop_max} steps. Type 'continue' for more, or ask a new question.${NC}" ;;
                 validation_blocked)
                     echo -e "  ${RED}  ✗ Command rejected by validator — Igor will retry with corrected values.${NC}" ;;
-                api_error)
-                    echo -e "  ${YEL}  ⚠ API error or empty response. Type 'retry' or ask a new question.${NC}" ;;
+                provider_failed)
+                    echo -e "  ${RED}  ✗ Provider request failed. Tool results were preserved; type 'retry' to continue.${NC}" ;;
+                malformed_response)
+                    echo -e "  ${RED}  ✗ Malformed provider response or tool transaction; no partial turn was saved.${NC}" ;;
+                payload_blocked)
+                    echo -e "  ${RED}  ✗ Request blocked by Igor's local payload boundary.${NC}" ;;
+                configuration_error)
+                    echo -e "  ${RED}  ✗ AI configuration prevented the request.${NC}" ;;
+                repeated_action)
+                    echo -e "  ${YEL}  ⏸ Repeated action detected; investigation paused.${NC}" ;;
+                stopped_by_user)
+                    echo -e "  ${YEL}  ⏸ Continuation stopped by user.${NC}" ;;
+                no_further_action)
+                    echo -e "  ${CYAN}  ℹ Model requested no further actions.${NC}" ;;
                 *)
-                    echo -e "  ${GRN}  Status: no further actions needed${NC}" ;;
+                    echo -e "  ${YEL}  Status: ${_AI_SESSION_STATE:-investigating}${NC}" ;;
             esac
             echo -e "  ${CYAN}────────────────────────────────────────────────────────────${NC}"
             echo ""
@@ -3531,19 +3601,37 @@ _ai_run_undo_entry() {
             _path=$(echo "$_rev"    | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('path',''))")
             _efind=$(echo "$_rev"   | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('find',''))")
             _ereplace=$(echo "$_rev" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replace',''))")
-            _rev_output=$(_safe_file_edit "$_path" "$_efind" "$_ereplace" 2>&1)
+            local _edit_json
+            _edit_json=$(python3 - "$_path" "$_efind" "$_ereplace" <<'PY'
+import json
+import sys
+print(json.dumps({"tool": "edit_file", "path": sys.argv[1],
+                  "find": sys.argv[2], "replace": sys.argv[3]}))
+PY
+            ) || return 1
+            _rev_output=$(ai_execute_tool "$_edit_json" "Undo previous file edit" 2>&1)
             _rev_exit=$?
             ;;
         occ)
-            local _rev_cmd _igor_wd="${IGOR_DIR:-.}"
+            if declare -f igor_has_capability >/dev/null 2>&1 && \
+               ! igor_has_capability nextcloud; then
+                warn "Cannot undo application action: no active Nextcloud capability"
+                return 1
+            fi
+            local _rev_cmd _occ_json
             _rev_cmd=$(echo "$_rev" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('command',''))")
-            # shellcheck disable=SC2086
-            _rev_output=$(cd "$_igor_wd" && docker compose exec -T -u www-data app php occ $_rev_cmd 2>&1)
+            _occ_json=$(python3 - "$_rev_cmd" <<'PY'
+import json
+import sys
+print(json.dumps({"tool": "occ", "cmd": sys.argv[1]}))
+PY
+            ) || return 1
+            _rev_output=$(ai_execute_tool "$_occ_json" "Undo previous application action" 2>&1)
             _rev_exit=$?
             ;;
         *)
             warn "No automatic reverse for tool: ${_tool}"
-            return
+            return 1
             ;;
     esac
 

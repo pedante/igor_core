@@ -197,6 +197,9 @@ igor_tune() {
 
     local _mod
     for _mod in $(printf '%s\n' "${!_IGOR_LOADED_MODULES[@]:-}" | sort); do
+        if declare -f igor_has_module >/dev/null 2>&1; then
+            igor_has_module "$_mod" || continue
+        fi
         [ -n "$_target_module" ] && [ "$_mod" != "$_target_module" ] && continue
 
         local _dir="${_IGOR_MODULE_DIRS[$_mod]:-}"

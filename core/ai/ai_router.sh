@@ -1,5 +1,7 @@
 #!/bin/bash
 # ==============================================================================
+
+source "$(dirname "${BASH_SOURCE[0]}")/control.sh"
 #  IGOR — ai/ai_router.sh
 #  Provider engine dispatcher.
 #
@@ -15,7 +17,7 @@
 #    NEXUS_PROVIDER=anthropic   → engine_anthropic/
 #    NEXUS_PROVIDER=openrouter  → engine_openrouter/  (model-aware internally)
 #    NEXUS_PROVIDER=openai      → engine_openai/      (reserved for direct OAI)
-#    unknown                    → falls back to engine_anthropic/
+#    unknown                    → rejected
 #
 #  Environment vars read:
 #    NEXUS_PROVIDER, NEXUS_MODEL, IGOR_DIR
@@ -29,6 +31,10 @@
 # ── Select engine directory ────────────────────────────────────────────────────
 _ai_router_engine_dir() {
     local _provider="${NEXUS_PROVIDER:-anthropic}"
+    case "$_provider" in
+        anthropic|openai|openrouter|ollama) ;;
+        *) printf 'Unsupported AI provider.\n' >&2; return 1 ;;
+    esac
     local _dir="${IGOR_DIR}/core/ai/engine_${_provider}"
     if [ ! -d "$_dir" ]; then
         # Unknown provider — fall back to Anthropic XML strategy
@@ -41,53 +47,25 @@ _ai_router_engine_dir() {
 # Each hook outputs a compact single-line JSON array.
 # This function aggregates them into one flat array in IGOR_TOOLS_JSON.
 _ai_router_collect_tools_json() {
-    if ! declare -f igor_run_all_hooks &>/dev/null; then
-        IGOR_TOOLS_JSON="[]"
-        export IGOR_TOOLS_JSON
-        return
-    fi
-
-    local _raw
-    _raw=$(igor_run_all_hooks "ai_tools" 2>/dev/null || true)
-
-    if [ -z "$_raw" ]; then
-        IGOR_TOOLS_JSON="[]"
-        export IGOR_TOOLS_JSON
-        return
-    fi
-
-    # Merge newline-separated JSON arrays into one flat array via Python.
-    local _merged
-    _merged=$(printf '%s\n' "$_raw" | python3 -c "
-import sys, json
-merged = []
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        data = json.loads(line)
-        if isinstance(data, list):
-            merged.extend(data)
-        elif isinstance(data, dict):
-            merged.extend(data.get('tools', [data]))
-    except json.JSONDecodeError:
-        pass
-print(json.dumps(merged))
-" 2>/dev/null || echo "[]")
-
-    IGOR_TOOLS_JSON="$_merged"
+    # The parser's supported grammar is authoritative. Modules extend it through
+    # owned run_igor_action entries, not arbitrary executable schema fragments.
+    local catalog
+    catalog=$(ai_catalog_json) || return 1
+    IGOR_TOOLS_JSON=$(printf '%s' "$catalog" | python3 -c \
+        'import json,sys; print(json.dumps(json.load(sys.stdin)["tools"]))') || return 1
     export IGOR_TOOLS_JSON
+    return 0
 }
+
 
 # ── Public: format tools for the active provider ───────────────────────────────
 # Populates IGOR_MODULE_TOOLS and NEXUS_TOOLS_JSON based on provider + model.
 ai_router_format_tools() {
     # 1. Collect raw abstract tool JSON from module hooks
-    _ai_router_collect_tools_json
+    _ai_router_collect_tools_json || return 1
 
     # 2. Source and run the engine's format_tools.sh
-    local _engine_dir; _engine_dir=$(_ai_router_engine_dir)
+    local _engine_dir; _engine_dir=$(_ai_router_engine_dir) || return 1
     local _fmt="${_engine_dir}/format_tools.sh"
 
     if [ -f "$_fmt" ]; then
@@ -119,7 +97,7 @@ ai_router_format_tools() {
 
 # ── Public: make API call via the active engine ────────────────────────────────
 ai_router_make_api_call() {
-    local _engine_dir; _engine_dir=$(_ai_router_engine_dir)
+    local _engine_dir; _engine_dir=$(_ai_router_engine_dir) || return 1
     local _client="${_engine_dir}/api_client.sh"
 
     if [ -f "$_client" ]; then

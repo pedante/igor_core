@@ -17,10 +17,24 @@
 
 APP_RISK_DIR="${IGOR_DIR}/app_risk"
 
+# Return success only when the owning module is active.  Without the lifecycle
+# loader there is no trustworthy ownership state, so fail closed.
+_mod_apps_nextcloud_active() {
+    if declare -f igor_has_module >/dev/null 2>&1; then
+        igor_has_module nextcloud_docker
+    else
+        return 1
+    fi
+}
+
 # ── supervised_app_install APP_NAME ──────────────────────────────────────────
 supervised_app_install() {
     local app_name="${1:-}"
     [ -z "$app_name" ] && { fail "App name required"; return 1; }
+    _mod_apps_nextcloud_active || {
+        warn "Nextcloud app installation is unavailable: nextcloud_docker is disabled"
+        return 1
+    }
 
     local RED='\033[0;31m' GRN='\033[0;32m' YEL='\033[1;33m'
     local CYAN='\033[0;36m' MAG='\033[0;35m' BOLD='\033[1m' NC='\033[0m'
@@ -186,6 +200,7 @@ print('yes' if '${app_name}' in d.get('enabled',{}) else 'no')
 app_monitor_window() {
     local app_name="$1"
     local secs="${2:-90}"
+    _mod_apps_nextcloud_active || return 1
     local RED='\033[0;31m' GRN='\033[0;32m' YEL='\033[1;33m'
     local CYAN='\033[0;36m' NC='\033[0m'
 
@@ -247,6 +262,7 @@ app_monitor_window() {
 # ── app_risk_register_get APP_NAME ────────────────────────────────────────────
 app_risk_register_get() {
     local app_name="${1:-}"
+    _mod_apps_nextcloud_active || return 1
     local CYAN='\033[0;36m' BOLD='\033[1m' NC='\033[0m'
     local risk_file="${APP_RISK_DIR}/${app_name}.risk"
 
@@ -267,6 +283,7 @@ app_risk_register_get() {
 # STATUS: OK | FAIL | PARTIAL
 app_risk_register_record() {
     local app_name="${1:-}" status="${2:-OK}" issues="${3:-none}"
+    _mod_apps_nextcloud_active || return 1
     [ -z "$app_name" ] && return 1
 
     mkdir -p "$APP_RISK_DIR"
@@ -376,6 +393,7 @@ _mod_apps_pre_install_checks() {
 # ── app_risk_register_list ────────────────────────────────────────────────────
 # List all risk profiles.
 app_risk_register_list() {
+    _mod_apps_nextcloud_active || return 1
     local BOLD='\033[1m' CYAN='\033[0;36m' GRN='\033[0;32m' RED='\033[0;31m' NC='\033[0m'
 
     echo ""

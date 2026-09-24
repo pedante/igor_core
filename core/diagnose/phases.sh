@@ -66,6 +66,25 @@ _diag_collect_check() {
     done <<< "$raw_output"
 }
 
+_diag_nextcloud_active() {
+    if declare -f igor_has_capability >/dev/null 2>&1; then
+        igor_has_capability nextcloud
+        return $?
+    elif declare -f igor_has_module >/dev/null 2>&1; then
+        igor_has_module nextcloud_docker
+        return $?
+    fi
+    return 1
+}
+
+_diag_system_active() {
+    if declare -f igor_has_module >/dev/null 2>&1; then
+        igor_has_module system
+        return $?
+    fi
+    return 1
+}
+
 # ── Phase 0 — Environment Discovery ───────────────────────────────────────────
 # Populates _DIAG[] context. No CHECK_RESULT entries.
 _diag_phase_0() {
@@ -80,12 +99,18 @@ _diag_phase_0() {
     _DIAG[env_swap_total]=$(free -m 2>/dev/null | awk 'NR==3{print $2}' || echo "?")
     _DIAG[env_uptime]=$(uptime -p 2>/dev/null || uptime 2>/dev/null || echo "unknown")
 
-    # Docker versions
-    _DIAG[env_docker_version]=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unavailable")
-    _DIAG[env_compose_version]=$(docker compose version --short 2>/dev/null || echo "unavailable")
+    # Docker is an application capability, not a host prerequisite.
+    if _diag_nextcloud_active; then
+        _DIAG[env_docker_version]=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unavailable")
+        _DIAG[env_compose_version]=$(docker compose version --short 2>/dev/null || echo "unavailable")
+    else
+        _DIAG[env_docker_version]="not applicable"
+        _DIAG[env_compose_version]="not applicable"
+    fi
 
     # Role detection (populates _DIAG_ROLES)
-    if [ "${_DIAG[env_docker_version]}" != "unavailable" ]; then
+    if [ "${_DIAG[env_docker_version]}" != "unavailable" ] &&
+       [ "${_DIAG[env_docker_version]}" != "not applicable" ]; then
         _diag_detect_roles
     fi
     _DIAG[env_roles_summary]=$(_diag_roles_summary 2>/dev/null || echo "none")
@@ -104,13 +129,15 @@ _diag_phase_0() {
     fi
 
     # ── Docker daemon health ───────────────────────────────────────────────────
-    local docker_info
-    docker_info=$(docker info 2>&1)
-    local docker_info_exit=$?
-    if (( docker_info_exit != 0 )) || ! echo "$docker_info" | grep -q "Server:"; then
-        _diag_emit CRITICAL docker_daemon_unhealthy "Docker daemon not responding correctly — 'docker info' failed or returned no Server section"
-    else
-        _diag_emit OK docker_daemon_health "Docker daemon responding (docker info OK)"
+    if _diag_nextcloud_active; then
+        local docker_info
+        docker_info=$(docker info 2>&1)
+        local docker_info_exit=$?
+        if (( docker_info_exit != 0 )) || ! echo "$docker_info" | grep -q "Server:"; then
+            _diag_emit CRITICAL docker_daemon_unhealthy "Docker daemon not responding correctly — 'docker info' failed or returned no Server section"
+        else
+            _diag_emit OK docker_daemon_health "Docker daemon responding (docker info OK)"
+        fi
     fi
 
     # ── Network interfaces ─────────────────────────────────────────────────────
@@ -417,12 +444,16 @@ _diag_phase_2() {
 
     # ── Reuse healing storage check ───────────────────────────────────────────
     local healing_storage="${IGOR_DIR}/modules/system/checks/storage.sh"
-    if [ -f "$healing_storage" ]; then
+    if _diag_system_active && [ -f "$healing_storage" ]; then
         _diag_collect_check 2 "$healing_storage"
     fi
+    local application_storage="${IGOR_DIR}/modules/nextcloud_docker/checks/storage.sh"
+    if _diag_nextcloud_active && [ -f "$application_storage" ]; then
+        _diag_collect_check 2 "$application_storage"
+    fi
 
-    # ── HD mount content verification ─────────────────────────────────────────
-    if mount | grep -q "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null; then
+    # ── Application data mount verification ───────────────────────────────────
+    if _diag_nextcloud_active && mount | grep -q "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null; then
         # Check NC data marker
         local marker="${NC_DATA:-/mnt/nextclouddata/next}/.ncdata"
         if [ -f "$marker" ]; then
@@ -433,7 +464,7 @@ _diag_phase_2() {
     fi
 
     # ── fstab nofail check ────────────────────────────────────────────────────
-    if [ -r /etc/fstab ]; then
+    if _diag_nextcloud_active && [ -r /etc/fstab ]; then
         local hd_device
         hd_device=$(grep "${HD_MOUNT:-/mnt/nextclouddata}" /etc/fstab 2>/dev/null | grep -v '^#' | head -1)
         if [ -n "$hd_device" ]; then
@@ -446,7 +477,7 @@ _diag_phase_2() {
     fi
 
     # ── fstab optimization checks ─────────────────────────────────────────────
-    if [ -r /etc/fstab ]; then
+    if _diag_nextcloud_active && [ -r /etc/fstab ]; then
         local hd_fstab_line
         hd_fstab_line=$(grep "${HD_MOUNT:-/mnt/nextclouddata}" /etc/fstab 2>/dev/null | grep -v '^#' | head -1)
         if [ -n "$hd_fstab_line" ]; then
@@ -473,7 +504,7 @@ _diag_phase_2() {
     done < <(df -t tmpfs 2>/dev/null | awk 'NR>1')
 
     # ── Docker container log bloat ────────────────────────────────────────────
-    if [ -d /var/lib/docker/containers ]; then
+    if _diag_nextcloud_active && [ -d /var/lib/docker/containers ]; then
         local big_logs
         big_logs=$(find /var/lib/docker/containers -name "*.log" -size +100M 2>/dev/null | wc -l | tr -d '[:space:]')
         if (( big_logs > 0 )); then
@@ -525,7 +556,7 @@ _diag_phase_2() {
     fi
 
     # ── SMART health check ────────────────────────────────────────────────────
-    if command -v smartctl &>/dev/null; then
+    if _diag_nextcloud_active && command -v smartctl &>/dev/null; then
         # Find the HD device via the mount point
         local hd_dev
         hd_dev=$(df "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null | awk 'NR==2{print $1}' | sed 's/[0-9]*$//' | head -1)
@@ -543,7 +574,8 @@ _diag_phase_2() {
     fi
 
     # ── Inode usage ───────────────────────────────────────────────────────────
-    local mounts_to_check=("/" "${HD_MOUNT:-/mnt/nextclouddata}")
+    local mounts_to_check=("/")
+    _diag_nextcloud_active && mounts_to_check+=("${HD_MOUNT:-/mnt/nextclouddata}")
     local mnt
     for mnt in "${mounts_to_check[@]}"; do
         if mount | grep -q " $mnt " 2>/dev/null || [ "$mnt" = "/" ]; then
@@ -562,7 +594,7 @@ _diag_phase_2() {
     done
 
     # ── Docker storage ────────────────────────────────────────────────────────
-    if [ -d /var/lib/docker ]; then
+    if _diag_nextcloud_active && [ -d /var/lib/docker ]; then
         local docker_pct
         docker_pct=$(df /var/lib/docker 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}' || true)
         if (( docker_pct >= 95 )); then
@@ -575,7 +607,7 @@ _diag_phase_2() {
     fi
 
     # ── NC_DATA permissions ───────────────────────────────────────────────────
-    if [ -d "${NC_DATA:-/mnt/nextclouddata/next}" ]; then
+    if _diag_nextcloud_active && [ -d "${NC_DATA:-/mnt/nextclouddata/next}" ]; then
         local perms
         perms=$(stat -c "%a" "${NC_DATA:-/mnt/nextclouddata/next}" 2>/dev/null || echo "000")
         # Should be 750 (not world-readable)
@@ -587,7 +619,7 @@ _diag_phase_2() {
     fi
 
     # ── Deep: tune2fs error check ─────────────────────────────────────────────
-    if [ "$deep" = "true" ] && command -v tune2fs &>/dev/null; then
+    if _diag_nextcloud_active && [ "$deep" = "true" ] && command -v tune2fs &>/dev/null; then
         local hd_device
         hd_device=$(df "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null | awk 'NR==2{print $1}' | head -1)
         if [ -n "$hd_device" ]; then

@@ -21,6 +21,9 @@ import http.client
 import ssl
 import ipaddress
 
+from request_boundary import prepare as prepare_request
+from transactions import TransactionError, trim, validate_history
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  SHARED: VALIDATION LOGIC  (used by both call and validate modes)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -108,8 +111,8 @@ def validate_tool_call(tool):
         if reason:
             warnings.append(reason)
 
-    elif tool_type == "read_file":
-        path = tool.get("path", "")
+    elif tool_type in ("read_file", "read_report"):
+        path = tool.get("path", tool.get("filename", ""))
         ok, reason = _validate_no_path_traversal(path)
         if not ok:
             return False, True, reason, []
@@ -233,27 +236,28 @@ def mode_append():
     except Exception:
         msgs = []
 
-    # P2-1: handle tool_result arrays and OpenAI tool_calls dicts
-    try:
-        parsed = json.loads(msg)
-        if isinstance(parsed, list):
-            msgs.append({"role": role, "content": parsed})
-        elif isinstance(parsed, dict) and "tool_calls" in parsed:
-            msgs.append(parsed)
+    # Only Igor's assistant adapter may append structured text blocks here.
+    # Native tool turns use transactions.complete(); user JSON remains text.
+    if role == "assistant":
+        try:
+            parsed = json.loads(msg)
+        except (ValueError, TypeError):
+            parsed = None
+        if isinstance(parsed, list) and all(
+            isinstance(block, dict) and block.get("type") == "text"
+            for block in parsed
+        ):
+            msgs.append({"role": "assistant", "content": parsed})
         else:
-            msgs.append({"role": role, "content": msg})
-    except Exception:
+            msgs.append({"role": "assistant", "content": msg})
+    else:
         msgs.append({"role": role, "content": msg})
 
-    MAX_MESSAGES = 14
-    if len(msgs) > MAX_MESSAGES:
-        excess = len(msgs) - MAX_MESSAGES
-        excess = excess + (excess % 2)
-        if len(msgs) > 2:
-            anchor = msgs[:2]
-            rest   = msgs[2:]
-            rest   = rest[:max(2, len(rest) - excess)]
-            msgs   = anchor + rest
+    try:
+        msgs = trim(msgs)
+    except TransactionError as error:
+        print(f"conversation append rejected: {error}", file=sys.stderr)
+        sys.exit(1)
 
     print(json.dumps(msgs))
 
@@ -405,7 +409,9 @@ def _tools_mode(provider, model):
     if provider == "anthropic":
         return "anthropic"
     if provider == "openrouter":
-        if "claude-" in model or "gpt-4" in model or "gpt-3.5" in model:
+        if model.startswith(("openai/", "anthropic/")) or any(
+            family in model for family in ("claude-", "gpt-4", "gpt-3.5")
+        ):
             return "openai"
     return "xml"
 
@@ -423,6 +429,17 @@ _TOOL_NAME_MAP = {
 def _normalize_native_tool(name, raw_input, native_id):
     internal = _TOOL_NAME_MAP.get(name, name)
     base = {"__native_id": native_id}
+    if not isinstance(raw_input, dict):
+        return {**base, "tool": internal, "invalid_input": "expected object"}
+    from tool_input import SCHEMAS
+    if name in SCHEMAS:
+        return {**raw_input, **base, "tool": internal}
+    # The canonical catalog uses the same field names as the dispatcher.
+    # Retain legacy aliases only for older provider/session records.
+    if internal in ("host", "occ") and "cmd" in raw_input:
+        return {**raw_input, **base, "tool": internal}
+    if internal == "container" and "target" in raw_input:
+        return {**raw_input, **base, "tool": internal}
     if internal == "host":
         return {**base, "tool": "host", "cmd": raw_input.get("command", "")}
     if internal == "occ":
@@ -480,13 +497,31 @@ def _extract_xml_tools(reply_text):
         lambda g: {"tool": "execute", "cmd": g.strip()}, reply_text)
     reply_text = _extract(r'<run_igor_action>\s*(.*?)\s*</run_igor_action>',
         lambda g: {"tool": "run_igor_action", "cmd": g.strip()}, reply_text)
+    reply_text = _extract(r'<read_file\s+lines="([0-9]+)">\s*(.*?)\s*</read_file>',
+        lambda g: {"tool": "read_file", "lines": g[0], "path": g[1].strip()}, reply_text)
+    reply_text = _extract(r'<read_report>\s*(.*?)\s*</read_report>',
+        lambda g: {"tool": "read_report", "filename": g.strip()}, reply_text)
+    reply_text = _extract(r'<reply\s+status="([^"]+)">\s*(.*?)\s*</reply>',
+        lambda g: {"tool": "reply", "status": g[0], "message": g[1]}, reply_text)
 
     return tools, reply_text.strip()
 
 
-def _emit_error(msg):
-    sys.stdout.write(f"REPLY_START\nERROR: {msg}\nREPLY_END\nTOKENS_IN: 0\nTOKENS_OUT: 0\n")
+def _emit_error(msg, kind="provider"):
+    from privacy import scrub_text
+    msg = " ".join(scrub_text(msg).splitlines())
+    _audit_response("failed")
+    sys.stdout.write(f"REPLY_START\nERROR: {msg}\nREPLY_END\nPROVIDER_ERROR: true\nERROR_KIND: {kind}\nTOKENS_IN: 0\nTOKENS_OUT: 0\n")
     sys.stdout.flush()
+
+
+def _audit_response(outcome, **metadata):
+    from operations import append
+    try:
+        append({"event": "response", "request_id": os.environ.get("IGOR_AI_REQUEST_ID", ""),
+                "outcome": outcome, **metadata})
+    except (OSError, ValueError):
+        print("AI response could not be recorded.", file=sys.stderr)
 
 
 class _ScratchpadFilter:
@@ -497,12 +532,12 @@ class _ScratchpadFilter:
     a scratchpad block is forwarded immediately; the block itself is silently
     consumed so only the Rich panel (rendered later) is visible to the user.
     """
-    _OPEN  = "<scratchpad>"
-    _CLOSE = "</scratchpad>"
+    _OPENS = {"<scratchpad>": "</scratchpad>", "<think>": "</think>"}
 
     def __init__(self):
         self._hold  = ""    # partial tag candidate held at chunk boundary
         self._skip  = False # True while inside a scratchpad block
+        self._close = ""
 
     def feed(self, chunk: str) -> str:
         """Return the portion of chunk that is safe to display."""
@@ -512,29 +547,31 @@ class _ScratchpadFilter:
 
         while text:
             if self._skip:
-                end = text.find(self._CLOSE)
+                end = text.find(self._close)
                 if end >= 0:
-                    text = text[end + len(self._CLOSE):]
+                    text = text[end + len(self._close):]
                     self._skip = False
                 else:
                     # Tail might be a partial closing tag — hold it
-                    for n in range(len(self._CLOSE) - 1, 0, -1):
-                        if text.endswith(self._CLOSE[:n]):
+                    for n in range(len(self._close) - 1, 0, -1):
+                        if text.endswith(self._close[:n]):
                             self._hold = text[-n:]
                             text = ""
                             break
                     else:
                         text = ""   # consume (still inside block)
             else:
-                start = text.find(self._OPEN)
+                candidates = [(text.find(tag), tag) for tag in self._OPENS if tag in text]
+                start, opening = min(candidates) if candidates else (-1, "")
                 if start >= 0:
                     out.append(text[:start])
-                    text = text[start + len(self._OPEN):]
+                    text = text[start + len(opening):]
+                    self._close = self._OPENS[opening]
                     self._skip = True
                 else:
                     # Tail might be a partial opening tag — hold it
-                    for n in range(len(self._OPEN) - 1, 0, -1):
-                        if text.endswith(self._OPEN[:n]):
+                    for n in range(max(map(len, self._OPENS)) - 1, 0, -1):
+                        if any(text.endswith(tag[:n]) for tag in self._OPENS if len(tag) > n):
                             out.append(text[:-n])
                             self._hold = text[-n:]
                             text = ""
@@ -549,6 +586,12 @@ class _ScratchpadFilter:
 def mode_call():
     """Full API round-trip: HTTP stream + parse + validate + emit markers."""
     provider   = os.environ.get("NEXUS_PROVIDER",    "anthropic").lower()
+    if os.environ.get("IGOR_AI_ENABLED", "true") != "true":
+        _emit_error("AI is disabled by administrator policy", "payload_blocked")
+        return
+    if provider not in {"anthropic", "openrouter", "ollama"}:
+        _emit_error("Unsupported AI provider", "configuration_error")
+        return
     api_key    = os.environ.get("NEXUS_API_KEY",      "").strip()
     model      = os.environ.get("NEXUS_MODEL",        "claude-haiku-4-5-20251001")
     max_tokens = int(os.environ.get("NEXUS_MAX_TOKENS", "2048"))
@@ -562,32 +605,37 @@ def mode_call():
         temperature = 0.7
 
     if not api_key and provider != "ollama":
-        _emit_error("No API key set. Add key with: menu A → settings")
+        _emit_error("No API key set. Add key with: menu A → settings", "configuration_error")
         return
 
     try:
         messages = json.loads(conv_raw)
     except Exception as e:
-        _emit_error(f"conversation parse failed: {e}")
+        _emit_error(f"conversation parse failed: {e}", "malformed_response")
         return
 
-    igor_dir = os.environ.get("IGOR_DIR", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        validate_history(messages)
+    except TransactionError as error:
+        _emit_error(f"invalid provider conversation: {error}", "malformed_response")
+        return
+
     _tools_defs = []
-    # Primary: module-provided native schemas from NEXUS_TOOLS_JSON (set by ai_router.sh)
+    # Native schemas from the canonical catalog (set by ai_router.sh).
     _nexus_tools_raw = os.environ.get("NEXUS_TOOLS_JSON", "").strip()
     if _nexus_tools_raw and _nexus_tools_raw != "[]":
         try:
             _tools_defs = json.loads(_nexus_tools_raw)
         except Exception:
             pass
-    # Fallback: static definitions.json (legacy path)
-    if not _tools_defs:
-        _tools_path = os.path.join(igor_dir, "lib", "tools", "definitions.json")
-        try:
-            with open(_tools_path) as f:
-                _tools_defs = json.load(f)
-        except Exception:
-            pass
+    # An empty catalog is intentional. Never resurrect tools from a second,
+    # static source when policy or active modules provided no tools.
+    try:
+        system, messages, _tools_defs = prepare_request(system, messages, _tools_defs)
+    except (ValueError, OSError, TypeError) as exc:
+        _emit_error(f"request boundary rejected input: {type(exc).__name__}",
+                    "payload_blocked")
+        return
 
     ctx = ssl.create_default_context()
     full_text    = []
@@ -713,7 +761,7 @@ def mode_call():
         }
         if _tmode == "openai" and _tools_defs:
             payload_dict["tools"] = [
-                {"type": "function", "function": {
+                t if "function" in t else {"type": "function", "function": {
                     "name": t["name"], "description": t["description"],
                     "parameters": t["input_schema"],
                 }} for t in _tools_defs
@@ -954,6 +1002,8 @@ def mode_call():
         sys.stdout.write("EVIDENCE_REJECTED: true\n")
         sys.stdout.write(f"STATUS_INJECTION_B64: {_b64(ev_injection_msg)}\n")
     sys.stdout.write(f"VALIDATION_B64: {_b64(json.dumps(validation_results))}\n")
+    _audit_response("received", tokens_in=input_tok, tokens_out=output_tok,
+                    tool_count=len(tools_to_run), stop_reason=stop_reason)
     sys.stdout.flush()
 
 

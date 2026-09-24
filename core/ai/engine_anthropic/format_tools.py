@@ -81,7 +81,8 @@ def to_schema(tools: list) -> str:
             input_schema = {
                 "type": "object",
                 "properties": raw_params,
-                "required": list(raw_params.keys()),
+                "required": tool.get("required", list(raw_params.keys())),
+                "additionalProperties": False,
             }
         else:
             # Single-parameter tool using xml_content as param name

@@ -14,7 +14,17 @@ CHECK_SCHEDULE="300"
 # PATTERN_HINT hd_not_mounted "External HD not mounted at HD_MOUNT" CHANGE "sudo mount -a"
 # PATTERN_HINT nc_data_wrong_owner "NC data dir has wrong ownership" CHANGE "sudo chown -R 1004:1004 /mnt/nextclouddata/next"
 
-run_check() {
+# Kept as a compatibility shim for old callers.  Module state is authoritative;
+# paths and legacy environment toggles must not activate application checks.
+_storage_nextcloud_enabled() {
+    if declare -f igor_has_module >/dev/null 2>&1; then
+        igor_has_module nextcloud_docker
+        return $?
+    fi
+    return 1
+}
+
+_legacy_storage_check() {
     # ── Root filesystem usage ─────────────────────────────────────────────────
     local root_pct
     root_pct=$(df / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
@@ -29,49 +39,55 @@ run_check() {
         echo "CHECK_RESULT OK disk_ok Root filesystem usage normal (${root_pct:-?}%)"
     fi
 
-    # ── External HD mount ─────────────────────────────────────────────────────
-    local hd_mount="${HD_MOUNT:-/mnt/nextclouddata}"
+    if _storage_nextcloud_enabled; then
+        # ── External HD mount ────────────────────────────────────────────────
+        local hd_mount="${HD_MOUNT:-/mnt/nextclouddata}"
 
-    if mount | grep -q "$hd_mount" 2>/dev/null; then
-        echo "CHECK_RESULT OK hd_mounted External HD mounted at ${hd_mount}"
+        local hd_mounted=false
+        if mount | grep -q "$hd_mount" 2>/dev/null; then
+            hd_mounted=true
+            echo "CHECK_RESULT OK hd_mounted External HD mounted at ${hd_mount}"
 
-        # HD usage check
-        local hd_pct
-        hd_pct=$(df "$hd_mount" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
-        if [ -n "$hd_pct" ] && [ "$hd_pct" -ge 90 ] 2>/dev/null; then
-            echo "CHECK_RESULT CRITICAL hd_full HD mount ${hd_mount} at ${hd_pct}% — Nextcloud data volume almost full"
-        elif [ -n "$hd_pct" ] && [ "$hd_pct" -ge 80 ] 2>/dev/null; then
-            echo "CHECK_RESULT WARN hd_high HD mount ${hd_mount} at ${hd_pct}% — clean up user data"
+            # HD usage check
+            local hd_pct
+            hd_pct=$(df "$hd_mount" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
+            if [ -n "$hd_pct" ] && [ "$hd_pct" -ge 90 ] 2>/dev/null; then
+                echo "CHECK_RESULT CRITICAL hd_full HD mount ${hd_mount} at ${hd_pct}% — Nextcloud data volume almost full"
+            elif [ -n "$hd_pct" ] && [ "$hd_pct" -ge 80 ] 2>/dev/null; then
+                echo "CHECK_RESULT WARN hd_high HD mount ${hd_mount} at ${hd_pct}% — clean up user data"
+            fi
         fi
-    else
-        echo "CHECK_RESULT CRITICAL hd_not_mounted External HD not mounted at ${hd_mount} — Nextcloud data unreachable"
-    fi
 
-    # ── NC data directory ─────────────────────────────────────────────────────
-    local nc_data="${NC_DATA:-/mnt/nextclouddata/next}"
+        if [ "$hd_mounted" = false ]; then
+            echo "CHECK_RESULT CRITICAL hd_not_mounted External HD not mounted at ${hd_mount} — Nextcloud data unreachable"
+        fi
 
-    if [ ! -d "$nc_data" ]; then
-        echo "CHECK_RESULT FAIL nc_data_missing NC data directory does not exist: ${nc_data}"
-        return 0
-    fi
+        # ── NC data directory ────────────────────────────────────────────────
+        local nc_data="${NC_DATA:-/mnt/nextclouddata/next}"
 
-    echo "CHECK_RESULT OK nc_data_exists NC data directory exists: ${nc_data}"
+        if [ ! -d "$nc_data" ]; then
+            echo "CHECK_RESULT FAIL nc_data_missing NC data directory does not exist: ${nc_data}"
+            return 0
+        fi
 
-    # Ownership check — must be 1004:1004 (NC_UID:NC_GID)
-    local expected_uid="${NC_UID:-1004}"
-    local expected_gid="${NC_GID:-1004}"
-    local actual_uid actual_gid
-    actual_uid=$(stat -c "%u" "$nc_data" 2>/dev/null)
-    actual_gid=$(stat -c "%g" "$nc_data" 2>/dev/null)
+        echo "CHECK_RESULT OK nc_data_exists NC data directory exists: ${nc_data}"
 
-    if [ "$actual_uid" != "$expected_uid" ] || [ "$actual_gid" != "$expected_gid" ]; then
-        echo "CHECK_RESULT FAIL nc_data_wrong_owner NC data dir owned by ${actual_uid}:${actual_gid} — expected ${expected_uid}:${expected_gid}"
-    else
-        echo "CHECK_RESULT OK nc_data_owner NC data directory has correct ownership (${expected_uid}:${expected_gid})"
+        # Ownership check — must be 1004:1004 (NC_UID:NC_GID)
+        local expected_uid="${NC_UID:-1004}"
+        local expected_gid="${NC_GID:-1004}"
+        local actual_uid actual_gid
+        actual_uid=$(stat -c "%u" "$nc_data" 2>/dev/null)
+        actual_gid=$(stat -c "%g" "$nc_data" 2>/dev/null)
+
+        if [ "$actual_uid" != "$expected_uid" ] || [ "$actual_gid" != "$expected_gid" ]; then
+            echo "CHECK_RESULT FAIL nc_data_wrong_owner NC data dir owned by ${actual_uid}:${actual_gid} — expected ${expected_uid}:${expected_gid}"
+        else
+            echo "CHECK_RESULT OK nc_data_owner NC data directory has correct ownership (${expected_uid}:${expected_gid})"
+        fi
     fi
 
     # ── Docker named volumes (discovered dynamically — no hardcoded names) ──────
-    if command -v docker &>/dev/null; then
+    if _storage_nextcloud_enabled && command -v docker &>/dev/null; then
         # Discover volume names from compose config (works regardless of project name)
         local compose_vols
         compose_vols=$(docker compose config --format json 2>/dev/null | python3 -c "
@@ -119,5 +135,21 @@ except: pass
                 fi
             done <<< "$compose_vols"
         fi
+    fi
+}
+
+# The active system contract is host-only.  Application storage and Docker
+# volume checks are owned by modules/nextcloud_docker/checks/storage.sh.
+run_check() {
+    local root_pct
+    root_pct=$(df / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')
+    if [ -n "$root_pct" ] && [ "$root_pct" -ge 95 ] 2>/dev/null; then
+        echo "CHECK_RESULT CRITICAL disk_critical Root filesystem at ${root_pct}% — dangerously full"
+    elif [ -n "$root_pct" ] && [ "$root_pct" -ge 85 ] 2>/dev/null; then
+        echo "CHECK_RESULT FAIL disk_full Root filesystem at ${root_pct}% — action required"
+    elif [ -n "$root_pct" ] && [ "$root_pct" -ge 75 ] 2>/dev/null; then
+        echo "CHECK_RESULT WARN disk_high Root filesystem at ${root_pct}% — monitor usage"
+    else
+        echo "CHECK_RESULT OK disk_ok Root filesystem usage normal (${root_pct:-?}%)"
     fi
 }

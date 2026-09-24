@@ -10,8 +10,8 @@
 #   modules/*/hooks/restore.sh — each must define:
 #       igor_module_restore_hook "$SNAPSHOT_DIR" "$MODULE_NAME"
 #
-# Storage: $IGOR_BACKUP_DIR/full_{EPOCH}/
-#   core-snapshot.tar.gz       — output of config_backup_take
+# Storage: $IGOR_BACKUPS_DIR/full_{EPOCH}_{UNIQUE}/
+#   config_{EPOCH}.tar.gz      — independent copy of config_backup_take output
 #   modules/                   — one subdir per module that ran its hook
 #
 # Public functions:
@@ -47,10 +47,13 @@ full_backup_take() {
     fi
 
     local ts; ts=$(date +%s)
-    local dest="${BACKUP_DIR}/full_${ts}"
-    mkdir -p "${dest}/modules"
+    mkdir -p "$BACKUP_DIR" || return 1
+    local dest
+    dest=$(mktemp -d "${BACKUP_DIR}/full_${ts}_XXXXXX") || return 1
+    mkdir -p "${dest}/modules" || return 1
 
     local failed=false
+    local -a failures=()
 
     # ── 1. Core snapshot ──────────────────────────────────────────────────────
     step "Taking core snapshot..."
@@ -58,22 +61,36 @@ full_backup_take() {
         source "${IGOR_DIR}/core/recovery/config_backup.sh" 2>/dev/null || true
 
     local core_archive
-    core_archive=$(config_backup_take "full-backup:${ts}" 2>/dev/null) || {
+    core_archive=$(config_backup_take "full-backup:${ts}") || {
         warn "Core snapshot had errors — continuing"
         failed=true
+        failures+=("core snapshot creation failed")
     }
-    if [ -n "$core_archive" ] && [ -f "$core_archive" ]; then
-        ln -sf "$core_archive" "${dest}/$(basename "$core_archive")" 2>/dev/null || \
-            cp "$core_archive" "${dest}/" 2>/dev/null || true
-        ok "Core snapshot linked: $(basename "$core_archive")"
+    if [ -n "$core_archive" ] && [ -f "$core_archive" ] &&
+       cp -p -- "$core_archive" "${dest}/$(basename "$core_archive")"; then
+        ok "Core snapshot copied: $(basename "$core_archive")"
+    else
+        warn "Core snapshot missing or could not be copied"
+        failed=true
+        failures+=("core snapshot missing or copy failed")
     fi
 
     # ── 2. Module backup hooks ─────────────────────────────────────────────────
-    _mod_fb_run_hooks "${dest}"
+    if ! _mod_fb_run_hooks "${dest}" 2>"${dest}/MODULE_BACKUP_ERRORS.txt"; then
+        failed=true
+        failures+=("module backup hooks failed (see MODULE_BACKUP_ERRORS.txt)")
+        warn "Module backup hooks failed"
+    fi
 
     # ── 3. Full backup manifest ────────────────────────────────────────────────
     {
         echo "IGOR Full Backup"
+        if $failed; then
+            echo "STATUS: PARTIAL"
+            printf 'ERROR: %s\n' "${failures[@]}"
+        else
+            echo "STATUS: COMPLETE"
+        fi
         echo "TIMESTAMP: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "HOST:      $(hostname 2>/dev/null || echo unknown)"
         echo "IGOR_VER:  $(cat "${IGOR_DIR}/VERSION" 2>/dev/null || echo unknown)"
@@ -87,31 +104,39 @@ full_backup_take() {
             printf '  %-30s %s\n' "$(basename "$_mdir")" \
                 "$(du -sh "$_mdir" 2>/dev/null | cut -f1)"
         done
-    } > "${dest}/FULL_BACKUP_MANIFEST.txt"
+    } > "${dest}/FULL_BACKUP_MANIFEST.txt" || {
+        failed=true
+        failures+=("manifest write failed")
+    }
 
     local sz; sz=$(du -sh "$dest" 2>/dev/null | cut -f1)
 
     if $failed; then
-        warn "Full backup partially complete: full_${ts}/ (${sz})"
-        declare -f alert_log &>/dev/null && \
-            alert_log "WARN" "backup_partial" "Full backup incomplete — core snapshot had errors"
-        declare -f notify_event &>/dev/null && \
-            notify_event "backup_fail" \
-                "Full backup FAILED (partial) — full_${ts}/ (${sz})" \
-                "Full Backup Failed" 2>/dev/null || true
-    else
-        ok "Full backup complete: full_${ts}/ (${sz})"
+        warn "Full backup partially complete: $(basename "$dest")/ (${sz})"
         declare -f journal_record &>/dev/null && \
             journal_record "menu:recovery" "backup_taken" "READ" \
-                "full_backup_take" "OK" "dest:full_${ts} size:${sz}"
+                "full_backup_take" "FAIL" "dest:$(basename "$dest") errors:${failures[*]}"
+        declare -f alert_log &>/dev/null && \
+            alert_log "WARN" "backup_partial" "Full backup incomplete: ${failures[*]}"
+        declare -f notify_event &>/dev/null && \
+            notify_event "backup_fail" \
+                "Full backup FAILED (partial) — $(basename "$dest")/ (${sz})" \
+                "Full Backup Failed" 2>/dev/null || true
+    else
+        ok "Full backup complete: $(basename "$dest")/ (${sz})"
+        declare -f journal_record &>/dev/null && \
+            journal_record "menu:recovery" "backup_taken" "READ" \
+                "full_backup_take" "OK" "dest:$(basename "$dest") size:${sz}"
         declare -f notify_event &>/dev/null && \
             notify_event "backup_done" \
-                "Full backup complete: full_${ts}/ (${sz})" \
+                "Full backup complete: $(basename "$dest")/ (${sz})" \
                 "Full Backup Done" 2>/dev/null || true
     fi
 
-    _mod_fb_prune_old
+    # An incomplete replacement must not evict a known-good backup.
+    $failed || _mod_fb_prune_old
     printf '%s' "$dest"
+    ! $failed
 }
 
 # ── _mod_fb_run_hooks SNAPSHOT_DIR ───────────────────────────────────────────
@@ -124,18 +149,28 @@ _mod_fb_run_hooks() {
     if declare -f igor_run_all_hooks &>/dev/null; then
         igor_run_all_hooks "backup" "$snapshot_dir"
     elif declare -f igor_get_hooks &>/dev/null; then
-        local hooks_run=0
+        local hooks_run=0 any_fail=0
         local fn
         for fn in $(igor_get_hooks "backup"); do
-            declare -f "$fn" &>/dev/null || continue
+            if ! declare -f "$fn" &>/dev/null; then
+                printf 'Backup hook missing: %s\n' "$fn" >&2
+                any_fail=1
+                continue
+            fi
             step "Module backup hook: ${fn}"
-            ( "$fn" "$snapshot_dir" ) && \
-                ok "${fn} completed" || warn "${fn} failed (non-fatal)"
+            if ( "$fn" "$snapshot_dir" ); then
+                ok "${fn} completed"
+            else
+                printf 'Backup hook failed: %s\n' "$fn" >&2
+                any_fail=1
+            fi
             hooks_run=$(( hooks_run + 1 ))
         done
         [ "$hooks_run" -eq 0 ] && info "No backup hooks registered (igor_register_hook backup ...)"
+        return "$any_fail"
     else
-        info "Module loader not available — skipping module backup hooks"
+        warn "Module loader not available — cannot run module backup hooks" >&2
+        return 1
     fi
 }
 
@@ -197,7 +232,10 @@ full_backup_restore() {
 
     echo ""
     echo -e "  ${BOLD}Full Backup:${NC} $(basename "$backup_dir_arg")"
-    echo -e "  ${BOLD}Date:${NC}        $(date -d "@$(basename "$backup_dir_arg" | grep -oE '[0-9]+')" 2>/dev/null)"
+    local _backup_epoch; _backup_epoch=$(basename -- "$backup_dir_arg")
+    _backup_epoch="${_backup_epoch#full_}"
+    _backup_epoch="${_backup_epoch%%_*}"
+    echo -e "  ${BOLD}Date:${NC}        $(date -d "@${_backup_epoch}" 2>/dev/null)"
     echo -e "  ${BOLD}Contents:${NC}"
     ls -lh "$backup_dir_arg" 2>/dev/null | tail -n +2 | while read -r line; do echo "    $line"; done
     echo ""
@@ -273,7 +311,10 @@ _mod_fb_prune_old() {
     local keep="${BACKUP_FULL_KEEP:-3}"
     local i=0
     ls -dt "${BACKUP_DIR}"/full_* 2>/dev/null | while IFS= read -r d; do
-        (( i++ ))
+        # Partial attempts are not counted as replacements for complete backups.
+        [ -f "$d/FULL_BACKUP_MANIFEST.txt" ] || continue
+        grep -q '^STATUS: PARTIAL$' "$d/FULL_BACKUP_MANIFEST.txt" 2>/dev/null && continue
+        i=$(( i + 1 ))
         [ "$i" -gt "$keep" ] && rm -rf "$d" 2>/dev/null || true
     done
 }

@@ -4,9 +4,10 @@
 # ==============================================================================
 
 # ── Secrets & credentials (NEVER commit) ─────────────────────────────────────
-secrets/*.env
-secrets/*.key
-secrets/*.pem
+secrets/**
+!secrets/README.md
+!secrets/*.example
+!secrets/**/*.example
 secrets/gnupg/
 secrets/gpg/
 # Keep example templates — they are documentation
@@ -60,6 +61,9 @@ gnupg/
 # Reference defaults live in modules/*/defaults/ (always tracked).
 config/stacks/
 
+# Local module activation policy (example is tracked).
+config/modules.conf
+
 # ── Learned knowledge & session data ──────────────────────────────────────────
 config/knowledge/
 
@@ -96,3 +100,10 @@ __pycache__/
 docs/audit/
 IGOR_AUDIT_PLAN*.md
 audit_secrets.md
+
+# ── Local review notes from maintenance sessions ──────────────────────────────
+/aireport.md
+/bettermodule.md
+/correct.md
+/correction.md
+/task_ai_1.txt

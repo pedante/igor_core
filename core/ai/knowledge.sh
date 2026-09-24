@@ -26,6 +26,7 @@ ai_knowledge_mark_changed() {
 
 # ── Load knowledge into system prompt block ───────────────────────────────────
 ai_knowledge_load() {
+    [ "${IGOR_AI_CONTEXT:-standard}" = minimal ] && return 0
     mkdir -p "$KNOWLEDGE_DIR" 2>/dev/null
     local block=""
 

@@ -120,7 +120,8 @@ _ctx_out=$(source "${IGOR_DIR}/core/ai/context.sh" 2>/dev/null; \
 assert_not_contains "no Nextcloud in base prompt"    "$_ctx_out" "Nextcloud Docker stack on a Raspberry Pi"
 # Identity comes from renderer (system_prompt.md) or fallback heredoc — both use "Igor"
 assert_contains     "Igor identity present"           "$_ctx_out" "Igor"
-assert_contains     "loop rules still present"        "$_ctx_out" "LOOP RULES"
+assert_contains     "authorization contract present"  "$_ctx_out" "Igor validates"
+assert_contains     "reference data separated"        "$_ctx_out" "IGOR_REFERENCE_V1:"
 
 # =============================================================================
 echo ""

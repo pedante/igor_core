@@ -18,47 +18,6 @@
     }
   },
   {
-    "name": "occ_command",
-    "description": "Execute a Nextcloud occ CLI command inside the app container. Use for Nextcloud config, maintenance, and status checks.",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "command": {
-          "type": "string",
-          "description": "The occ subcommand and arguments (without the leading 'occ')"
-        },
-        "purpose": {
-          "type": "string",
-          "description": "One sentence: why this occ command is needed"
-        }
-      },
-      "required": ["command", "purpose"]
-    }
-  },
-  {
-    "name": "container_action",
-    "description": "Start, stop, or restart a Docker Compose service container.",
-    "input_schema": {
-      "type": "object",
-      "properties": {
-        "action": {
-          "type": "string",
-          "enum": ["start", "stop", "restart"],
-          "description": "Action to perform"
-        },
-        "name": {
-          "type": "string",
-          "description": "Service name as defined in docker-compose.yml (e.g. 'web', 'app', 'db')"
-        },
-        "purpose": {
-          "type": "string",
-          "description": "One sentence: why this container action is needed"
-        }
-      },
-      "required": ["action", "name", "purpose"]
-    }
-  },
-  {
     "name": "read_file",
     "description": "Read the contents of a file on the host. Returns up to `lines` lines from the end of the file.",
     "input_schema": {

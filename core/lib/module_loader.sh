@@ -34,6 +34,17 @@ declare -gA _IGOR_CAPABILITIES 2>/dev/null || true
 #   The main menu dispatcher checks this registry in the *) catch-all.
 declare -gA _IGOR_MENU_REGISTRY 2>/dev/null || true
 
+# Module lifecycle state.  The registry is deliberately a data-only file;
+# module.conf remains the source of metadata and dependency declarations.
+declare -gA _IGOR_MODULE_STATE 2>/dev/null || true
+declare -gA _IGOR_MODULE_REASON 2>/dev/null || true
+declare -gA _IGOR_MODULE_STATUS 2>/dev/null || true
+declare -gA _IGOR_HOOK_OWNERS 2>/dev/null || true
+declare -gA _IGOR_MENU_OWNERS 2>/dev/null || true
+declare -gA _IGOR_CAPABILITY_OWNERS 2>/dev/null || true
+declare -g _IGOR_REGISTERING_MODULE=""
+declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
+
 # Root of the Igor installation — resolved relative to this file's location
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
 
@@ -51,6 +62,119 @@ _ml_log() {
         error) printf '  [module_loader] ✗  %s\n' "$_msg" >&2 ;;
     esac
 }
+
+_ml_valid_name() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; }
+
+_ml_load_module_config() {
+    [ "${_IGOR_MODULE_CONFIG_LOADED:-0}" -eq 1 ] && return 0
+    _IGOR_MODULE_CONFIG_LOADED=1
+    local _cfg="${IGOR_DIR:-$_IGOR_LOADER_DIR}/config/modules.conf"
+    [ -f "$_cfg" ] || return 0
+    local _line _name _state _rhs
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _line="${_line%%#*}"
+        [[ -z "${_line//[[:space:]]/}" ]] && continue
+        if [[ "$_line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_-]*)[[:space:]]*= ]]; then
+            _name="${BASH_REMATCH[1]}"
+            _rhs="${_line#*=}"
+            _rhs="${_rhs#"${_rhs%%[![:space:]]*}"}"
+            _rhs="${_rhs%"${_rhs##*[![:space:]]}"}"
+            if [ "$_rhs" = enabled ] || [ "$_rhs" = disabled ]; then
+                _IGOR_MODULE_STATE["$_name"]="$_rhs"
+                unset '_IGOR_MODULE_REASON['"$_name"']'
+            else
+                _IGOR_MODULE_STATE["$_name"]="disabled"
+                _IGOR_MODULE_REASON["$_name"]="invalid module state (expected enabled or disabled)"
+            fi
+        else
+            _ml_log warn "Ignoring malformed module state entry in $_cfg: $_line"
+        fi
+    done < "$_cfg"
+}
+
+igor_module_enabled() {
+    _ml_load_module_config
+    [ "${_IGOR_MODULE_STATE[${1:-}]:-enabled}" = enabled ]
+}
+
+igor_module_set_enabled() {
+    local _name="${1:-}" _state="${2:-}"
+    _ml_valid_name "$_name" || { _ml_log error "invalid module name: $_name"; return 1; }
+    if [ "${#_IGOR_MODULE_DIRS[@]}" -gt 0 ] && [ -z "${_IGOR_MODULE_DIRS[$_name]:-}" ]; then
+        _ml_log error "module is not installed: $_name"
+        return 1
+    fi
+    [ "$_state" = enabled ] || [ "$_state" = disabled ] || {
+        _ml_log error "module state must be enabled or disabled"; return 1;
+    }
+    local _cfg="${IGOR_DIR:-$_IGOR_LOADER_DIR}/config/modules.conf"
+    local _parent _tmp
+    _parent="$(dirname "$_cfg")"
+    mkdir -p "$_parent" || return 1
+    _tmp="$(mktemp "${_parent}/.modules.conf.XXXXXX")" || return 1
+    if [ -f "$_cfg" ]; then
+        awk -v target="$_name" -v state="$_state" '
+            $0 ~ "^[[:space:]]*" target "[[:space:]]*=" {
+                if (!done) { print target "=" state; done=1 }
+                next
+            }
+            { print }
+            END { if (!done) print target "=" state }
+        ' "$_cfg" > "$_tmp"
+    else
+        printf '%s=%s\n' "$_name" "$_state" > "$_tmp"
+    fi
+    chmod 600 "$_tmp" || { rm -f "$_tmp"; return 1; }
+    mv -f "$_tmp" "$_cfg" || { rm -f "$_tmp"; return 1; }
+    _IGOR_MODULE_STATE["$_name"]="$_state"
+    if [ "$_state" = disabled ] && [ -n "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
+        _IGOR_MODULE_STATUS["$_name"]="disabled"
+    fi
+    _ml_log info "Module $_name set to $_state; restart Igor to apply registration changes"
+}
+
+igor_active_modules() {
+    local _n
+    for _n in "${!_IGOR_LOADED_MODULES[@]}"; do
+        _ml_owner_active "$_n" && printf '%s\n' "$_n"
+    done | sort
+}
+
+igor_has_capability() {
+    local _cap="${1:-}" _name _provided _item
+    [ -n "$_cap" ] || return 1
+    for _name in "${!_IGOR_MODULE_DIRS[@]}"; do
+        _ml_owner_active "$_name" || continue
+        _provided="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" "provides" 2>/dev/null || true)"
+        _provided="${_provided//,/ }"
+        for _item in $_provided; do
+            [ "$_item" = "$_cap" ] && return 0
+        done
+    done
+    return 1
+}
+
+igor_module_list() {
+    local _n _state _reason
+    for _n in "${!_IGOR_MODULE_DIRS[@]}"; do
+        _state="${_IGOR_MODULE_STATUS[$_n]:-$(igor_module_enabled "$_n" && printf enabled || printf disabled)}"
+        _reason="${_IGOR_MODULE_REASON[$_n]:-}"
+        if [ -n "$_reason" ]; then
+            printf '%s\t%s (%s)\n' "$_n" "$_state" "$_reason"
+        else
+            printf '%s\t%s\n' "$_n" "$_state"
+        fi
+    done | sort
+}
+
+_ml_owner_active() {
+    local _owner="${1:-}"
+    [ -z "$_owner" ] && return 0
+    [ -n "${_IGOR_LOADED_MODULES[$_owner]:-}" ] && igor_module_enabled "$_owner" &&
+        [ "${_IGOR_MODULE_STATUS[$_owner]:-active}" = active ]
+}
+
+_ml_valid_function() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
 
 # ---------------------------------------------------------------------------
 # _ml_read_conf <module_dir> <key> [section]
@@ -81,7 +205,8 @@ igor_has_bin() {
 #   Returns 0 if the named module has been successfully loaded, 1 otherwise.
 # ---------------------------------------------------------------------------
 igor_has_module() {
-    [ -n "${_IGOR_LOADED_MODULES[${1:-}]:-}" ]
+    local _name="${1:-}"
+    [ -n "${_IGOR_LOADED_MODULES[$_name]:-}" ] && _ml_owner_active "$_name"
 }
 
 # ---------------------------------------------------------------------------
@@ -145,7 +270,7 @@ _ml_check_dependencies() {
     local _mod
     for _mod in $_req_mods; do
         [ -z "$_mod" ] && continue
-        if [ -z "${_IGOR_LOADED_MODULES[$_mod]:-}" ]; then
+        if ! igor_has_module "$_mod"; then
             _ml_log error "${_name}: required module '${_mod}' is not loaded"
             _fail=1
         fi
@@ -162,7 +287,7 @@ _ml_check_dependencies() {
             IFS=':' read -r _omod _omod_desc <<< "$_mod_entry"
             _omod="${_omod// /}"
             [ -z "$_omod" ] && continue
-            if [ -z "${_IGOR_LOADED_MODULES[$_omod]:-}" ]; then
+            if ! igor_has_module "$_omod"; then
                 _ml_log warn "${_name}: optional module '${_omod}' not loaded — ${_omod_desc:-some features may be limited}"
             fi
         done < <(printf '%s\n' "$_opt_mods" | tr ',' '\n')
@@ -181,6 +306,7 @@ _ml_check_dependencies() {
 declare -gA _IGOR_MODULE_DIRS 2>/dev/null || true
 
 igor_discover_modules() {
+    _ml_load_module_config
     local _modules_root="${IGOR_DIR:-$_IGOR_LOADER_DIR}/modules"
     local _names=()
 
@@ -199,6 +325,11 @@ igor_discover_modules() {
             _name="$(basename "$_dir")"
         fi
         _IGOR_MODULE_DIRS["$_name"]="${_dir%/}"
+        if [ "${_IGOR_MODULE_STATE[$_name]:-enabled}" = disabled ]; then
+            _IGOR_MODULE_STATUS["$_name"]="disabled"
+        else
+            _IGOR_MODULE_STATUS["$_name"]="discovered"
+        fi
         _names+=("$_name")
     done
 
@@ -233,6 +364,9 @@ igor_sort_modules() {
         local _dir="${_IGOR_MODULE_DIRS[$_n]:-}"
         if [ -n "$_dir" ]; then
             _dep_str="$(_ml_read_conf "$_dir" "depends_on" 2>/dev/null || echo "")"
+            local _required
+            _required="$(_ml_read_conf "$_dir" "required_modules" 2>/dev/null || echo "")"
+            _dep_str="$_dep_str ${_required}"
         else
             _dep_str=""
         fi
@@ -321,6 +455,13 @@ igor_load_module() {
     local _name="$1"
     [ -n "$_name" ] || { _ml_log error "igor_load_module: no module name given"; return 1; }
 
+    _ml_load_module_config
+    if ! igor_module_enabled "$_name"; then
+        _IGOR_MODULE_STATUS["$_name"]="disabled"
+        _ml_log info "Module $_name disabled by configuration — skipped"
+        return 1
+    fi
+
     # Idempotency check
     if [ -n "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
         return 0
@@ -328,24 +469,32 @@ igor_load_module() {
 
     local _dir="${_IGOR_MODULE_DIRS[$_name]:-}"
     if [ -z "$_dir" ]; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="not discovered"
         _ml_log error "Module not found in registry: $_name (run igor_discover_modules first)"
         return 1
     fi
 
     local _module_sh="${_dir}/module.sh"
     if [ ! -f "$_module_sh" ]; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="module.sh missing"
         _ml_log error "module.sh missing for $_name: $_module_sh"
         return 1
     fi
 
     # Step 1: dependency check
     if ! _ml_check_dependencies "$_dir" "$_name"; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="unmet required dependency"
         _ml_log error "Module $_name skipped — unmet required dependencies (see above)"
         return 1
     fi
 
     # Step 3: syntax check
     if ! bash -n "$_module_sh" 2>/tmp/_igor_ml_syntax_err; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="syntax error"
         local _syntax_err
         _syntax_err="$(cat /tmp/_igor_ml_syntax_err 2>/dev/null)"
         _ml_log error "Syntax error in $_name — SKIPPED: ${_syntax_err:-unknown}"
@@ -355,6 +504,8 @@ igor_load_module() {
     # Step 4: source
     # shellcheck disable=SC1090
     if ! source "$_module_sh" 2>/tmp/_igor_ml_source_err; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="source failed"
         local _source_err
         _source_err="$(cat /tmp/_igor_ml_source_err 2>/dev/null)"
         _ml_log error "Failed to source $_name — SKIPPED: ${_source_err:-unknown}"
@@ -364,17 +515,26 @@ igor_load_module() {
     # Step 5: call __register
     local _register_fn="${_name}__register"
     if declare -f "$_register_fn" >/dev/null 2>&1; then
+        _IGOR_REGISTERING_MODULE="$_name"
         if ! "$_register_fn" 2>/tmp/_igor_ml_register_err; then
+            _IGOR_REGISTERING_MODULE=""
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            _IGOR_MODULE_REASON["$_name"]="registration failed"
             local _reg_err
             _reg_err="$(cat /tmp/_igor_ml_register_err 2>/dev/null)"
             _ml_log error "${_register_fn} failed for $_name — SKIPPED: ${_reg_err:-unknown}"
             return 1
         fi
+        _IGOR_REGISTERING_MODULE=""
     else
-        _ml_log warn "$_name: no ${_register_fn} function found — hooks not registered"
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="registration function missing"
+        _ml_log error "$_name: required ${_register_fn} function missing — SKIPPED"
+        return 1
     fi
 
     _IGOR_LOADED_MODULES["$_name"]=1
+    _IGOR_MODULE_STATUS["$_name"]="active"
 
     # Export STACK_DIR if module declares stack_dir in module.conf
     # e.g. nextcloud_docker + stack_dir=nextcloud → NEXTCLOUD_DOCKER_STACK_DIR=/path/config/stacks/nextcloud
@@ -417,7 +577,7 @@ igor_load_all_modules() {
     local _name
     while IFS= read -r _name; do
         [ -n "$_name" ] || continue
-        igor_load_module "$_name"
+        igor_load_module "$_name" || true
     done <<< "$_sorted_list"
 
     return 0
@@ -434,7 +594,7 @@ igor_module_install() {
     local _name="${1:-}"
     [ -n "$_name" ] || { _ml_log error "igor_module_install: no module name given"; return 1; }
 
-    if [ -z "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
+    if ! igor_has_module "$_name"; then
         _ml_log error "Module '${_name}' is not loaded — run igor_load_all_modules first"
         return 1
     fi
@@ -464,7 +624,7 @@ igor_module_upgrade() {
     local _name="${1:-}"
     [ -n "$_name" ] || { _ml_log error "igor_module_upgrade: no module name given"; return 1; }
 
-    if [ -z "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
+    if ! igor_has_module "$_name"; then
         _ml_log error "Module '${_name}' is not loaded — run igor_load_all_modules first"
         return 1
     fi
@@ -495,7 +655,7 @@ igor_module_remove() {
     local _name="${1:-}"
     [ -n "$_name" ] || { _ml_log error "igor_module_remove: no module name given"; return 1; }
 
-    if [ -z "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
+    if ! igor_has_module "$_name"; then
         _ml_log error "Module '${_name}' is not loaded — run igor_load_all_modules first"
         return 1
     fi
@@ -535,6 +695,7 @@ igor_register_hook() {
     local _hook="$1" _fn="$2"
     [ -n "$_hook" ] || { _ml_log error "igor_register_hook: missing hook name"; return 1; }
     [ -n "$_fn" ]   || { _ml_log error "igor_register_hook: missing function name"; return 1; }
+    _ml_valid_function "$_fn" || { _ml_log error "igor_register_hook: invalid function name: $_fn"; return 1; }
 
     local _existing="${_IGOR_HOOKS[$_hook]:-}"
 
@@ -545,6 +706,7 @@ igor_register_hook() {
     done
 
     _IGOR_HOOKS["$_hook"]="${_existing:+$_existing }${_fn}"
+    _IGOR_HOOK_OWNERS["${_hook}:${_fn}"]="${_IGOR_REGISTERING_MODULE:-}"
     return 0
 }
 
@@ -568,7 +730,14 @@ igor_register_menu_item() {
     [ -n "$_key" ]   || { _ml_log error "igor_register_menu_item: missing key";   return 1; }
     [ -n "$_label" ] || { _ml_log error "igor_register_menu_item: missing label"; return 1; }
     [ -n "$_func" ]  || { _ml_log error "igor_register_menu_item: missing func";  return 1; }
+    _ml_valid_function "$_func" || { _ml_log error "igor_register_menu_item: invalid func"; return 1; }
+    local _prior_owner="${_IGOR_MENU_OWNERS[$_key]:-}"
+    if [ -n "$_prior_owner" ] && [ "$_prior_owner" != "${_IGOR_REGISTERING_MODULE:-}" ] && _ml_owner_active "$_prior_owner"; then
+        _ml_log error "igor_register_menu_item: key already owned by active module $_prior_owner"
+        return 1
+    fi
     _IGOR_MENU_REGISTRY["$_key"]="${_label}|${_type}|${_arg}|${_func}"
+    _IGOR_MENU_OWNERS["$_key"]="${_IGOR_REGISTERING_MODULE:-}"
     return 0
 }
 
@@ -582,17 +751,25 @@ igor_dispatch_menu_item() {
     local _key="$1"
     local _entry="${_IGOR_MENU_REGISTRY[$_key]:-}"
     [ -n "$_entry" ] || return 1
+    _ml_owner_active "${_IGOR_MENU_OWNERS[$_key]:-}" || return 1
 
     local _label _type _arg _func
     IFS='|' read -r _label _type _arg _func <<< "$_entry"
 
     _igor_record_recent "$_key" "$_label"
     case "$_type" in
-        module)    _igor_load_module "$_arg" ;;
-        subsystem) _igor_load_subsystem $_arg ;;   # _arg may be "id path/to/core.sh"
+        module)
+            # Registered module names use the lifecycle loader. Preserve legacy
+            # menu-file arguments such as "services" for existing registrations.
+            if [ -n "${_IGOR_MODULE_DIRS[$_arg]:-}" ]; then
+                igor_load_module "$_arg" || return 1
+            else
+                _igor_load_module "$_arg" || return 1
+            fi
+            ;;
+        subsystem) _igor_load_subsystem $_arg || return 1 ;;   # _arg may be "id path/to/core.sh"
     esac
     "$_func"
-    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -606,7 +783,7 @@ igor_get_hooks() {
     [ -n "$_hook" ] || return 0
     local _entry
     for _entry in ${_IGOR_HOOKS[$_hook]:-}; do
-        printf '%s\n' "$_entry"
+        _ml_owner_active "${_IGOR_HOOK_OWNERS[${_hook}:${_entry}]:-}" && printf '%s\n' "$_entry"
     done
 }
 
@@ -626,15 +803,18 @@ igor_run_all_hooks() {
     local _any_fail=0
     local _fn
 
-    for _fn in ${_IGOR_HOOKS[$_hook]:-}; do
+    while IFS= read -r _fn; do
+        [ -n "$_fn" ] || continue
         if ! declare -f "$_fn" >/dev/null 2>&1; then
             _ml_log warn "Hook $_hook: function $_fn not found — skipping"
             _any_fail=1
             continue
         fi
 
-        if ! timeout "$_timeout" bash -c "$(declare -f "$_fn"); $_fn $(printf '%q ' "$@")" \
+        if timeout "$_timeout" bash -c "$(declare -f "$_fn"); $_fn $(printf '%q ' "$@")" \
             2>/tmp/_igor_ml_hook_err; then
+            continue
+        else
             local _exit_code=$?
             local _hook_err
             _hook_err="$(cat /tmp/_igor_ml_hook_err 2>/dev/null)"
@@ -645,7 +825,7 @@ igor_run_all_hooks() {
             fi
             _any_fail=1
         fi
-    done
+    done < <(igor_get_hooks "$_hook")
 
     return $_any_fail
 }
@@ -670,12 +850,14 @@ igor_run_all_hooks() {
 # ---------------------------------------------------------------------------
 igor_load_capabilities() {
     _IGOR_CAPABILITIES=()   # clear before repopulating
+    _IGOR_CAPABILITY_OWNERS=()
 
     local _fns="${_IGOR_HOOKS[ai_capabilities]:-}"
     [ -z "$_fns" ] && return 0
 
     local _fn
     for _fn in $_fns; do
+        _ml_owner_active "${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}" || continue
         declare -f "$_fn" &>/dev/null || continue
         local _raw; _raw=$("$_fn" 2>/dev/null) || continue
         [ -z "$_raw" ] && continue
@@ -687,7 +869,17 @@ igor_load_capabilities() {
                 ACTION\ *)
                     # Save previous block if complete
                     if [ -n "$_name" ] && [ -n "$_func" ]; then
-                        _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
+                        if _ml_valid_name "$_name" && _ml_valid_function "$_func" &&
+                           [[ "$_tier" =~ ^(READ|CHANGE|DESTROY)$ ]] &&
+                           { [ -z "$_mod" ] || _ml_valid_name "$_mod"; }; then
+                            _desc="${_desc//|//}"; _probs="${_probs//|/,}"; _mpath="${_mpath//|/／}"
+                            _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
+                            # LOAD_MODULE names a lazy menu file; ownership is
+                            # always the manifest module that registered this
+                            # capability so disabled parents cannot bypass the
+                            # lifecycle boundary through a child file.
+                            _IGOR_CAPABILITY_OWNERS["$_name"]="${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}"
+                        fi
                     fi
                     _name="${_line#ACTION }"; _name="${_name## }"; _name="${_name%% }"
                     _desc=""; _func=""; _mod=""; _tier="CHANGE"; _probs=""; _mpath=""
@@ -703,7 +895,13 @@ igor_load_capabilities() {
 
         # Save final block
         if [ -n "$_name" ] && [ -n "$_func" ]; then
-            _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
+            if _ml_valid_name "$_name" && _ml_valid_function "$_func" &&
+               [[ "$_tier" =~ ^(READ|CHANGE|DESTROY)$ ]] &&
+               { [ -z "$_mod" ] || _ml_valid_name "$_mod"; }; then
+                _desc="${_desc//|//}"; _probs="${_probs//|/,}"; _mpath="${_mpath//|/／}"
+                _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
+                _IGOR_CAPABILITY_OWNERS["$_name"]="${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}"
+            fi
         fi
     done
 

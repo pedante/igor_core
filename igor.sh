@@ -17,6 +17,52 @@ export IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Overridable at runtime: IGOR_STACKS=/custom/path bash igor.sh
 export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 
+# Module policy management must precede startup: disabling a module must not
+# source its code, run its validators, or create a tmux session first.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    case "${1:-}" in
+        --ai)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            source "${IGOR_DIR}/core/ai/control.sh"
+            igor_load_config >/dev/null
+            case "${2:-status}" in
+                status|tools)
+                    igor_load_all_modules >/dev/null
+                    igor_load_capabilities >/dev/null
+                    if [[ "${2:-status}" == tools ]]; then
+                        ai_catalog_json | python3 "${_AI_CONTROL_DIR}/operations.py" scrub
+                    else
+                        ai_catalog_json | python3 "${_AI_CONTROL_DIR}/operations.py" status
+                    fi
+                    ;;
+                last) python3 "${_AI_CONTROL_DIR}/operations.py" last ;;
+                *) printf 'Usage: bash igor.sh --ai [status|tools|last]\n' >&2; exit 1 ;;
+            esac
+            exit $?
+            ;;
+        --enable|--disable|--modules)
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            if [[ "$1" == --modules ]]; then
+                source "${IGOR_DIR}/core/lib/config_loader.sh"
+                igor_load_config >/dev/null
+                igor_load_all_modules >/dev/null
+                igor_module_list
+                exit $?
+            fi
+            if [[ $# != 2 ]]; then
+                printf 'Usage: bash igor.sh %s <module_name>\n' "$1" >&2
+                exit 1
+            fi
+            igor_discover_modules >/dev/null
+            _igor_requested_state=enabled
+            [[ "$1" == --disable ]] && _igor_requested_state=disabled
+            igor_module_set_enabled "$2" "$_igor_requested_state"
+            exit $?
+            ;;
+    esac
+fi
+
 # ── Distro detection (must run before any pkg_install or Python calls) ────────────
 source "${IGOR_DIR}/core/lib/distro.sh"
 igor_detect_distro
@@ -167,6 +213,7 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
     source "${IGOR_DIR}/core/lib/module_loader.sh"
     igor_load_config      || warn "Config loading reported an error — check core/lib/config_loader.sh"
     igor_load_all_modules || warn "Module loading reported an error — check modules/"
+    _cfg_validate_all_loaded_modules
     # M2-1: diagnose runner — hook-based aggregator available everywhere
     if [ -f "${IGOR_DIR}/core/lib/diagnose_runner.sh" ]; then
         source "${IGOR_DIR}/core/lib/diagnose_runner.sh"
@@ -428,14 +475,28 @@ _igor_load_module() {
     # Search one level deep (module root files)
     if [ ! -f "$module_file" ]; then
         for _candidate in "${IGOR_DIR}/modules/"*"/${module_name}.sh"; do
-            [ -f "$_candidate" ] && { module_file="$_candidate"; break; }
+            [ -f "$_candidate" ] || continue
+            if declare -f igor_has_module >/dev/null 2>&1; then
+                local _candidate_owner="${_candidate#${IGOR_DIR}/modules/}"
+                _candidate_owner="${_candidate_owner%%/*}"
+                igor_has_module "$_candidate_owner" || continue
+            fi
+            module_file="$_candidate"
+            break
         done
     fi
 
     # Search two levels deep (module subdirectories, e.g. menus/)
     if [ ! -f "$module_file" ]; then
         for _candidate in "${IGOR_DIR}/modules/"*"/"*"/${module_name}.sh"; do
-            [ -f "$_candidate" ] && { module_file="$_candidate"; break; }
+            [ -f "$_candidate" ] || continue
+            if declare -f igor_has_module >/dev/null 2>&1; then
+                local _candidate_owner="${_candidate#${IGOR_DIR}/modules/}"
+                _candidate_owner="${_candidate_owner%%/*}"
+                igor_has_module "$_candidate_owner" || continue
+            fi
+            module_file="$_candidate"
+            break
         done
     fi
 
@@ -443,6 +504,30 @@ _igor_load_module() {
         # Write to terminal only — not to right pane (right pane is for context data)
         echo -e "  ${RED:-\033[0;31m}✘${NC:-\033[0m} Module not found: ${module_name}.sh" >&2
         return 1
+    fi
+
+    # Legacy menu files are owned by the discovered domain module (for
+    # example, modules/nextcloud_docker/menus/services.sh).  Keep the lazy
+    # loader for compatibility, but never let it revive a disabled or
+    # unavailable owner.  The lifecycle loader remains the source of truth for
+    # module activation; this check is deliberately fail-closed when it is
+    # present.  Older callers that source igor.sh without module_loader.sh keep
+    # the historical behaviour.
+    if declare -f igor_has_module >/dev/null 2>&1; then
+        local _module_owner=""
+        if [ -n "${_IGOR_MODULE_DIRS[$module_name]:-}" ]; then
+            _module_owner="$module_name"
+        elif [[ "$module_file" == "${IGOR_DIR}/modules/"*/*/* ]]; then
+            _module_owner="${module_file#${IGOR_DIR}/modules/}"
+            _module_owner="${_module_owner%%/*}"
+        elif [[ "$module_file" == "${IGOR_DIR}/modules/"*/* ]]; then
+            _module_owner="${module_file#${IGOR_DIR}/modules/}"
+            _module_owner="${_module_owner%%/*}"
+        fi
+        if [ -z "$_module_owner" ] || ! igor_has_module "$_module_owner"; then
+            echo "  Module '${module_name}' is disabled or unavailable" >&2
+            return 1
+        fi
     fi
 
     if [ -z "$(declare -f _igor_loaded_${module_name} 2>/dev/null)" ]; then
@@ -477,6 +562,10 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--capture"           "Record full terminal output to runtime/terminal.log"
     printf "  ${Y}%-30s${N} %s\n" "--mailcmd heartbeat" "Send daily heartbeat email (used by crontab)"
     printf "  ${Y}%-30s${N} %s\n" "--backup [config|full]" "Run scheduled backup (used by crontab)"
+    printf "  ${Y}%-30s${N} %s\n" "--modules"           "List module policy and activation status"
+    printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
+    printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"
+    printf "  ${Y}%-30s${N} %s\n" "--disable <module>"  "Disable module for the next Igor process"
     echo ""
 
     echo -e "${C}${B}MAIN MENU${N}"
@@ -956,7 +1045,7 @@ menu_sessions() { fail "AI module not loaded. This should not happen."; }
 menu_diagnose() { _igor_load_subsystem "diagnose" "${IGOR_DIR}/core/diagnose/core.sh"; menu_diagnose "$@"; }
 menu_recovery() { _igor_load_subsystem "recovery" "${IGOR_DIR}/core/recovery/core.sh"; menu_recovery "$@"; }
 menu_notify()   { _igor_load_subsystem "notify" "${IGOR_DIR}/core/notify/core.sh";   menu_notify   "$@"; }
-menu_mailcmd()  { _igor_load_subsystem "mailcmd" "${IGOR_DIR}/core/mailcmd/core.sh";  menu_mailcmd  "$@"; }
+menu_mailcmd()  { _igor_load_subsystem "mailcmd" "${IGOR_DIR}/core/mailcmd/core.sh" || return 1; menu_mailcmd "$@"; }
 
 # ── Restore stdout for sub-modes ─────────────────────────────────────────────
 # Re-open real stdout/stderr so --extra TUI, --status, etc. can write output.
@@ -1028,11 +1117,18 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
                 # Non-interactive entry point for mailcmd crontab jobs.
                 # Usage: bash igor.sh --mailcmd heartbeat
                 _igor_mc_base="${IGOR_DIR:-$(dirname "$(readlink -f "$0")")}"
+                if [ ! -f "${_igor_mc_base}/core/mailcmd/core.sh" ] ||
+                   [ ! -f "${_igor_mc_base}/core/mailcmd/service.sh" ] ||
+                   [ ! -f "${_igor_mc_base}/core/mailcmd/poller.py" ]; then
+                    echo "Email control unavailable: core/mailcmd implementation is missing." >&2
+                    exit 1
+                fi
                 source "${_igor_mc_base}/core/mailcmd/core.sh"    2>/dev/null || true
                 source "${_igor_mc_base}/core/mailcmd/service.sh" 2>/dev/null || true
                 case "${2:-}" in
                     heartbeat)
                         python3 "${_igor_mc_base}/core/mailcmd/poller.py" --heartbeat
+                        exit $?
                         ;;
                     *)
                         echo "Usage: bash igor.sh --mailcmd heartbeat"

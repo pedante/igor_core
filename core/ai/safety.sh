@@ -103,36 +103,86 @@ ai_is_denied() {
     return 1
 }
 
-# ── Tier 1: read-only commands ────────────────────────────────────────────────
-# Returns 0 if command is read-only (auto-run), 1 if it writes state.
+# Keep the parser path independent of the caller's working/configuration directory.
+_AI_INPUT_PARSER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tool_input.py"
+_AI_FILE_READER="${_AI_INPUT_PARSER%/*}/file_reader.py"
+# Central AI policy/audit hooks are optional during early bootstrap and tests,
+# but are loaded whenever the safety layer is used in a normal installation.
+_AI_SAFETY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${_AI_SAFETY_DIR}/control.sh" ]; then
+    # shellcheck disable=SC1091
+    source "${_AI_SAFETY_DIR}/control.sh"
+elif [ -f "${IGOR_DIR}/core/ai/control.sh" ]; then
+    # shellcheck disable=SC1091
+    source "${IGOR_DIR}/core/ai/control.sh"
+fi
+
+_ai_audit_dispatch() {
+    declare -f ai_audit_tool >/dev/null 2>&1 || return 0
+    ai_audit_tool "$@" || warn "AI audit write failed" 2>/dev/null || true
+}
+
+_ai_reject_unrestored_tokens() {
+    if [[ "$1" == *'[IGOR:'*']'* ]]; then
+        echo "[BLOCKED: unresolved privacy token in executable input]"
+        return 1
+    fi
+    return 0
+}
+
+_ai_audit_rejected() {
+    local tool="$1" tier="$2" reason="$3" args="$4" id="$5"
+    _ai_audit_dispatch BLOCKED "$tool" "$tier" none "$reason" 1 "" "$args" "" "$id"
+}
+
+# Bound external READ commands; module capability functions keep their existing
+# in-process environment and module/hook-specific execution contracts.
+_ai_run_read_command() {
+    local duration="${IGOR_AI_READ_TIMEOUT:-30}"
+    if [[ ! "$duration" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$duration" != *[1-9]* ]]; then
+        duration=30
+    fi
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "[ERROR: timeout is required for bounded read commands]" >&2
+        return 127
+    fi
+    local rc=0
+    timeout --kill-after=2s "${duration}s" "$@" || rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "[TIMEOUT: read command exceeded ${duration}s]" >&2
+    fi
+    return "$rc"
+}
+
+# Unknown commands require approval. Only explicitly read-only forms auto-run.
 ai_cmd_is_read() {
-    local cmd="$1"
-    local write_patterns=(
-        " > "   " >> "   "tee "
-        "rm "  "mv "  "cp "  "mkdir "  "touch "  "chmod "  "chown "  "ln "
-        "shred" "wipe" "truncate"
-        "apt "  "apt-get"  "dpkg "  "pip "  "npm install"  "brew "
-        "systemctl start"  "systemctl stop"  "systemctl restart"
-        "systemctl enable"  "systemctl disable"  "systemctl mask"
-        "service start"  "service stop"  "service restart"
-        "docker compose up"    "docker compose down"   "docker compose restart"
-        "docker compose pull"  "docker compose build"
-        "docker exec"          "docker run"            "docker rm"
-        "docker rmi"           "docker volume create"  "docker network create"
-        "docker network rm"    "docker system prune"
-        "occ config:system:set"  "occ config:app:set"  "occ maintenance"
-        "occ upgrade"  "occ user:add"  "occ user:delete"  "occ app:enable"
-        "occ app:disable"  "occ app:install"  "occ files:cleanup"
-        "FLUSHALL"  "DROP "  "DELETE "  "TRUNCATE "  "INSERT "  "UPDATE "
-        "redis-cli SET"  "redis-cli DEL"  "redis-cli FLUSHDB"
-        "nano "  "vim "  "vi "  "emacs "  "pico "
-        "nginx -s reload"  "nginx -s stop"
-        "crontab -e"
-        "sed -i"  "awk.*>"
-    )
-    for pattern in "${write_patterns[@]}"; do
-        echo "$cmd" | grep -qF "$pattern" && return 1
-    done
+    printf '%s' "$1" | python3 "$_AI_INPUT_PARSER" read
+}
+
+# Parse semantic command arguments as data; never evaluate them as shell syntax.
+# The caller supplies a local _ai_words array (Bash dynamic scope).
+_ai_parse_words() {
+    local word
+    _ai_words=()
+    while IFS= read -r -d '' word; do
+        _ai_words+=("$word")
+    done < <(printf '%s' "$1" | python3 "$_AI_INPUT_PARSER" words)
+    local count=${#_ai_words[@]}
+    [ "$count" -gt 1 ] && [ "${_ai_words[count-1]}" = "IGOR_INPUT_OK" ] || return 1
+    unset '_ai_words[count-1]'
+}
+
+# Module-backed semantic tools must not become a second module loader.  The
+# The normal startup path provides igor_has_capability from module_loader.sh.
+# Module-backed tools fail closed if the loader is unavailable; callers that
+# exercise the dispatcher in isolation must provide an explicit test stub.
+_ai_require_active_capability() {
+    local _cap="$1"
+    if ! declare -f igor_has_capability >/dev/null 2>&1 || \
+       ! igor_has_capability "$_cap"; then
+        echo "[ERROR: Capability '${_cap}' is unavailable because no active module provides it]"
+        return 1
+    fi
     return 0
 }
 
@@ -160,24 +210,71 @@ ai_execute_tool() {
     local tool_json="$1"
     local explain_text="${2:-}"
     local output=""
+    local _operation_id
+    _operation_id="ai_$(date +%s%N 2>/dev/null || date +%s)_$$"
+    _ai_audit_dispatch REQUEST "unknown" "unknown" "none" "requested" "0" \
+        "" "$tool_json" "" "$_operation_id"
 
-    # Extract JSON fields into T_* variables via Python
-    eval "$(printf '%s' "$tool_json" | python3 -c '
-import sys, json, shlex
-try:
-    d = json.load(sys.stdin)
-    for k, v in d.items():
-        print("T_{}={}".format(k.upper(), shlex.quote(str(v))))
-except Exception as e:
-    print("T_TOOL=error")
-    print("T_ERROR=" + shlex.quote(str(e)))
-' 2>/dev/null)"
+    # Fixed-position, validated data from Python. No tool-controlled shell code.
+    local -a _fields=()
+    local _field
+    while IFS= read -r -d '' _field; do
+        _fields+=("$_field")
+    done < <(printf '%s' "$tool_json" | python3 "$_AI_INPUT_PARSER" fields)
+    if [ "${#_fields[@]}" -ne 17 ] || [ "${_fields[16]:-}" != "IGOR_INPUT_OK" ]; then
+        _ai_audit_dispatch BLOCKED "unknown" "unknown" "none" "invalid-input" "1" \
+            "" "" "" "$_operation_id"
+        echo "[BLOCKED: Invalid tool input]"
+        return 1
+    fi
+    local T_TOOL="${_fields[0]}" T_CMD="${_fields[1]}" T_ACTION="${_fields[2]}"
+    local T_TARGET="${_fields[3]}" T_LINES="${_fields[4]}" T_SEARCH="${_fields[5]}"
+    local T_PATH="${_fields[6]}" T_FIND="${_fields[7]}" T_REPLACE="${_fields[8]}"
+    local T_FILENAME="${_fields[9]}" T_TITLE="${_fields[10]}" T_DESCRIPTION="${_fields[11]}"
+    local T_COMMAND="${_fields[12]}" T_TYPE="${_fields[13]}" T_TIER="${_fields[14]}"
+    local T_MESSAGE="${_fields[15]}"
+    local -a _ai_words=() run_argv=()
+    if declare -f ai_policy_tool_allowed >/dev/null 2>&1 &&
+       ! ai_policy_tool_allowed "$T_TOOL"; then
+        _ai_audit_dispatch BLOCKED "$T_TOOL" "${T_TIER:-CHANGE}" "blocked" "policy" "1" \
+            "" "$tool_json" "" "$_operation_id"
+        echo "[BLOCKED: Tool is not allowed by active AI policy]"
+        return 1
+    fi
+    if [ "$T_TOOL" = run_igor_action ] &&
+       declare -f ai_policy_action_allowed >/dev/null 2>&1 &&
+       ! ai_policy_action_allowed "$T_CMD"; then
+        _ai_audit_dispatch BLOCKED "$T_TOOL" "${T_TIER:-CHANGE}" "blocked" "action-policy" "1" \
+            "" "$tool_json" "" "$_operation_id"
+        echo "[BLOCKED: Action is not allowed by active AI policy]"
+        return 1
+    fi
 
-    # P2-1: Normalise native tool names to internal names
-    case "$T_TOOL" in
-        host_command)     T_TOOL="host" ;;
-        occ_command)      T_TOOL="occ" ;;
-        container_action) T_TOOL="container" ;;
+    # These tools are supplied by modules and must remain unavailable when the
+    # owning module is disabled.  This check happens before tier classification
+    # and approval so a stale/native tool call cannot reach execution.
+    case "${T_TOOL}" in
+        occ)
+            if ! _ai_require_active_capability nextcloud; then
+                _ai_audit_dispatch BLOCKED "$T_TOOL" "READ" "none" "capability-unavailable" "1" \
+                    "" "$T_CMD" "" "$_operation_id"
+                return 1
+            fi
+            ;;
+        container)
+            if ! _ai_require_active_capability docker; then
+                _ai_audit_dispatch BLOCKED "$T_TOOL" "CHANGE" "none" "capability-unavailable" "1" \
+                    "" "$T_ACTION $T_TARGET" "" "$_operation_id"
+                return 1
+            fi
+            ;;
+        read_log)
+            if [ "${T_TARGET}" != terminal ] && ! _ai_require_active_capability docker; then
+                _ai_audit_dispatch BLOCKED "$T_TOOL" "READ" "none" "capability-unavailable" "1" \
+                    "" "$tool_json" "" "$_operation_id"
+                return 1
+            fi
+            ;;
     esac
 
     local tier="READ"
@@ -189,12 +286,18 @@ except Exception as e:
     case "$T_TOOL" in
         occ)
             T_CMD=$(ai_unscrub_inbound "$T_CMD")
+            if ! _ai_reject_unrestored_tokens "$T_CMD"; then
+                _ai_audit_rejected "$T_TOOL" READ unresolved-token "$tool_json" "$_operation_id"; return 1
+            fi
             display_cmd="occ ${T_CMD}"
-            run_cmd="docker compose exec -T -u www-data app php occ ${T_CMD}"
-            # Classify occ commands: read-only subcommands → READ, state-changing → CHANGE
-            # READ: :get, :list, :status, plain status, integrity:check-*, maintenance:mode (no args)
-            if echo "$T_CMD" | grep -qE \
-               '(^status[[:space:]]*$|:get|:list|:status|integrity:check|^maintenance:mode[[:space:]]*$)'; then
+            if ! _ai_parse_words "$T_CMD"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE invalid-arguments "$tool_json" "$_operation_id"
+                echo "[BLOCKED: Invalid OCC arguments]"
+                return 1
+            fi
+            run_argv=(docker compose exec -T -u www-data app php occ "${_ai_words[@]}")
+            printf -v run_cmd '%q ' "${run_argv[@]}"
+            if printf '%s' "$T_CMD" | python3 "$_AI_INPUT_PARSER" occ-read; then
                 tier="READ"
             else
                 tier="CHANGE"
@@ -202,7 +305,11 @@ except Exception as e:
             ;;
         host)
             T_CMD=$(ai_unscrub_inbound "$T_CMD")
+            if ! _ai_reject_unrestored_tokens "$T_CMD"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE unresolved-token "$tool_json" "$_operation_id"; return 1
+            fi
             if ai_is_denied "$T_CMD"; then
+                _ai_audit_rejected "$T_TOOL" DESTROY denylist "$tool_json" "$_operation_id"
                 echo -e "\n  ${RED}${BOLD}⛔ BLOCKED:${NC} Command is on the hard denylist." >&2
                 echo -e "  ${RED}Matched:${NC} $T_CMD" >&2
                 echo "[BLOCKED BY DENYLIST: ${T_CMD}]"
@@ -212,6 +319,7 @@ except Exception as e:
             # Enhanced command validation using input_validation if available
             if declare -f sanitize_command >/dev/null; then
                 if ! safe_cmd=$(sanitize_command "$T_CMD"); then
+                    _ai_audit_rejected "$T_TOOL" CHANGE command-validation "$tool_json" "$_operation_id"
                     echo -e "\n  ${RED}${BOLD}⛔ BLOCKED:${NC} Command validation failed." >&2
                     echo -e "  ${RED}Reason:${NC} $safe_cmd" >&2
                     echo "[BLOCKED: Command validation failed]"
@@ -226,31 +334,24 @@ except Exception as e:
             fi
             display_cmd="host: ${T_CMD}"
             
-            # Use array for safe command execution
-            run_cmd=("$T_CMD")
+            run_cmd="$T_CMD"
             ;;
         container)
             tier="CHANGE"
             display_cmd="docker compose ${T_ACTION} ${T_TARGET}"
-            run_cmd="docker compose ${T_ACTION} ${T_TARGET}"
+            run_argv=(docker compose "$T_ACTION" "$T_TARGET")
+            printf -v run_cmd '%q ' "${run_argv[@]}"
             ;;
         read_log)
             tier="READ"
-            local _max_lines=50
-            { [ "${T_LINES:-0}" -gt "$_max_lines" ] 2>/dev/null && T_LINES=$_max_lines; } || true
-            display_cmd="read_log: ${T_TARGET} last ${T_LINES:-20} lines  search='${T_SEARCH}'"
-            if [ "${T_TARGET}" = "terminal" ]; then
-                local _tlog="/data/runtime/terminal.log"
-                if [ -n "$T_SEARCH" ]; then
-                    run_cmd="tail -n ${T_LINES:-20} $(printf '%q' "$_tlog") 2>/dev/null | grep -i $(printf '%q' "$T_SEARCH")"
-                else
-                    run_cmd="tail -n ${T_LINES:-20} $(printf '%q' "$_tlog") 2>/dev/null"
-                fi
-            elif [ -n "$T_SEARCH" ]; then
-                run_cmd="docker compose logs --tail ${T_LINES:-20} ${T_TARGET} 2>&1 | grep -i $(printf '%q' "$T_SEARCH")"
+            display_cmd="read_log: ${T_TARGET} last ${T_LINES} lines  search='${T_SEARCH}'"
+            if [ "$T_TARGET" = "terminal" ]; then
+                local _tlog="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/terminal.log"
+                run_argv=(tail -n "$T_LINES" -- "$_tlog")
             else
-                run_cmd="docker compose logs --tail ${T_LINES:-20} ${T_TARGET} 2>&1"
+                run_argv=(docker compose logs --tail "$T_LINES" "$T_TARGET")
             fi
+            printf -v run_cmd '%q ' "${run_argv[@]}"
             ;;
         edit_file)
             tier="CHANGE"
@@ -259,12 +360,17 @@ except Exception as e:
         execute)
             # Legacy fallback — raw bash from <execute> tag
             local _cmd; _cmd=$(ai_unscrub_inbound "$T_CMD")
+            if ! _ai_reject_unrestored_tokens "$_cmd"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE unresolved-token "$tool_json" "$_operation_id"; return 1
+            fi
             if ai_is_denied "$_cmd"; then
+                _ai_audit_rejected "$T_TOOL" DESTROY denylist "$tool_json" "$_operation_id"
                 echo -e "\n  ${RED}${BOLD}⛔ BLOCKED:${NC} Command is on the hard denylist." >&2
                 echo "[BLOCKED BY DENYLIST: ${_cmd}]"
                 return 1
             fi
             if echo "$_cmd" | grep -q '<<'; then
+                _ai_audit_rejected "$T_TOOL" CHANGE heredoc "$tool_json" "$_operation_id"
                 output="[BLOCKED: heredoc syntax (<<) not allowed. Use: printf '...' > /tmp/fix.py && python3 /tmp/fix.py]"
                 echo -e "  ${RED}⛔ BLOCKED: heredoc syntax not allowed.${NC}" >&2
                 echo "$output"; return 1
@@ -279,44 +385,70 @@ except Exception as e:
         read_report)
             tier="READ"
             display_cmd="read_report: ${T_FILENAME}"
-            local _rdir="${REPORTS_DIR:-${IGOR_DIR}/data/reports}"
-            local _rfile="${_rdir}/${T_FILENAME}"
-            if [ -z "$T_FILENAME" ]; then
-                output="[ERROR: read_report requires a filename attribute]"
-            elif [ ! -f "$_rfile" ]; then
-                output="[ERROR: Report not found: ${T_FILENAME} — check 'RECENT REPORTS' in context]"
+            local _rdir
+            if [ -n "${REPORTS_DIR:-}" ]; then
+                _rdir="$REPORTS_DIR"
+            elif declare -f _igor_resolve_dir >/dev/null; then
+                _rdir=$(_igor_resolve_dir reports)
             else
-                output=$(head -n 100 "$_rfile" 2>/dev/null)
-                local _rlines; _rlines=$(wc -l < "$_rfile" 2>/dev/null || echo "?")
-                [ "${_rlines:-0}" -gt 100 ] && \
-                    output+=$'\n'"[... truncated at 100 lines — full file has ${_rlines} lines]"
+                _rdir="${IGOR_REPORTS_DIR:-${IGOR_DIR}/data/reports}"
             fi
-            echo "$output"
-            return 0
+            T_FILENAME=$(ai_unscrub_inbound "$T_FILENAME")
+            if ! _ai_reject_unrestored_tokens "$T_FILENAME"; then
+                _ai_audit_rejected "$T_TOOL" READ unresolved-token "$tool_json" "$_operation_id"; return 1
+            fi
+            output=$(_ai_run_read_command python3 "$_AI_FILE_READER" report "$IGOR_DIR" "$_rdir" "$T_FILENAME" 100 2>&1)
+            local exit_code=$?
+            _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "automatic-read" \
+                "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
+                "" "$tool_json" "$output" "$_operation_id"
+            printf '%s\n' "$output"
+            return "$exit_code"
+            ;;
+        read_file)
+            tier="READ"
+            T_PATH=$(ai_unscrub_inbound "$T_PATH")
+            if ! _ai_reject_unrestored_tokens "$T_PATH"; then
+                _ai_audit_rejected "$T_TOOL" READ unresolved-token "$tool_json" "$_operation_id"; return 1
+            fi
+            display_cmd="read_file: ${T_PATH} (up to ${T_LINES} lines)"
+            run_argv=(python3 "$_AI_FILE_READER" file "$IGOR_DIR" "" "$T_PATH" "$T_LINES")
+            printf -v run_cmd '%q ' "${run_argv[@]}"
             ;;
         propose_menu_item)
             # AI proposes a new dynamic menu item
+            if [ -z "${items_dir:-}" ]; then
+                _ai_audit_rejected "$T_TOOL" CHANGE unavailable-menu-backend "$tool_json" "$_operation_id"
+                echo "[BLOCKED: Dynamic menu proposal storage is unavailable]"
+                return 1
+            fi
             tier="CHANGE"
             display_cmd="Propose dynamic menu item: ${T_TITLE}"
-            output=$(_ai_propose_menu_item "$T_TITLE" "$T_DESCRIPTION" "$T_COMMAND" "$T_TYPE" "$T_TIER" 2>&1)
-            local exit_code=$?
             ;;
         reply)
             # P2-1: Final reply tool — output prefixed message for caller to display and exit
-            local _reply_msg
-            _reply_msg=$(printf '%s' "$tool_json" | python3 -c "
-import sys,json
-try: print(json.load(sys.stdin).get('message',''))
-except: pass
-" 2>/dev/null)
-            output="[REPLY] ${_reply_msg}"
+            _ai_audit_dispatch RESULT "$T_TOOL" READ automatic-read completed 0 \
+                "" "$tool_json" "$T_MESSAGE" "$_operation_id"
+            echo "[REPLY] ${T_MESSAGE}"
+            return 0
             ;;
         run_igor_action)
             # Look up action in the capability catalog populated by igor_load_capabilities()
             local _ria_name="${T_CMD:-}"
             local _ria_entry="${_IGOR_CAPABILITIES[${_ria_name}]:-}"
             if [ -z "$_ria_entry" ]; then
+                _ai_audit_rejected "$T_TOOL" CHANGE unknown-action "$tool_json" "$_operation_id"
                 echo "[ERROR: Unknown Igor action '${_ria_name}' — check AVAILABLE IGOR ACTIONS in context]"
+                return 1
+            fi
+            local _ria_owner=""
+            if declare -p _IGOR_CAPABILITY_OWNERS >/dev/null 2>&1; then
+                _ria_owner="${_IGOR_CAPABILITY_OWNERS[${_ria_name}]:-}"
+            fi
+            if [ -z "$_ria_owner" ] || ! declare -f _ml_owner_active >/dev/null 2>&1 || \
+               ! _ml_owner_active "$_ria_owner"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE inactive-owner "$tool_json" "$_operation_id"
+                echo "[ERROR: Igor action '${_ria_name}' is unavailable because its owning module is inactive]"
                 return 1
             fi
             local _ria_desc _ria_tier _ria_probs _ria_mpath
@@ -330,12 +462,16 @@ except: pass
             ;;
     esac
 
+    _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$tier" none classified 0 \
+        "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+
     # ── P1-4: Pre-execution validation (CHANGE tier) ─────────────────────────
     # Call ai_validate.py for CHANGE-tier commands; block if verdict says blocked.
     # Warnings are shown but do not block; blocked commands return early.
-    if [ "$tier" = "CHANGE" ]; then
+    if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
         local _verdict_lines _v_blocked="" _v_reason="" _v_warnings=""
         _verdict_lines=$(_ai_validate_tool_call "$tool_json")
+        local _validator_rc=$?
         while IFS= read -r _vline; do
             case "$_vline" in
                 "BLOCKED: true")  _v_blocked="true" ;;
@@ -352,9 +488,16 @@ except: pass
                     ;;
             esac
         done <<< "$_verdict_lines"
+        if [ "$_validator_rc" -ne 0 ] || [ -z "$_verdict_lines" ] ||
+           ! printf '%s\n' "$_verdict_lines" | grep -q '^BLOCKED: \(true\|false\)$'; then
+            _v_blocked=true
+            _v_reason="validator unavailable or returned malformed output"
+        fi
         if [ "$_v_blocked" = "true" ]; then
             echo -e "\n  ${RED}✘ Command blocked by validator: ${_v_reason}${NC}" >&2
             echo "[VALIDATION BLOCKED: ${_v_reason}]"
+            _ai_audit_dispatch BLOCKED "$T_TOOL" "$tier" "none" "validator" "1" \
+                "${_ria_owner:-}" "$tool_json" "$_v_reason" "$_operation_id"
             _IGOR_LAST_EXEC_TIER="CHANGE"
             return 1
         fi
@@ -384,43 +527,69 @@ except: pass
         echo "" >&2
     fi
 
-    # ── Pre-CHANGE/DESTROY config auto-backup ─────────────────────────────────
-    # Fire-and-forget: always returns 0, suppresses all output.
-    if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
-        declare -f config_backup_auto &>/dev/null && \
-            config_backup_auto "pre-ai:${T_TOOL}" 2>/dev/null || true
-    fi
-
     # ── Approval gate ─────────────────────────────────────────────────────────
     local run=false
+    local approval_mode="automatic-read"
     case "$tier" in
         READ) run=true ;;
         CHANGE)
-            if ${executive_mode:-false}; then
+            if [ "${executive_mode:-false}" = true ]; then
+                approval_mode="executive"
                 echo -e "  ${YEL}Executive mode — auto-running.${NC}" >&2
                 run=true
             else
+                approval_mode="confirm"
+                declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
                 confirm "Execute this tool?" && run=true
             fi
             ;;
         DESTROY)
+            approval_mode="explicit-YES"
+            declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
             local conf
             read -rp "  ${RED}Type YES to run this destructive action:${NC} " conf </dev/tty
             [ "$conf" = "YES" ] && run=true
             ;;
     esac
 
-    # ── Capture previous occ value for undo (before execution) ───────────────
-    local _undo_prev_occ=""
-    if [[ "$tier" == "CHANGE" && "$T_TOOL" == "occ" ]] && \
-       [[ "$run_cmd" == *"config:system:set"* ]]; then
-        local _undo_occ_arg; _undo_occ_arg=$(echo "$run_cmd" | sed 's/.*php occ //')
-        _undo_prev_occ=$(python3 "${IGOR_DIR}/core/lib/undo_stack.py" get-prev-occ "$_undo_occ_arg" 2>/dev/null || echo "UNSET")
+    local _approval_outcome="declined"
+    [ "$run" = true ] && _approval_outcome="approved"
+    local _meta_runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    if [[ "${IGOR_AI_TOOL_META_FILE:-}" == "${_meta_runtime}/.ai-tool-meta."* ]] &&
+       [ -f "$IGOR_AI_TOOL_META_FILE" ] && [ ! -L "$IGOR_AI_TOOL_META_FILE" ] &&
+       [ -O "$IGOR_AI_TOOL_META_FILE" ]; then
+        local _meta_approval="denied"
+        if [ "$run" = true ]; then
+            case "$approval_mode" in
+                automatic-read) _meta_approval="not_required" ;;
+                executive) _meta_approval="auto_approved" ;;
+                *) _meta_approval="approved" ;;
+            esac
+        fi
+        IGOR_META_TIER="$tier" IGOR_META_APPROVAL="$_meta_approval" \
+            python3 -c 'import json,os; print(json.dumps({"classification":os.environ["IGOR_META_TIER"],"approval_status":os.environ["IGOR_META_APPROVAL"]}))' \
+            > "$IGOR_AI_TOOL_META_FILE" 2>/dev/null || true
     fi
+    _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
+        "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
 
     if $run; then
+        # Backups and undo-state reads happen only after approval.
+        if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
+            declare -f config_backup_auto &>/dev/null && \
+                config_backup_auto "pre-ai:${T_TOOL}" 2>/dev/null || true
+        fi
+        local _undo_prev_occ=""
+        if [[ "$tier" == "CHANGE" && "$T_TOOL" == "occ" ]] &&
+           [[ "$run_cmd" == *"config:system:set"* ]]; then
+            local _undo_occ_arg; _undo_occ_arg=$(echo "$run_cmd" | sed 's/.*php occ //')
+            _undo_prev_occ=$(python3 "${IGOR_DIR}/core/lib/undo_stack.py" get-prev-occ "$_undo_occ_arg" 2>/dev/null || echo "UNSET")
+        fi
         if [ "$T_TOOL" = "edit_file" ]; then
             output=$(_safe_file_edit "$T_PATH" "$T_FIND" "$T_REPLACE" 2>&1)
+            local exit_code=$?
+        elif [ "$T_TOOL" = "propose_menu_item" ]; then
+            output=$(_ai_propose_menu_item "$T_TITLE" "$T_DESCRIPTION" "$T_COMMAND" "$T_TYPE" "$T_TIER" 2>&1)
             local exit_code=$?
         elif [ "$T_TOOL" = "run_igor_action" ]; then
             # Load the module that owns this action, then call the function directly.
@@ -436,16 +605,23 @@ except: pass
                 local exit_code=$?
             fi
         else
-            # cd to IGOR_DIR before execution — prevents getcwd() failure when the
-            # shell's working directory no longer exists (e.g. deleted temp dir).
-            # Use array for safe command execution to prevent injection
-            if [[ "$T_TOOL" == "host" && "${run_cmd[*]}" == *"bash -c"* ]]; then
-                # For host commands with bash -c, use the array safely
-                output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp; "${run_cmd[@]}" </dev/null 2>&1)
+            # Semantic tools execute argv directly; only approved raw tools use Bash.
+            if [ "${#run_argv[@]}" -gt 0 ]; then
+                if [ "$tier" = "READ" ]; then
+                    output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; _ai_run_read_command "${run_argv[@]}" </dev/null 2>&1)
+                else
+                    output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; "${run_argv[@]}" </dev/null 2>&1)
+                fi
                 local exit_code=$?
+                if [ "$T_TOOL" = "read_log" ] && [ -n "$T_SEARCH" ]; then
+                    output=$(printf '%s\n' "$output" | grep -i -- "$T_SEARCH")
+                fi
             else
-                # For other commands, use bash -c with the command string
-                output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp; bash -c "$run_cmd" </dev/null 2>&1)
+                if [ "$tier" = "READ" ]; then
+                    output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; _ai_run_read_command bash -c "$run_cmd" </dev/null 2>&1)
+                else
+                    output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; bash -c "$run_cmd" </dev/null 2>&1)
+                fi
                 local exit_code=$?
             fi
         fi
@@ -476,6 +652,9 @@ ${tail_out}"
         fi
 
         output="TOOL:${T_TOOL} EXIT:${exit_code}\nOUTPUT:\n${output}"
+        _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
+            "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
+            "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
         case "$tier" in
@@ -517,7 +696,7 @@ ${tail_out}"
         fi
     else
         # P1-6: User declined — write signal for loop banner, skip manual-handoff prompt.
-        local _sig_file="/data/runtime/loop_signal.tmp"
+        local _sig_file="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/loop_signal.tmp"
         if [ "$tier" = "DESTROY" ]; then
             echo "DESTROY_DECLINED" > "$_sig_file"
             output="[USER DECLINED] Destructive command not confirmed: ${display_cmd}"
@@ -526,6 +705,8 @@ ${tail_out}"
             output="[USER DECLINED] Command skipped: ${display_cmd}"
         fi
         echo -e "  ${YEL}  (skipped — command not run)${NC}" >&2
+        _ai_audit_dispatch DECLINED "$T_TOOL" "$tier" "declined" "declined" "0" \
+            "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
         # P3-2: count declined/blocked commands
         (( AI_CMD_BLOCKED++ )) || true
     fi

@@ -62,15 +62,69 @@ _SENSITIVE_FILE_PATTERNS=""
 _scrub_add() {
     local real="$1" token="$2"
     if [ -n "$real" ] && [[ "$real" != \[*\] ]] && [ "${#real}" -gt 0 ]; then
-        # Avoid duplicates
-        for existing in "${SCRUB_FROM[@]}"; do
+        # Keep the first token assigned to a value for compatibility. If two
+        # values would share a reverse token, give later values a unique token.
+        local idx existing existing_token suffix=2 candidate used
+        for idx in "${!SCRUB_FROM[@]}"; do
+            existing="${SCRUB_FROM[$idx]}"
             if [ "$existing" = "$real" ]; then
                 return
+            fi
+            existing_token="${SCRUB_TO[$idx]}"
+            if [ "$existing_token" = "$token" ]; then
+                while :; do
+                    candidate="${token%]}_${suffix}]"
+                    used=false
+                    for existing_token in "${SCRUB_TO[@]}"; do
+                        if [ "$existing_token" = "$candidate" ]; then
+                            used=true
+                            break
+                        fi
+                    done
+                    if [ "$used" = false ]; then
+                        token="$candidate"
+                        break
+                    fi
+                    suffix=$((suffix + 1))
+                done
+                break
             fi
         done
         SCRUB_FROM+=("$real")
         SCRUB_TO+=("$token")
     fi
+}
+
+_scrub_escape_pattern() {
+    printf '%s\n' "$1" | sed 's/[.[\*^$\\]/\\&/g; s/|/\\|/g'
+}
+
+_scrub_escape_replacement() {
+    printf '%s\n' "$1" | sed 's/[&\\|]/\\&/g'
+}
+
+_scrub_apply_mapping() {
+    local text="$1" from="$2" to="$3" escaped_from escaped_to
+    escaped_from=$(_scrub_escape_pattern "$from")
+    escaped_to=$(_scrub_escape_replacement "$to")
+    printf '%s\n' "$text" | sed "s|${escaped_from}|${escaped_to}|g"
+}
+
+_scrub_sorted_indexes() {
+    local i j key key_len
+    local -a indexes=()
+    for i in "${!SCRUB_FROM[@]}"; do indexes+=("$i"); done
+    for ((i = 1; i < ${#indexes[@]}; i++)); do
+        key="${indexes[$i]}"
+        key_len=${#SCRUB_FROM[$key]}
+        j=$((i - 1))
+        while ((j >= 0 && ${#SCRUB_FROM[${indexes[$j]}]} < key_len)); do
+            indexes[$((j + 1))]="${indexes[$j]}"
+            j=$((j - 1))
+        done
+        indexes[$((j + 1))]="$key"
+    done
+    printf '%s\n' "${indexes[@]}"
 }
 
 # ── Enhanced: detect and scrub sensitive patterns ───────────────────────────────
@@ -156,7 +210,22 @@ ai_scrub_build_table() {
     
     local hostname_val lan_ip home_dir
     hostname_val=$(hostname 2>/dev/null)
-    lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    lan_ip=""
+    local _lan_ips _lan_ip
+    _lan_ips=$(hostname -I 2>/dev/null) || _lan_ips=""
+    for _lan_ip in $_lan_ips; do
+        case "$_lan_ip" in
+            *.*) lan_ip="$_lan_ip"; break ;;
+        esac
+    done
+    if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then
+        lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '
+            { for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }
+        ')
+    fi
+    if [ -z "$lan_ip" ] && command -v ip >/dev/null 2>&1; then
+        lan_ip=$(ip -4 -o addr show scope global 2>/dev/null | awk 'NR == 1 {split($4, a, "/"); print a[1]}')
+    fi
     home_dir="$HOME"
     
     _scrub_add "$hostname_val"  "[IGOR:HOSTNAME]"
@@ -165,12 +234,20 @@ ai_scrub_build_table() {
     
     # Enhanced domain handling (multiple domains)
     if [ -f "${IGOR_DIR}/secrets/db.env" ]; then
-        local domains
+        local domains domain
         domains=$(grep "^NEXTCLOUD_TRUSTED_DOMAINS=" "${IGOR_DIR}/secrets/db.env" 2>/dev/null \
                  | cut -d= -f2- | tr ',' ' ' | tr '"' ' ')
+        # Prefer the externally useful name for the stable DOMAIN token. Keep
+        # localhost as a distinct alias when it is also configured.
         for domain in $domains; do
             domain=$(echo "$domain" | xargs)  # trim whitespace
-            [ -n "$domain" ] && _scrub_add "$domain" "[IGOR:DOMAIN]"
+            [ -n "$domain" ] && [ "$domain" != "localhost" ] && \
+                _scrub_add "$domain" "[IGOR:DOMAIN]"
+        done
+        for domain in $domains; do
+            domain=$(echo "$domain" | xargs)
+            [ -n "$domain" ] && [ "$domain" = "localhost" ] && \
+                _scrub_add "$domain" "[IGOR:DOMAIN]"
         done
     fi
     
@@ -194,8 +271,16 @@ ai_scrub_build_table() {
     
     # Enhanced path handling with security config
     local data_path hd_mount
-    data_path="${NC_DATA:-$(igor_get_security_config "IGOR_NC_DATA")}"
-    hd_mount="${HD_MOUNT:-$(igor_get_security_config "IGOR_HD_MOUNT")}"
+    if [ -n "${NC_DATA:-}" ]; then
+        data_path="$NC_DATA"
+    elif declare -f igor_get_security_config >/dev/null 2>&1; then
+        data_path="$(igor_get_security_config "IGOR_NC_DATA")"
+    fi
+    if [ -n "${HD_MOUNT:-}" ]; then
+        hd_mount="$HD_MOUNT"
+    elif declare -f igor_get_security_config >/dev/null 2>&1; then
+        hd_mount="$(igor_get_security_config "IGOR_HD_MOUNT")"
+    fi
     
     _scrub_add "$data_path" "[IGOR:DATA_PATH]"
     _scrub_add "$hd_mount"  "[IGOR:HD_MOUNT]"
@@ -209,7 +294,9 @@ ai_scrub_build_table() {
     
     # Enhanced Docker network configuration
     local docker_subnet docker_gw docker_network_name
-    docker_network_name="$(igor_get_security_config "IGOR_DOCKER_NETWORK")"
+    if declare -f igor_get_security_config >/dev/null 2>&1; then
+        docker_network_name="$(igor_get_security_config "IGOR_DOCKER_NETWORK")"
+    fi
     
     docker_subnet=$(docker network inspect "$docker_network_name" \
                     --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null \
@@ -251,18 +338,40 @@ ai_scrub_build_table() {
 # ── Enhanced: scrub outbound text ──────────────────────────────────────────────
 ai_scrub_outbound() {
     local text="$1"
-    local i
-    
-    # First pass: pattern-based scrubbing for unknown sensitive data
+    local i from to
+
+    # Apply reversible mappings first. Generic URL/IP patterns must not turn a
+    # known value into a generic token that cannot be restored.
+    while IFS= read -r i; do
+        [ -n "$i" ] || continue
+        from="${SCRUB_FROM[$i]}"
+        to="${SCRUB_TO[$i]}"
+        text=$(_scrub_apply_mapping "$text" "$from" "$to")
+    done < <(_scrub_sorted_indexes)
+
+    # Protect labelled tokens while handling unknown values. This keeps
+    # https://[IGOR:DOMAIN]/status useful to the model.
+    local -a protected_tokens=() protected_sentinels=()
+    local token sentinel token_index=0
+    while [[ "$text" =~ (\[IGOR:[A-Z0-9_]+\]) ]]; do
+        token="${BASH_REMATCH[1]}"
+        sentinel="__IGOR_TOKEN_${token_index}__"
+        text="${text/"$token"/$sentinel}"
+        protected_tokens+=("$token")
+        protected_sentinels+=("$sentinel")
+        token_index=$((token_index + 1))
+    done
+    # The URL fallback pattern sees a protected token as part of a URL. Hide
+    # the scheme while that pass runs, then put it back below.
+    for sentinel in "${protected_sentinels[@]}"; do
+        text="${text//"https://${sentinel}"/__IGOR_HTTPS__${sentinel}}"
+        text="${text//"http://${sentinel}"/__IGOR_HTTP__${sentinel}}"
+    done
     text=$(_scrub_sensitive_patterns "$text")
-    
-    # Second pass: table-based scrubbing
-    for i in "${!SCRUB_FROM[@]}"; do
-        local from="${SCRUB_FROM[$i]}"
-        local to="${SCRUB_TO[$i]}"
-        local escaped_from
-        escaped_from=$(printf '%s\n' "$from" | sed 's/[.*^$[\]/\\&/g; s/|/\\|/g')
-        text=$(printf '%s\n' "$text" | sed "s|${escaped_from}|${to}|g")
+    text="${text//__IGOR_HTTPS__/https://}"
+    text="${text//__IGOR_HTTP__/http://}"
+    for token_index in "${!protected_tokens[@]}"; do
+        text="${text//"${protected_sentinels[$token_index]}"/${protected_tokens[$token_index]}}"
     done
     
     # Final pass: catch any remaining literals registered by the scrub engine
@@ -282,24 +391,18 @@ ai_scrub_outbound() {
 }
 
 # ── Enhanced: unscrub inbound commands ────────────────────────────────────────────
-# Reverses substitution — ONLY used on EXECUTE lines, never on display text.
+# Reverses substitution on a trusted command field. Callers decide whether a
+# field is executable; dispatchers pass already-extracted command text.
 ai_unscrub_inbound() {
     local text="$1"
-    local i
-    
-    # Only process lines that contain execute commands
-    if ! echo "$text" | grep -qiE "(execute|<host>|<occ>|<container)" >/dev/null 2>&1; then
-        printf '%s\n' "$text"
-        return
-    fi
-    
-    for i in "${!SCRUB_FROM[@]}"; do
-        local from="${SCRUB_FROM[$i]}"
-        local to="${SCRUB_TO[$i]}"
-        local escaped_to
-        escaped_to=$(printf '%s\n' "$to" | sed 's/[.*^$[\]/\\&/g; s/|/\\|/g')
-        text=$(printf '%s\n' "$text" | sed "s|${escaped_to}|${from}|g")
-    done
+    local i from to
+
+    while IFS= read -r i; do
+        [ -n "$i" ] || continue
+        from="${SCRUB_FROM[$i]}"
+        to="${SCRUB_TO[$i]}"
+        text=$(_scrub_apply_mapping "$text" "$to" "$from")
+    done < <(_scrub_sorted_indexes)
     printf '%s\n' "$text"
 }
 

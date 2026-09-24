@@ -34,8 +34,36 @@ _cb_backup_dir() {
 }
 BACKUP_DIR="$(_cb_backup_dir)"
 
+# Return supported secret files without following directory entries that are
+# symlinks.  Module manifests may declare any secrets/*.env file; *.key files
+# are also part of the supported secrets store.  Keep the archive flat for
+# compatibility with existing snapshots and restore logic.
+_mod_cb_secret_files() {
+    local secrets_dir="$1"
+    [ -d "$secrets_dir" ] || return 0
+    find -P "$secrets_dir" -maxdepth 1 -type f \
+        \( -name '*.env' -o -name '*.key' \) -print 2>/dev/null | sort
+}
+
+_mod_cb_docker_available() {
+    if declare -f igor_has_capability >/dev/null 2>&1; then
+        igor_has_capability docker
+    else
+        # A binary on PATH is not activation state.  Fail closed until the
+        # lifecycle/capability registry has been initialized.
+        return 1
+    fi
+}
+
 # ── config_backup_take [REASON] ───────────────────────────────────────────────
-config_backup_take() {
+config_backup_take() (
+    # Isolate cleanup traps and reserve stdout for the resulting archive path.
+    local _cb_result_fd
+    exec {_cb_result_fd}>&1
+    _mod_cb_take "$@" >&2
+)
+
+_mod_cb_take() {
     local reason="${1:-manual}"
     local RED='\033[0;31m' GRN='\033[0;32m' YEL='\033[1;33m'
     local CYAN='\033[0;36m' BOLD='\033[1m' NC='\033[0m'
@@ -50,8 +78,10 @@ config_backup_take() {
     }
 
     local ts; ts=$(date +%s)
-    local workdir; workdir=$(mktemp -d)
-    trap 'rm -rf "$workdir"' RETURN
+    local workdir; workdir=$(mktemp -d) || return 1
+    # Expand the path now: the helper's locals are gone when the subshell exits.
+    # shellcheck disable=SC2064
+    trap "rm -rf -- $(printf '%q' "$workdir")" EXIT
 
     local components=()
 
@@ -68,32 +98,33 @@ config_backup_take() {
         info "config/variables/ — empty or missing, skipped"
     fi
 
+    # Module activation is installation state, not module content.  Preserve
+    # the registry alongside Igor state so a restored host keeps optional
+    # modules disabled or enabled on the next process start.
+    local _module_state="${IGOR_DIR}/config/modules.conf"
+    if [ -f "$_module_state" ]; then
+        cp -- "$_module_state" "${workdir}/igor-state/modules.conf" 2>/dev/null && \
+            components+=("igor-state/modules.conf")
+    fi
+
     # ── 2. Igor state — secrets/ env files + API keys ────────────────────────
     local _secrets_dir="${IGOR_DIR}/secrets"
     local _secrets_captured=()
     if [ -d "$_secrets_dir" ]; then
         mkdir -p "${workdir}/igor-state/secrets-plain"
-        for _sf in site.env notifications.env mailcmd.env db.env onlyoffice.env; do
-            if [ -f "${_secrets_dir}/${_sf}" ]; then
-                cp "${_secrets_dir}/${_sf}" "${workdir}/igor-state/secrets-plain/${_sf}" 2>/dev/null && \
-                    _secrets_captured+=("$_sf")
-            fi
-        done
-
-        # API key files (secrets/*.key — anthropic.key, openrouter.key, etc.)
-        for _kf in "${_secrets_dir}/"*.key; do
-            [ -f "$_kf" ] || continue
-            local _kf_name; _kf_name=$(basename "$_kf")
-            cp "$_kf" "${workdir}/igor-state/secrets-plain/${_kf_name}" 2>/dev/null && \
-                _secrets_captured+=("$_kf_name")
-        done
+        while IFS= read -r _sf_path; do
+            [ -n "$_sf_path" ] || continue
+            local _sf; _sf=$(basename -- "$_sf_path")
+            cp -- "$_sf_path" "${workdir}/igor-state/secrets-plain/${_sf}" 2>/dev/null && \
+                _secrets_captured+=("$_sf")
+        done < <(_mod_cb_secret_files "$_secrets_dir")
 
         if [ ${#_secrets_captured[@]} -gt 0 ]; then
             components+=("igor-state/secrets-plain/")
             ok "secrets/           (${_secrets_captured[*]})"
         else
             rmdir "${workdir}/igor-state/secrets-plain" 2>/dev/null || true
-            info "secrets/ — no env files found, skipped"
+            info "secrets/ — no env or key files found, skipped"
         fi
     fi
 
@@ -163,14 +194,16 @@ config_backup_take() {
     fi
 
     local _docker_state=()
-    docker network ls  > "${workdir}/docker/networks.snapshot"   2>/dev/null && \
-        { components+=("docker/networks.snapshot");   _docker_state+=("networks"); }   || true
-    docker volume ls   > "${workdir}/docker/volumes.snapshot"    2>/dev/null && \
-        { components+=("docker/volumes.snapshot");    _docker_state+=("volumes"); }    || true
-    docker ps          > "${workdir}/docker/containers.snapshot" 2>/dev/null && \
-        { components+=("docker/containers.snapshot"); _docker_state+=("containers"); } || true
-    docker images      > "${workdir}/docker/images.snapshot"     2>/dev/null && \
-        { components+=("docker/images.snapshot");     _docker_state+=("images"); }     || true
+    if _mod_cb_docker_available; then
+        docker network ls  > "${workdir}/docker/networks.snapshot"   2>/dev/null && \
+            { components+=("docker/networks.snapshot");   _docker_state+=("networks"); }   || true
+        docker volume ls   > "${workdir}/docker/volumes.snapshot"    2>/dev/null && \
+            { components+=("docker/volumes.snapshot");    _docker_state+=("volumes"); }    || true
+        docker ps          > "${workdir}/docker/containers.snapshot" 2>/dev/null && \
+            { components+=("docker/containers.snapshot"); _docker_state+=("containers"); } || true
+        docker images      > "${workdir}/docker/images.snapshot"     2>/dev/null && \
+            { components+=("docker/images.snapshot");     _docker_state+=("images"); }     || true
+    fi
 
     [ ${#_docker_state[@]} -gt 0 ] && \
         ok "docker state       (${_docker_state[*]})" || \
@@ -235,13 +268,23 @@ config_backup_take() {
     # Result is communicated via _CB_ENC_RESULT global.
     local _enc_suffix=""
     _CB_ENC_RESULT=""
-    if [ -t 0 ] && [ -t 1 ]; then
+    if [ -t 0 ] && [ -t 2 ]; then
         _mod_cb_encrypt_secrets_prompt "$workdir"
-        [ "$_CB_ENC_RESULT" = "enc" ] && _enc_suffix="-enc"
+        if [ "$_CB_ENC_RESULT" = "enc" ]; then
+            _enc_suffix="-enc"
+            local i
+            for i in "${!components[@]}"; do
+                if [ "${components[$i]}" = "igor-state/secrets-plain/" ]; then
+                    components[$i]="igor-state/secrets-plain.tar.gz.gpg"
+                fi
+            done
+        fi
     fi
 
     # ── 8. Generate igor-snapshot.json ────────────────────────────────────────
-    _mod_cb_generate_json "$workdir" "$reason"
+    local _docker_available=false
+    _mod_cb_docker_available && _docker_available=true
+    IGOR_DOCKER_AVAILABLE="$_docker_available" _mod_cb_generate_json "$workdir" "$reason"
     [ -f "${workdir}/igor-snapshot.json" ] && components+=("igor-snapshot.json")
 
     # ── 9. Write manifest.txt ─────────────────────────────────────────────────
@@ -281,7 +324,7 @@ config_backup_take() {
     _mod_cb_prune_old
 
     # Return archive path to caller
-    printf '%s' "$archive"
+    printf '%s\n' "$archive" >&"$_cb_result_fd"
 }
 
 # ── _mod_cb_encrypt_secrets_prompt WORKDIR ────────────────────────────────────
@@ -332,6 +375,7 @@ _mod_cb_encrypt_secrets_prompt() {
     (cd "${workdir}/igor-state" && \
      tar -czf secrets-plain.tar.gz secrets-plain/ 2>/dev/null && \
      gpg --batch --yes --symmetric \
+         --pinentry-mode loopback \
          --passphrase-fd 3 \
          --output secrets-plain.tar.gz.gpg \
          secrets-plain.tar.gz 2>/dev/null 3<<<"$passphrase" && \
@@ -365,6 +409,7 @@ def run_lines(cmd):
     return [l for l in run(cmd).splitlines() if l.strip()]
 
 igor_dir = os.environ.get('IGOR_DIR', '.')
+docker_available = os.environ.get('IGOR_DOCKER_AVAILABLE') == 'true'
 
 snapshot = {
     "igor": {
@@ -382,11 +427,11 @@ snapshot = {
         "open_ports":       run_lines("ss -tlnp"),
         "enabled_services": run_lines("systemctl list-unit-files --state=enabled --type=service --no-legend"),
     },
-    "docker": {
+    "docker": ({
         "networks":   run_lines("docker network ls --format '{{.Name}}'"),
         "volumes":    run_lines("docker volume ls  --format '{{.Name}}'"),
         "containers": run_lines("docker ps         --format '{{.Names}}\t{{.Status}}\t{{.Image}}'"),
-    },
+    } if docker_available else {}),
     "network": {
         "addresses": run("ip addr show"),
         "routes":    run("ip route show"),
@@ -536,15 +581,21 @@ config_backup_restore() {
     fi
 
     local workdir; workdir=$(mktemp -d)
-    trap 'rm -rf "$workdir"' RETURN
-    tar -xzf "$archive" -C "$workdir" 2>/dev/null || { fail "Archive extract failed"; return 1; }
+    # A RETURN trap also fires for every helper called below (confirm, hooks,
+    # etc.) when functrace is enabled, deleting the restore tree too early.
+    # Clean up explicitly after all restore stages instead.
+    tar -xzf "$archive" -C "$workdir" 2>/dev/null || {
+        fail "Archive extract failed"
+        rm -rf -- "$workdir"
+        return 1
+    }
 
     # ── Igor state restore ────────────────────────────────────────────────────
     if [[ "$scope" == "igor-state" || "$scope" == "all" ]]; then
         local _proceed=true
         [ "$scope" = "all" ] && { confirm "Restore Igor state (variables, env files)?" || _proceed=false; }
 
-        if $proceed 2>/dev/null || $proceed; then
+        if "$_proceed"; then
             # config/variables/ restore
             if [ -d "${workdir}/igor-state/variables" ]; then
                 echo -e "  ${CYAN}Diff — config/variables/:${NC}"
@@ -564,25 +615,41 @@ config_backup_restore() {
                 fi
             fi
 
+            if [ -f "${workdir}/igor-state/modules.conf" ]; then
+                if confirm "Restore module activation state (config/modules.conf)?"; then
+                    mkdir -p "${IGOR_DIR}/config"
+                    if cp -- "${workdir}/igor-state/modules.conf" "${IGOR_DIR}/config/modules.conf"; then
+                        ok "config/modules.conf restored (takes effect on next Igor start)"
+                    else
+                        fail "config/modules.conf restore failed"
+                    fi
+                fi
+            fi
+
             # secrets restore
             if [ -d "${workdir}/igor-state/secrets-plain" ]; then
                 if confirm "Restore secrets env files and API keys?"; then
-                    mkdir -p "${IGOR_DIR}/secrets"
-                    for _ef in site.env notifications.env mailcmd.env db.env onlyoffice.env; do
-                        if [ -f "${workdir}/igor-state/secrets-plain/${_ef}" ]; then
-                            cp "${workdir}/igor-state/secrets-plain/${_ef}" "${IGOR_DIR}/secrets/${_ef}"
-                            chmod 600 "${IGOR_DIR}/secrets/${_ef}" 2>/dev/null || true
-                            ok "${_ef} restored"
-                        fi
-                    done
-                    # API key files (*.key)
-                    for _kf in "${workdir}/igor-state/secrets-plain/"*.key; do
-                        [ -f "$_kf" ] || continue
-                        local _kf_name; _kf_name=$(basename "$_kf")
-                        cp "$_kf" "${IGOR_DIR}/secrets/${_kf_name}"
-                        chmod 600 "${IGOR_DIR}/secrets/${_kf_name}" 2>/dev/null || true
-                        ok "${_kf_name} restored"
-                    done
+                    if [ -L "${IGOR_DIR}/secrets" ]; then
+                        fail "Refusing to restore secrets through a symlinked directory"
+                    elif mkdir -p "${IGOR_DIR}/secrets"; then
+                        while IFS= read -r _sf_path; do
+                            [ -n "$_sf_path" ] || continue
+                            local _sf_name; _sf_name=$(basename -- "$_sf_path")
+                            local _sf_dest="${IGOR_DIR}/secrets/${_sf_name}"
+                            if [ -L "$_sf_dest" ]; then
+                                warn "Skipping symlinked secret destination: ${_sf_name}"
+                                continue
+                            fi
+                            if cp -- "$_sf_path" "$_sf_dest" && chmod 600 "$_sf_dest" 2>/dev/null; then
+                                ok "${_sf_name} restored"
+                            else
+                                fail "${_sf_name} restore failed"
+                            fi
+                        done < <(find -P "${workdir}/igor-state/secrets-plain" -maxdepth 1 -type f \
+                            \( -name '*.env' -o -name '*.key' \) -print 2>/dev/null | sort)
+                    else
+                        fail "Could not create secrets directory"
+                    fi
                 fi
             elif [ -f "${workdir}/igor-state/secrets-plain.tar.gz.gpg" ]; then
                 warn "Secrets are encrypted. Decrypt manually:"
@@ -661,6 +728,11 @@ config_backup_restore() {
                     local _cf_name; _cf_name=$(basename "$_cf")
                     echo -e "  ${YEL}Legacy compose file:${NC} ${_cf_name}"
                     echo "  (legacy backups used encoded filenames — restore to config/stacks/ manually)"
+                    if declare -f igor_has_module >/dev/null 2>&1 &&
+                       ! igor_has_module nextcloud_docker; then
+                        warn "Skipping legacy Nextcloud compose restore: nextcloud_docker is disabled"
+                        continue
+                    fi
                     confirm "Copy ${_cf_name} to ${IGOR_DIR}/config/stacks/nextcloud/$(basename "${_cf_name#compose_}")?" && \
                         { mkdir -p "${IGOR_DIR}/config/stacks/nextcloud"; \
                           cp "$_cf" "${IGOR_DIR}/config/stacks/nextcloud/$(basename "${_cf_name#compose_}")" 2>/dev/null; \
@@ -709,6 +781,8 @@ config_backup_restore() {
         info "Running health checks post-restore..."
         health_check_full "false" 2>/dev/null || true
     }
+
+    rm -rf -- "$workdir"
 }
 
 # ── config_backup_secrets ─────────────────────────────────────────────────────
@@ -831,7 +905,7 @@ _mod_cb_prune_old() {
     local keep="${BACKUP_CONFIG_KEEP:-7}"
     local i=0
     ls -t "${BACKUP_DIR}"/config_*.tar.gz 2>/dev/null | while IFS= read -r f; do
-        (( i++ ))
+        i=$(( i + 1 ))
         [ "$i" -gt "$keep" ] && rm -f "$f" 2>/dev/null || true
     done
 }

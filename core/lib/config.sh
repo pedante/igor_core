@@ -166,17 +166,10 @@ _load_config() {
 
 # ── Validate required configuration ───────────────────────────────────────────────
 _validate_config() {
-    local _warn=0
-
-    # Provide safe defaults so callers never get empty strings
+    # Compatibility defaults for existing module helpers. Application
+    # requirements are validated by the active module's config_validate hook.
     POSTGRES_USER="${POSTGRES_USER:-nextcloud}"
     POSTGRES_DB="${POSTGRES_DB:-nextcloud}"
-
-    # ── Required secrets — warn clearly if missing ────────────────────────────────
-    if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-        echo "  [igor] WARNING: POSTGRES_PASSWORD not set — database operations will fail" >&2
-        _warn=$(( _warn + 1 ))
-    fi
     # ── Secrets file permissions ──────────────────────────────────────────────────
     local _db_env_path="${IGOR_DIR}/secrets/db.env"
     [ ! -f "$_db_env_path" ] && _db_env_path="${PROJECT_DIR}/db.env"

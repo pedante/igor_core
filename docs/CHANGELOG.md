@@ -6,6 +6,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- Validate AI tool fields without shell evaluation, execute semantic tool arguments
+  directly, and require approval for raw commands outside the read-only allowlist.
+- Include the core archive in full backups as an independent copy. Report missing
+  archives, copy failures, and failed module hooks as partial failures; retain good
+  backups when an attempt fails and exclude partial attempts from rotation counts.
+- Include the encrypted secrets file in the snapshot component list after GPG
+  encryption, and separate archive-path output from backup progress messages.
+- Fix captured newlines in secret prompts and stale API key caches after key
+  replacement. Add visible key entry, a dedicated API KEY menu option, and an
+  `apikey` chat command; report save failures and preserve rejected replacements.
+- Honor configured AI provider/model defaults and keep credential writes separate
+  from ordinary settings saves.
+- Stop unavailable email-control menu loading without recursive retries, and
+  return failure for missing heartbeat implementation or failed heartbeat runs.
+- Resolve manifest configuration paths relative to the repository and validate
+  loaded modules after startup discovery.
+- Reject modules missing their registration function. Dispatch registered module
+  menus through the lifecycle loader while retaining legacy feature-file loading;
+  stop on loading failures and preserve menu callback exit status.
+- Preserve hook failure exit codes in diagnostics and use the canonical runtime
+  directory (including overrides) for the extra monitoring TUI.
+- Correct setup commands and document current menu, hook, configuration, and test
+  contracts, including unavailable email control and incomplete service isolation.
+
 ## [1.0.0] — 2026-04-16
 
 First public release. Igor began as a monolithic ~5800-line script (`nexusai.sh`)

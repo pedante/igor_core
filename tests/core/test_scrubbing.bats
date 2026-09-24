@@ -167,3 +167,29 @@ teardown() {
     local result; result=$(ai_unscrub_inbound "$plain")
     [ "$result" = "$plain" ] || fail "plain text was modified: $result"
 }
+
+@test "unscrub_inbound restores an extracted command without an execute marker" {
+    local result; result=$(ai_unscrub_inbound "curl https://[IGOR:DOMAIN]/status.php")
+    [[ "$result" == *"https://testcloud.example.com/status.php"* ]] \
+        || fail "extracted command token was not restored: $result"
+}
+
+@test "known mappings win over generic IP scrubbing" {
+    SCRUB_FROM=("192.0.2.5")
+    SCRUB_TO=("[IGOR:LAN_IP]")
+    local result; result=$(ai_scrub_outbound "ping 192.0.2.5")
+    [ "$result" = "ping [IGOR:LAN_IP]" ] || fail "mapping was replaced generically: $result"
+}
+
+@test "known domain token survives generic URL scrubbing" {
+    local result; result=$(ai_scrub_outbound "curl https://[IGOR:DOMAIN]/status.php")
+    [ "$result" = "curl https://[IGOR:DOMAIN]/status.php" ] \
+        || fail "labelled domain was scrubbed as a URL: $result"
+}
+
+@test "longer mappings are applied before parent paths" {
+    SCRUB_FROM=("/mnt/nextclouddata" "/mnt/nextclouddata/next")
+    SCRUB_TO=("[IGOR:HD_MOUNT]" "[IGOR:DATA_PATH]")
+    local result; result=$(ai_scrub_outbound "/mnt/nextclouddata/next/admin")
+    [ "$result" = "[IGOR:DATA_PATH]/admin" ] || fail "parent mapping consumed child: $result"
+}

@@ -23,7 +23,7 @@
 
 # ── Runtime paths ─────────────────────────────────────────────────────────────
 _EXTRA_CFG="${IGOR_DIR}"
-_EXTRA_RT="${_EXTRA_CFG}/runtime"
+_EXTRA_RT="${IGOR_RUNTIME_DIR:-${_EXTRA_CFG}/data/runtime}"
 _EXTRA_PID_FILE="${_EXTRA_RT}/pid"
 _EXTRA_STATE_FILE="${_EXTRA_RT}/state.env"
 _EXTRA_OUTPUT_LOG="${_EXTRA_RT}/output.log"
@@ -68,6 +68,11 @@ _extra_session_pid() {
 # ── State helpers ─────────────────────────────────────────────────────────────
 _extra_state_get() {
     grep "^${1}=" "$_EXTRA_STATE_FILE" 2>/dev/null | cut -d= -f2- | head -1
+}
+
+_extra_nextcloud_active() {
+    declare -f igor_has_module >/dev/null 2>&1 || return 1
+    igor_has_module nextcloud_docker
 }
 
 # ── Non-blocking FIFO write (background + kill after 2s) ─────────────────────
@@ -256,8 +261,10 @@ _extra_watch_resources() {
     fi
     echo ""
     df -h / 2>/dev/null | tail -1 | awk '{printf "  Disk:   /          %s / %s  %s\n",$3,$2,$5}' || true
-    local nc_m; nc_m=$(_extra_state_get "HD_MOUNT"); nc_m="${nc_m:-/mnt/nextclouddata}"
-    df -h "$nc_m" 2>/dev/null | tail -1 | awk -v mp="$nc_m" '{printf "  Disk:   %-12s%s / %s  %s\n",mp,$3,$2,$5}' 2>/dev/null || true
+    if _extra_nextcloud_active; then
+        local nc_m; nc_m=$(_extra_state_get "HD_MOUNT"); nc_m="${nc_m:-/mnt/nextclouddata}"
+        df -h "$nc_m" 2>/dev/null | tail -1 | awk -v mp="$nc_m" '{printf "  Disk:   %-12s%s / %s  %s\n",mp,$3,$2,$5}' 2>/dev/null || true
+    fi
     echo ""
     [ -f /sys/class/thermal/thermal_zone0/temp ] && \
         printf "  Temp:   %d°C\n" "$(( $(cat /sys/class/thermal/thermal_zone0/temp) / 1000 ))"
@@ -293,12 +300,14 @@ _extra_watch_network() {
     else
         printf "  ${_ER}○${_EN} Cloudflare tunnel: not running\n"
     fi
-    local code; code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
-        "http://localhost:${IGOR_WEB_PORT:-8080}/status.php" 2>/dev/null || echo "000")
-    if [ "$code" = "200" ]; then
-        printf "  ${_EG}●${_EN} Nextcloud (%s):  ${_EG}%s OK${_EN}\n" "${IGOR_WEB_PORT:-8080}" "$code"
-    else
-        printf "  ${_ER}○${_EN} Nextcloud (8080):  ${_ER}%s${_EN}\n" "$code"
+    if _extra_nextcloud_active; then
+        local code; code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 \
+            "http://localhost:${IGOR_WEB_PORT:-8080}/status.php" 2>/dev/null || echo "000")
+        if [ "$code" = "200" ]; then
+            printf "  ${_EG}●${_EN} Nextcloud (%s):  ${_EG}%s OK${_EN}\n" "${IGOR_WEB_PORT:-8080}" "$code"
+        else
+            printf "  ${_ER}○${_EN} Nextcloud (8080):  ${_ER}%s${_EN}\n" "$code"
+        fi
     fi
 }
 

@@ -45,7 +45,8 @@ def to_openai_schema(tools: list) -> str:
             params_schema = {
                 "type": "object",
                 "properties": raw_params,
-                "required": list(raw_params.keys()),
+                "required": tool.get("required", list(raw_params.keys())),
+                "additionalProperties": False,
             }
         else:
             param_name = tool.get("xml_content", "command")

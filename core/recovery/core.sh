@@ -89,7 +89,11 @@ menu_recovery() {
 
         # Module-provided extra actions (nextcloud_docker: a=supervised install, r=risk register)
         local _ncd_loaded=false
-        [ -n "${_IGOR_LOADED_MODULES[nextcloud_docker]:-}" ] && _ncd_loaded=true
+        if declare -f igor_has_module >/dev/null 2>&1; then
+            igor_has_module nextcloud_docker && _ncd_loaded=true
+        else
+            [ -n "${_IGOR_LOADED_MODULES[nextcloud_docker]:-}" ] && _ncd_loaded=true
+        fi
         if $_ncd_loaded; then
             echo ""
             echo -e "  ${BOLD}a.${NC} SUPERVISED NEXTCLOUD APP INSTALL   (install with 90s observation)"

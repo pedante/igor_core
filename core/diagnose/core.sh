@@ -70,6 +70,19 @@ _DIAG_FIXES_APPLIED=()
 _DIAG_LOG=()
 declare -gA _DIAG_ROLES=()
 
+# Application/container phases are opt-in.  A module directory or a Docker
+# binary alone does not make Nextcloud diagnostics applicable.
+_diag_nextcloud_active() {
+    if declare -f igor_has_capability >/dev/null 2>&1; then
+        igor_has_capability nextcloud
+        return $?
+    elif declare -f igor_has_module >/dev/null 2>&1; then
+        igor_has_module nextcloud_docker
+        return $?
+    fi
+    return 1
+}
+
 # ── Log helper ─────────────────────────────────────────────────────────────────
 _diag_log() {
     _DIAG_LOG+=("[$(date '+%H:%M:%S')] $1")
@@ -274,15 +287,18 @@ _diag_run_all_phases() {
     # Phase 0 — always runs
     _diag_phase_0
 
-    # Phase 1 — requires docker in PATH
-    if command -v docker &>/dev/null; then
-        _diag_phase_1 "$deep"
-    else
-        _diag_gate_fail 1 "docker not found in PATH"
-    fi
+    # Phase 1 is generic host diagnostics and does not require Docker.
+    _diag_phase_1 "$deep"
 
     # Phase 2 — always runs (disk/mount checks need no docker)
     _diag_phase_2 "$deep"
+
+    # Container phases belong to the active application module.  On a
+    # system-only installation they are not applicable and remain silent.
+    if ! _diag_nextcloud_active; then
+        _diag_log "container/application phases skipped: nextcloud_docker inactive"
+        return
+    fi
 
     # Phase 3 — requires HD mounted AND stack has ≥1 running container
     if _diag_gate_check_hd_mounted && _diag_gate_check_stack_up; then
