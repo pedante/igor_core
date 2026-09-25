@@ -152,6 +152,190 @@ _ai_write_tool_meta() {
         > "$meta" 2>/dev/null || true
 }
 
+# Build the UI-independent approval record.  The record is deliberately kept
+# separate from the command string so future frontends can render the same
+# pending request without reparsing provider output.
+_ai_build_pending_approval() {
+    local tool_json="$1" tier="$2" display="$3" reason="$4" operation_id="$5" normalized_cmd="${6:-}"
+    local native_id
+    native_id=$(printf '%s' "$tool_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("__native_id", ""))' 2>/dev/null) || return 1
+    AI_PENDING_APPROVAL_JSON=$(AI_PENDING_TOOL_JSON="$tool_json" AI_PENDING_TIER="$tier" \
+        AI_PENDING_DISPLAY="$display" AI_PENDING_REASON="$reason" \
+        AI_PENDING_OPERATION="$operation_id" AI_PENDING_NATIVE_ID="$native_id" \
+        AI_PENDING_NORMALIZED_CMD="$normalized_cmd" \
+        python3 - <<'PY'
+import json, os, sys
+try:
+    request = json.loads(os.environ["AI_PENDING_TOOL_JSON"])
+except (KeyError, json.JSONDecodeError):
+    raise SystemExit(1)
+args = {k: v for k, v in request.items() if k not in {"tool", "__native_id"}}
+if os.environ.get("AI_PENDING_NORMALIZED_CMD") and "cmd" in request:
+    request["cmd"] = os.environ["AI_PENDING_NORMALIZED_CMD"]
+    args["cmd"] = request["cmd"]
+command = str(request.get("cmd", request.get("command", "")))
+elevated = command.lstrip().startswith("sudo ") or request.get("sudo") is True
+record = {
+    "native_tool_id": os.environ.get("AI_PENDING_NATIVE_ID", ""),
+    "tool": request.get("tool", ""),
+    "normalized_args": args,
+    "tier": os.environ.get("AI_PENDING_TIER", ""),
+    "display": os.environ.get("AI_PENDING_DISPLAY", ""),
+    "approval_reason": os.environ.get("AI_PENDING_REASON", ""),
+    "authorization_state": "pending",
+    "elevation_known": elevated,
+    "operation_id": os.environ.get("AI_PENDING_OPERATION", ""),
+}
+print(json.dumps(record, ensure_ascii=False, sort_keys=True))
+PY
+    ) || return 1
+    [ -n "$AI_PENDING_APPROVAL_JSON" ]
+}
+
+# Ask the configured Igor model to explain the pending action. The backend
+# facts remain authoritative; this function returns informational prose only.
+_ai_explain_pending_approval() {
+    local pending_json="${1:-${AI_PENDING_APPROVAL_JSON:-}}"
+    [ -n "$pending_json" ] || return 1
+    local renderer="${_AI_SAFETY_DIR}/approval_explain.py"
+    [ -f "$renderer" ] || return 1
+    if [ "${AI_EXPLANATION_CACHE_PENDING:-}" = "$pending_json" ] &&
+       [ -n "${AI_EXPLANATION_CACHE_TEXT:-}" ]; then
+        if [ "${_AI_EXPLANATION_DISPLAY_ONLY:-false}" = true ]; then
+            printf '%s\n' "$AI_EXPLANATION_CACHE_TEXT" >&2
+        else
+            printf '%s\n' "$AI_EXPLANATION_CACHE_TEXT"
+        fi
+        return 0
+    fi
+    local explanation
+    explanation=$(
+        set -o pipefail
+        local request_json system_prompt user_data scrubbed_system scrubbed_user
+        request_json=$(printf '%s' "$pending_json" | python3 "$renderer") || exit 1
+        system_prompt=$(printf '%s' "$request_json" | python3 -c \
+            'import json,sys; print(json.load(sys.stdin)["system"], end="")') || exit 1
+        user_data=$(printf '%s' "$request_json" | python3 -c \
+            'import json,sys; print(json.load(sys.stdin)["user"], end="")') || exit 1
+        declare -f ai_scrub_outbound >/dev/null 2>&1 || exit 1
+        scrubbed_system=$(ai_scrub_outbound "$system_prompt") || exit 1
+        scrubbed_user=$(ai_scrub_outbound "$user_data") || exit 1
+        [ -n "$scrubbed_system" ] && [ -n "$scrubbed_user" ] || exit 1
+        declare -f _nexus_api_call >/dev/null 2>&1 || exit 1
+        declare -f _nexus_parse_result >/dev/null 2>&1 || exit 1
+        local conversation
+        conversation=$(printf '%s' "$scrubbed_user" | python3 -c \
+            'import json,sys; print(json.dumps([{"role":"user","content":sys.stdin.read()}], ensure_ascii=False), end="")') || exit 1
+        local provider="${NEXUS_PROVIDER:-${IGOR_AI_PROVIDER:-anthropic}}"
+        local model="${NEXUS_MODEL:-${IGOR_AI_MODEL:-}}"
+        local api_key="${NEXUS_API_KEY:-${OR_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
+        export IGOR_AI_TEXT_ONLY=true NEXUS_TOOLS_JSON='[]' IGOR_MODULE_TOOLS=''
+        export NEXUS_PROVIDER="$provider" NEXUS_MODEL="$model" NEXUS_API_KEY="$api_key"
+        export NEXUS_SYSTEM="$scrubbed_system" NEXUS_CONV="$conversation"
+        export NEXUS_MAX_TOKENS=700 NEXUS_TEMPERATURE=0.2 IGOR_AI_REQUEST_ID=''
+        if declare -f ai_begin_request >/dev/null 2>&1; then ai_begin_request || exit 1; fi
+        local raw reply in_tokens out_tokens
+        local -a returned_commands=()
+        raw=$(_nexus_api_call 2>/dev/null) || exit 1
+        _nexus_parse_result "$raw" reply returned_commands in_tokens out_tokens || exit 1
+        [ "${IGOR_PROVIDER_ERROR:-false}" != true ] || exit 1
+        [ "${#returned_commands[@]}" -eq 0 ] || exit 1
+        reply="${reply#"${reply%%[![:space:]]*}"}"
+        reply="${reply%"${reply##*[![:space:]]}"}"
+        [ -n "$reply" ] || exit 1
+        printf '%s' "$reply"
+    ) || return 1
+    [ -n "$explanation" ] || return 1
+    AI_EXPLANATION_CACHE_PENDING="$pending_json"
+    AI_EXPLANATION_CACHE_TEXT="$explanation"
+    if [ "${_AI_EXPLANATION_DISPLAY_ONLY:-false}" = true ]; then
+        printf '%s\n' "$explanation" >&2
+    else
+        printf '%s\n' "$explanation"
+    fi
+}
+
+# Return codes are stable for callers: 0 approve, 1 decline, 3 stop.  Explain
+# is handled in this loop so it can never consume or replace the approval.
+# EOF fails closed as a decline.
+_ai_approval_prompt() {
+    local pending_json="${1:-${AI_PENDING_APPROVAL_JSON:-}}" tier="${2:-CHANGE}"
+    local answer=""
+    _AI_APPROVAL_OUTCOME=WAITING_APPROVAL
+    while :; do
+        case "$tier" in
+            DESTROY)
+                printf '  [E] Explain  [N] Cancel  type YES to execute  [/stop] Stop: ' >&2 ;;
+            *)
+                printf '  [Y] Run  [N] Cancel  [E] Explain  [/stop] Stop: ' >&2 ;;
+        esac
+        if [ -t 0 ] && [ -r /dev/tty ]; then
+            IFS= read -r answer </dev/tty || {
+                _AI_APPROVAL_OUTCOME=DECLINE
+                return 1
+            }
+        else
+            IFS= read -r answer || {
+                _AI_APPROVAL_OUTCOME=DECLINE
+                return 1
+            }
+        fi
+        case "${answer,,}" in
+            /stop|stop) _AI_APPROVAL_OUTCOME=STOP; return 3 ;;
+            e|explain)
+                _AI_APPROVAL_OUTCOME=EXPLAIN
+                declare -f _ai_set_session_state >/dev/null 2>&1 && \
+                    _ai_set_session_state explaining_pending_action || true
+                _AI_EXPLANATION_DISPLAY_ONLY=true
+                if ! _ai_explain_pending_approval "$pending_json"; then
+                    echo "  Unable to explain this pending action; nothing was executed." >&2
+                fi
+                _AI_EXPLANATION_DISPLAY_ONLY=false
+                declare -f _ai_set_session_state >/dev/null 2>&1 && \
+                    _ai_set_session_state awaiting_approval || true
+                _AI_APPROVAL_OUTCOME=WAITING_APPROVAL
+                ;;
+            n|no|cancel) _AI_APPROVAL_OUTCOME=DECLINE; return 1 ;;
+            y|yes)
+                [ "$tier" = DESTROY ] && [ "$answer" != YES ] && {
+                    echo "  Type YES exactly to execute this destructive action." >&2
+                    continue
+                }
+                _AI_APPROVAL_OUTCOME=APPROVE
+                return 0 ;;
+            *) echo "  Choose Y, N, E, /stop${tier:+ (or type YES for destructive actions)}." >&2 ;;
+        esac
+    done
+}
+
+# Policy and module availability can change while the prompt is open. Fail
+# closed before recording approval if the pending request is no longer valid.
+_ai_pending_still_valid() {
+    local tool_json="$1" tier="$2" tool="$3" action="$4"
+    local owner="${5:-}" expected_entry="${6:-}" verdict verdict_flags
+    if declare -f ai_policy_tool_allowed >/dev/null 2>&1 &&
+       ! ai_policy_tool_allowed "$tool"; then
+        return 1
+    fi
+    if [ "$tool" = run_igor_action ]; then
+        if declare -f ai_policy_action_allowed >/dev/null 2>&1 &&
+           ! ai_policy_action_allowed "$action"; then
+            return 1
+        fi
+        [ -n "$owner" ] && declare -f _ml_owner_active >/dev/null 2>&1 &&
+            _ml_owner_active "$owner" || return 1
+        [ "${_IGOR_CAPABILITIES[$action]:-}" = "$expected_entry" ] || return 1
+    fi
+    case "$tool" in
+        occ) _ai_require_active_capability nextcloud || return 1 ;;
+        container) _ai_require_active_capability docker || return 1 ;;
+    esac
+    verdict=$(_ai_validate_tool_call "$tool_json") || return 1
+    verdict_flags=$(printf '%s\n' "$verdict" | sed -n '/^BLOCKED: /p')
+    [ "$verdict_flags" = "BLOCKED: false" ] || return 1
+    [ "$tier" = CHANGE ] || [ "$tier" = DESTROY ]
+}
+
 # Bound external READ commands; module capability functions keep their existing
 # in-process environment and module/hook-specific execution contracts.
 _ai_run_read_command() {
@@ -577,21 +761,54 @@ ai_execute_tool() {
                 run=true
             else
                 approval_mode="confirm"
+                _ai_build_pending_approval "$tool_json" "$tier" "$display_cmd" \
+                    "This action may modify system state." "$_operation_id" "${T_CMD:-}" || {
+                    echo "[BLOCKED: Could not create approval record]"
+                    _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                    return 1
+                }
+                _ai_write_tool_meta "$tier" pending pending "" ""
                 declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
-                confirm "Execute this tool?" && run=true
+                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" CHANGE || true
+                case "$_AI_APPROVAL_OUTCOME" in
+                    APPROVE) run=true ;;
+                    STOP) approval_mode="stopped" ;;
+                esac
             fi
             ;;
         DESTROY)
             approval_mode="explicit-YES"
+            _ai_build_pending_approval "$tool_json" "$tier" "$display_cmd" \
+                "This action may delete data or cause irreversible effects." "$_operation_id" "${T_CMD:-}" || {
+                echo "[BLOCKED: Could not create approval record]"
+                _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                return 1
+            }
+            _ai_write_tool_meta "$tier" pending pending "" ""
             declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
-            local conf
-            read -rp "  ${RED}Type YES to run this destructive action:${NC} " conf </dev/tty
-            [ "$conf" = "YES" ] && run=true
+            _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" DESTROY || true
+            case "$_AI_APPROVAL_OUTCOME" in
+                APPROVE) run=true ;;
+                STOP) approval_mode="stopped" ;;
+            esac
             ;;
     esac
 
+    if [ "$run" = true ] && [ "$approval_mode" != automatic-read ] &&
+       [ "$approval_mode" != executive ] &&
+       ! _ai_pending_still_valid "$tool_json" "$tier" "$T_TOOL" "$T_CMD" \
+           "${_ria_owner:-}" "${_ria_entry:-}"; then
+        output="[VALIDATION BLOCKED: pending action is no longer valid]"
+        _ai_write_tool_meta "$tier" denied action_denied "" approval_revalidation
+        _ai_audit_dispatch BLOCKED "$T_TOOL" "$tier" none validation 1 \
+            "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
+        echo "$output"
+        return 1
+    fi
+
     local _approval_outcome="declined"
     [ "$run" = true ] && _approval_outcome="approved"
+    [ "$approval_mode" = "stopped" ] && _approval_outcome="stopped"
     local _meta_approval="denied"
     if [ "$run" = true ]; then
         case "$approval_mode" in
@@ -604,7 +821,14 @@ ai_execute_tool() {
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
 
-    if $run; then
+    if [ "$approval_mode" = "stopped" ]; then
+        output="[USER STOPPED] Pending action cancelled: ${display_cmd}"
+        echo -e "  ${YEL}  (stopped — command not run)${NC}" >&2
+        _ai_write_tool_meta "$tier" denied action_denied "" approval_stopped
+        _ai_audit_dispatch STOPPED "$T_TOOL" "$tier" stopped stopped "0" \
+            "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+        (( AI_CMD_BLOCKED++ )) || true
+    elif $run; then
         # Backups and undo-state reads happen only after approval.
         if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
             declare -f config_backup_auto &>/dev/null && \

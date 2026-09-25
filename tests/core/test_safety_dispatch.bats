@@ -24,6 +24,14 @@ EOF
     cd "$IGOR_DIR" || return 1
 }
 
+run_approved_tool() {
+    printf 'y\n' | ai_execute_tool "$1"
+}
+
+run_destroy_tool() {
+    printf 'YES\n' | ai_execute_tool "$1"
+}
+
 teardown() {
     teardown_igor_tmpdir
 }
@@ -141,10 +149,10 @@ teardown() {
 
 @test "OCC writes containing read-looking arguments still require approval" {
     run ai_execute_tool '{"tool":"occ","cmd":"config:system:set example --value=config:list"}'
-    [ -f approvals ]
+    [[ "$output" == *"NEEDS APPROVAL"* ]]
     [ ! -e docker-args ]
     run ai_execute_tool '{"tool":"occ","cmd":"maintenance:mode --off"}'
-    [ "$(wc -l < approvals)" -eq 2 ]
+    [[ "$output" == *"NEEDS APPROVAL"* ]]
     [ ! -e docker-args ]
 }
 
@@ -161,24 +169,39 @@ teardown() {
 }
 
 @test "approved semantic changes execute argument arrays" {
-    confirm() { return 0; }
-    run ai_execute_tool '{"tool":"container_action","action":"restart","target":"app"}'
+    run run_approved_tool '{"tool":"container_action","action":"restart","target":"app"}'
     [ "$status" -eq 0 ]
     [ "$(cat docker-args)" = $'compose\nrestart\napp' ]
 }
 
 @test "host and legacy writes with unspaced redirection require approval" {
     run ai_execute_tool '{"tool":"host_command","cmd":"printf proof>MARKER"}'
-    [ -f approvals ]
+    [[ "$output" == *"NEEDS APPROVAL"* ]]
     [ ! -e MARKER ]
     run ai_execute_tool '{"tool":"execute","cmd":"printf proof>MARKER"}'
-    [ "$(wc -l < approvals)" -eq 2 ]
+    [[ "$output" == *"NEEDS APPROVAL"* ]]
     [ ! -e MARKER ]
 }
 
-@test "read classifier rejects shell composition, mutating options and unknown commands" {
+@test "read classifier accepts safe read composition and rejects unsafe shell syntax" {
     local cmd
-    for cmd in 'cat /etc/hosts>MARKER' 'cat /etc/hosts; uname' \
+    for cmd in 'cat /etc/hosts; uname' 'cat /etc/hosts; cat /etc/hostname' \
+        'which mpv vlc ffmpeg mplayer 2>/dev/null; systemctl --user status mpv 2>/dev/null | head -10; ps aux | grep -E '\''mpv|vlc|mplayer'\'' | grep -v grep' \
+        'cat /etc/hosts; uname'; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -eq 0 ]
+    done
+    for cmd in 'cat /etc/hosts; rm -f MARKER' \
+        'cat /etc/hosts;; uname' 'cat /etc/hosts;' '; cat /etc/hosts' \
+        'cat "a;b"; rm -f MARKER'; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -ne 0 ]
+    done
+}
+
+@test "read classifier rejects mutating options and unknown commands" {
+    local cmd
+    for cmd in 'cat /etc/hosts>MARKER' \
         'cat $(printf MARKER)' 'cat `printf MARKER`' 'cat /etc/hosts | tee MARKER' \
         $'uname\nprintf proof>MARKER' 'find . -delete' 'python3 -c "print(1)"' \
         'hostname new-name' 'docker compose config --output MARKER' \
@@ -190,8 +213,7 @@ teardown() {
 }
 
 @test "approved raw shell commands still execute" {
-    confirm() { return 0; }
-    run ai_execute_tool '{"tool":"host","cmd":"printf proof>MARKER"}'
+    run run_approved_tool '{"tool":"host","cmd":"printf proof>MARKER"}'
     [ "$status" -eq 0 ]
     [ "$(cat MARKER)" = proof ]
 }
@@ -226,7 +248,7 @@ EOF
     run ai_execute_tool '{"tool":"host","cmd":"sudo pacman -S --noconfirm vlc"}'
     [[ "$output" == *"NEEDS APPROVAL (modifies system)"* ]]
     [[ "$output" != *"DESTRUCTIVE"* ]]
-    [ -e approvals ]
+    [[ "$output" == *"[Y] Run"* ]]
 }
 
 @test "report and file readers reject traversal and credential paths" {
@@ -252,11 +274,10 @@ EOF
 
 @test "change and destroy tools fail closed on malformed validator output" {
     _ai_validate_tool_call() { printf 'unexpected validator output\n'; }
-    confirm() { return 0; }
-    run ai_execute_tool '{"tool":"host","cmd":"printf proof>MARKER"}'
+    run run_approved_tool '{"tool":"host","cmd":"printf proof>MARKER"}'
     [ "$status" -ne 0 ]
     [ ! -e MARKER ]
-    run ai_execute_tool '{"tool":"execute","cmd":"rm -f MARKER"}'
+    run run_destroy_tool '{"tool":"execute","cmd":"rm -f MARKER"}'
     [ "$status" -ne 0 ]
     [ ! -e MARKER ]
 }
@@ -273,8 +294,7 @@ EOF
 @test "audit records read success and nonzero exit with operation ids" {
     run ai_execute_tool '{"tool":"host","cmd":"docker ps"}'
     [ "$status" -eq 0 ]
-    confirm() { return 0; }
-    run ai_execute_tool '{"tool":"host","cmd":"exit 7"}'
+    run run_approved_tool '{"tool":"host","cmd":"exit 7"}'
     [ "$status" -eq 0 ]
     local audit="$IGOR_DIR/data/runtime/ai-audit.jsonl"
     [ -s "$audit" ]

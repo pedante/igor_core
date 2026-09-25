@@ -59,6 +59,10 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "category": "control",
         "description": "pause the task when the chat prompt is available",
         "handler": "stop",
+        "states": ("ready", "running", "investigating", "tools_requested", "tool_running",
+                    "completed", "no_further_action", "provider_failed", "action_denied",
+                    "verification_denied", "repeated_action", "malformed_response", "continuation_limit",
+                    "tool_succeeded", "tool_failed", "validation_blocked"),
     },
     {
         "id": "continue",
@@ -68,6 +72,10 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "category": "control",
         "description": "resume a paused or capped continuation loop",
         "handler": "continue",
+        "states": ("ready", "running", "investigating", "tools_requested", "tool_running",
+                    "stopped_by_user", "continuation_limit", "completed", "no_further_action",
+                    "provider_failed", "action_denied", "verification_denied", "repeated_action",
+                    "malformed_response", "tool_succeeded", "tool_failed", "validation_blocked"),
     },
     {
         "id": "undo",
@@ -276,8 +284,8 @@ def lookup(line: str, state: str | None = None) -> dict[str, Any]:
         valid = len(args) == 1
         reason = "missing description" if not valid else ""
     elif name == "/diagnose":
-        valid = len(args) <= 1
-        reason = "expected at most one focus" if not valid else ""
+        # A diagnostic focus is free text and may contain several words.
+        args = [" ".join(args)] if args else []
     elif name == "palette":
         valid = len(args) <= 1
         reason = "expected at most one filter" if not valid else ""
@@ -318,7 +326,7 @@ def lookup(line: str, state: str | None = None) -> dict[str, Any]:
         valid = False
         reason = f"unavailable in session state {state}"
     return {"matched": True, "command": command, "arguments": args, "input": original,
-            "valid": valid, **({"reason": reason} if reason else {})}
+            "valid": valid, **({"reason": reason, "usage": command["syntax"]} if reason else {})}
 
 
 def palette_entries(filter_text: str = "", state: str | None = None) -> tuple[dict[str, Any], ...]:
@@ -361,8 +369,13 @@ def main(argv: list[str]) -> int:
         sys.stdout.write(json.dumps(list(commands()), sort_keys=True) + "\n")
         return 0
     if argv[0] == "palette":
-        filter_text = " ".join(argv[1:]).strip()
-        for command in palette_entries(filter_text):
+        args = list(argv[1:])
+        state = None
+        if len(args) >= 2 and args[0] == "--state":
+            state = args[1]
+            args = args[2:]
+        filter_text = " ".join(args).strip()
+        for command in palette_entries(filter_text, state=state):
             sys.stdout.write(f"{command['name']}\t{command['syntax']}\t{command['description']}\n")
         return 0
     if argv[0] == "lookup":
@@ -374,7 +387,7 @@ def main(argv: list[str]) -> int:
         line = " ".join(args)
         sys.stdout.write(json.dumps(lookup(line, state=state), sort_keys=True) + "\n")
         return 0
-    sys.stderr.write("usage: session_commands.py [help|commands|palette [FILTER]|lookup [--state STATE] COMMAND]\n")
+    sys.stderr.write("usage: session_commands.py [help|commands|palette [--state STATE] [FILTER]|lookup [--state STATE] COMMAND]\n")
     return 2
 
 

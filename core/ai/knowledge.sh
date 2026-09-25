@@ -19,6 +19,17 @@ REPAIR_HISTORY_FILE="$KNOWLEDGE_DIR/repair_history.md"
 # Session change tracker — set by ai_execute_tool after TIER 2/3 commands
 AI_SESSION_HAD_CHANGES=false
 
+# Keep editor scratch files inside Igor's private runtime directory.  mktemp
+# creates mode 600 files; the ownership and symlink checks prevent a foreign
+# or symlinked runtime directory from becoming a write target.
+_ai_knowledge_tempfile() {
+    local runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    mkdir -p -- "$runtime" 2>/dev/null || return 1
+    [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ -O "$runtime" ] || return 1
+    chmod 700 -- "$runtime" 2>/dev/null || return 1
+    mktemp "${runtime}/.igor_knowledge.XXXXXX"
+}
+
 # ── Mark that a meaningful change happened this session ───────────────────────
 ai_knowledge_mark_changed() {
     AI_SESSION_HAD_CHANGES=true
@@ -211,7 +222,10 @@ Be specific. Use [IGOR:TOKEN] placeholders for any sensitive values. Keep it und
             echo "[SESSION LOG ENTRY SAVED]" >> "$session_file"
             ;;
         e|E)
-            local tmpfile; tmpfile=$(mktemp /tmp/igor_log_XXXXXX.md)
+            local tmpfile; tmpfile=$(_ai_knowledge_tempfile) || {
+                warn "Could not create a private editor file."
+                return 1
+            }
             echo "$summary_response" > "$tmpfile"
             nano "$tmpfile"
             mkdir -p "$KNOWLEDGE_DIR"
@@ -325,7 +339,10 @@ for m in recent:
             echo "[WIP SAVED]" >> "$session_file"
             ;;
         e|E)
-            local tmpfile; tmpfile=$(mktemp /tmp/igor_wip_XXXXXX.md)
+            local tmpfile; tmpfile=$(_ai_knowledge_tempfile) || {
+                warn "Could not create a private editor file."
+                return 1
+            }
             echo "$wip_summary" > "$tmpfile"
             nano "$tmpfile"
             mkdir -p "$KNOWLEDGE_DIR"

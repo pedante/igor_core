@@ -256,6 +256,30 @@ _ai_set_session_state continuation_limit
             self.assertIn("[STATE] continuation_limit", trace)
             self.assertNotIn("no_further_action", trace)
 
+    def test_approval_stop_keeps_canonical_result_and_distinct_session_state(self):
+        call = native_call("host", "stop-A", cmd="systemctl restart fixture")
+        stopped = make_result(call, "[USER STOPPED]", 0, metadata={
+            "classification": "CHANGE", "approval_status": "denied",
+            "execution_status": "action_denied", "error_type": "approval_stopped",
+        })
+        self.assertEqual(stopped["tool_call_id"], "stop-A")
+        self.assertEqual(stopped["execution_status"], "action_denied")
+        self.assertEqual(stopped["error_type"], "approval_stopped")
+        history = complete(self.base, anthropic_assistant("stop-A"),
+                           "anthropic", [call], [stopped])
+        self.assertEqual(history[-1]["content"][0]["tool_use_id"], "stop-A")
+        shell = '''
+source "$REPO/core/ai/core.sh"
+_ai_tx_denial_state "$RESULTS" false
+_ai_tx_session_state "$RESULT"
+'''
+        result = subprocess.run(
+            ["bash", "-c", shell], capture_output=True, text=True, check=True,
+            env={**os.environ, "REPO": str(ROOT), "IGOR_DIR": str(ROOT),
+                 "RESULTS": json.dumps([stopped]), "RESULT": json.dumps(stopped)},
+        )
+        self.assertEqual(result.stdout.splitlines(), ["stopped_by_user", "stopped_by_user"])
+
     def test_incomplete_crash_points_recover_to_complete_prefix(self):
         for fmt, assistant in (("anthropic", anthropic_assistant("A", "B")),
                                ("openai", openai_assistant("A", "B"))):

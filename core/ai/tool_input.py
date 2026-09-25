@@ -132,13 +132,22 @@ def _read_shell_segments(text):
                      or text[index - 1] in "|&")
                 and (index + len(stderr_discard) == len(text)
                      or text[index + len(stderr_discard)].isspace()
-                     or text[index + len(stderr_discard)] in "|&")):
+                     or text[index + len(stderr_discard)] in "|&;")):
             current.append(" ")
             index += len(stderr_discard)
             continue
-        if char in ";()<>'#":
+        if char in "()<>'#":
             return None
-        if char in "|&":
+        if char in "|&;":
+            if char == ";":
+                segment = "".join(current).strip()
+                if not segment:
+                    return None
+                segments.append(segment)
+                operators.append(";")
+                current = []
+                index += 1
+                continue
             if text.startswith("&&", index) or text.startswith("||", index):
                 width = 2
             elif char == "|" and not text.startswith("|&", index):
@@ -196,6 +205,10 @@ def _simple_command_is_read(text, in_pipeline):
         if in_pipeline and not _bounded_pipeline_filter(name, args):
             return False
         return True
+    if name == "ps":
+        return args in (["aux"], ["-ef"], [])
+    if name == "systemctl":
+        return args[:1] == ["status"] or args[:2] == ["--user", "status"]
     if name in {"which", "echo"}:
         return True
     if name == "command":

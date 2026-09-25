@@ -27,7 +27,7 @@ class SessionCommandRegistryTests(unittest.TestCase):
 
     def test_multword_alias_and_palette_are_registry_resolutions(self):
         self.assertEqual(lookup("mark solved")["command"]["id"], "solved")
-        self.assertEqual(lookup(":") ["command"]["id"], "palette")
+        self.assertEqual(lookup(":")["command"]["id"], "palette")
         self.assertEqual(lookup("palette history")["arguments"], ["history"])
 
     def test_palette_entries_are_filtered_registry_copies(self):
@@ -39,6 +39,17 @@ class SessionCommandRegistryTests(unittest.TestCase):
     def test_state_argument_is_deterministic_without_affecting_default(self):
         self.assertTrue(lookup("help", state="running")["valid"])
         self.assertTrue(lookup("help")["valid"])
+        self.assertFalse(lookup("stop", state="stopped_by_user")["valid"])
+        self.assertEqual(lookup("stop", state="stopped_by_user")["usage"], "stop")
+        self.assertTrue(lookup("stop", state="tool_succeeded")["valid"])
+        self.assertTrue(lookup("continue", state="stopped_by_user")["valid"])
+        self.assertNotIn("stop", {entry["name"] for entry in palette_entries(state="stopped_by_user")})
+
+    def test_diagnostic_focus_keeps_multiple_words(self):
+        resolved = lookup("/diag storage and network")
+        self.assertTrue(resolved["valid"])
+        self.assertEqual(resolved["arguments"], ["storage and network"])
+
     def test_aliases_resolve_to_one_canonical_handler(self):
         for line, canonical in (("q", "exit"), ("quit", "exit"), ("cont", "continue"),
                                 ("hypotheses", "hypo"), ("/stop", "stop")):
@@ -55,6 +66,7 @@ class SessionCommandRegistryTests(unittest.TestCase):
         self.assertTrue(lookup("history session_123")["valid"])
         self.assertTrue(lookup("replay session_123")["valid"])
         self.assertFalse(lookup("exec maybe")["valid"])
+        self.assertEqual(lookup("exec maybe")["usage"], "exec on|off")
         self.assertFalse(lookup("/cmd")["valid"])
 
     def test_all_interactive_utility_commands_are_local_and_documented(self):

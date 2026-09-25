@@ -43,8 +43,8 @@ running through the same command handler used by typed commands.
 | Tier | Examples | Behaviour |
 |------|----------|-----------|
 | `READ` | `docker ps`, `occ status`, log tails | Runs automatically |
-| `CHANGE` | `docker compose restart`, `occ files:scan` | Pauses for `y/n` confirmation |
-| `DESTROY` | `docker compose down -v`, `rm -rf` | Pauses with explicit warning |
+| `CHANGE` | `docker compose restart`, `occ files:scan` | Pauses for Yes, No, Explain, or `/stop` unless executive policy auto-approves |
+| `DESTROY` | `docker compose down -v`, `rm -rf` | Requires typing `YES`; Explain, No, and `/stop` are also available |
 
 Only explicitly recognized read-only command forms run automatically. A compound
 command remains READ when every branch is recognized as read-only; stderr
@@ -52,6 +52,12 @@ suppression to `/dev/null` is allowed. Unknown commands, mutating branches,
 other redirections, and substitutions require approval (CHANGE commands can
 still run automatically in executive mode). Semantic OCC,
 container, and log tools validate their arguments and execute them without a shell.
+At an approval prompt, `e` explains the pending action from Igor's parsed
+request and returns to the same prompt without running it. `n` declines that
+action; `/stop` cancels it and stops the current continuation. Explain asks the
+configured AI model for a focused explanation. The model's wording cannot change
+Igor's classification, approval requirement, or pending command. A provider
+failure returns to the same approval prompt.
 
 **Outbound secrets scrubbing** — before any context is sent to an external API,
 `ai_scrub_outbound()` replaces sensitive values with tokens:

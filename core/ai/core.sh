@@ -61,6 +61,10 @@ _ai_tx_result_state() {
     printf '%s' "$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["execution_status"])'
 }
 
+_ai_tx_session_state() {
+    printf '%s' "$1" | python3 -c 'import json,sys; r=json.load(sys.stdin); print("stopped_by_user" if r.get("error_type") == "approval_stopped" else r["execution_status"])'
+}
+
 _ai_tx_result_tier() {
     printf '%s' "$1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])'
 }
@@ -79,7 +83,10 @@ for result in results:
     status = result.get("execution_status")
     tier = result.get("classification")
     if status == "action_denied":
-        print("verification_denied" if pending else "action_denied")
+        if result.get("error_type") == "approval_stopped":
+            print("stopped_by_user")
+        else:
+            print("verification_denied" if pending else "action_denied")
         break
     if status == "tool_succeeded" and tier in ("CHANGE", "DESTROY"):
         pending = True
@@ -123,7 +130,7 @@ _ai_command_palette() {
     local _filter="${1:-}" _rows _choice _number _command _syntax _description _arguments
     _AI_PALETTE_SELECTION=""
     while true; do
-        _rows=$(python3 "${_AI_DIR}/session_commands.py" palette "$_filter") || return 1
+        _rows=$(python3 "${_AI_DIR}/session_commands.py" palette --state "${_AI_SESSION_STATE:-running}" "$_filter") || return 1
         echo "  Commands${_filter:+ matching '${_filter}'}:"
         local -a _palette_names=() _palette_syntaxes=()
         while IFS=$'\t' read -r _command _syntax _description; do
@@ -303,7 +310,7 @@ _ai_clear_session_active() {
 
 _ai_set_session_state() {
     case "$1" in
-        start_requested|initializing|ready|running|user_exited|startup_failed|input_closed|completed|tools_requested|awaiting_approval|tool_running|tool_succeeded|tool_failed|action_denied|verification_denied|provider_failed|malformed_response|payload_blocked|configuration_error|continuation_limit|stopped_by_user|repeated_action|no_further_action|investigating) ;;
+        start_requested|initializing|ready|running|user_exited|startup_failed|input_closed|completed|tools_requested|awaiting_approval|explaining_pending_action|tool_running|tool_succeeded|tool_failed|action_denied|verification_denied|provider_failed|malformed_response|payload_blocked|configuration_error|continuation_limit|stopped_by_user|repeated_action|no_further_action|investigating) ;;
         *) return 1 ;;
     esac
     _AI_SESSION_STATE="$1"
@@ -3268,7 +3275,7 @@ END USER STEERING"
             }
             rm -f -- "$IGOR_AI_TOOL_META_FILE"
             unset IGOR_AI_TOOL_META_FILE
-            _ai_set_session_state "$(_ai_tx_result_state "$_result_json")"
+            _ai_set_session_state "$(_ai_tx_session_state "$_result_json")"
             _IGOR_LAST_EXEC_TIER=$(_ai_tx_result_tier "$_result_json")
             _initial_results_json=$(_ai_tx_append_result "$_initial_results_json" "$_result_json") || { warn "Could not collect tool result."; break; }
             [ "$(_ai_tx_result_state "$_result_json")" = action_denied ] && _initial_denied=true
@@ -3320,7 +3327,9 @@ END USER STEERING"
             _loop_stop_reason=$(_ai_tx_denial_state "$_initial_results_json" false)
             _ai_set_session_state "$_loop_stop_reason"
             _deferred_result=""
-            if [ "$_loop_stop_reason" = verification_denied ]; then
+            if [ "$_loop_stop_reason" = stopped_by_user ]; then
+                echo -e "  ${YEL}⏸ Action cancelled; Igor stopped.${NC}"
+            elif [ "$_loop_stop_reason" = verification_denied ]; then
                 echo -e "  ${YEL}⏸ Change applied; verification declined, so the result is unverified.${NC}"
             else
                 echo -e "  ${YEL}⏸ Action declined; no further actions were run.${NC}"
@@ -3566,7 +3575,7 @@ except: print(sys.stdin.read()[:60])
                 }
                 rm -f -- "$IGOR_AI_TOOL_META_FILE"
                 unset IGOR_AI_TOOL_META_FILE
-                _ai_set_session_state "$(_ai_tx_result_state "$_fu_result_json")"
+                _ai_set_session_state "$(_ai_tx_session_state "$_fu_result_json")"
                 _IGOR_LAST_EXEC_TIER=$(_ai_tx_result_tier "$_fu_result_json")
                 _follow_results_json=$(_ai_tx_append_result "$_follow_results_json" "$_fu_result_json") || {
                     _loop_stop_reason="malformed_response"

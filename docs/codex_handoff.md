@@ -1,59 +1,76 @@
 # Igor Codex Handoff
 
-## Step 1 status
+## Step 3 status
 
-**Complete. Ready for Step 2.** No Step 2 UI was built.
+**Complete. Ready for Step 4.** The existing execution gate in
+`core/ai/safety.sh` now holds one structured pending approval record with the
+tool-call ID, normalized arguments, tier, operation ID, reason, and pending
+authorization state. The line prompt handles named APPROVE, DECLINE, EXPLAIN,
+and STOP outcomes. Explain moves the existing session from `awaiting_approval`
+to `explaining_pending_action` and back without changing the pending record or
+approval metadata. No stays `action_denied`; `/stop` records the same canonical
+denied tool result with `approval_stopped` and ends in `stopped_by_user` after
+the provider transaction commits. DESTROY still requires exact `YES`.
 
-## Major root causes fixed
+`core/ai/approval_explain.py` projects only pending-action facts into a focused,
+text-only request to the configured AI provider. The AI supplies prose; Igor
+retains classification, approval, command identity, and execution authority.
+The request excludes conversation history and unrelated context, marks action
+data as untrusted, and passes through the existing scrub/request boundary.
+A successful explanation is cached for the unchanged pending record. Provider
+failure, tool output, or an empty reply returns to the same approval prompt.
+Policy, module availability, and validation are checked again before execution.
+READ remains automatic. The deterministic classifier now accepts semicolon
+sequences only when every branch is READ; mutating branches still need approval.
+Material changes are `core/ai/safety.sh`, `core/ai/approval_explain.py`,
+`core/ai/tool_input.py`, `core/ai/core.sh`, `tests/core/test_ai_approval.bats`,
+`tests/core/test_safety_dispatch.bats`, `tests/test_ai_transactions.py`, and
+`README.md`.
 
-- Provider history trimming could split native assistant/tool turns. Complete
-  transactions and canonical results now survive continuation and resume.
-- Execution success, denial, and verification outcomes were conflated. Igor now
-  records structured classification, approval, exit status, and session state;
-  an applied change remains applied when later verification is declined.
-- AI menu `s`/`f` could leave immediately or hide initialization failures.
-  Both use one startup path with explicit startup, running, exit, and failure
-  states. The configured private runtime is prepared before state writes and
-  rejects symlinks and foreign ownership.
-- The main header's Nextcloud status hook ran interactive `sudo` for cosmetic
-  READ data. The related health check and AI context had the same unnecessary
-  elevation. Hooks also inherited input from the hook runner, and EOF in the
-  parent menu could spin. Reads now run unprivileged, hooks receive `/dev/null`
-  stdin, and closed menu input exits cleanly.
-- Hardware profiling used hardcoded `/data/runtime`. Its cache now uses Igor's
-  resolved runtime path and writes only after that directory is private.
-- The READ parser rejected all shell composition except one journal pipeline,
-  so the host dispatcher fell back to CHANGE for observational VLC and package
-  queries. It now checks each command in `&&`, `||`, and `|` expressions and
-  permits only stderr discard to `/dev/null`; unknown and mutating branches
-  still require approval. Semantic tool argument parsing remains strict.
-- The DESTROY check matched `rm ` inside pacman's `--noconfirm ` option. `rm`
-  now requires a command-word boundary; package installs/upgrades are CHANGE
-  and pacman removals are DESTROY.
+Validation: 25 focused approval BATS tests, 30 safety dispatcher BATS tests,
+53 focused Step 1/2/3 Python tests, Bash syntax, Python compile, and diff checks
+pass. The full runner passed 46 Bash checks, 46 Python tests, all 216 core BATS
+tests, and all 40 integration BATS tests. Its only failures are the same three
+existing Nextcloud storage expectation tests in the 60-test module group. The
+GPG-agent test and one hostname probe were skipped. ShellCheck and Ruff are
+unavailable locally.
+Step 4 can build Guide / Assist / Executive modes on this pending record and
+the existing backend authorization path; no Step 3 code blocker remains.
 
-## Backend decisions and components
+## Step 2 status
 
-- Igor runs as the regular user; `igor.sh` rejects root launch before startup.
-  Privileged operations still elevate after their authorization path.
-- `core/ai/transactions.py` owns provider transaction completion and canonical
-  results. `core/ai/core.sh` owns session state, runtime preparation, and stop
-  semantics. `core/ai/session_commands.py` remains a data-only command registry.
-- `core/ai/tool_input.py` remains the authoritative READ classifier;
-  `core/ai/safety.sh` retains destructive precedence and the conservative
-  CHANGE fallback. Approval labels use the resulting tier.
-- Material changes include `igor.sh`, AI core/safety/knowledge, `core/lib/ui.sh`,
-  `core/lib/module_loader.sh`, `core/host/profile.sh`, the Nextcloud module and
-  network check, README, and focused Python/BATS regressions.
+**Complete. Ready for Step 3.** `core/ai/session_commands.py` is the single
+data-only action registry. Each entry carries a stable ID, command spelling,
+aliases, syntax, description, category, handler identity, and applicable session
+states. Its lookup validates typed input before the provider path; its help and
+palette views come from the same entries. The Bash session retains the existing
+handlers and Step 1 provider, result, and safety ownership.
 
-## Validation and Step 2 prerequisites
+Type `:` at the AI chat prompt to open the numbered palette. Enter a number to
+select an action, `/text` to filter, or `b` to return. The palette asks for
+arguments where needed and sends the selection through the typed command route.
+`help` and the optional right pane also render registry metadata. Material files:
+`core/ai/session_commands.py`, `core/ai/core.sh`, `tests/test_ai_session_commands.py`,
+`tests/core/test_ai_control_paths.bats`, and `README.md`.
 
-- All 119 Python tests, 187 core BATS tests, and 40 integration BATS tests pass.
-  The exact VLC host command runs as READ without approval; package install
-  reaches CHANGE approval. Startup/runtime, provider, result, and denial tests
-  also pass. Bash syntax, Python compile, and `git diff --check` pass.
-- The full runner reports three pre-existing unrelated Nextcloud storage
-  expectation failures in the module group (57/60 pass). ShellCheck and Ruff
-  were unavailable locally. There is no unresolved Step 1 code blocker.
-- Step 2 may build on the existing command registry, explicit session states,
-  and canonical result fields. Keep provider transaction completion,
-  authorization, classification, and private runtime checks in the backend.
+Validation: 15 focused registry tests, 19 control-path BATS tests, 52 focused
+Step 1 Python regressions, 94 focused Step 1 BATS regressions, Bash syntax,
+Python compile, and diff checks passed. The full runner passed its Bash, Python,
+190 core BATS, and 40 integration BATS checks. Three pre-existing Nextcloud
+storage expectation tests failed in the 60-test module group; one GPG-agent
+test and one hostname probe were skipped. ShellCheck and Ruff were unavailable.
+No Step 3 code blocker remains.
+
+## Step 1 summary
+
+Complete.
+
+Established and regression-tested:
+- provider-safe tool transaction completion/resume
+- canonical execution results and explicit session states
+- normal-user runtime/privilege model
+- READ / CHANGE / DESTROY classification
+- `/stop` vs decline semantics
+- secure runtime/context/temp handling
+
+Step 1 backend invariants remain authoritative and must not be reimplemented by later UI layers.
