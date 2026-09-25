@@ -277,6 +277,12 @@ chmod 600 secrets/anthropic.key
 bash igor.sh
 ```
 
+Launch Igor as your regular user (`bash igor.sh` or `./igor.sh`), not with
+`sudo bash igor.sh`. Menus, AI sessions, context collection, and private runtime
+files use your user account. Approved operations that require root privileges
+use `sudo` for that operation after Igor's authorization step. Root launches
+are rejected so a root process cannot use another user's private runtime.
+
 If `nextcloud_docker` is present, also configure its documented secrets and setup menu.
 
 ---

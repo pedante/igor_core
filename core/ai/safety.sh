@@ -132,7 +132,24 @@ _ai_reject_unrestored_tokens() {
 
 _ai_audit_rejected() {
     local tool="$1" tier="$2" reason="$3" args="$4" id="$5"
+    _ai_write_tool_meta "$tier" denied action_denied "" "$reason"
     _ai_audit_dispatch BLOCKED "$tool" "$tier" none "$reason" 1 "" "$args" "" "$id"
+}
+
+# Write the canonical dispatcher transition for the transaction recorder.
+_ai_write_tool_meta() {
+    local classification="$1" approval="$2" execution_status="$3"
+    local exit_code="${4:-}" reason="${5:-}"
+    local runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    local meta="${IGOR_AI_TOOL_META_FILE:-}"
+    [[ "$classification" =~ ^(READ|CHANGE|DESTROY)$ ]] || return 0
+    [[ "$approval" =~ ^(pending|not_required|auto_approved|approved|denied)$ ]] || approval=denied
+    [[ "$execution_status" =~ ^(pending|tool_succeeded|tool_failed|action_denied)$ ]] || execution_status=action_denied
+    [[ -n "$meta" && "$meta" == "$runtime/.ai-tool-meta."* && -f "$meta" && ! -L "$meta" && -O "$meta" ]] || return 0
+    IGOR_META_TIER="$classification" IGOR_META_APPROVAL="$approval" \
+        IGOR_META_STATUS="$execution_status" IGOR_META_EXIT="$exit_code" IGOR_META_REASON="$reason" \
+        python3 -c 'import json,os; d={"classification":os.environ["IGOR_META_TIER"],"approval_status":os.environ["IGOR_META_APPROVAL"],"execution_status":os.environ["IGOR_META_STATUS"]}; e=os.environ["IGOR_META_EXIT"]; d["exit_code"]=int(e) if e.isdigit() else None; d["error_type"]=os.environ["IGOR_META_REASON"]; print(json.dumps(d))' \
+        > "$meta" 2>/dev/null || true
 }
 
 # Bound external READ commands; module capability functions keep their existing
@@ -236,6 +253,7 @@ ai_execute_tool() {
     local -a _ai_words=() run_argv=()
     if declare -f ai_policy_tool_allowed >/dev/null 2>&1 &&
        ! ai_policy_tool_allowed "$T_TOOL"; then
+        _ai_write_tool_meta "${T_TIER:-CHANGE}" denied action_denied "" policy
         _ai_audit_dispatch BLOCKED "$T_TOOL" "${T_TIER:-CHANGE}" "blocked" "policy" "1" \
             "" "$tool_json" "" "$_operation_id"
         echo "[BLOCKED: Tool is not allowed by active AI policy]"
@@ -244,6 +262,7 @@ ai_execute_tool() {
     if [ "$T_TOOL" = run_igor_action ] &&
        declare -f ai_policy_action_allowed >/dev/null 2>&1 &&
        ! ai_policy_action_allowed "$T_CMD"; then
+        _ai_write_tool_meta "${T_TIER:-CHANGE}" denied action_denied "" action-policy
         _ai_audit_dispatch BLOCKED "$T_TOOL" "${T_TIER:-CHANGE}" "blocked" "action-policy" "1" \
             "" "$tool_json" "" "$_operation_id"
         echo "[BLOCKED: Action is not allowed by active AI policy]"
@@ -256,6 +275,7 @@ ai_execute_tool() {
     case "${T_TOOL}" in
         occ)
             if ! _ai_require_active_capability nextcloud; then
+                _ai_write_tool_meta READ denied action_denied "" capability-unavailable
                 _ai_audit_dispatch BLOCKED "$T_TOOL" "READ" "none" "capability-unavailable" "1" \
                     "" "$T_CMD" "" "$_operation_id"
                 return 1
@@ -263,6 +283,7 @@ ai_execute_tool() {
             ;;
         container)
             if ! _ai_require_active_capability docker; then
+                _ai_write_tool_meta CHANGE denied action_denied "" capability-unavailable
                 _ai_audit_dispatch BLOCKED "$T_TOOL" "CHANGE" "none" "capability-unavailable" "1" \
                     "" "$T_ACTION $T_TARGET" "" "$_operation_id"
                 return 1
@@ -270,6 +291,7 @@ ai_execute_tool() {
             ;;
         read_log)
             if [ "${T_TARGET}" != terminal ] && ! _ai_require_active_capability docker; then
+                _ai_write_tool_meta READ denied action_denied "" capability-unavailable
                 _ai_audit_dispatch BLOCKED "$T_TOOL" "READ" "none" "capability-unavailable" "1" \
                     "" "$tool_json" "" "$_operation_id"
                 return 1
@@ -402,6 +424,9 @@ ai_execute_tool() {
             _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "automatic-read" \
                 "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
                 "" "$tool_json" "$output" "$_operation_id"
+            local _report_status="tool_succeeded"; [ "$exit_code" -ne 0 ] && _report_status="tool_failed"
+            _ai_write_tool_meta READ not_required "$_report_status" "$exit_code" \
+                "$([ "$exit_code" -eq 0 ] && echo || echo execution)"
             printf '%s\n' "$output"
             return "$exit_code"
             ;;
@@ -427,6 +452,7 @@ ai_execute_tool() {
             ;;
         reply)
             # P2-1: Final reply tool — output prefixed message for caller to display and exit
+            _ai_write_tool_meta READ not_required tool_succeeded 0 ""
             _ai_audit_dispatch RESULT "$T_TOOL" READ automatic-read completed 0 \
                 "" "$tool_json" "$T_MESSAGE" "$_operation_id"
             echo "[REPLY] ${T_MESSAGE}"
@@ -464,6 +490,7 @@ ai_execute_tool() {
 
     _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$tier" none classified 0 \
         "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+    _ai_write_tool_meta "$tier" pending pending "" ""
 
     # ── P1-4: Pre-execution validation (CHANGE tier) ─────────────────────────
     # Call ai_validate.py for CHANGE-tier commands; block if verdict says blocked.
@@ -498,6 +525,7 @@ ai_execute_tool() {
             echo "[VALIDATION BLOCKED: ${_v_reason}]"
             _ai_audit_dispatch BLOCKED "$T_TOOL" "$tier" "none" "validator" "1" \
                 "${_ria_owner:-}" "$tool_json" "$_v_reason" "$_operation_id"
+            _ai_write_tool_meta "$tier" denied action_denied "" validation
             _IGOR_LAST_EXEC_TIER="CHANGE"
             return 1
         fi
@@ -554,22 +582,15 @@ ai_execute_tool() {
 
     local _approval_outcome="declined"
     [ "$run" = true ] && _approval_outcome="approved"
-    local _meta_runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
-    if [[ "${IGOR_AI_TOOL_META_FILE:-}" == "${_meta_runtime}/.ai-tool-meta."* ]] &&
-       [ -f "$IGOR_AI_TOOL_META_FILE" ] && [ ! -L "$IGOR_AI_TOOL_META_FILE" ] &&
-       [ -O "$IGOR_AI_TOOL_META_FILE" ]; then
-        local _meta_approval="denied"
-        if [ "$run" = true ]; then
-            case "$approval_mode" in
-                automatic-read) _meta_approval="not_required" ;;
-                executive) _meta_approval="auto_approved" ;;
-                *) _meta_approval="approved" ;;
-            esac
-        fi
-        IGOR_META_TIER="$tier" IGOR_META_APPROVAL="$_meta_approval" \
-            python3 -c 'import json,os; print(json.dumps({"classification":os.environ["IGOR_META_TIER"],"approval_status":os.environ["IGOR_META_APPROVAL"]}))' \
-            > "$IGOR_AI_TOOL_META_FILE" 2>/dev/null || true
+    local _meta_approval="denied"
+    if [ "$run" = true ]; then
+        case "$approval_mode" in
+            automatic-read) _meta_approval="not_required" ;;
+            executive) _meta_approval="auto_approved" ;;
+            *) _meta_approval="approved" ;;
+        esac
     fi
+    _ai_write_tool_meta "$tier" "$_meta_approval" pending "" ""
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
 
@@ -652,6 +673,9 @@ ${tail_out}"
         fi
 
         output="TOOL:${T_TOOL} EXIT:${exit_code}\nOUTPUT:\n${output}"
+        local _exec_status="tool_succeeded"; [ "$exit_code" -ne 0 ] && _exec_status="tool_failed"
+        _ai_write_tool_meta "$tier" "$_meta_approval" "$_exec_status" "$exit_code" \
+            "$([ "$exit_code" -eq 0 ] && echo || echo execution)"
         _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
@@ -695,16 +719,14 @@ ${tail_out}"
             declare -f pattern_eligible_check &>/dev/null && _ai_pattern_to_menu_hook "$T_TOOL" "$run_cmd"
         fi
     else
-        # P1-6: User declined — write signal for loop banner, skip manual-handoff prompt.
-        local _sig_file="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/loop_signal.tmp"
+        # The structured tool result carries denial to the parent session.
         if [ "$tier" = "DESTROY" ]; then
-            echo "DESTROY_DECLINED" > "$_sig_file"
             output="[USER DECLINED] Destructive command not confirmed: ${display_cmd}"
         else
-            echo "CHANGE_DECLINED" > "$_sig_file"
             output="[USER DECLINED] Command skipped: ${display_cmd}"
         fi
         echo -e "  ${YEL}  (skipped — command not run)${NC}" >&2
+        _ai_write_tool_meta "$tier" denied action_denied "" approval_denied
         _ai_audit_dispatch DECLINED "$T_TOOL" "$tier" "declined" "declined" "0" \
             "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
         # P3-2: count declined/blocked commands

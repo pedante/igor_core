@@ -811,13 +811,23 @@ igor_run_all_hooks() {
             continue
         fi
 
+        local _hook_err_file
+        _hook_err_file=$(mktemp "${TMPDIR:-/tmp}/igor-hook.XXXXXXXX") || {
+            _ml_log warn "Hook $_hook: could not create private error log"
+            _any_fail=1
+            continue
+        }
+        # Hooks are noninteractive. Do not let a child consume the hook-list
+        # stream (or any UI input when this runner is reused elsewhere).
         if timeout "$_timeout" bash -c "$(declare -f "$_fn"); $_fn $(printf '%q ' "$@")" \
-            2>/tmp/_igor_ml_hook_err; then
+            </dev/null 2>"$_hook_err_file"; then
+            rm -f -- "$_hook_err_file"
             continue
         else
             local _exit_code=$?
             local _hook_err
-            _hook_err="$(cat /tmp/_igor_ml_hook_err 2>/dev/null)"
+            _hook_err="$(cat "$_hook_err_file" 2>/dev/null)"
+            rm -f -- "$_hook_err_file"
             if [ "$_exit_code" -eq 124 ]; then
                 _ml_log warn "Hook $_hook: $_fn timed out after ${_timeout}s"
             else

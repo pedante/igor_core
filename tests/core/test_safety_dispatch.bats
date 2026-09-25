@@ -276,3 +276,24 @@ teardown() {
     [[ "$output" == *"unresolved privacy token"* ]]
     [ ! -e docker-args ]
 }
+
+@test "early read results write canonical metadata" {
+    printf 'SAFE REPORT\n' > "$IGOR_DIR/data/reports/safe.txt"
+    local meta
+    meta=$(mktemp "$IGOR_DIR/data/runtime/.ai-tool-meta.XXXXXX")
+    export IGOR_AI_TOOL_META_FILE="$meta"
+
+    run ai_execute_tool '{"tool":"read_report","filename":"safe.txt"}'
+    [ "$status" -eq 0 ]
+    grep -q '"classification": "READ"' "$meta"
+    grep -q '"execution_status": "tool_succeeded"' "$meta"
+
+    run ai_execute_tool '{"tool":"read_report","filename":"missing.txt"}'
+    [ "$status" -ne 0 ]
+    grep -q '"execution_status": "tool_failed"' "$meta"
+
+    run ai_execute_tool '{"tool":"reply","message":"done","status":"INFO"}'
+    [ "$status" -eq 0 ]
+    grep -q '"execution_status": "tool_succeeded"' "$meta"
+    rm -f "$meta"
+}

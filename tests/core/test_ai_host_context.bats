@@ -67,3 +67,28 @@ teardown() {
     done
     [ "$found" = true ]
 }
+
+@test "UI LAN address uses portable fallback when hostname lacks -I" {
+    source "${BATS_TEST_DIRNAME}/../../core/lib/ui.sh"
+    hostname() {
+        [ "$1" = "-I" ] && return 2
+        printf 'test-host\n'
+    }
+    ip() {
+        printf '1.1.1.1 via 192.0.2.1 dev eth0 src 192.0.2.77 uid 0\n'
+    }
+    run _igor_ui_lan_ip
+    [ "$status" -eq 0 ]
+    [ "$output" = "192.0.2.77" ]
+}
+
+@test "knowledge editor scratch files stay private under runtime" {
+    source "${BATS_TEST_DIRNAME}/../../core/ai/knowledge.sh"
+    export IGOR_RUNTIME_DIR="$IGOR_DIR/data/runtime"
+    run _ai_knowledge_tempfile
+    [ "$status" -eq 0 ]
+    [ -f "$output" ]
+    [ "$(stat -c '%a' "$output")" = "600" ]
+    [[ "$output" == "$IGOR_RUNTIME_DIR/.igor_knowledge."* ]]
+    rm -f -- "$output"
+}

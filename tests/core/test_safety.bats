@@ -235,6 +235,13 @@ teardown() {
     [ "$status" -ne 0 ]
 }
 
+@test "package installation is CHANGE while deletion is DESTROY" {
+    run ai_cmd_is_destroy "apt install -y nginx"
+    [ "$status" -ne 0 ]
+    run ai_cmd_is_destroy "rm -rf /tmp/example"
+    [ "$status" -eq 0 ]
+}
+
 @test "cmd_is_read: rm is NOT read-only" {
     run ai_cmd_is_read "rm /tmp/old.log"
     [ "$status" -ne 0 ]

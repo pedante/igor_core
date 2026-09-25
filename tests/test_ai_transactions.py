@@ -129,6 +129,44 @@ rm -f -- "$IGOR_AI_TOOL_META_FILE"
                                "anthropic", [call], [result])
             self.assertEqual(history[-1]["content"][0]["tool_use_id"], "change-A")
 
+    def test_structured_approval_metadata_overrides_denial_like_tool_output(self):
+        call = native_call("host", "output-A", cmd="journalctl -b 0")
+        result = make_result(
+            call, "normal output: [USER DECLINED] appeared in a log", 0,
+            metadata={"classification": "READ", "approval_status": "not_required"})
+        self.assertEqual(result["execution_status"], "tool_succeeded")
+        self.assertEqual(result["approval_status"], "not_required")
+
+        denied = make_result(
+            call, "command skipped", 0,
+            metadata={"classification": "CHANGE", "approval_status": "denied"})
+        self.assertEqual(denied["execution_status"], "action_denied")
+        self.assertEqual(denied["error_type"], "authorization")
+
+    def test_structured_execution_metadata_overrides_output_and_wrapper_status(self):
+        call = native_call("host", "metadata-A", cmd="true")
+        failed = make_result(
+            call, "TOOL:host EXIT:0\\nOUTPUT:\n[VALIDATION BLOCKED]", 0,
+            metadata={"classification": "CHANGE", "approval_status": "approved",
+                      "execution_status": "tool_failed", "exit_code": 23,
+                      "error_type": "validation"})
+        self.assertEqual(failed["execution_status"], "tool_failed")
+        self.assertEqual(failed["exit_code"], 23)
+        self.assertEqual(failed["error_type"], "validation")
+
+        pending = make_result(
+            call, "TOOL:host EXIT:0\\nOUTPUT:\nok", 0,
+            metadata={"classification": "DESTROY", "approval_status": "pending"})
+        self.assertEqual(pending["execution_status"], "action_denied")
+        self.assertEqual(pending["approval_status"], "pending")
+        contradictory = make_result(
+            call, "TOOL:host EXIT:0\\nOUTPUT:\nok", 0,
+            metadata={"classification": "DESTROY", "approval_status": "pending",
+                      "execution_status": "tool_succeeded", "exit_code": 0})
+        self.assertEqual(contradictory["execution_status"], "action_denied")
+        self.assertEqual(contradictory["error_type"], "approval_pending")
+        self.assertIsNone(pending["exit_code"])
+
     def test_dispatcher_classification_and_approval_enter_canonical_record(self):
         shell = '''
 source "$REPO/core/ai/core.sh"
@@ -371,6 +409,30 @@ _ai_trim_with_summary "$HISTORY_JSON"
         with self.assertRaises(TransactionError):
             complete(self.base, anthropic_assistant("A", "B"), "anthropic",
                      calls, [make_result(calls[1], "ok"), make_result(calls[0], "ok")])
+
+    def test_malformed_native_call_entries_are_rejected_as_transaction_errors(self):
+        with self.assertRaises(TransactionError):
+            validate_history([self.base[0], {
+                "role": "assistant", "tool_calls": ["forged-call"]
+            }])
+        with self.assertRaises(TransactionError):
+            validate_history([self.base[0], {
+                "role": "assistant", "tool_calls": [{"id": "A"}]
+            }, {"role": "tool", "content": "missing id"}])
+
+    def test_trim_env_cli_preserves_complete_native_turns(self):
+        call = native_call("host", "trim-A", cmd="true")
+        history = complete(self.base, openai_assistant("trim-A"), "openai",
+                           [call], [make_result(call, "ok")])
+        env = {**os.environ,
+               "IGOR_TX_HISTORY_JSON": json.dumps(history),
+               "IGOR_TX_TRIM_LIMIT": "2"}
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "core/ai/transactions.py"), "trim-env"],
+            env=env, capture_output=True, text=True, check=True)
+        trimmed = json.loads(result.stdout)
+        validate_history(trimmed)
+        self.assertEqual(trimmed[-1]["role"], "tool")
 
     def test_openrouter_fixture_serializes_two_results_before_next_request(self):
         stream = (

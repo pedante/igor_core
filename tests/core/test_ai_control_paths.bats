@@ -96,10 +96,11 @@ teardown() {
     [ "$status" -eq 7 ]
 }
 
-@test "disabled AI exits before prompting" {
+@test "disabled AI reports startup failure before prompting" {
     export IGOR_AI_ENABLED=false
     run menu_ai
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"stage: configuration"* ]]
     [[ "$output" == *"AI assistant is disabled"* ]]
     [[ "$output" != *"HEADER"* ]]
 }
@@ -134,4 +135,93 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$(stat -c %a "$IGOR_DIR/data/scratchpad.txt")" = 600 ]
     ! grep -q "scratchpad-secret" "$IGOR_DIR/data/scratchpad.txt"
+}
+
+@test "runtime state is private, atomic, and does not follow a destination symlink" {
+    export IGOR_DIR="$BATS_TEST_TMPDIR"
+    export IGOR_RUNTIME_DIR="$IGOR_DIR/runtime"
+    mkdir -p "$IGOR_RUNTIME_DIR"
+    printf 'sentinel\n' > "$BATS_TEST_TMPDIR/redirected"
+    ln -s "$BATS_TEST_TMPDIR/redirected" "$IGOR_RUNTIME_DIR/state.env"
+    model='fixture-model' provider='fixture-provider' conversation='[]'
+    _AI_SESSION_STATE='investigating'
+    _ai_update_state
+    [ "$(cat "$BATS_TEST_TMPDIR/redirected")" = "sentinel" ]
+    [ ! -L "$IGOR_RUNTIME_DIR/state.env" ]
+    [ "$(stat -c '%a' "$IGOR_RUNTIME_DIR/state.env")" = 600 ]
+    grep -q '^AI_SESSION_ACTIVE=1$' "$IGOR_RUNTIME_DIR/state.env"
+}
+
+@test "clear session state replaces state atomically and keeps private mode" {
+    export IGOR_DIR="$BATS_TEST_TMPDIR"
+    export IGOR_RUNTIME_DIR="$IGOR_DIR/runtime"
+    mkdir -p "$IGOR_RUNTIME_DIR"
+    printf 'AI_SESSION_ACTIVE=1\nother=value\n' > "$IGOR_RUNTIME_DIR/state.env"
+    chmod 600 "$IGOR_RUNTIME_DIR/state.env"
+    _ai_clear_session_active
+    grep -q '^AI_SESSION_ACTIVE=0$' "$IGOR_RUNTIME_DIR/state.env"
+    grep -q '^other=value$' "$IGOR_RUNTIME_DIR/state.env"
+    [ "$(stat -c '%a' "$IGOR_RUNTIME_DIR/state.env")" = 600 ]
+}
+
+@test "IPC and steering readers honor the configured runtime directory" {
+    export IGOR_RUNTIME_DIR="$BATS_TEST_TMPDIR/custom-runtime"
+    mkdir -p "$IGOR_RUNTIME_DIR"
+    printf 'inspect service\n' > "$IGOR_RUNTIME_DIR/steering.txt"
+    [ "$(_ai_read_steering)" = "inspect service" ]
+    mkfifo "$IGOR_RUNTIME_DIR/commands.fifo"
+    _ai_handle_ipc_command() { printf 'HANDLED:%s\n' "$1"; }
+    (printf 'COMMAND|1|resume\n' > "$IGOR_RUNTIME_DIR/commands.fifo") &
+    local writer=$!
+    run _ai_poll_fifo
+    wait "$writer"
+    [ "$status" -eq 0 ]
+    [ "$output" = "HANDLED:resume" ]
+}
+
+@test "session logs use private unpredictable files and reject symlinked directories" {
+    export IGOR_DIR="$BATS_TEST_TMPDIR/session-root"
+    mkdir -p "$IGOR_DIR/data"
+    local first second
+    first=$(_ai_session_log_create)
+    second=$(_ai_session_log_create)
+    [ "$first" != "$second" ]
+    [ "$(stat -c '%a' "$first")" = 600 ]
+    [ "$(stat -c '%a' "$IGOR_DIR/data/sessions")" = 700 ]
+    rm -f -- "$first" "$second"
+    rmdir "$IGOR_DIR/data/sessions"
+    ln -s "$BATS_TEST_TMPDIR" "$IGOR_DIR/data/sessions"
+    run _ai_session_log_create
+    [ "$status" -ne 0 ]
+}
+
+@test "conversation checkpoints are valid redacted private JSON" {
+    export IGOR_DIR="$BATS_TEST_TMPDIR/checkpoint-root"
+    mkdir -p "$IGOR_DIR/secrets"
+    printf 'PASSWORD=fixture-private-secret\n' > "$IGOR_DIR/secrets/local.env"
+    local history='[{"role":"user","content":"fixture-private-secret"}]'
+    run save_conversation_to_output "$history"
+    [ "$status" -eq 0 ]
+    local output_dir="$IGOR_DIR/data/sessions/output"
+    local saved="${output#Conversation saved to: }"
+    [[ "$saved" == "$output_dir/"* ]]
+    [ "$(stat -c '%a' "$output_dir")" = 700 ]
+    [ "$(stat -c '%a' "$saved")" = 600 ]
+    ! grep -q 'fixture-private-secret' "$saved"
+    python3 -m json.tool "$saved" >/dev/null
+    run save_conversation_to_output '[{"role":"assistant","tool_calls":[{"id":"pending"}]}]'
+    [ "$status" -ne 0 ]
+}
+
+@test "session postmortems are private and scrub known secrets" {
+    export IGOR_DIR="$BATS_TEST_TMPDIR/postmortem-root"
+    mkdir -p "$IGOR_DIR/secrets"
+    printf 'PASSWORD=fixture-private-secret\n' > "$IGOR_DIR/secrets/local.env"
+    _write_session_postmortem fixture-session 'fixture-private-secret' model provider \
+        1 changed_unverified '' '' "$(date +%s)"
+    local saved="$IGOR_DIR/data/sessions/fixture-session.json"
+    [ -f "$saved" ]
+    [ "$(stat -c '%a' "$saved")" = 600 ]
+    ! grep -q 'fixture-private-secret' "$saved"
+    grep -q 'changed_unverified' "$saved"
 }

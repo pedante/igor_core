@@ -12,6 +12,13 @@ set -o pipefail
 # ── Script directory detection ───────────────────────────────────────────────────────
 export IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The UI, AI session, and private runtime belong to the invoking user. Root
+# execution would mix root state with a user's checkout and runtime directory.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]] && [ "$(id -u)" -eq 0 ]; then
+    printf 'Igor is intended to run as a normal user. Privileged operations elevate when required.\nRun: bash igor.sh\n' >&2
+    exit 1
+fi
+
 # ── Directory layout exports ────────────────────────────────────────────────────────
 # IGOR_STACKS: user-editable service configs — one subdirectory per module stack.
 # Overridable at runtime: IGOR_STACKS=/custom/path bash igor.sh
@@ -828,6 +835,17 @@ _igor_fzf_desc() {
 }
 
 # ── Main menu ───────────────────────────────────────────────────────────────────
+_igor_run_ai_menu() {
+    menu_ai
+    local session_status=$?
+    case "$session_status" in
+        0) return 0 ;;
+        2) pause ;;
+        *) warn "AI Assistant exited unexpectedly (status ${session_status})."; pause ;;
+    esac
+    return 0
+}
+
 main_menu() {
     # ── Alert banner — show once on first launch if pending.log exists ────────
     # Skipped when _IGOR_STARTUP_ALERT_SHOWN=true (already shown before layout built).
@@ -949,7 +967,7 @@ main_menu() {
             else
                 echo -ne "  ${CYAN}Select option:${NC} "
             fi
-            IFS= read -r choice
+            IFS= read -r choice || return 0
         fi  # end fzf / plain-text branch
 
         case "$choice" in
@@ -978,7 +996,7 @@ main_menu() {
             a|A)
                 _igor_record_recent "A" "IGOR ASSISTANT — Ai diagnostics"
                 _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
-                menu_ai ;;
+                _igor_run_ai_menu ;;
             # ── L: Session log — moved into AI menu, keep shortcut working ──
             l|L)
                 _igor_record_recent "L" "SESSION LOG — AI history"
@@ -1221,7 +1239,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         info "AI Autostart enabled — launching IGOR ASSISTANT directly."
         info "To reach the main menu: type 'q' or 'quit' inside the AI session."
         _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
-        AI_SKIP_INTERSTITIAL=true menu_ai
+        AI_SKIP_INTERSTITIAL=true _igor_run_ai_menu
         # After AI session ends, fall through to main_menu normally
     fi
 

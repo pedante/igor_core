@@ -20,8 +20,37 @@
 #    menu_profile         — interactive menu (show + offer re-detect)
 # ==============================================================================
 
-# Profile cache location
-_PROFILE_FILE="/data/runtime/system_profile.json"
+# Profile cache shares Igor's configured private runtime directory. Startup
+# still detects the tier when the runtime has not yet been prepared by AI.
+if declare -f _igor_resolve_dir >/dev/null 2>&1; then
+    _PROFILE_FILE="$(_igor_resolve_dir runtime)/system_profile.json"
+else
+    _PROFILE_FILE="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/system_profile.json"
+fi
+
+_profile_runtime_ready() {
+    local runtime="${_PROFILE_FILE%/*}" component probe="" mode
+    local -a components
+    [[ "$runtime" == /* && "$runtime" != / ]] || return 1
+    IFS='/' read -r -a components <<< "${runtime#/}"
+    for component in "${components[@]}"; do
+        [ -n "$component" ] || continue
+        [ "$component" != . ] && [ "$component" != .. ] || return 1
+        probe+="/$component"
+        [ ! -L "$probe" ] || return 1
+    done
+    [ -d "$runtime" ] && [ -O "$runtime" ] || return 1
+    mode=$(stat -c %a -- "$runtime" 2>/dev/null || stat -f %Lp "$runtime" 2>/dev/null) || return 1
+    [ "$mode" = 700 ]
+}
+
+_profile_cache_file_ok() {
+    local mode
+    _profile_runtime_ready && [ -f "$_PROFILE_FILE" ] &&
+        [ ! -L "$_PROFILE_FILE" ] && [ -O "$_PROFILE_FILE" ] || return 1
+    mode=$(stat -c %a -- "$_PROFILE_FILE" 2>/dev/null || stat -f %Lp "$_PROFILE_FILE" 2>/dev/null) || return 1
+    [ "$mode" = 600 ]
+}
 
 # Global tier — set by igor_load_profile / igor_detect_profile.
 # Readable by all modules and the tuning engine.
@@ -125,9 +154,14 @@ igor_detect_profile() {
     local _ts
     _ts=$(date -u +%Y-%m-%dT%H:%M:%S+00:00 2>/dev/null || echo "unknown")
 
-    # Write JSON — mkdir -p in case runtime/ doesn't exist yet
-    mkdir -p "$(dirname "$_PROFILE_FILE")" 2>/dev/null || true
-    cat > "$_PROFILE_FILE" << PROFILE_EOF
+    # AI owns runtime preparation. Cache only in an already private directory;
+    # tier detection itself never needs privilege or persistent storage.
+    local _profile_tmp=""
+    if _profile_runtime_ready && { [ ! -e "$_PROFILE_FILE" ] || _profile_cache_file_ok; }; then
+        _profile_tmp=$(mktemp "${_PROFILE_FILE}.XXXXXX") || _profile_tmp=""
+    fi
+    if [ -n "$_profile_tmp" ]; then
+        cat > "$_profile_tmp" << PROFILE_EOF
 {
     "tier": "${_tier}",
     "ram_mb": ${_ram_mb},
@@ -139,6 +173,9 @@ igor_detect_profile() {
     "detected_at": "${_ts}"
 }
 PROFILE_EOF
+        chmod 600 -- "$_profile_tmp" && mv -f -- "$_profile_tmp" "$_PROFILE_FILE" ||
+            rm -f -- "$_profile_tmp"
+    fi
 
     IGOR_TIER="$_tier"
     export IGOR_TIER
@@ -156,7 +193,7 @@ PROFILE_EOF
 igor_load_profile() {
     local _run_detect=false
 
-    if [ ! -f "$_PROFILE_FILE" ]; then
+    if ! _profile_cache_file_ok; then
         _run_detect=true
     else
         local _cached_ram _current_ram _delta

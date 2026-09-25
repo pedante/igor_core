@@ -73,6 +73,26 @@ breadcrumb() {
     echo ""
 }
 
+# Resolve a display address on systems whose hostname implementation does not
+# support ``-I`` (for example BSD/macOS). Keep this in line with the AI context
+# and scrubber fallback order.
+_igor_ui_lan_ip() {
+    local ips ip
+    ips=$(hostname -I 2>/dev/null) || ips=""
+    for ip in $ips; do
+        case "$ip" in
+            *.*) printf '%s' "$ip"; return 0 ;;
+        esac
+    done
+    if command -v ip >/dev/null 2>&1; then
+        ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '
+            { for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }
+        ')
+        [ -n "$ip" ] && { printf '%s' "$ip"; return 0; }
+        ip -4 -o addr show scope global 2>/dev/null | awk 'NR == 1 {split($4, a, "/"); print a[1]}'
+    fi
+}
+
 # ── Header display ─────────────────────────────────────────────────────────────
 # Displays the main header with system status information.
 # Relies on global variables and functions that must be defined elsewhere:
@@ -84,7 +104,7 @@ header() {
 
     # Get domain from db.env if available
     domain=$(grep "^NEXTCLOUD_TRUSTED_DOMAINS=" "${IGOR_DIR}/secrets/db.env" 2>/dev/null | cut -d= -f2- | tr -d '"' | cut -d',' -f1 || echo "NOT SET")
-    lan_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    lan_ip=$(_igor_ui_lan_ip)
     hostname_str=$(hostname 2>/dev/null)
 
     # Calculate health score for display

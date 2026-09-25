@@ -465,8 +465,8 @@ nextcloud_docker__health() {
 nextcloud_docker__status_line() {
     # ── Tunnel ────────────────────────────────────────────────────────────────
     local tunnel_status
-    if sudo systemctl is-active cloudflared &>/dev/null; then
-        if sudo journalctl -u cloudflared -n 50 --no-pager 2>/dev/null \
+    if systemctl is-active cloudflared &>/dev/null; then
+        if journalctl -u cloudflared -n 50 --no-pager 2>/dev/null \
                 | grep -q "Connection registered\|Connection established\|Registered tunnel"; then
             tunnel_status="${GRN}● CONNECTED${NC}"
         else
@@ -598,8 +598,8 @@ nextcloud_docker__ai_context() {
     done
 
     ctx+="\n=== TUNNEL ===\n"
-    ctx+="cloudflared service: $(sudo -n systemctl is-active cloudflared 2>/dev/null || echo 'unknown (sudo -n failed)')\n"
-    ctx+="$(sudo -n journalctl -u cloudflared -n 5 --no-pager 2>/dev/null || echo '(cloudflared journal unavailable without sudo)')\n"
+    ctx+="cloudflared service: $(systemctl is-active cloudflared 2>/dev/null || echo 'unknown')\n"
+    ctx+="$(journalctl -u cloudflared -n 5 --no-pager 2>/dev/null || echo '(cloudflared journal unavailable)')\n"
 
     ctx+="\n=== RECENT NC ERRORS (last 15) ===\n"
     ctx+="$(docker compose exec -T app tail -60 /var/www/html/data/nextcloud.log 2>/dev/null \

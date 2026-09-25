@@ -33,12 +33,13 @@ run_check() {
     # ── Cloudflare tunnel ─────────────────────────────────────────────────────
     if command -v systemctl &>/dev/null; then
         local cf_active
-        cf_active=$(sudo systemctl is-active cloudflared 2>/dev/null || echo "unknown")
+        cf_active=$(systemctl is-active cloudflared 2>/dev/null) || true
+        cf_active=${cf_active:-unknown}
 
         case "$cf_active" in
             active)
                 # Service is active — check for actual registration
-                if sudo journalctl -u cloudflared -n 50 --no-pager 2>/dev/null \
+                if journalctl -u cloudflared -n 50 --no-pager 2>/dev/null \
                         | grep -qE "Connection registered|Connection established|Registered tunnel|Connected to|connectedToEdge|Tunnel connection"; then
                     echo "CHECK_RESULT OK tunnel_connected Cloudflare tunnel: connected and registered"
                 else

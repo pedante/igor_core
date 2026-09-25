@@ -52,7 +52,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "aliases": ("/stop",),
         "syntax": "stop",
         "category": "control",
-        "description": "pause the continuation loop",
+        "description": "pause the task when the chat prompt is available",
         "handler": "stop",
     },
     {
@@ -90,7 +90,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
     {
         "name": "hypo",
         "aliases": ("hypotheses",),
-        "syntax": "hypo [add|del|edit|pin|clear] [value]",
+        "syntax": "hypo [add|del|edit|pin|clear|reset] [value]",
         "category": "investigation",
         "description": "inspect or manage investigation hypotheses",
         "handler": "hypo",
@@ -118,6 +118,38 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "category": "control",
         "description": "toggle explanatory output",
         "handler": "verbose",
+    },
+    {
+        "name": "settings",
+        "aliases": (),
+        "syntax": "settings [autostart|hybrid on|off]",
+        "category": "control",
+        "description": "show settings or change startup options",
+        "handler": "settings",
+    },
+    {
+        "name": "apikey",
+        "aliases": (),
+        "syntax": "apikey",
+        "category": "control",
+        "description": "replace the current provider key",
+        "handler": "apikey",
+    },
+    {
+        "name": "canary",
+        "aliases": (),
+        "syntax": "canary dismiss",
+        "category": "investigation",
+        "description": "clear the post-fix canary alert",
+        "handler": "canary",
+    },
+    {
+        "name": "/diagnose",
+        "aliases": ("/diag",),
+        "syntax": "/diagnose [focus]",
+        "category": "tools",
+        "description": "run local diagnostics and ask Igor to analyze them",
+        "handler": "diagnose",
     },
     {
         "name": "/cmd",
@@ -198,14 +230,27 @@ def lookup(line: str) -> dict[str, Any]:
         valid = len(args) <= 1 and (not args or args[0] in {"all", "list"})
         reason = "expected all or list" if not valid else ""
     elif name == "hypo":
-        valid = len(args) == 0 or args[0] in {"add", "del", "edit", "pin", "clear"}
+        valid = len(args) == 0 or args[0] in {"add", "del", "edit", "pin", "clear", "reset"}
         reason = "unknown hypothesis operation" if not valid else ""
         if args and args[0] in {"add", "del", "edit", "pin"} and len(args) < 2:
             valid = False
             reason = "hypothesis operation needs a value"
+        if args and args[0] in {"clear", "reset"} and len(args) != 1:
+            valid = False
+            reason = "unexpected hypothesis arguments"
     elif name == "history":
         valid = len(args) <= 1
         reason = "expected at most one session id" if not valid else ""
+    elif name == "settings":
+        valid = not args or (len(args) == 2 and args[0] in {"autostart", "hybrid"}
+                             and args[1] in {"on", "off"})
+        reason = "expected autostart or hybrid followed by on or off" if not valid else ""
+    elif name == "canary":
+        valid = args == ["dismiss"]
+        reason = "expected dismiss" if not valid else ""
+    elif name in {"help", "stats", "refresh", "solved", "stop", "continue", "apikey", "exit"}:
+        valid = not args
+        reason = "unexpected arguments" if not valid else ""
 
     return {"matched": True, "command": command, "arguments": args, "input": original,
             "valid": valid, **({"reason": reason} if reason else {})}

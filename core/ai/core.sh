@@ -66,7 +66,43 @@ _ai_tx_result_tier() {
 }
 
 _ai_tx_batch_changed() {
-    printf '%s' "$1" | python3 -c 'import json,sys; print("true" if any(r.get("classification") in ("CHANGE","DESTROY") and r.get("approval_status") != "denied" for r in json.load(sys.stdin)) else "false")'
+    printf '%s' "$1" | python3 -c 'import json,sys; print("true" if any(r.get("classification") in ("CHANGE","DESTROY") and r.get("execution_status") == "tool_succeeded" for r in json.load(sys.stdin)) else "false")'
+}
+
+_ai_tx_denial_state() {
+    local _results="$1" _pending="${2:-false}"
+    printf '%s' "$_results" | python3 -c '
+import json, sys
+results = json.load(sys.stdin)
+pending = sys.argv[1] == "true"
+for result in results:
+    status = result.get("execution_status")
+    tier = result.get("classification")
+    if status == "action_denied":
+        print("verification_denied" if pending else "action_denied")
+        break
+    if status == "tool_succeeded" and tier in ("CHANGE", "DESTROY"):
+        pending = True
+    elif status == "tool_succeeded" and tier == "READ":
+        pending = False
+' "$_pending"
+}
+
+_ai_tx_verification_pending() {
+    local _results="$1" _pending="${2:-false}"
+    printf '%s' "$_results" | python3 -c '
+import json, sys
+pending = sys.argv[1] == "true"
+for result in json.load(sys.stdin):
+    if result.get("execution_status") != "tool_succeeded":
+        continue
+    tier = result.get("classification")
+    if tier in ("CHANGE", "DESTROY"):
+        pending = True
+    elif tier == "READ":
+        pending = False
+print("true" if pending else "false")
+' "$_pending"
 }
 
 _ai_session_route() {
@@ -82,10 +118,8 @@ else: print(d["command"]["name"] + (" " + " ".join(d["arguments"]) if d["argumen
 # Return 2 when the scrubber completes but its heuristic validator warns.
 # Last-mile request redaction remains the transport authority.
 _ai_scrub_context_for_display() {
-    local _runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}" _warnings _rc=0 _scrubbed
-    mkdir -p -- "$_runtime" || return 1
-    [ -d "$_runtime" ] && [ ! -L "$_runtime" ] && [ -O "$_runtime" ] || return 1
-    chmod 700 -- "$_runtime" || return 1
+    local _runtime _warnings _rc=0 _scrubbed
+    _runtime=$(_ai_runtime_private_dir) || return 1
     _warnings=$(mktemp "${_runtime}/.scrub-warnings.XXXXXX") || return 1
     _scrubbed=$(ai_scrub_outbound "$1" 2>"$_warnings") || _rc=$?
     if [ "$_rc" -eq 0 ]; then
@@ -100,15 +134,98 @@ _ai_scrub_context_for_display() {
 
 # ── IPC / --extra runtime helpers ─────────────────────────────────────────────
 
+# Igor resolves runtime through _igor_resolve_dir (or its identical standalone
+# fallback). Prepare it before the first session-state write. The output-variable
+# form keeps a sanitized failure detail in this shell for startup diagnostics.
+_ai_runtime_owner_ok() { [ -O "$1" ]; }
+
+_ai_runtime_private_dir() {
+    local rt component probe phase mode
+    local -a components
+    if declare -f _igor_resolve_dir >/dev/null 2>&1; then
+        rt=$(_igor_resolve_dir runtime)
+    else
+        rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    fi
+    _AI_RUNTIME_PATH="$rt"
+    _AI_RUNTIME_DETAIL=""
+    if [[ "$rt" != /* || "$rt" == / || "$rt" =~ [[:cntrl:]] ]]; then
+        _AI_RUNTIME_DETAIL="Runtime path must be an absolute directory path without control characters."
+        return 1
+    fi
+    IFS='/' read -r -a components <<< "${rt#/}"
+    for component in "${components[@]}"; do
+        if [ "$component" = . ] || [ "$component" = .. ]; then
+            _AI_RUNTIME_DETAIL="Runtime path contains a non-canonical component."
+            return 1
+        fi
+    done
+    # Check both sides of mkdir so a configured symlink is never accepted.
+    for phase in before after; do
+        probe=""
+        for component in "${components[@]}"; do
+            [ -n "$component" ] || continue
+            probe+="/$component"
+            if [ -L "$probe" ]; then
+                _AI_RUNTIME_DETAIL="Runtime path component is a symlink."
+                return 1
+            fi
+            if [ -e "$probe" ] && [ ! -d "$probe" ]; then
+                _AI_RUNTIME_DETAIL="A runtime path component is not a directory."
+                return 1
+            fi
+        done
+        if [ "$phase" = before ]; then
+            mkdir -p -m 700 -- "$rt" 2>/dev/null || {
+                _AI_RUNTIME_DETAIL="Could not create private runtime directory; parent is unavailable or not writable."
+                return 1
+            }
+        fi
+    done
+    if ! _ai_runtime_owner_ok "$rt"; then
+        _AI_RUNTIME_DETAIL="Runtime directory is owned by another user."
+        return 1
+    fi
+    chmod 700 -- "$rt" 2>/dev/null || {
+        _AI_RUNTIME_DETAIL="Could not set runtime directory mode to 700."
+        return 1
+    }
+    mode=$(stat -c %a -- "$rt" 2>/dev/null || stat -f %Lp "$rt" 2>/dev/null) || {
+        _AI_RUNTIME_DETAIL="Could not verify runtime directory permissions."
+        return 1
+    }
+    if [ "$mode" != 700 ]; then
+        _AI_RUNTIME_DETAIL="Runtime directory mode is not 700."
+        return 1
+    fi
+    if [ -n "${1:-}" ]; then
+        printf -v "$1" '%s' "$rt"
+    else
+        printf '%s' "$rt"
+    fi
+}
+
+_ai_session_log_create() {
+    local dir="${IGOR_DIR}/data/sessions"
+    mkdir -p -- "$dir" 2>/dev/null || return 1
+    [ -d "$dir" ] && [ ! -L "$dir" ] && [ -O "$dir" ] || return 1
+    chmod 700 -- "$dir" 2>/dev/null || return 1
+    mktemp "${dir}/session_$(date +%Y%m%d_%H%M%S).XXXXXX.log"
+}
+
 # Write current AI session state to runtime/state.env for --extra lenses.
 # Called after each API exchange and after settings changes.
 _ai_update_state() {
-    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
-    mkdir -p "$rt" 2>/dev/null || true
+    local rt
+    rt=$(_ai_runtime_private_dir) || return 1
+    [ ! -d "${rt}/state.env" ] || return 1
     local conv_len=0
     [ -n "$conversation" ] && \
         conv_len=$(printf '%s' "$conversation" | python3 -c \
             "import sys,json; msgs=json.loads(sys.stdin.read()); print(len(msgs))" 2>/dev/null || echo 0)
+    local _tmp
+    _tmp=$(mktemp "${rt}/.state.XXXXXX" 2>/dev/null) || return 1
+    chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
     {
         echo "NEXUS_MODEL=${model:-}"
         echo "NEXUS_PROVIDER=${provider:-}"
@@ -126,24 +243,53 @@ _ai_update_state() {
         echo "tunnel_status=${_LAST_TUNNEL_STATUS:-?}"
         echo "hd_mounted=${_LAST_HD_MOUNTED:-?}"
         echo "AI_SESSION_ACTIVE=1"
-    } > "${rt}/state.env" 2>/dev/null || true
+    } > "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    mv -f -- "$_tmp" "${rt}/state.env" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
 }
 
 # Mark AI session as inactive in state.env (called on exit).
 _ai_clear_session_active() {
-    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    local rt
+    rt=$(_ai_runtime_private_dir) || return 1
     local _sf="${rt}/state.env"
-    [ -f "$_sf" ] && sed -i 's/^AI_SESSION_ACTIVE=.*/AI_SESSION_ACTIVE=0/' "$_sf" 2>/dev/null || true
+    [ -f "$_sf" ] && [ ! -L "$_sf" ] || return 0
+    local _tmp
+    _tmp=$(mktemp "${rt}/.state-clear.XXXXXX" 2>/dev/null) || return 1
+    chmod 600 -- "$_tmp" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
+    sed 's/^AI_SESSION_ACTIVE=.*/AI_SESSION_ACTIVE=0/' "$_sf" > "$_tmp" 2>/dev/null || {
+        rm -f -- "$_tmp"; return 1;
+    }
+    mv -f -- "$_tmp" "$_sf" 2>/dev/null || { rm -f -- "$_tmp"; return 1; }
 }
 
 _ai_set_session_state() {
     case "$1" in
-        completed|tools_requested|awaiting_approval|tool_running|tool_succeeded|tool_failed|action_denied|provider_failed|malformed_response|payload_blocked|configuration_error|continuation_limit|stopped_by_user|repeated_action|no_further_action|investigating) ;;
+        start_requested|initializing|ready|running|user_exited|startup_failed|input_closed|completed|tools_requested|awaiting_approval|tool_running|tool_succeeded|tool_failed|action_denied|verification_denied|provider_failed|malformed_response|payload_blocked|configuration_error|continuation_limit|stopped_by_user|repeated_action|no_further_action|investigating) ;;
         *) return 1 ;;
     esac
     _AI_SESSION_STATE="$1"
     [ -n "${session_file:-}" ] && printf '[STATE] %s\n' "$1" >> "$session_file"
     _ai_update_state
+}
+
+# Startup errors use fixed, non-secret reasons and a return code distinct from
+# an intentional session exit. The caller's local state is visible here through
+# Bash's dynamic function scope.
+_ai_session_cleanup() {
+    [ -n "${_fifo_path:-}" ] && [ -p "$_fifo_path" ] && rm -f -- "$_fifo_path"
+    _ai_clear_session_active >/dev/null 2>&1 || true
+}
+
+_ai_startup_fail() {
+    local stage="$1" status="${2:-1}" reason="$3" path="${4:-}" detail="${5:-}"
+    [[ "$status" =~ ^[0-9]+$ ]] || status=1
+    _ai_set_session_state startup_failed >/dev/null 2>&1 || true
+    _ai_session_cleanup
+    printf 'AI session initialization failed\nstage: %s\nstatus: %s\nreason: %s\n' \
+        "$stage" "$status" "$reason" >&2
+    [ -n "$path" ] && printf 'path: %q\n' "$path" >&2
+    [ -n "$detail" ] && printf 'detail: %s\n' "$detail" >&2
+    return 2
 }
 
 _ai_error_state() {
@@ -156,7 +302,8 @@ _ai_error_state() {
 
 # Write conversation JSON to runtime/conversation.json for --extra Lens 6.
 _ai_write_conversation() {
-    local rt="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
+    local rt
+    rt=$(_ai_runtime_private_dir) || return 1
     [ -n "$conversation" ] || return 0
     local _private
     _private=$(printf '%s' "$conversation" | python3 "${_AI_DIR}/transactions.py" private) || {
@@ -188,7 +335,8 @@ _ai_write_scratchpad() {
 
 # Append a line to runtime/output.log for --extra Lens 1.
 _ai_log_output() {
-    local rt="${IGOR_DIR}/data/runtime"
+    local rt
+    rt=$(_ai_runtime_private_dir) || return 1
     local line="$1"
     local _private
     _private=$(printf '%s' "$line" | ai_private_text 2>/dev/null) || return 0
@@ -211,13 +359,13 @@ _ai_log_output() {
 
 # Read steering.txt — returns contents if present, empty string otherwise.
 _ai_read_steering() {
-    local sf="${IGOR_DIR}/data/runtime/steering.txt"
+    local sf="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/steering.txt"
     [ -f "$sf" ] && [ -s "$sf" ] && cat "$sf" 2>/dev/null || true
 }
 
 # Read the preset name of the active steering (set via --extra Lens 5 preset).
 _ai_read_steering_name() {
-    local sf="${IGOR_DIR}/data/runtime/steering_name.txt"
+    local sf="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/steering_name.txt"
     [ -f "$sf" ] && [ -s "$sf" ] && head -1 "$sf" 2>/dev/null | tr -d '\n' || true
 }
 
@@ -228,7 +376,9 @@ _write_session_postmortem() {
     local _turns="$5" _outcome="$6" _rb_id="$7"
     local _sf="$8" _start="$9"
     local _out_dir="${IGOR_DIR}/data/sessions"
-    mkdir -p "$_out_dir" 2>/dev/null || true
+    mkdir -p -- "$_out_dir" 2>/dev/null || return 1
+    [ -d "$_out_dir" ] && [ ! -L "$_out_dir" ] && [ -O "$_out_dir" ] || return 1
+    chmod 700 -- "$_out_dir" 2>/dev/null || return 1
     # Guard against unbounded session file accumulation
     if declare -f igor_check_limit &>/dev/null; then
         local _sf_count; _sf_count=$(find "$_out_dir" -name "*.json" -maxdepth 1 2>/dev/null | wc -l)
@@ -236,6 +386,8 @@ _write_session_postmortem() {
             warn "Session file limit reached (${_sf_count}) — consider pruning ${_out_dir}"
     fi
     local _out_file="${_out_dir}/${_sid}.json"
+    local _tmp_out
+    _tmp_out=$(mktemp "${_out_dir}/.postmortem.XXXXXX") || return 1
     local _now; _now=$(date +%s)
     local _duration=$(( _now - _start ))
     # Load scratchpad for root_cause/fix_applied
@@ -245,7 +397,7 @@ _write_session_postmortem() {
     export _PM_DUR="$_duration" _PM_COST="${AI_SESSION_COST:-0}"
     export _PM_IN="${AI_SESSION_INPUT_TOKENS:-0}" _PM_OUT="${AI_SESSION_OUTPUT_TOKENS:-0}"
     export _PM_READ="${AI_CMD_READ:-0}" _PM_CHANGE="${AI_CMD_CHANGE:-0}" _PM_BLOCKED="${AI_CMD_BLOCKED:-0}"
-    export _PM_SPFILE="$_sp_file" _PM_OUTFILE="$_out_file"
+    export _PM_SPFILE="$_sp_file" _PM_OUTFILE="$_tmp_out" _PM_PRIVACY_DIR="$_AI_DIR"
     python3 - << 'PYEOF'
 import json, os, sys
 
@@ -300,9 +452,17 @@ data = {
     "errors":           [],
 }
 
+sys.path.insert(0, env('_PM_PRIVACY_DIR'))
+from privacy import scrub_data
 with open(env('_PM_OUTFILE'), 'w') as f:
-    json.dump(data, f, indent=2)
+    json.dump(scrub_data(data), f, indent=2)
 PYEOF
+    local _write_rc=$?
+    if [ "$_write_rc" -ne 0 ]; then
+        rm -f -- "$_tmp_out"
+        return "$_write_rc"
+    fi
+    mv -f -- "$_tmp_out" "$_out_file" || { rm -f -- "$_tmp_out"; return 1; }
 }
 
 # P3-2: Display canary alert if present (called at session start)
@@ -456,7 +616,7 @@ _ai_match_runbook() {
 # Non-blocking poll of commands.fifo; executes one command if present.
 # Returns 1 if end_session was requested, 0 otherwise.
 _ai_poll_fifo() {
-    local fifo="${IGOR_DIR}/data/runtime/commands.fifo"
+    local fifo="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/commands.fifo"
     [ -p "$fifo" ] || return 0
     local frame=""
     # Non-blocking read (0.05s timeout)
@@ -544,21 +704,25 @@ _ai_handle_ipc_command() {
             system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
             echo -e "  ${GRN}[--extra] WIP cleared.${NC}" ;;
         steer:clear)
-            rm -f "${IGOR_DIR}/data/runtime/steering.txt"
+            rm -f "${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/steering.txt"
             echo -e "  ${CYN}[--extra] Steering cleared.${NC}" ;;
         steer:*)
             echo -e "  ${CYN}[--extra] Steering injection active (takes effect next API call).${NC}" ;;
         conversation:trim:*)
             local n="${cmd#conversation:trim:}"
+            if [[ ! "$n" =~ ^[1-9][0-9]?$ ]]; then
+                warn "Conversation trim expects 1–99 pairs."
+                return 0
+            fi
             # IDEA-08: auto-checkpoint before trim so history is never lost
             save_conversation_to_output "$conversation" 2>/dev/null || true
-            conversation=$(printf '%s' "$conversation" | python3 -c "
-import json, sys
-msgs = json.loads(sys.stdin.read())
-n = int('$n') * 2
-if len(msgs) > n:
-    msgs = msgs[-n:]
-print(json.dumps(msgs))" 2>/dev/null || printf '%s' "$conversation")
+            local _trimmed
+            _trimmed=$(IGOR_TX_HISTORY_JSON="$conversation" IGOR_TX_TRIM_LIMIT="$((n * 2))" \
+                python3 "${_AI_DIR}/transactions.py" trim-env) || {
+                warn "Conversation could not be trimmed without splitting a tool transaction."
+                return 0
+            }
+            conversation="$_trimmed"
             echo -e "  ${CYN}[--extra] Conversation trimmed to last ${n} pairs (checkpoint saved).${NC}"
             _ai_write_conversation ;;
         conversation:summarise)
@@ -604,22 +768,16 @@ print(json.dumps(msgs))" 2>/dev/null || printf '%s' "$conversation")
 
 # ── Save conversation to output folder ───────────────────────────────────────
 save_conversation_to_output() {
-    local conversation="$1"
-local output_dir="${IGOR_DIR}/data/sessions/output"
-mkdir -p "$output_dir" 2>/dev/null || true
-    local timestamp; timestamp=$(date '+%Y%m%d_%H%M%S')
-    local output_file="$output_dir/conversation_${timestamp}.json"
-    if [ -n "$conversation" ]; then
-        echo "$conversation" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(json.dumps(data, indent=2))
-except:
-    print(sys.stdin.read())
-" > "$output_file" 2>/dev/null || echo "$conversation" > "$output_file"
-        echo "Conversation saved to: $output_file"
-    fi
+    local conversation="$1" output_dir="${IGOR_DIR}/data/sessions/output"
+    [ -n "$conversation" ] || return 0
+    mkdir -p -- "$output_dir" 2>/dev/null || return 1
+    [ -d "$output_dir" ] && [ ! -L "$output_dir" ] && [ -O "$output_dir" ] || return 1
+    chmod 700 -- "$output_dir" 2>/dev/null || return 1
+    local private output_file
+    private=$(printf '%s' "$conversation" | python3 "${_AI_DIR}/transactions.py" private) || return 1
+    output_file=$(mktemp "${output_dir}/conversation_$(date +%Y%m%d_%H%M%S).XXXXXX.json") || return 1
+    printf '%s\n' "$private" > "$output_file" || { rm -f -- "$output_file"; return 1; }
+    echo "Conversation saved to: $output_file"
 }
 
 # ── Summarize conversation history before trim ────────────────────────────────
@@ -1153,6 +1311,7 @@ _ai_model_for_provider() {
 #   Returns:
 #     0  — proceed with session (prompt in $1 may have been edited)
 #     1  — user cancelled (caller should return from menu_ai)
+#     2  — terminal input unavailable
 # ---------------------------------------------------------------------------
 _ai_prompt_interstitial() {
     local _prompt_var="$1"
@@ -1218,7 +1377,7 @@ except (ValueError,TypeError):
 
     while true; do
         local _choice
-        read -rn1 -p "  > " _choice </dev/tty
+        read -rn1 -p "  > " _choice </dev/tty || return 2
         echo ""
 
         case "$_choice" in
@@ -1236,14 +1395,11 @@ except (ValueError,TypeError):
             e|E)
                 # Edit prompt — session-local only
                 local _tmp_prompt
-                local _prompt_runtime="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
-                mkdir -p -- "$_prompt_runtime" || { warn "Prompt editor runtime unavailable."; continue; }
-                if [ ! -d "$_prompt_runtime" ] || [ -L "$_prompt_runtime" ] ||
-                   [ ! -O "$_prompt_runtime" ]; then
+                local _prompt_runtime
+                _prompt_runtime=$(_ai_runtime_private_dir) || {
                     warn "Prompt editor runtime is not a private owned directory."
                     continue
-                fi
-                chmod 700 -- "$_prompt_runtime" || { warn "Prompt editor runtime is not private."; continue; }
+                }
                 _tmp_prompt=$(mktemp "${_prompt_runtime}/.igor_prompt.XXXXXX") || {
                     warn "Could not create a private prompt editor file."
                     continue
@@ -1279,9 +1435,10 @@ except (ValueError,TypeError):
 }
 
 menu_ai() {
+    local _AI_SESSION_STATE="" conversation="" session_file="" _fifo_path=""
     if [ "${IGOR_AI_ENABLED:-true}" != "true" ]; then
-        warn "AI assistant is disabled."
-        return 1
+        _ai_startup_fail configuration 1 "AI assistant is disabled."
+        return $?
     fi
     header
 
@@ -1344,8 +1501,8 @@ menu_ai() {
         echo ""
     fi
 
-    command -v python3 &>/dev/null || { fail "python3 required for AI assistant."; pause; return; }
-    command -v curl    &>/dev/null || { fail "curl required for AI assistant.";    pause; return; }
+    command -v python3 &>/dev/null || { _ai_startup_fail dependency 1 "python3 is required for AI assistant."; return $?; }
+    command -v curl    &>/dev/null || { _ai_startup_fail dependency 1 "curl is required for AI assistant."; return $?; }
 
     # ── Settings ───────────────────────────────────────────────────────────────
     local AI_SETTINGS_FILE="${IGOR_DIR}/config/variables/ai_settings.env"
@@ -1499,8 +1656,8 @@ menu_ai() {
     fi
     # Ollama needs no key — never flag as missing
     if $_key_missing; then
-        echo -e "  ${YEL}⚠  No API key for ${provider}. Enter one now or the session will fail.${NC}"
-        echo -e "  ${CYAN}Press Enter to skip (session will error on first message).${NC}"
+        echo -e "  ${YEL}⚠  No API key for ${provider}. Enter one now to start a session.${NC}"
+        echo -e "  ${CYAN}Press Enter to skip (session startup will be blocked).${NC}"
         echo ""
         if [ "$provider" = "openrouter" ]; then
             local _inline_key; _inline_key=$(_ai_prompt_key openrouter)
@@ -1508,9 +1665,10 @@ menu_ai() {
                 if _nexus_validate_or_key "$_inline_key"; then
                     or_api_key="$_inline_key"
                     _ai_write_key openrouter "$or_api_key" || { fail "API key could not be saved."; return 1; }
+                    _key_status="✔ valid"
                     ok "OpenRouter key valid and saved to secrets/openrouter.key"
                 else
-                    warn "Key invalid — not saved. Session will fail on first message."
+                    warn "Key invalid — not saved. Session startup will be blocked."
                 fi
             fi
         else
@@ -1519,9 +1677,10 @@ menu_ai() {
                 if _nexus_validate_ant_key "$_inline_key"; then
                     api_key="$_inline_key"
                     _ai_write_key anthropic "$api_key" || { fail "API key could not be saved."; return 1; }
+                    _key_status="✔ valid"
                     ok "Anthropic key valid and saved to secrets/anthropic.key"
                 else
-                    warn "Key invalid — not saved. Session will fail on first message."
+                    warn "Key invalid — not saved. Session startup will be blocked."
                 fi
             fi
         fi
@@ -1538,16 +1697,19 @@ menu_ai() {
         "l:SESSION LOG:Browse previous AI sessions" \
         "q:BACK:Return to main menu")
     case $? in
-        1) return ;;
+        1) return 0 ;;
         2)
             echo -e "  ${CYAN}s${NC} = start   ${CYAN}f${NC} = fast   ${CYAN}c${NC} = settings   ${CYAN}k${NC} = API key   ${CYAN}o${NC} = local AI   ${CYAN}l${NC} = session log   ${CYAN}q${NC} = back"
             echo ""
-            read -rp "  [s/f/c/k/o/l/q]: " preflight ;;
+            read -rp "  [s/f/c/k/o/l/q]: " preflight || return 0 ;;
     esac
 
     # IDEA-06: fast/quick mode flag — skip ai_gather_context()
     local _quick_mode=false
-    [ "$preflight" = "f" ] || [ "$preflight" = "F" ] && { _quick_mode=true; preflight="s"; }
+    if [ "$preflight" = "f" ] || [ "$preflight" = "F" ]; then
+        _quick_mode=true
+        preflight="s"
+    fi
 
     case "$preflight" in
         k|K)
@@ -1962,28 +2124,47 @@ except: pass
             declare -f menu_sessions &>/dev/null && menu_sessions || { warn "Session log not available."; pause; }
             return
             ;;
-        q|Q) return ;;
+        q|Q) return 0 ;;
     esac
 
     # ── Session initialisation ─────────────────────────────────────────────────
+    [ "$preflight" = "s" ] || [ "$preflight" = "S" ] || return 0
+    local _rt_dir
+    _ai_runtime_private_dir _rt_dir || {
+        _ai_startup_fail runtime 1 "Could not prepare private AI runtime directory." \
+            "$_AI_RUNTIME_PATH" "$_AI_RUNTIME_DETAIL"
+        return $?
+    }
+    _ai_set_session_state start_requested || {
+        _ai_startup_fail runtime_state 1 "Could not persist AI startup state." \
+            "$_rt_dir" "Could not write the private runtime state file."
+        return $?
+    }
+    _ai_set_session_state initializing || {
+        _ai_startup_fail runtime_state 1 "Could not persist AI startup state." \
+            "$_rt_dir" "Could not write the private runtime state file."
+        return $?
+    }
+    if [ "$_key_status" != "✔ valid" ] && [ "$_key_status" != "✔ running" ]; then
+        _ai_startup_fail provider_key 1 "Provider key is invalid, missing, or the provider is unreachable."
+        return $?
+    fi
     AI_SESSION_INPUT_TOKENS=0
     AI_SESSION_OUTPUT_TOKENS=0
     AI_SESSION_COST="0.000000"
     AI_SESSION_HAD_CHANGES=false
 
-local session_dir="${IGOR_DIR}/data/sessions"
-mkdir -p "$session_dir"
-    local session_file="${session_dir}/session_$(date +%Y%m%d_%H%M%S).log"
+    session_file=$(_ai_session_log_create) || {
+        _ai_startup_fail session_log 1 "Could not create a private AI session log. Check data/sessions ownership and permissions."
+        return $?
+    }
     local session_id; session_id=$(basename "$session_file" .log)
 
     # ── Create IPC FIFO for --extra TUI ──────────────────────────────────────
-    local _rt_dir="${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}"
-    local _fifo_path="${_rt_dir}/commands.fifo"
-    mkdir -p "$_rt_dir"
+    _fifo_path="${_rt_dir}/commands.fifo"
     [ -p "$_fifo_path" ] && rm -f "$_fifo_path"
     mkfifo "$_fifo_path" 2>/dev/null && chmod 600 "$_fifo_path" \
         || warn "Could not create session FIFO (--extra will not work)"
-    trap 'rm -f "$_fifo_path" 2>/dev/null; trap - EXIT' EXIT
 
     clear
     # Enter AI mode immediately after clear — sets mouse on + scroll bindings before
@@ -2062,7 +2243,7 @@ mkdir -p "$session_dir"
         system_context="(quick mode — no server scan)"
         scrubbed_context="(quick mode — no server scan)"
         _context_captured_at=0
-        _context_refresh_interval=999999   # disable auto-refresh in quick mode
+        _context_refresh_interval=0   # quick mode does not auto-refresh context
     else
         echo -e "  ${CYAN}Scanning your server...${NC}"
         # Load capability catalog before context gather so _ai_inject_capabilities()
@@ -2076,8 +2257,8 @@ mkdir -p "$session_dir"
             echo -e "  ${YEL}⚠ Server state captured; scrub validation found sensitive-looking content.${NC}"
             echo -e "  ${CYAN}i${NC}  Request redaction will check the final provider payload."
         elif [ "$_context_scrub_status" -ne 0 ]; then
-            warn "Could not scrub server context; stopping AI setup."
-            return 1
+            _ai_startup_fail context_scrub "$_context_scrub_status" "Could not scrub server context."
+            return $?
         else
             echo -e "  ${GRN}✔ Server state captured; scrub validation passed.${NC}"
         fi
@@ -2089,23 +2270,38 @@ mkdir -p "$session_dir"
 
     # ── Build system prompt ───────────────────────────────────────────────────
     local system_prompt
-    system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
+    system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context") || {
+        _ai_startup_fail prompt 1 "Could not build the AI session prompt."
+        return $?
+    }
+    if [ -z "$system_prompt" ]; then
+        _ai_startup_fail prompt 1 "AI session prompt is empty."
+        return $?
+    fi
 
     # ── Prompt interstitial (RFC R1-3) ────────────────────────────────────────
     # Show summary + allow view/edit before session starts.
     # Skip if AI_SKIP_INTERSTITIAL=true (e.g. AI_AUTOSTART, --extra, scripted use).
     if [ "${AI_SKIP_INTERSTITIAL:-false}" != "true" ]; then
-        if ! _ai_prompt_interstitial "system_prompt" "$model" "$provider"; then
-            return   # user pressed q — cancel session
-        fi
+        local _prompt_status=0
+        _ai_prompt_interstitial "system_prompt" "$model" "$provider" || _prompt_status=$?
+        case "$_prompt_status" in
+            0) ;;
+            1)
+                _ai_set_session_state user_exited
+                _ai_session_cleanup
+                return 0 ;;
+            *)
+                _ai_startup_fail prompt_input "$_prompt_status" "Could not read prompt confirmation from the terminal."
+                return $? ;;
+        esac
         # Rebuild after potential edit (system_prompt may have been updated in-place)
     fi
 
     # [FIX-3] In-session hypothesis tracker (accumulates over conversation)
     local _hypothesis_block=""
 
-    local conversation="[]"
-    local _AI_SESSION_STATE="investigating"
+    conversation="[]"
 
     {
         echo "=== IGOR AI SESSION ==="
@@ -2149,7 +2345,7 @@ mkdir -p "$session_dir"
             "[]" "exec on/off:TIER 2 auto-run" \
             "[]" "quiet on/off:hide READ steps" \
             "[]" "verbose on/off:show reasoning" \
-            "[]" "stop:/stop  pause loop" \
+            "[]" "stop:pause at chat prompt" \
             "[]" "continue:resume loop" \
             "---" "Investigation" \
             "[]" "hypo:manage hypotheses" \
@@ -2161,6 +2357,16 @@ mkdir -p "$session_dir"
             "[]" "help:full command list"
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
+    _ai_set_session_state ready || {
+        _ai_startup_fail runtime_state 1 "Could not persist ready state." \
+            "$_rt_dir" "Could not write the private runtime state file."
+        return $?
+    }
+    _ai_set_session_state running || {
+        _ai_startup_fail runtime_state 1 "Could not persist running state." \
+            "$_rt_dir" "Could not write the private runtime state file."
+        return $?
+    }
     while true; do
         # Poll for --extra IPC commands (non-blocking, ~50ms timeout)
         _ai_poll_fifo || break   # break if end_session was requested
@@ -2168,7 +2374,7 @@ mkdir -p "$session_dir"
 
         # [FIX-1] Auto-refresh context if stale (default: every 5 minutes)
         local _now; _now=$(date +%s)
-        if (( _now - _context_captured_at > _context_refresh_interval )); then
+        if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
             echo -e "  ${CYAN}↻ Context auto-refreshing (${_context_refresh_interval}s elapsed)...${NC}"
             system_context=$(ai_gather_context)
             ai_scrub_build_table
@@ -2196,7 +2402,12 @@ mkdir -p "$session_dir"
         # click/move/scroll events as escape sequences (^[[A ^[[B etc.) into the
         # active pane, which pollutes the readline buffer.
         printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l' 2>/dev/null || true
-        IFS= read -r user_input
+        if ! IFS= read -r user_input; then
+            _ai_set_session_state input_closed
+            _ai_session_cleanup
+            printf '\nAI session input closed unexpectedly. Returning to the main menu.\n' >&2
+            return 2
+        fi
 
         # ── Unknown command handlers ───────────────────────────────────────
         if [ "$user_input" = "/think" ] || [ "$user_input" = "/t" ] || [ "$user_input" = "/act" ] || [ "$user_input" = "/a" ]; then
@@ -2302,7 +2513,8 @@ mkdir -p "$session_dir"
                 # P3-4: Offer runbook generation if fix was confirmed
                 [ "$_session_outcome" = "fixed" ] && _ai_offer_runbook_gen "$_pm_json"
                 local _active_key_exit; [ "$provider" = "openrouter" ] && _active_key_exit="$or_api_key" || _active_key_exit="$api_key"
-                _ai_clear_session_active
+                _ai_set_session_state user_exited
+                _ai_session_cleanup
                 # Restore layout (remove yellow border) but do NOT clear screen yet —
                 # the knowledge session end prompts need a readable screen.
                 if declare -f igor_layout_restore &>/dev/null; then
@@ -2320,7 +2532,7 @@ mkdir -p "$session_dir"
                 echo ""
                 read -rsp "  Press any key to return to main menu..." -n1; echo ""; echo ""
                 tput clear 2>/dev/null || clear
-                return ;;
+                return 0 ;;
             stats)
                 echo ""
                 ai_banner
@@ -2577,12 +2789,14 @@ PYEOF
             stop|/stop)
                 # Fix 6: Soft pause — blocks agentic continuation until resumed
                 _IGOR_PAUSED=true
+                _ai_set_session_state stopped_by_user
                 echo -e "  ${YEL}⏸  Igor paused. The current task is on hold.${NC}"
                 echo -e "  ${CYAN}   Type ${BOLD}continue${NC}${CYAN} to resume, or ask a new question.${NC}"
                 echo ""; continue ;;
             continue|cont)
                 # Fix 4+6: Re-inject with failure recap; reset pause and direction flags
                 _IGOR_PAUSED=false
+                _ai_set_session_state investigating
                 _IGOR_AWAITING_DIRECTION=false
                 local _fail_recap=""
                 _fail_recap=$(printf '%s' "$conversation" | python3 -c "
@@ -2987,7 +3201,7 @@ END USER STEERING"
         # ── Execute all commands from response ───────────────────────────────────
         local cmd_output_for_api=""
         local _cmds_ran=0
-        local _initial_results_json='[]' _initial_calls_json _reply_finalized=false
+        local _initial_results_json='[]' _initial_calls_json _reply_finalized=false _initial_denied=false
         local _loop_stop_reason=""
         _initial_calls_json=$(_ai_tx_calls_json "${_cmds[@]}") || { warn "Invalid tool response."; continue; }
         [ ${#_cmds[@]} -gt 0 ] && _ai_set_session_state tools_requested
@@ -2999,7 +3213,7 @@ END USER STEERING"
                 break
             }
             export IGOR_AI_TOOL_META_FILE
-            if [ "$_reply_finalized" = true ]; then
+            if [ "$_reply_finalized" = true ] || [ "$_initial_denied" = true ]; then
                 cmd_result="[BLOCKED: earlier reply finalized this tool batch]"
                 _dispatch_rc=1
             else
@@ -3017,6 +3231,7 @@ END USER STEERING"
             _ai_set_session_state "$(_ai_tx_result_state "$_result_json")"
             _IGOR_LAST_EXEC_TIER=$(_ai_tx_result_tier "$_result_json")
             _initial_results_json=$(_ai_tx_append_result "$_initial_results_json" "$_result_json") || { warn "Could not collect tool result."; break; }
+            [ "$(_ai_tx_result_state "$_result_json")" = action_denied ] && _initial_denied=true
             echo "[EXECUTE] $_cmd"      >> "$session_file"
             echo "[OUTPUT] $cmd_result" >> "$session_file"
             # P2-1: reply tool signals end of investigation
@@ -3060,6 +3275,16 @@ END USER STEERING"
         if [ "$_reply_finalized" = true ]; then
             _cmds_ran=0
             _ai_set_session_state completed
+        elif [ "$_initial_denied" = true ]; then
+            _cmds_ran=0
+            _loop_stop_reason=$(_ai_tx_denial_state "$_initial_results_json" false)
+            _ai_set_session_state "$_loop_stop_reason"
+            _deferred_result=""
+            if [ "$_loop_stop_reason" = verification_denied ]; then
+                echo -e "  ${YEL}⏸ Change applied; verification declined, so the result is unverified.${NC}"
+            else
+                echo -e "  ${YEL}⏸ Action declined; no further actions were run.${NC}"
+            fi
         elif [ ${#_cmds[@]} -eq 0 ]; then
             if printf '%s' "$reply" | grep -qE '^RESULT:|^OUTCOME:'; then
                 _ai_set_session_state completed
@@ -3089,8 +3314,8 @@ except: print(0)
         local _loop_steps=0 _loop_max=5 _loop_last_cmd=""
         local _loop_has_change
         _loop_has_change=$(_ai_tx_batch_changed "$_initial_results_json")
-        # P1-6: Clear any stale decline signal from a previous loop or crashed session
-        rm -f "${IGOR_DIR}/data/runtime/loop_signal.tmp" 2>/dev/null
+        local _loop_pending_verification
+        _loop_pending_verification=$(_ai_tx_verification_pending "$_initial_results_json" false)
         # Quiet mode: suppress per-step display for READ-only loops
         local _quiet=false
         local _quiet_steps=()  # accumulates (cmd → summary) for end-of-loop box
@@ -3115,7 +3340,7 @@ except: pass
 
         # Status indicator (suppressed in quiet mode)
         if [ "$_loop_ran" -gt 0 ] && [ "$_quiet" = "false" ]; then
-            echo -e "  ${CYAN}⚙  Igor is continuing (up to ${_loop_max} steps)${NC}  ${YEL}· /stop to pause${NC}"
+            echo -e "  ${CYAN}⚙  Igor is continuing (up to ${_loop_max} steps)${NC}  ${YEL}· /stop at next prompt${NC}"
         elif [ "$_loop_ran" -gt 0 ] && [ "$_quiet" = "true" ]; then
             echo -ne "  ${CYAN}⚙  Working...${NC}\r"
         fi
@@ -3267,7 +3492,7 @@ except: print(sys.stdin.read()[:60])
             _loop_output=""
             _loop_ran=0
             local _follow_runtime_instruction=""
-            local _follow_calls_json _follow_results_json='[]' _follow_reply_finalized=false
+            local _follow_calls_json _follow_results_json='[]' _follow_reply_finalized=false _follow_denied=false
             local _repeat_stop=false
             _follow_calls_json=$(_ai_tx_calls_json "${_fu_cmds[@]}") || {
                 _loop_stop_reason="malformed_response"
@@ -3285,7 +3510,7 @@ except: print(sys.stdin.read()[:60])
                 export IGOR_AI_TOOL_META_FILE
                 _IGOR_LAST_EXEC_TIER=""
                 export IGOR_QUIET_LOOP="$_quiet"
-                if [ "$_follow_reply_finalized" = true ] || [ "$_repeat_stop" = true ]; then
+                if [ "$_follow_reply_finalized" = true ] || [ "$_repeat_stop" = true ] || [ "$_follow_denied" = true ]; then
                     _fu_cmd_result="[BLOCKED: earlier tool ended this batch]"
                     _fu_dispatch_rc=1
                 else
@@ -3307,6 +3532,7 @@ except: print(sys.stdin.read()[:60])
                     _loop_stop_reason="malformed_response"
                     break
                 }
+                [ "$(_ai_tx_result_state "$_fu_result_json")" = action_denied ] && _follow_denied=true
                 if [[ "$_fu_cmd_result" == "[REPLY]"* ]]; then
                     local _reply_body="${_fu_cmd_result#\[REPLY\] }"
                     echo -e "\n  ${GRN}${_reply_body}${NC}\n"
@@ -3317,7 +3543,8 @@ except: print(sys.stdin.read()[:60])
                     _loop_stop_reason="validation_blocked"
                 fi
                 # If a CHANGE/DESTROY ran, exit quiet mode for the rest of this loop
-                if [[ "${_IGOR_LAST_EXEC_TIER:-}" == "CHANGE" || "${_IGOR_LAST_EXEC_TIER:-}" == "DESTROY" ]]; then
+                if [ "$(_ai_tx_result_state "$_fu_result_json")" = tool_succeeded ] && \
+                   [[ "${_IGOR_LAST_EXEC_TIER:-}" == "CHANGE" || "${_IGOR_LAST_EXEC_TIER:-}" == "DESTROY" ]]; then
                     _loop_has_change=true
                     _quiet=false
                 fi
@@ -3345,7 +3572,8 @@ except: print(sys.stdin.read()[:60])
                     _quiet_steps+=("  ${_loop_steps})  ${_step_preview:0:45}  →  ${_result_oneliner}")
                     # After a CHANGE/DESTROY action, inject a verify reminder so
                     # the AI runs a READ command to confirm success before stopping.
-                    if [[ "${_IGOR_LAST_EXEC_TIER:-}" == "CHANGE" || "${_IGOR_LAST_EXEC_TIER:-}" == "DESTROY" ]]; then
+                    if [ "$(_ai_tx_result_state "$_fu_result_json")" = tool_succeeded ] && \
+                       [[ "${_IGOR_LAST_EXEC_TIER:-}" == "CHANGE" || "${_IGOR_LAST_EXEC_TIER:-}" == "DESTROY" ]]; then
                         _loop_output="[VERIFY REQUIRED] A change was just applied. Run a READ command to confirm the fix worked before declaring the issue resolved.\n\n${_loop_output}"
                         _follow_runtime_instruction="A change was applied. Run a READ command to verify it before declaring success."
                     fi
@@ -3372,6 +3600,18 @@ except: print(sys.stdin.read()[:60])
             fi
             _ai_write_conversation
             _ai_update_state
+            if [ "$(_ai_tx_batch_changed "$_follow_results_json")" = true ]; then
+                _loop_has_change=true
+            fi
+            if [ "$_follow_denied" = true ]; then
+                _loop_output=""
+                _loop_ran=0
+                _deferred_result=""
+                _loop_stop_reason=$(_ai_tx_denial_state "$_follow_results_json" "$_loop_pending_verification")
+                _ai_set_session_state "$_loop_stop_reason"
+                break
+            fi
+            _loop_pending_verification=$(_ai_tx_verification_pending "$_follow_results_json" "$_loop_pending_verification")
             if [ "$_follow_reply_finalized" = true ] || [ "$_repeat_stop" = true ]; then
                 _loop_output=""
                 _loop_ran=0
@@ -3458,13 +3698,7 @@ except: print(sys.stdin.read()[:60])
             fi
         done
 
-        # P1-6: Read cross-subshell stop signal (CHANGE_DECLINED / DESTROY_DECLINED)
-        local _sig_file="${IGOR_DIR}/data/runtime/loop_signal.tmp"
-        if [ -z "$_loop_stop_reason" ] && [ -f "$_sig_file" ]; then
-            _loop_stop_reason=$(cat "$_sig_file" 2>/dev/null || true)
-            rm -f "$_sig_file" 2>/dev/null
-        fi
-        # Iteration cap overrides any mid-loop signal
+        # Record the cap only when no earlier terminal state was set.
         if [ -z "$_loop_stop_reason" ] && [ "$_loop_steps" -ge "$_loop_max" ]; then
             _loop_stop_reason="continuation_limit"
             _ai_set_session_state continuation_limit
@@ -3491,10 +3725,6 @@ except: print(sys.stdin.read()[:60])
             case "${_loop_stop_reason:-}" in
                 result)
                     echo -e "  ${GRN}  ✓ Investigation complete.${NC}" ;;
-                CHANGE_DECLINED)
-                    echo -e "  ${YEL}  ⏸ Command skipped — type a follow-up to try a different approach.${NC}" ;;
-                DESTROY_DECLINED)
-                    echo -e "  ${RED}  ✗ Destructive command not confirmed — loop stopped.${NC}" ;;
                 continuation_limit)
                     echo -e "  ${YEL}  ⚠ Reached ${_loop_max} steps. Type 'continue' for more, or ask a new question.${NC}" ;;
                 validation_blocked)
@@ -3509,6 +3739,10 @@ except: print(sys.stdin.read()[:60])
                     echo -e "  ${RED}  ✗ AI configuration prevented the request.${NC}" ;;
                 repeated_action)
                     echo -e "  ${YEL}  ⏸ Repeated action detected; investigation paused.${NC}" ;;
+                action_denied)
+                    echo -e "  ${YEL}  ⏸ Action declined; no further actions were run.${NC}" ;;
+                verification_denied)
+                    echo -e "  ${YEL}  ⏸ Change applied; verification declined, so the result is unverified.${NC}" ;;
                 stopped_by_user)
                     echo -e "  ${YEL}  ⏸ Continuation stopped by user.${NC}" ;;
                 no_further_action)
@@ -3549,6 +3783,10 @@ except:
                 blocked)          _session_outcome="blocked" ;;
             esac
         fi
+        case "${_loop_stop_reason:-}" in
+            verification_denied) _session_outcome="changed_unverified" ;;
+            action_denied) _session_outcome="blocked" ;;
+        esac
 
         # P3-3: schedule canary check when fix is confirmed
         if [ "$_session_outcome" = "fixed" ]; then
@@ -3575,7 +3813,9 @@ except:
 
         echo "[TOKENS] in=${AI_SESSION_INPUT_TOKENS} out=${AI_SESSION_OUTPUT_TOKENS} cost=\$${AI_SESSION_COST}" >> "$session_file"
     done
-    _ai_clear_session_active
+    _ai_set_session_state user_exited
+    _ai_session_cleanup
+    return 0
 }
 
 # ── Undo entry executor ───────────────────────────────────────────────────────

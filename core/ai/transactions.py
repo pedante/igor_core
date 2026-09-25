@@ -25,11 +25,28 @@ def call_ids(message):
     if calls is not None:
         if not isinstance(calls, list):
             raise TransactionError("invalid tool calls")
-        return [call.get("id", "") for call in calls]
+        ids = []
+        for call in calls:
+            if not isinstance(call, dict):
+                raise TransactionError("invalid tool call")
+            call_id = call.get("id", "")
+            if not isinstance(call_id, str):
+                raise TransactionError("invalid tool-call ID")
+            ids.append(call_id)
+        return ids
     content = message.get("content")
     if isinstance(content, list):
-        return [block.get("id", "") for block in content
-                if isinstance(block, dict) and block.get("type") == "tool_use"]
+        ids = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_use":
+                continue
+            call_id = block.get("id", "")
+            if not isinstance(call_id, str):
+                raise TransactionError("invalid tool-call ID")
+            ids.append(call_id)
+        return ids
     return []
 
 
@@ -64,7 +81,10 @@ def validate_history(messages):
                     position = index + 1 + offset
                     if position >= len(messages) or messages[position].get("role") != "tool":
                         raise TransactionError("OpenAI results must immediately follow assistant")
-                    returned.append(messages[position].get("tool_call_id"))
+                    tool_id = messages[position].get("tool_call_id")
+                    if not isinstance(tool_id, str):
+                        raise TransactionError("OpenAI result is missing tool-call ID")
+                    returned.append(tool_id)
                 if returned != ids:
                     raise TransactionError("OpenAI result IDs do not match calls")
                 index += len(ids) + 1
@@ -91,13 +111,43 @@ def make_result(call, output, dispatch_rc=0, *, request_id="", owner="core",
     native_id = call.get("__native_id", "")
     match = re.match(r"^TOOL:[^ ]+ EXIT:([0-9]+)(?:\\n|\n|$)", output)
     exit_code = int(match[1]) if match else int(dispatch_rc)
-    denied = any(marker in output for marker in (
-        "[BLOCKED", "[VALIDATION BLOCKED", "[USER DECLINED", "[USER SKIPPED"))
-    if denied:
+    metadata = metadata or {}
+    # The dispatcher writes approval metadata before returning tool output.
+    # Treat that structured record as authoritative: command output is
+    # untrusted data and may contain denial-looking text as a normal result.
+    approval_recorded = "approval_status" in metadata and metadata.get("approval_status") not in ("", "not_recorded")
+    canonical_state = metadata.get("execution_status")
+    canonical_state_valid = canonical_state in {"tool_succeeded", "tool_failed", "action_denied"}
+    if approval_recorded:
+        denied = metadata.get("approval_status") == "denied"
+    else:
+        # Compatibility fallback for legacy callers that have no metadata file.
+        denied = any(marker in output for marker in (
+            "[BLOCKED", "[VALIDATION BLOCKED", "[USER DECLINED", "[USER SKIPPED]"))
+    # Structured execution state is produced by the dispatcher and takes
+    # precedence over text markers and the shell wrapper return code. A
+    # pending approval is never allowed to look like a successful action.
+    if canonical_state_valid:
+        approval_status = metadata.get("approval_status")
+        state = ("action_denied" if approval_status in {"denied", "pending"}
+                 else canonical_state)
+        denied = state == "action_denied"
+        error_type = metadata.get("error_type", "")
+        if not isinstance(error_type, str):
+            error_type = ""
+        if approval_status == "pending":
+            error_type = "approval_pending"
+        if denied and not error_type:
+            error_type = "authorization"
+    elif metadata.get("approval_status") == "pending":
         state = "action_denied"
-        if "[VALIDATION BLOCKED" in output:
+        denied = True
+        error_type = "approval_pending"
+    elif denied:
+        state = "action_denied"
+        if not approval_recorded and "[VALIDATION BLOCKED" in output:
             error_type = "validation"
-        elif "[USER DECLINED" in output or "[USER SKIPPED" in output:
+        elif not approval_recorded and ("[USER DECLINED" in output or "[USER SKIPPED" in output):
             error_type = "approval_denied"
         else:
             error_type = "authorization"
@@ -107,11 +157,15 @@ def make_result(call, output, dispatch_rc=0, *, request_id="", owner="core",
     else:
         state = "tool_succeeded"
         error_type = ""
-    metadata = metadata or {}
     approval = metadata.get("approval_status", "not_recorded")
     classification = metadata.get("classification", "not_recorded")
+    metadata_exit = metadata.get("exit_code")
+    if isinstance(metadata_exit, int) and not isinstance(metadata_exit, bool):
+        exit_code = metadata_exit
     if denied:
         approval = "denied"
+    if metadata.get("approval_status") == "pending":
+        approval = "pending"
     return {
         "request_id": request_id, "tool_call_id": native_id, "tool": tool,
         "action": call.get("cmd", call.get("action", "")),
@@ -294,6 +348,12 @@ def main():
         payload = json.loads(os.environ["IGOR_TX_RESULTS_JSON"])
         payload.append(json.loads(os.environ["IGOR_TX_RESULT_JSON"]))
         print(json.dumps(payload))
+        return
+    elif mode == "trim-env":
+        payload = json.loads(os.environ["IGOR_TX_HISTORY_JSON"])
+        limit = int(os.environ.get("IGOR_TX_TRIM_LIMIT", "14"))
+        result = trim(payload, limit=limit)
+        print(json.dumps(result))
         return
     elif mode == "rebuild-summary-env":
         payload = None
