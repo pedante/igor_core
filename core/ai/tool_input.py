@@ -100,21 +100,73 @@ def journalctl_is_read(words):
                    )
 
 
-def _journalctl_pipeline_is_read(text):
-    """Recognize the bounded, read-only journalctl | tail form."""
-    if text.count("|") != 1:
-        return False
-    if any(char in text for char in "\\*?[]{}~"):
-        return False
-    left, right = (part.strip() for part in text.split("|", 1))
-    try:
-        journal_words = command_words(left)
-        tail_words = command_words(right)
-    except ValueError:
-        return False
-    if not journalctl_is_read(journal_words) or not tail_words or tail_words[0] != "tail":
-        return False
-    args = tail_words[1:]
+def _read_shell_segments(text):
+    """Split a small safe shell subset into commands, rejecting other syntax.
+
+    Operators only join already allowlisted READ commands. The sole permitted
+    redirection discards stderr; a redirect to any other path remains a change.
+    This scanner respects quotes so an operator inside an echo argument is data.
+    """
+    if not text or any(char in text for char in "\0\n\r$`\\*?[]{}~"):
+        return None
+    stderr_discard = "2>/dev/null"
+    segments, operators, current = [], [], []
+    quote = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in "\"'":
+            quote = char
+            current.append(char)
+            index += 1
+            continue
+        # An unquoted 2>/dev/null is a discard, not a filesystem write.
+        if (text.startswith(stderr_discard, index)
+                and (index == 0 or text[index - 1].isspace()
+                     or text[index - 1] in "|&")
+                and (index + len(stderr_discard) == len(text)
+                     or text[index + len(stderr_discard)].isspace()
+                     or text[index + len(stderr_discard)] in "|&")):
+            current.append(" ")
+            index += len(stderr_discard)
+            continue
+        if char in ";()<>'#":
+            return None
+        if char in "|&":
+            if text.startswith("&&", index) or text.startswith("||", index):
+                width = 2
+            elif char == "|" and not text.startswith("|&", index):
+                width = 1
+            else:
+                return None
+            segment = "".join(current).strip()
+            if not segment:
+                return None
+            segments.append(segment)
+            operators.append(text[index:index + width])
+            current = []
+            index += width
+            continue
+        current.append(char)
+        index += 1
+    segment = "".join(current).strip()
+    if quote or not segment:
+        return None
+    return [*segments, segment], operators
+
+
+def _bounded_pipeline_filter(name, args):
+    """Keep head/tail pipeline output bounded as the old journal rule did."""
+    if name not in {"head", "tail"}:
+        return True
+    if not args:
+        return True  # Both default to ten lines.
     if len(args) == 1 and re.fullmatch(r"-[0-9]+", args[0]):
         return 1 <= int(args[0][1:]) <= 100
     if len(args) == 2 and args[0] in {"-n", "--lines"} and args[1].isdigit():
@@ -125,16 +177,12 @@ def _journalctl_pipeline_is_read(text):
     return False
 
 
-def command_is_read(text):
-    if "|" in text:
-        return _journalctl_pipeline_is_read(text)
+def _simple_command_is_read(text, in_pipeline):
     try:
-        words = command_words(text)
+        words = shlex.split(text)
     except ValueError:
         return False
-    # Raw commands still run in Bash. Reject expansions that shlex would otherwise
-    # turn into innocuous-looking arguments (including quoted command names).
-    if any(char in text for char in "\\*?[]{}~"):
+    if not words:
         return False
     name, *args = words
     # Streaming modes can hold the agent loop forever. They are not accepted by
@@ -144,8 +192,20 @@ def command_is_read(text):
         return False
     if name == "docker" and args[:1] == ["stats"] and "--no-stream" not in args:
         return False
-    if name in {"cat", "head", "tail", "wc", "df", "du", "free", "uptime", "uname", "whoami", "id", "ls"}:
+    if name in {"cat", "head", "tail", "wc", "grep", "df", "du", "free", "uptime", "uname", "whoami", "id", "ls"}:
+        if in_pipeline and not _bounded_pipeline_filter(name, args):
+            return False
         return True
+    if name in {"which", "echo"}:
+        return True
+    if name == "command":
+        return len(args) >= 2 and args[0] == "-v"
+    if name == "vlc":
+        return args == ["--version"]
+    if name == "checkupdates":
+        return not args
+    if name == "pacman":
+        return args[:1] in [["-Q"], ["-Qi"]]
     if name == "hostname":
         return not args or args in [["-I"], ["-i"], ["-f"], ["-s"]]
     if name == "journalctl":
@@ -165,6 +225,18 @@ def command_is_read(text):
             if args[:len(prefix)] == prefix:
                 return occ_is_read(args[len(prefix):])
     return False
+
+
+def command_is_read(text):
+    parsed = _read_shell_segments(text)
+    if parsed is None:
+        return False
+    segments, operators = parsed
+    return all(_simple_command_is_read(
+        segment,
+        (index > 0 and operators[index - 1] == "|")
+        or (index < len(operators) and operators[index] == "|"),
+    ) for index, segment in enumerate(segments))
 
 
 def main():

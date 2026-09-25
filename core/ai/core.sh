@@ -106,13 +106,52 @@ print("true" if pending else "false")
 }
 
 _ai_session_route() {
-    python3 "${_AI_DIR}/session_commands.py" lookup "$1" | python3 -c '
+    local _route_json
+    _route_json=$(python3 "${_AI_DIR}/session_commands.py" lookup --state "${2:-${_AI_SESSION_STATE:-running}}" "$1") || return 1
+    printf '%s' "$_route_json" | python3 -c '
 import json,sys
 d=json.load(sys.stdin)
 if not d.get("matched"): print("")
-elif not d.get("valid", True): print("INVALID:" + d.get("reason", "invalid arguments"))
+elif not d.get("valid", True): print("INVALID:" + d.get("usage", d.get("reason", "invalid arguments")))
 else: print(d["command"]["name"] + (" " + " ".join(d["arguments"]) if d["arguments"] else ""))
 '
+}
+
+# The palette only chooses a registry command. The normal route and case below
+# perform validation and execution, so typed and selected actions share a path.
+_ai_command_palette() {
+    local _filter="${1:-}" _rows _choice _number _command _syntax _description _arguments
+    _AI_PALETTE_SELECTION=""
+    while true; do
+        _rows=$(python3 "${_AI_DIR}/session_commands.py" palette "$_filter") || return 1
+        echo "  Commands${_filter:+ matching '${_filter}'}:"
+        local -a _palette_names=() _palette_syntaxes=()
+        while IFS=$'\t' read -r _command _syntax _description; do
+            [ -n "$_command" ] || continue
+            _palette_names+=("$_command")
+            _palette_syntaxes+=("$_syntax")
+            printf '  %2d  %-36s %s\n' "${#_palette_names[@]}" "$_syntax" "$_description"
+        done <<< "$_rows"
+        [ "${#_palette_names[@]}" -gt 0 ] || echo "  No matching commands."
+        echo "  Enter a number, /filter text, or b to go back."
+        IFS= read -r -p "  Palette: " _choice || return 1
+        case "$_choice" in
+            ""|b|back|q|cancel) return 1 ;;
+            /*) _filter="${_choice#/}"; continue ;;
+        esac
+        if [[ "$_choice" =~ ^[0-9]+$ ]] && (( _choice >= 1 && _choice <= ${#_palette_names[@]} )); then
+            _number=$((_choice - 1))
+            _command="${_palette_names[$_number]}"
+            _syntax="${_palette_syntaxes[$_number]}"
+            _arguments=""
+            if [ "$_syntax" != "$_command" ]; then
+                IFS= read -r -p "  Arguments for ${_syntax} (blank if optional): " _arguments || return 1
+            fi
+            _AI_PALETTE_SELECTION="${_command}${_arguments:+ ${_arguments}}"
+            return 0
+        fi
+        warn "Choose a listed number, /filter text, or b."
+    done
 }
 
 # Return 2 when the scrubber completes but its heuristic validator warns.
@@ -2186,7 +2225,7 @@ except: pass
     echo -e "  ${CYAN}Provider:${NC} ${_banner_prov}  ${CYAN}Model:${NC} ${model}"
     echo -e "  ${CYAN}Verbose:${NC}  ${IGOR_VERBOSE}"
     echo ""
-    echo -e "  ${CYAN}Commands:${NC} help · stats · refresh · solved · stop · undo · exec on/off · quiet on/off"
+    echo -e "  ${CYAN}Commands:${NC} help for the command list · : for the command palette"
     echo -e "  ${CYAN}Tip:${NC}      run 'bash igor.sh --extra' in a 2nd terminal for the live panel."
     echo ""
 
@@ -2333,28 +2372,16 @@ except: pass
     local _session_outcome="unknown"
     declare -f _ai_reset_cmd_counters &>/dev/null && _ai_reset_cmd_counters
 
-    # ── Right pane: command reference (replaces pre-flight status panel) ──────
-    declare -f igor_right_render &>/dev/null && \
-        igor_right_render "Chat Commands" \
-            "---" "Session" \
-            "[]" "exit:exit / quit" \
-            "[]" "refresh:re-scan context" \
-            "[]" "stats:context size + cost" \
-            "[]" "solved:clear investigation" \
-            "---" "Control" \
-            "[]" "exec on/off:TIER 2 auto-run" \
-            "[]" "quiet on/off:hide READ steps" \
-            "[]" "verbose on/off:show reasoning" \
-            "[]" "stop:pause at chat prompt" \
-            "[]" "continue:resume loop" \
-            "---" "Investigation" \
-            "[]" "hypo:manage hypotheses" \
-            "[]" "undo:reverse last CHANGE" \
-            "---" "Other" \
-            "[]" "history:recent sessions" \
-            "[]" "replay N:step-by-step log" \
-            "[]" "/cmd desc:copy-ready command" \
-            "[]" "help:full command list"
+    # Keep the optional right pane in sync with help and the palette.
+    if declare -f igor_right_render &>/dev/null; then
+        local -a _command_reference=("Chat Commands" "---" "Commands")
+        local _ref_name _ref_syntax _ref_description
+        while IFS=$'\t' read -r _ref_name _ref_syntax _ref_description; do
+            [ -n "$_ref_name" ] || continue
+            _command_reference+=("[]" "${_ref_syntax}:${_ref_description}")
+        done < <(python3 "${_AI_DIR}/session_commands.py" palette)
+        igor_right_render "${_command_reference[@]}"
+    fi
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
     _ai_set_session_state ready || {
@@ -2496,13 +2523,27 @@ except: pass
             continue
         }
         if [[ "$_builtin_route" == INVALID:* ]]; then
-            warn "Invalid session command: ${_builtin_route#INVALID:}"
+            warn "Usage: ${_builtin_route#INVALID:}"
             continue
+        fi
+        if [[ "$_builtin_route" == palette* ]]; then
+            local _palette_filter="${_builtin_route#palette}"
+            _palette_filter="${_palette_filter# }"
+            _ai_command_palette "$_palette_filter" || { echo ""; continue; }
+            _builtin_route=$(_ai_session_route "$_AI_PALETTE_SELECTION") || {
+                warn "Session command registry unavailable."
+                continue
+            }
+            if [[ "$_builtin_route" == INVALID:* ]]; then
+                warn "Usage: ${_builtin_route#INVALID:}"
+                continue
+            fi
+            [ -n "$_builtin_route" ] || { warn "Unknown palette action."; continue; }
         fi
         [ -n "$_builtin_route" ] && user_input="$_builtin_route"
         # ── Built-in session commands ─────────────────────────────────────────
         case "$user_input" in
-            exit|quit|q)
+            exit)
                 save_conversation_to_output "$conversation"
                 # P3-2: Write structured postmortem JSON
                 local _rb_name=""; [ -n "$_active_runbook" ] && \
@@ -2685,7 +2726,7 @@ PYEOF
                 system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
                 _context_captured_at=$(date +%s)   # [FIX-1] reset auto-refresh timer
                 echo -e "  ${GRN}✔ Refreshed.${NC}"; echo ""; continue ;;
-            solved|"wip clear"|"wip done"|"mark solved"|new|"new session"|"start fresh"|"clear session")
+            solved)
                 ai_knowledge_clear_wip
                 # Clear investigation scratchpad + reset conversation for fresh start
                 rm -f "${IGOR_DIR}/data/scratchpad.txt" 2>/dev/null
@@ -2695,7 +2736,7 @@ PYEOF
                 knowledge_block=$(ai_knowledge_load)
                 system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
                 echo -e "  ${GRN}✔ Investigation cleared — ready for a new topic.${NC}"; echo ""; continue ;;
-            hypo|hypotheses)
+            hypo)
                 echo ""
                 if [ -n "$_hypothesis_block" ]; then
                     echo -e "  ${CYN}Current investigation hypotheses:${NC}"
@@ -2786,14 +2827,14 @@ PYEOF
             "verbose off")
                 IGOR_VERBOSE="false"; _ai_save_settings
                 echo -e "  ${GRN}✔ Verbose mode off.${NC}"; echo ""; continue ;;
-            stop|/stop)
+            stop)
                 # Fix 6: Soft pause — blocks agentic continuation until resumed
                 _IGOR_PAUSED=true
                 _ai_set_session_state stopped_by_user
                 echo -e "  ${YEL}⏸  Igor paused. The current task is on hold.${NC}"
                 echo -e "  ${CYAN}   Type ${BOLD}continue${NC}${CYAN} to resume, or ask a new question.${NC}"
                 echo ""; continue ;;
-            continue|cont)
+            continue)
                 # Fix 4+6: Re-inject with failure recap; reset pause and direction flags
                 _IGOR_PAUSED=false
                 _ai_set_session_state investigating
@@ -2824,9 +2865,8 @@ ${_fail_recap}
 Do NOT repeat these failed approaches. Try a different method."
                 fi
                 ;;
-            "/diagnose"*|"/diag"*)
+            "/diagnose"*)
                 local _diag_arg="${user_input#/diagnose}"
-                _diag_arg="${_diag_arg#/diag}"
                 _diag_arg=$(printf '%s' "$_diag_arg" | sed 's/^[[:space:]]*//')
                 echo -e "  ${CYN}Running${_diag_arg:+ ${_diag_arg}} diagnostics...${NC}"
                 if declare -f health_check_full &>/dev/null; then

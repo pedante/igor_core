@@ -32,6 +32,45 @@ teardown() {
     [ -z "$output" ]
 }
 
+@test "aliases and malformed local commands share the registry route" {
+    run _ai_session_route "q"
+    [ "$output" = "exit" ]
+    run _ai_session_route "wip clear"
+    [ "$output" = "solved" ]
+    run _ai_session_route "/diag storage"
+    [ "$output" = "/diagnose storage" ]
+    for input in "stats extra" "replay" "exec maybe" "hypo add" "/cmd"; do
+        run _ai_session_route "$input"
+        [ "$status" -eq 0 ]
+        [[ "$output" == INVALID:* ]]
+    done
+}
+
+@test "palette lists registry actions and selected commands use the typed route" {
+    local selected
+    selected=$(printf '1\n' | bash -c '
+        source "$IGOR_DIR/core/ai/core.sh"
+        _ai_command_palette stats
+        printf "SELECTED:%s\n" "$_AI_PALETTE_SELECTION"
+        _ai_session_route "$_AI_PALETTE_SELECTION"
+    ')
+    [[ "$selected" == *"stats"* ]]
+    [[ "$selected" == *"SELECTED:stats"* ]]
+    [ "${selected##*$'\n'}" = "stats" ]
+}
+
+@test "palette cancel and back leave no selected command" {
+    for choice in b cancel; do
+        local result
+        result=$(printf '%s\n' "$choice" | bash -c '
+            source "$IGOR_DIR/core/ai/core.sh"
+            _ai_command_palette stats
+            printf "RESULT:%s\n" "$_AI_PALETTE_SELECTION"
+        ')
+        [[ "$result" == *"RESULT:" ]]
+    done
+}
+
 @test "isolated text requests cannot regain native tools during transport setup" {
     export IGOR_AI_ENABLED=true
     export IGOR_AI_TEXT_ONLY=true

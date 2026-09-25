@@ -33,6 +33,10 @@ provides static assistant, diagnostics, recovery, and communications entries.
 
 ### AI assistant
 Multi-provider in-terminal chat (Anthropic Claude, OpenRouter, Ollama/local).
+At the chat prompt, type `help` for local commands or `:` to open the numbered
+command palette. Enter a number to choose an action, `/text` to filter the list,
+or `b` to return to chat. Actions that need arguments prompt for them before
+running through the same command handler used by typed commands.
 
 **Three-tier safety gate** — every AI-proposed command is classified before running:
 
@@ -42,9 +46,11 @@ Multi-provider in-terminal chat (Anthropic Claude, OpenRouter, Ollama/local).
 | `CHANGE` | `docker compose restart`, `occ files:scan` | Pauses for `y/n` confirmation |
 | `DESTROY` | `docker compose down -v`, `rm -rf` | Pauses with explicit warning |
 
-Only explicitly recognized read-only command forms run automatically. Unknown
-commands, shell pipelines, substitutions, and redirections require approval
-(CHANGE commands can still run automatically in executive mode). Semantic OCC,
+Only explicitly recognized read-only command forms run automatically. A compound
+command remains READ when every branch is recognized as read-only; stderr
+suppression to `/dev/null` is allowed. Unknown commands, mutating branches,
+other redirections, and substitutions require approval (CHANGE commands can
+still run automatically in executive mode). Semantic OCC,
 container, and log tools validate their arguments and execute them without a shell.
 
 **Outbound secrets scrubbing** — before any context is sent to an external API,

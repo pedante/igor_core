@@ -203,6 +203,32 @@ teardown() {
     [ ! -e approvals ]
 }
 
+@test "VLC installation probe runs as a read-only host command" {
+    cat > "$IGOR_DIR/bin/which" <<'EOF'
+#!/bin/bash
+printf '%s\n' /fixture/vlc
+EOF
+    cat > "$IGOR_DIR/bin/vlc" <<'EOF'
+#!/bin/bash
+printf 'VLC fixture version\n'
+EOF
+    chmod +x "$IGOR_DIR/bin/which" "$IGOR_DIR/bin/vlc"
+    IGOR_QUIET_LOOP=false
+    run ai_execute_tool '{"tool":"host","cmd":"which vlc 2>/dev/null && vlc --version 2>/dev/null | head -2 || echo \"VLC not found in PATH\""}'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"AUTO-RUNNING (read-only)"* ]]
+    [[ "$output" == *"VLC fixture version"* ]]
+    [ ! -e approvals ]
+}
+
+@test "normal package install is CHANGE at the host approval boundary" {
+    IGOR_QUIET_LOOP=false
+    run ai_execute_tool '{"tool":"host","cmd":"sudo pacman -S --noconfirm vlc"}'
+    [[ "$output" == *"NEEDS APPROVAL (modifies system)"* ]]
+    [[ "$output" != *"DESTRUCTIVE"* ]]
+    [ -e approvals ]
+}
+
 @test "report and file readers reject traversal and credential paths" {
     printf 'SAFE REPORT\n' > "$IGOR_DIR/data/reports/safe.txt"
     printf 'SAFE FILE\n' > "$IGOR_DIR/safe.txt"

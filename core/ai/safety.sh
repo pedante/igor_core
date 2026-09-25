@@ -206,8 +206,18 @@ _ai_require_active_capability() {
 # ── Tier 3: destructive commands ──────────────────────────────────────────────
 ai_cmd_is_destroy() {
     local cmd="$1"
+    # Package removal is data loss; normal package installs and upgrades are
+    # CHANGE. Match the operation flag, including combined removal modifiers.
+    if printf '%s\n' "$cmd" | grep -qE '(^|[[:space:]|&;])pacman[[:space:]]+(-R[[:alnum:]]*|--remove)([[:space:]]|$)'; then
+        return 0
+    fi
+    # Require rm to be a shell word. A substring match incorrectly treated
+    # pacman's --noconfirm option (ending in "rm ") as destructive removal.
+    if printf '%s\n' "$cmd" | grep -qE '(^|[[:space:]|&;])(/usr/bin/|/bin/)?rm([[:space:]]|$)'; then
+        return 0
+    fi
     local destroy_patterns=(
-        "rm "               "docker volume rm"      "docker volume prune"
+        "docker volume rm"      "docker volume prune"
         "docker compose down"   "docker system prune"
         "FLUSHALL"          "DROP TABLE"            "DROP DATABASE"
         "DELETE FROM"       "TRUNCATE "

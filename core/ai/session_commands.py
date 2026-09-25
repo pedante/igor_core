@@ -16,6 +16,7 @@ from typing import Any
 
 _COMMANDS: tuple[dict[str, Any], ...] = (
     {
+        "id": "help",
         "name": "help",
         "aliases": ("?",),
         "syntax": "help",
@@ -24,6 +25,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "help",
     },
     {
+        "id": "stats",
         "name": "stats",
         "aliases": (),
         "syntax": "stats",
@@ -32,6 +34,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "stats",
     },
     {
+        "id": "refresh",
         "name": "refresh",
         "aliases": (),
         "syntax": "refresh",
@@ -40,6 +43,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "refresh",
     },
     {
+        "id": "solved",
         "name": "solved",
         "aliases": ("new", "wip clear", "wip done", "mark solved", "new session", "start fresh", "clear session"),
         "syntax": "solved",
@@ -48,6 +52,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "solved",
     },
     {
+        "id": "stop",
         "name": "stop",
         "aliases": ("/stop",),
         "syntax": "stop",
@@ -56,6 +61,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "stop",
     },
     {
+        "id": "continue",
         "name": "continue",
         "aliases": ("cont",),
         "syntax": "continue",
@@ -64,6 +70,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "continue",
     },
     {
+        "id": "undo",
         "name": "undo",
         "aliases": (),
         "syntax": "undo [all|list]",
@@ -72,6 +79,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "undo",
     },
     {
+        "id": "history",
         "name": "history",
         "aliases": (),
         "syntax": "history [session-id]",
@@ -80,6 +88,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "history",
     },
     {
+        "id": "replay",
         "name": "replay",
         "aliases": (),
         "syntax": "replay <session-id>",
@@ -88,6 +97,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "replay",
     },
     {
+        "id": "hypo",
         "name": "hypo",
         "aliases": ("hypotheses",),
         "syntax": "hypo [add|del|edit|pin|clear|reset] [value]",
@@ -96,6 +106,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "hypo",
     },
     {
+        "id": "exec",
         "name": "exec",
         "aliases": (),
         "syntax": "exec on|off",
@@ -104,6 +115,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "exec",
     },
     {
+        "id": "quiet",
         "name": "quiet",
         "aliases": (),
         "syntax": "quiet on|off",
@@ -112,6 +124,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "quiet",
     },
     {
+        "id": "verbose",
         "name": "verbose",
         "aliases": (),
         "syntax": "verbose on|off",
@@ -120,6 +133,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "verbose",
     },
     {
+        "id": "settings",
         "name": "settings",
         "aliases": (),
         "syntax": "settings [autostart|hybrid on|off]",
@@ -128,6 +142,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "settings",
     },
     {
+        "id": "apikey",
         "name": "apikey",
         "aliases": (),
         "syntax": "apikey",
@@ -136,6 +151,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "apikey",
     },
     {
+        "id": "canary",
         "name": "canary",
         "aliases": (),
         "syntax": "canary dismiss",
@@ -144,6 +160,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "canary",
     },
     {
+        "id": "diagnose",
         "name": "/diagnose",
         "aliases": ("/diag",),
         "syntax": "/diagnose [focus]",
@@ -152,6 +169,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "diagnose",
     },
     {
+        "id": "cmd",
         "name": "/cmd",
         "aliases": (),
         "syntax": "/cmd <description>",
@@ -160,6 +178,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "cmd",
     },
     {
+        "id": "exit",
         "name": "exit",
         "aliases": ("quit", "q"),
         "syntax": "exit",
@@ -167,22 +186,71 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "description": "end the AI session",
         "handler": "exit",
     },
+    {
+        "id": "palette",
+        "name": "palette",
+        "aliases": (":",),
+        "syntax": "palette [filter]",
+        "category": "session",
+        "description": "list and invoke local session commands",
+        "handler": "palette",
+    },
 )
+
+
+def _validate_registry() -> None:
+    """Reject ambiguous registry entries when this data module is imported."""
+    ids = [entry["id"] for entry in _COMMANDS]
+    if len(ids) != len(set(ids)):
+        raise ValueError("command action IDs must be unique")
+    spellings: dict[str, str] = {}
+    for entry in _COMMANDS:
+        for spelling in (entry["name"], *entry["aliases"]):
+            prior = spellings.get(spelling)
+            if prior is not None and prior != entry["id"]:
+                raise ValueError(f"command alias {spelling!r} is ambiguous")
+            spellings[spelling] = entry["id"]
+
+
+_validate_registry()
 
 
 def commands() -> tuple[dict[str, Any], ...]:
     """Return immutable registry entries with JSON-friendly alias lists."""
-    return tuple({**entry, "aliases": list(entry["aliases"])} for entry in _COMMANDS)
+    return tuple(_public_entry(entry) for entry in _COMMANDS)
+
+
+def _public_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Copy an entry so callers cannot mutate the authoritative registry."""
+    result = {**entry, "aliases": list(entry["aliases"])}
+    if "states" in result:
+        result["states"] = list(result["states"])
+    return result
 
 
 def _entry(name: str) -> dict[str, Any] | None:
     for command in _COMMANDS:
         if name == command["name"] or name in command["aliases"]:
-            return {**command, "aliases": list(command["aliases"])}
+            return _public_entry(command)
     return None
 
 
-def lookup(line: str) -> dict[str, Any]:
+def _matching_entry(line: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """Match the longest canonical spelling or alias, including multiword ones."""
+    candidates: list[tuple[int, dict[str, Any], str]] = []
+    for entry in _COMMANDS:
+        for spelling in (entry["name"], *entry["aliases"]):
+            parts = spelling.split()
+            prefix = " ".join(line.split()[:len(parts)])
+            if prefix == spelling and (line == spelling or line.startswith(spelling + " ")):
+                candidates.append((len(parts), entry, spelling))
+    if not candidates:
+        return None, []
+    _, entry, spelling = max(candidates, key=lambda item: item[0])
+    return _public_entry(entry), line[len(spelling):].strip().split() if line[len(spelling):].strip() else []
+
+
+def lookup(line: str, state: str | None = None) -> dict[str, Any]:
     """Resolve an input line without invoking a handler or a model.
 
     The returned object always has ``matched``.  A matched command includes
@@ -195,32 +263,25 @@ def lookup(line: str) -> dict[str, Any]:
     if not line:
         return {"matched": False, "input": original, "reason": "empty"}
 
-    if line == "/cmd":
-        command = _entry("/cmd")
-        return {"matched": True, "command": command, "arguments": [], "input": original, "valid": False,
-                "reason": "missing description"}
-    if line.startswith("/cmd "):
-        command = _entry("/cmd")
-        description = line[5:].strip()
-        return {"matched": True, "command": command, "arguments": [description], "input": original,
-                "valid": bool(description)}
-
-    words = line.split()
-    # Longest fixed forms must win over their shorter prefixes.
-    for fixed in ("wip clear", "wip done", "mark solved", "new session", "start fresh", "clear session"):
-        if line == fixed:
-            command = _entry(fixed)
-            return {"matched": True, "command": command, "arguments": [], "input": original, "valid": True}
-
-    command = _entry(words[0])
+    command, args = _matching_entry(line)
     if command is None:
         return {"matched": False, "input": original, "reason": "unknown"}
 
-    args = words[1:]
     valid = True
     reason = ""
     name = command["name"]
-    if name in {"exec", "quiet", "verbose"}:
+    if name == "/cmd":
+        # Keep the complete description as one argument for the legacy route.
+        args = [line[len("/cmd"):].strip()] if line[len("/cmd"):].strip() else []
+        valid = len(args) == 1
+        reason = "missing description" if not valid else ""
+    elif name == "/diagnose":
+        valid = len(args) <= 1
+        reason = "expected at most one focus" if not valid else ""
+    elif name == "palette":
+        valid = len(args) <= 1
+        reason = "expected at most one filter" if not valid else ""
+    elif name in {"exec", "quiet", "verbose"}:
         valid = len(args) == 1 and args[0] in {"on", "off"}
         reason = "expected on or off" if not valid else ""
     elif name == "replay":
@@ -252,8 +313,29 @@ def lookup(line: str) -> dict[str, Any]:
         valid = not args
         reason = "unexpected arguments" if not valid else ""
 
+    allowed = command.get("states")
+    if valid and state and allowed and state not in allowed:
+        valid = False
+        reason = f"unavailable in session state {state}"
     return {"matched": True, "command": command, "arguments": args, "input": original,
             "valid": valid, **({"reason": reason} if reason else {})}
+
+
+def palette_entries(filter_text: str = "", state: str | None = None) -> tuple[dict[str, Any], ...]:
+    """Return registry entries suitable for the lightweight command palette."""
+    needle = filter_text.strip().lower()
+    entries = []
+    for entry in _COMMANDS:
+        if entry["name"] == "palette":
+            continue
+        haystack = " ".join((entry["name"], entry["syntax"], entry["description"], *entry["aliases"])).lower()
+        if needle and needle not in haystack:
+            continue
+        allowed = entry.get("states")
+        if state and allowed and state not in allowed:
+            continue
+        entries.append(_public_entry(entry))
+    return tuple(entries)
 
 
 def help_text() -> str:
@@ -278,11 +360,21 @@ def main(argv: list[str]) -> int:
     if argv[0] == "commands":
         sys.stdout.write(json.dumps(list(commands()), sort_keys=True) + "\n")
         return 0
-    if argv[0] == "lookup":
-        line = " ".join(argv[1:])
-        sys.stdout.write(json.dumps(lookup(line), sort_keys=True) + "\n")
+    if argv[0] == "palette":
+        filter_text = " ".join(argv[1:]).strip()
+        for command in palette_entries(filter_text):
+            sys.stdout.write(f"{command['name']}\t{command['syntax']}\t{command['description']}\n")
         return 0
-    sys.stderr.write("usage: session_commands.py [help|commands|lookup COMMAND]\n")
+    if argv[0] == "lookup":
+        state = None
+        args = list(argv[1:])
+        if len(args) >= 2 and args[0] == "--state":
+            state = args[1]
+            args = args[2:]
+        line = " ".join(args)
+        sys.stdout.write(json.dumps(lookup(line, state=state), sort_keys=True) + "\n")
+        return 0
+    sys.stderr.write("usage: session_commands.py [help|commands|palette [FILTER]|lookup [--state STATE] COMMAND]\n")
     return 2
 
 

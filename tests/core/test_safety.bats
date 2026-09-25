@@ -203,6 +203,58 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
+@test "cmd_is_read: common command probes are read-only" {
+    local cmd
+    for cmd in \
+        "which vlc" \
+        "command -v vlc" \
+        "vlc --version" \
+        "vlc --version | head -2" \
+        "which vlc && vlc --version" \
+        "which vlc || echo not-installed" \
+        "which vlc || head /etc/os-release" \
+        "which vlc 2>/dev/null" \
+        "which vlc 2>/dev/null && vlc --version 2>/dev/null | head -2 || echo \"VLC not found in PATH\""; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -eq 0 ]
+    done
+}
+
+@test "cmd_is_read: read-only pipelines and stderr suppression are read-only" {
+    local cmd
+    for cmd in \
+        "checkupdates | wc -l" \
+        "checkupdates 2>/dev/null | head -40" \
+        "journalctl -b 0 -p warning --no-pager | tail -50" \
+        "pacman -Qi vlc | grep Version" \
+        "cat /etc/hosts 2>/dev/null"; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -eq 0 ]
+    done
+}
+
+@test "cmd_is_read: mutating branches keep compound commands non-read-only" {
+    local cmd
+    for cmd in \
+        "which vlc && pacman -S vlc" \
+        "command -v service || systemctl restart service" \
+        "cat file | tee /etc/example" \
+        "read-command | mutating-command"; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -ne 0 ]
+    done
+}
+
+@test "cmd_is_destroy: destructive compound branches remain destructive" {
+    local cmd
+    for cmd in \
+        "which vlc && rm -f /tmp/example" \
+        "command -v service || rm -f /tmp/example"; do
+        run ai_cmd_is_destroy "$cmd"
+        [ "$status" -eq 0 ]
+    done
+}
+
 # ── Write commands (should return exit 1) ─────────────────────────────────────
 
 @test "cmd_is_read: docker compose restart is NOT read-only" {
@@ -233,6 +285,23 @@ teardown() {
 @test "cmd_is_read: apt install is NOT read-only" {
     run ai_cmd_is_read "apt install -y nginx"
     [ "$status" -ne 0 ]
+}
+
+@test "package installation is CHANGE while package removal is DESTROY" {
+    local cmd
+    for cmd in "pacman -S vlc" "sudo pacman -S vlc" \
+        "sudo pacman -S --noconfirm vlc" "pacman -Syu"; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -ne 0 ]
+        run ai_cmd_is_destroy "$cmd"
+        [ "$status" -ne 0 ]
+    done
+    for cmd in "pacman -R vlc" "pacman -Rns vlc" "rm -f /tmp/example"; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -ne 0 ]
+        run ai_cmd_is_destroy "$cmd"
+        [ "$status" -eq 0 ]
+    done
 }
 
 @test "package installation is CHANGE while deletion is DESTROY" {

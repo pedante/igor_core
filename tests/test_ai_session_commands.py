@@ -11,10 +11,34 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "core" / "ai" / "session_commands.py"
 sys.path.insert(0, str(MODULE.parent))
 
-from session_commands import help_text, lookup  # noqa: E402
+from session_commands import commands, help_text, lookup, palette_entries  # noqa: E402
 
 
 class SessionCommandRegistryTests(unittest.TestCase):
+    def test_registry_ids_and_aliases_are_unique(self):
+        entries = commands()
+        ids = [entry["id"] for entry in entries]
+        self.assertEqual(len(ids), len(set(ids)))
+        spellings = {}
+        for entry in entries:
+            for spelling in (entry["name"], *entry["aliases"]):
+                self.assertNotIn(spelling, spellings)
+                spellings[spelling] = entry["id"]
+
+    def test_multword_alias_and_palette_are_registry_resolutions(self):
+        self.assertEqual(lookup("mark solved")["command"]["id"], "solved")
+        self.assertEqual(lookup(":") ["command"]["id"], "palette")
+        self.assertEqual(lookup("palette history")["arguments"], ["history"])
+
+    def test_palette_entries_are_filtered_registry_copies(self):
+        entries = palette_entries("history")
+        self.assertTrue(entries)
+        self.assertTrue(all("history" in (entry["name"] + entry["description"]).lower() for entry in entries))
+        self.assertNotIn("palette", {entry["name"] for entry in entries})
+
+    def test_state_argument_is_deterministic_without_affecting_default(self):
+        self.assertTrue(lookup("help", state="running")["valid"])
+        self.assertTrue(lookup("help")["valid"])
     def test_aliases_resolve_to_one_canonical_handler(self):
         for line, canonical in (("q", "exit"), ("quit", "exit"), ("cont", "continue"),
                                 ("hypotheses", "hypo"), ("/stop", "stop")):
