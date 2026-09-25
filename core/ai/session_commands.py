@@ -123,6 +123,15 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "exec",
     },
     {
+        "id": "mode",
+        "name": "mode",
+        "aliases": (),
+        "syntax": "mode guide|assist|executive",
+        "category": "control",
+        "description": "select Guide, Assist, or Executive interaction mode",
+        "handler": "mode",
+    },
+    {
         "id": "quiet",
         "name": "quiet",
         "aliases": (),
@@ -292,6 +301,9 @@ def lookup(line: str, state: str | None = None) -> dict[str, Any]:
     elif name in {"exec", "quiet", "verbose"}:
         valid = len(args) == 1 and args[0] in {"on", "off"}
         reason = "expected on or off" if not valid else ""
+    elif name == "mode":
+        valid = len(args) == 1 and args[0] in {"guide", "assist", "executive"}
+        reason = "expected guide, assist, or executive" if not valid else ""
     elif name == "replay":
         valid = len(args) == 1 and bool(args[0])
         reason = "expected a session id" if not valid else ""

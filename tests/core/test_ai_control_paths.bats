@@ -32,6 +32,45 @@ teardown() {
     [ -z "$output" ]
 }
 
+@test "unrelated fresh questions do not resume an old investigation" {
+    KNOWLEDGE_DIR="$BATS_TEST_TMPDIR/knowledge"
+    WIP_FILE="$KNOWLEDGE_DIR/wip.md"
+    PRIMER_FILE="$KNOWLEDGE_DIR/primer.md"
+    mkdir -p "$KNOWLEDGE_DIR"
+    printf '%s\n' '**Problem:** Nextcloud container is unhealthy' > "$WIP_FILE"
+    printf '%s\n' '**Status:** OPEN' >> "$WIP_FILE"
+    printf '%s\n' 'Old Nextcloud diagnostic report' > "$KNOWLEDGE_DIR/last_diag.md"
+
+    run _ai_input_continues_topic "check if vlc is installed" "Nextcloud container is unhealthy"
+    [ "$status" -ne 0 ]
+    run _ai_input_continues_topic "inspect Nextcloud container logs" "Nextcloud container is unhealthy"
+    [ "$status" -eq 0 ]
+
+    run ai_knowledge_load false
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Nextcloud container is unhealthy"* ]]
+    [[ "$output" != *"Old Nextcloud diagnostic report"* ]]
+
+    local conversation='[{"role":"assistant","content":"old Nextcloud advice"}]'
+    local _investigation_active=true _investigation_state_enabled=true
+    local _investigation_topic='Nextcloud container is unhealthy'
+    local _IGOR_AWAITING_DIRECTION=true _hypothesis_block='old hypothesis'
+    local _active_runbook='old runbook' knowledge_block='old WIP'
+    local scrubbed_context=context system_prompt=old
+    _ai_build_system_prompt() { printf 'prompt:%s' "$1"; }
+    _ai_prepare_user_topic 'inspect Nextcloud container logs' false
+    [ "$conversation" = '[{"role":"assistant","content":"old Nextcloud advice"}]' ]
+    [ "$_investigation_state_enabled" = true ]
+    _ai_prepare_user_topic 'check if vlc is installed' false
+    [ "$conversation" = '[]' ]
+    [ "$_investigation_state_enabled" = false ]
+    [ "$_IGOR_AWAITING_DIRECTION" = false ]
+    [ -z "$_hypothesis_block" ]
+    [ -z "$_active_runbook" ]
+    [[ "$system_prompt" != *Nextcloud* ]]
+    [ -f "$WIP_FILE" ]
+}
+
 @test "aliases and malformed local commands share the registry route" {
     run _ai_session_route "q"
     [ "$output" = "exit" ]
@@ -69,6 +108,61 @@ teardown() {
         ')
         [[ "$result" == *"RESULT:" ]]
     done
+}
+
+@test "command reference keeps each registry description with its command" {
+    source "$REPO_DIR/core/lib/output.sh"
+    local reference=()
+    local name syntax description
+    while IFS=$'\t' read -r name syntax description; do
+        [ -n "$name" ] || continue
+        reference+=("[]" "${name}:${syntax}:${description}")
+    done < <(python3 "$REPO_DIR/core/ai/session_commands.py" palette)
+
+    run igor_right_render "Commands" "${reference[@]}"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[stats]  stats  show token, cost, and context statistics"* ]]
+    [[ "$output" == *"[refresh]  refresh  refresh the server context"* ]]
+    [[ "$output" == *"[solved]  solved  clear the investigation and start a fresh topic"* ]]
+}
+
+@test "mode switching uses one handler and rejects a pending approval" {
+    ai_mode=assist
+    _AI_SESSION_STATE=ready
+    _ai_save_settings() { printf '%s\n' "$ai_mode" > "$BATS_TEST_TMPDIR/saved-mode"; }
+    _ai_build_system_prompt() { printf 'prompt:%s' "$(ai_get_mode)"; }
+    local knowledge_block=known scrubbed_context=context system_prompt=old
+    run _ai_session_route "mode guide"
+    [ "$output" = "mode guide" ]
+    _ai_handle_mode_command guide >/dev/null
+    [ "$ai_mode" = guide ]
+    [ "$system_prompt" = prompt:guide ]
+    [ "$(cat "$BATS_TEST_TMPDIR/saved-mode")" = guide ]
+
+    _AI_SESSION_STATE=awaiting_approval
+    run _ai_handle_mode_command executive
+    [ "$status" -ne 0 ]
+    [ "$ai_mode" = guide ]
+    [ "$(cat "$BATS_TEST_TMPDIR/saved-mode")" = guide ]
+    _AI_SESSION_STATE=ready
+    _ai_handle_mode_command executive >/dev/null
+    [ "$ai_mode" = executive ]
+}
+
+@test "legacy exec commands map to Executive and Assist" {
+    [ "$(_ai_session_route 'exec on')" = 'exec on' ]
+    [ "$(_ai_session_route 'exec off')" = 'exec off' ]
+    _ai_handle_mode_command executive >/dev/null
+    [ "$(ai_get_mode)" = executive ]
+    _ai_handle_mode_command assist >/dev/null
+    [ "$(ai_get_mode)" = assist ]
+}
+
+@test "saved modes take precedence and legacy settings migrate safely" {
+    [ "$(_ai_mode_from_settings guide true)" = guide ]
+    [ "$(_ai_mode_from_settings '' true)" = executive ]
+    [ "$(_ai_mode_from_settings '' false)" = assist ]
+    [ "$(_ai_mode_from_settings unknown true)" = assist ]
 }
 
 @test "isolated text requests cannot regain native tools during transport setup" {

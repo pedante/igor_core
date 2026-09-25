@@ -56,13 +56,24 @@ def main():
         print(scrub_text(sys.stdin.read()), end="")
     elif mode == "status":
         catalog = json.load(sys.stdin)
+        interaction_mode = os.environ.get("ai_mode", "")
+        if interaction_mode not in {"guide", "assist", "executive"}:
+            interaction_mode = (
+                "executive" if "ai_mode" not in os.environ
+                and os.environ.get("executive_mode", "false") == "true"
+                else "assist"
+            )
+        approval = {
+            "guide": "READ proposed, CHANGE confirm, DESTROY explicit YES",
+            "assist": "READ automatic, CHANGE confirm, DESTROY explicit YES",
+            "executive": "READ automatic, CHANGE automatic where policy allows, DESTROY explicit YES",
+        }[interaction_mode]
         print(json.dumps(scrub_data({
             "enabled": os.environ.get("IGOR_AI_ENABLED", "true") == "true",
             "provider": os.environ.get("provider", "openrouter"),
             "model": os.environ.get("model", ""),
-            "approval": "executive: CHANGE automatic, DESTROY explicit YES"
-            if os.environ.get("executive_mode", "false") == "true"
-            else "READ automatic, CHANGE confirm, DESTROY explicit YES",
+            "mode": interaction_mode,
+            "approval": approval,
             "context": os.environ.get("IGOR_AI_CONTEXT", "standard"),
             "audit": os.environ.get("IGOR_AI_AUDIT", "metadata"),
             "scrubbing": "required before transport and audit",

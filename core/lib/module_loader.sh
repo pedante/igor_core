@@ -176,6 +176,22 @@ _ml_owner_active() {
 
 _ml_valid_function() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
 
+# A capability is useful only when its declared leaf function can be called in
+# the current process.  Menu files are loaded lazily, so give the legacy lazy
+# loader one chance to attach the declared LOAD_MODULE before rejecting the
+# entry.  A successful module load is not sufficient on its own: incomplete
+# or stale module declarations must still fail closed at catalog construction.
+_ml_capability_function_available() {
+    local _fn="${1:-}" _mod="${2:-}"
+    _ml_valid_function "$_fn" || return 1
+    declare -f "$_fn" >/dev/null 2>&1 && return 0
+
+    if [ -n "$_mod" ] && declare -f _igor_load_module >/dev/null 2>&1; then
+        _igor_load_module "$_mod" >/dev/null 2>&1 || true
+    fi
+    declare -f "$_fn" >/dev/null 2>&1
+}
+
 # ---------------------------------------------------------------------------
 # _ml_read_conf <module_dir> <key> [section]
 #   Parse a single key from module.conf (simple INI parser, no deps).
@@ -881,7 +897,8 @@ igor_load_capabilities() {
                     if [ -n "$_name" ] && [ -n "$_func" ]; then
                         if _ml_valid_name "$_name" && _ml_valid_function "$_func" &&
                            [[ "$_tier" =~ ^(READ|CHANGE|DESTROY)$ ]] &&
-                           { [ -z "$_mod" ] || _ml_valid_name "$_mod"; }; then
+                           { [ -z "$_mod" ] || _ml_valid_name "$_mod"; } &&
+                           _ml_capability_function_available "$_func" "$_mod"; then
                             _desc="${_desc//|//}"; _probs="${_probs//|/,}"; _mpath="${_mpath//|/／}"
                             _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
                             # LOAD_MODULE names a lazy menu file; ownership is
@@ -907,7 +924,8 @@ igor_load_capabilities() {
         if [ -n "$_name" ] && [ -n "$_func" ]; then
             if _ml_valid_name "$_name" && _ml_valid_function "$_func" &&
                [[ "$_tier" =~ ^(READ|CHANGE|DESTROY)$ ]] &&
-               { [ -z "$_mod" ] || _ml_valid_name "$_mod"; }; then
+               { [ -z "$_mod" ] || _ml_valid_name "$_mod"; } &&
+               _ml_capability_function_available "$_func" "$_mod"; then
                 _desc="${_desc//|//}"; _probs="${_probs//|/,}"; _mpath="${_mpath//|/／}"
                 _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
                 _IGOR_CAPABILITY_OWNERS["$_name"]="${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}"

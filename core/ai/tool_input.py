@@ -213,8 +213,13 @@ def _simple_command_is_read(text, in_pipeline):
         return True
     if name == "command":
         return len(args) >= 2 and args[0] == "-v"
-    if name == "vlc":
-        return args == ["--version"]
+    # Version probes are observational regardless of the executable name.  A
+    # command's own --version implementation may be unusual, but it receives
+    # no mutating arguments and is the standard way to inspect an optional
+    # client before deciding whether it is installed.  Keep this generic so
+    # semicolon-separated probes do not need an application allowlist.
+    if args == ["--version"]:
+        return True
     if name == "checkupdates":
         return not args
     if name == "pacman":

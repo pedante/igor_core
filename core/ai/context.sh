@@ -102,7 +102,11 @@ _ai_build_system_prompt() {
     local _base_prompt
     _base_prompt=$(_ai_load_base_prompt "$knowledge_block" "$scrubbed_context")
 
-    printf '%s' "$_base_prompt"
+    local _mode
+    _mode=assist
+    declare -f ai_get_mode >/dev/null 2>&1 && _mode=$(ai_get_mode)
+    printf '%s\n\n=== INTERACTION MODE ===\nCurrent Igor mode: %s\nMode affects interaction pacing only. Igor policy, action classification, module ownership, disabled actions, hard denials, and approval requirements remain authoritative.\n' \
+        "$_base_prompt" "$_mode"
 }
 
 # ── Internal: base system prompt ─────────────────────────────────────────────

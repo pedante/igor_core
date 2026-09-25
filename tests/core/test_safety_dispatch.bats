@@ -186,10 +186,18 @@ teardown() {
 @test "read classifier accepts safe read composition and rejects unsafe shell syntax" {
     local cmd
     for cmd in 'cat /etc/hosts; uname' 'cat /etc/hosts; cat /etc/hostname' \
+        'which kdeconnect-cli 2>/dev/null; kdeconnect-cli --version 2>/dev/null | head -1; pacman -Q kdeconnect 2>/dev/null' \
+        'which dolphin 2>/dev/null; dolphin --version 2>/dev/null | head -1; pacman -Q dolphin 2>/dev/null' \
         'which mpv vlc ffmpeg mplayer 2>/dev/null; systemctl --user status mpv 2>/dev/null | head -10; ps aux | grep -E '\''mpv|vlc|mplayer'\'' | grep -v grep' \
         'cat /etc/hosts; uname'; do
         run ai_cmd_is_read "$cmd"
         [ "$status" -eq 0 ]
+    done
+    for cmd in 'cat /etc/hosts; sudo pacman -S vlc' \
+        'sudo pacman -S vlc; cat /etc/hosts' \
+        'cat /etc/hosts; kdeconnect-cli --version; touch MARKER'; do
+        run ai_cmd_is_read "$cmd"
+        [ "$status" -ne 0 ]
     done
     for cmd in 'cat /etc/hosts; rm -f MARKER' \
         'cat /etc/hosts;; uname' 'cat /etc/hosts;' '; cat /etc/hosts' \

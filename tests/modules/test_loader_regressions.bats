@@ -79,3 +79,28 @@ MODULE
     source "${BATS_TEST_DIRNAME}/../../core/extras/extra.sh"
     [ "$_EXTRA_RT" = "$IGOR_RUNTIME_DIR" ]
 }
+
+@test "capability catalog excludes declared actions without executable implementations" {
+    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_REGISTERING_MODULE=example
+    example__capabilities() {
+        cat <<'CAPS'
+ACTION available_action
+DESCRIPTION callable
+FUNCTION example_available_action
+TIER READ
+
+ACTION unavailable_action
+DESCRIPTION stale declaration
+FUNCTION example_missing_action
+TIER READ
+CAPS
+    }
+    example_available_action() { :; }
+    igor_register_hook ai_capabilities example__capabilities
+    _IGOR_REGISTERING_MODULE=""
+
+    igor_load_capabilities
+    [ -n "${_IGOR_CAPABILITIES[available_action]:-}" ]
+    [ -z "${_IGOR_CAPABILITIES[unavailable_action]:-}" ]
+}

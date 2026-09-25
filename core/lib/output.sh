@@ -65,7 +65,11 @@ igor_right_render() {
                 ---) printf '%b\n\n' "\n  ${DIM}── ${2}${NC}" ;;
                 hint) printf '%b\n' "  ${DIM}${2}${NC}" ;;
                 "[]")
-                    local _k="${2%%:*}" _rest="${2#*:}" _lb="${_rest%%:*}" _dc="${_rest#*:}"
+                    local _k _rest _lb _dc
+                    _k="${2%%:*}"
+                    _rest="${2#*:}"
+                    _lb="${_rest%%:*}"
+                    _dc="${_rest#*:}"
                     [ "$_dc" = "$_lb" ] && _dc=""
                     printf '%b\n' "  ${DIM}[${_k}]${NC}  ${BOLD}${_lb}${NC}  ${DIM}${_dc}${NC}"
                     ;;
@@ -104,7 +108,10 @@ igor_right_render() {
                     ;;
                 "[]")
                     # Quick-action item: [KEY]  LABEL  — no description (would wrap)
-                    local _k="${2%%:*}" _rest="${2#*:}" _lb="${_rest%%:*}"
+                    local _k _rest _lb
+                    _k="${2%%:*}"
+                    _rest="${2#*:}"
+                    _lb="${_rest%%:*}"
                     printf '%b\n' "  ${DIM}[${_k}]${NC}  ${BOLD}${_lb}${NC}"
                     ;;
                 *)

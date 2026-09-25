@@ -69,6 +69,28 @@ class SessionCommandRegistryTests(unittest.TestCase):
         self.assertEqual(lookup("exec maybe")["usage"], "exec on|off")
         self.assertFalse(lookup("/cmd")["valid"])
 
+    def test_mode_command_accepts_only_canonical_modes(self):
+        for mode in ("guide", "assist", "executive"):
+            with self.subTest(mode=mode):
+                result = lookup(f"mode {mode}")
+                self.assertTrue(result["matched"] and result["valid"])
+                self.assertEqual(result["command"]["id"], "mode")
+                self.assertEqual(result["command"]["handler"], "mode")
+                self.assertEqual(result["arguments"], [mode])
+        for line in ("mode", "mode on", "mode invalid", "mode guide extra"):
+            with self.subTest(line=line):
+                result = lookup(line)
+                self.assertTrue(result["matched"])
+                self.assertFalse(result["valid"])
+                self.assertEqual(result["usage"], "mode guide|assist|executive")
+
+    def test_typed_and_palette_mode_entries_share_the_same_handler(self):
+        typed = lookup("mode assist")
+        palette = next(entry for entry in palette_entries() if entry["id"] == "mode")
+        self.assertEqual(typed["command"]["id"], palette["id"])
+        self.assertEqual(typed["command"]["handler"], palette["handler"])
+        self.assertEqual(palette["syntax"], "mode guide|assist|executive")
+
     def test_all_interactive_utility_commands_are_local_and_documented(self):
         for line, canonical in (
             ("settings", "settings"),
@@ -89,7 +111,7 @@ class SessionCommandRegistryTests(unittest.TestCase):
                 self.assertFalse(lookup(line)["valid"])
         help_lines = help_text()
         for syntax in ("settings [autostart|hybrid on|off]", "apikey", "canary dismiss",
-                       "/diagnose [focus]"):
+                       "/diagnose [focus]", "mode guide|assist|executive"):
             self.assertIn(syntax, help_lines)
 
     def test_unknown_text_is_not_a_builtin(self):

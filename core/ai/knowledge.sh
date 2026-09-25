@@ -39,6 +39,9 @@ ai_knowledge_mark_changed() {
 ai_knowledge_load() {
     [ "${IGOR_AI_CONTEXT:-standard}" = minimal ] && return 0
     mkdir -p "$KNOWLEDGE_DIR" 2>/dev/null
+    # Keep durable investigation artifacts for explicit continuation while
+    # omitting both WIP and the last diagnosis from an unrelated new topic.
+    local include_investigation="${1:-true}"
     local block=""
 
     if [ -f "$PRIMER_FILE" ]; then
@@ -49,7 +52,7 @@ ai_knowledge_load() {
         block+="(primer.md not found at $PRIMER_FILE)\n"
     fi
 
-    if [ -f "$WIP_FILE" ]; then
+    if [ "$include_investigation" = "true" ] && [ -f "$WIP_FILE" ]; then
         if ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
             block+="\n=== WORK IN PROGRESS (from previous session) ===\n"
             block+="$(cat "$WIP_FILE")\n"
@@ -58,7 +61,7 @@ ai_knowledge_load() {
     fi
 
     local last_diag_file="$KNOWLEDGE_DIR/last_diag.md"
-    if [ -f "$last_diag_file" ]; then
+    if [ "$include_investigation" = "true" ] && [ -f "$last_diag_file" ]; then
         block+="\n=== LAST DIAGNOSE REPORT ===\n"
         block+="$(cat "$last_diag_file")\n"
         block+="=== END DIAGNOSE REPORT ===\n"

@@ -27,6 +27,76 @@ source "${_AI_DIR}/cost.sh"
 source "${_AI_DIR}/safety.sh"
 source "${_AI_DIR}/context.sh"
 
+# ── Interaction mode authority ───────────────────────────────────────────────
+# The mode is deliberately a single value. executive_mode remains an
+# exported compatibility flag for older callers; policy reads ai_get_mode.
+_ai_normalize_mode() {
+    case "${1,,}" in
+        guide) printf 'guide' ;;
+        assist) printf 'assist' ;;
+        executive) printf 'executive' ;;
+        *) return 1 ;;
+    esac
+}
+
+_ai_effective_mode() {
+    ai_get_mode
+}
+
+_ai_mode_from_settings() {
+    local _saved_mode="${1:-}" _legacy="${2:-}"
+    if [ -n "$_saved_mode" ]; then
+        _ai_normalize_mode "$_saved_mode" && return 0
+        printf 'assist'
+    elif [ "$_legacy" = true ]; then
+        printf 'executive'
+    else
+        printf 'assist'
+    fi
+}
+
+_ai_mode_has_pending_approval() {
+    case "${_AI_SESSION_STATE:-}" in
+        awaiting_approval|explaining_pending_action) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Set mode for the current session. A pending approval is intentionally left
+# untouched and blocks switching, so a mode change can never bypass it.
+# If _ai_save_settings exists (the interactive session defines it), persist it.
+_ai_set_mode() {
+    local _requested _mode
+    _requested="${1:-}"
+    _mode=$(_ai_normalize_mode "$_requested" 2>/dev/null) || {
+        printf 'Invalid mode: %s (use guide, assist, or executive)\n' "$_requested" >&2
+        return 2
+    }
+    if _ai_mode_has_pending_approval; then
+        printf 'Cannot switch mode while an approval is pending. Resolve it first.\n' >&2
+        return 1
+    fi
+    ai_mode="$_mode"
+    executive_mode=false
+    [ "$_mode" = executive ] && executive_mode=true
+    export ai_mode executive_mode
+    if declare -f _ai_save_settings >/dev/null 2>&1 && ! _ai_save_settings; then
+        printf 'Mode changed to %s, but settings could not be saved.\n' "$_mode" >&2
+        return 1
+    fi
+    if [ "${system_prompt+x}" = x ] && [ "${knowledge_block+x}" = x ] &&
+       [ "${scrubbed_context+x}" = x ]; then
+        system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
+    fi
+    printf '%s' "$_mode"
+}
+
+# Shared handler for typed commands and the command palette.
+_ai_handle_mode_command() {
+    local _mode="${1:-}"
+    _ai_set_mode "$_mode"
+}
+
 # Keep provider turns atomic. These helpers pass JSON as data, never shell code.
 _ai_tx_record() {
     local _owner=core _name _action
@@ -178,6 +248,30 @@ _ai_scrub_context_for_display() {
     return "$_rc"
 }
 
+# Refresh context and report collection separately from scrub validation.
+# Heuristic warnings do not replace the final provider request redaction gate.
+_ai_refresh_context() {
+    local _new_context _new_scrubbed _new_prompt _scrub_status=0
+    _new_context=$(ai_gather_context) || return 1
+    ai_scrub_build_table || return 1
+    _new_scrubbed=$(_ai_scrub_context_for_display "$_new_context") || _scrub_status=$?
+    case "$_scrub_status" in
+        0|2) ;;
+        *) return "$_scrub_status" ;;
+    esac
+    _new_prompt=$(_ai_build_system_prompt "$knowledge_block" "$_new_scrubbed") || return 1
+    system_context="$_new_context"
+    scrubbed_context="$_new_scrubbed"
+    system_prompt="$_new_prompt"
+    _AI_CONTEXT_SCRUB_STATUS="$_scrub_status"
+    printf '  Context refreshed.\n'
+    if [ "$_scrub_status" -eq 2 ]; then
+        printf '  Scrub validation found sensitive-looking content; final request redaction remains active.\n' >&2
+    else
+        printf '  Scrub validation passed.\n'
+    fi
+}
+
 # ── IPC / --extra runtime helpers ─────────────────────────────────────────────
 
 # Igor resolves runtime through _igor_resolve_dir (or its identical standalone
@@ -275,6 +369,7 @@ _ai_update_state() {
     {
         echo "NEXUS_MODEL=${model:-}"
         echo "NEXUS_PROVIDER=${provider:-}"
+        echo "ai_mode=$(_ai_effective_mode)"
         echo "executive_mode=${executive_mode:-false}"
         echo "IGOR_VERBOSE=${IGOR_VERBOSE:-true}"
         echo "NEXUS_MAX_TOKENS=${max_tokens:-2048}"
@@ -676,11 +771,18 @@ _ai_handle_ipc_command() {
     local cmd="$1"
     case "$cmd" in
         exec_mode:on)
-            executive_mode=true; export executive_mode
-            echo -e "  ${YEL}[--extra] Executive mode ON${NC}" ;;
+            if _ai_handle_mode_command executive >/dev/null; then
+                echo -e "  ${YEL}[--extra] Executive mode ON${NC}"
+            fi ;;
         exec_mode:off)
-            executive_mode=false; export executive_mode
-            echo -e "  ${CYN}[--extra] Executive mode off${NC}" ;;
+            if _ai_handle_mode_command assist >/dev/null; then
+                echo -e "  ${CYN}[--extra] Assist mode (legacy exec off)${NC}"
+            fi ;;
+        mode:*)
+            local _ipc_mode="${cmd#mode:}"
+            if _ai_handle_mode_command "$_ipc_mode"; then
+                echo -e "  ${CYAN}[--extra] Mode → $(_ai_effective_mode)${NC}"
+            fi ;;
         model:*)
             model="${cmd#model:}"
             ai_set_cost_rates "$model" 2>/dev/null || true
@@ -733,12 +835,8 @@ _ai_handle_ipc_command() {
             echo -e "  ${CYN}[--extra] Resumed.${NC}" ;;
         refresh)
             echo -e "  ${CYN}[--extra] Refreshing context...${NC}"
-            system_context=$(ai_gather_context)
-            ai_scrub_build_table
-            scrubbed_context=$(ai_scrub_outbound "$system_context")
-            knowledge_block=$(ai_knowledge_load)
-            system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
-            echo -e "  ${GRN}[--extra] Context refreshed.${NC}" ;;
+            knowledge_block=$(ai_knowledge_load "${_investigation_state_enabled:-true}")
+            _ai_refresh_context || warn "Context refresh failed." ;;
         health_check)
             declare -f health_check_full &>/dev/null && health_check_full ;;
         checkpoint)
@@ -1103,6 +1201,47 @@ for line in sys.stdin:
             b|B|q|Q) return ;;
         esac
     done
+}
+
+# Decide whether a new user message clearly belongs to the currently resumable
+# investigation.  Durable scratchpad/WIP state remains on disk, but it must not
+# be injected into an unrelated question.  Explicit `continue` is handled by
+# the command path; this helper covers ordinary natural-language follow-ups.
+_ai_input_continues_topic() {
+    local input="$1" reference="$2"
+    [ -n "${input//[[:space:]]/}" ] || return 1
+    [ -n "${reference//[[:space:]]/}" ] || return 1
+    local input_words reference_words word
+    input_words=$(printf '%s' "$input" | tr '[:upper:]' '[:lower:]' | \
+        grep -oE '[[:alnum:]_]{4,}' | sort -u)
+    reference_words=$(printf '%s' "$reference" | tr '[:upper:]' '[:lower:]' | \
+        grep -oE '[[:alnum:]_]{4,}' | sort -u)
+    while IFS= read -r word; do
+        [ -n "$word" ] || continue
+        case "$word" in
+            the|this|that|with|from|into|have|does|what|when|where|which|check|installed) continue ;;
+        esac
+        printf '%s\n' "$reference_words" | grep -Fxq "$word" && return 0
+    done <<< "$input_words"
+    return 1
+}
+
+_ai_prepare_user_topic() {
+    local _input="$1" _followup="${2:-false}"
+    [ "${_investigation_state_enabled:-false}" = true ] || return 0
+    [ "$_followup" = false ] || return 0
+    _ai_input_continues_topic "$_input" "${_investigation_topic:-}" && return 0
+
+    # Keep WIP and scratchpad files for an explicit later continuation.
+    conversation="[]"
+    _investigation_active=false
+    _investigation_state_enabled=false
+    _IGOR_AWAITING_DIRECTION=false
+    _hypothesis_block=""
+    _active_runbook=""
+    knowledge_block=$(ai_knowledge_load false)
+    system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
+    _investigation_topic="$_input"
 }
 
 # ── [FIX-2] Diagnostic burst on problem keywords ──────────────────────────────
@@ -1562,7 +1701,9 @@ menu_ai() {
     # Single model - user picks or default
     local model="${model:-claude-sonnet-4-6}"
     local max_tokens="${max_tokens:-4096}"
-    executive_mode="${executive_mode:-false}"  # effective administrator setting
+    ai_mode=$(_ai_effective_mode)
+    executive_mode=false
+    [ "$ai_mode" = executive ] && executive_mode=true
     provider="${provider:-openrouter}"
     IGOR_VERBOSE="${verbose:-true}"
     NEXUS_TEMPERATURE="${temperature:-0.7}"
@@ -1576,10 +1717,11 @@ menu_ai() {
     # Normal startup already applied defaults, saved settings and private
     # overrides. Re-reading this file would silently undo that precedence.
     if [ "${_IGOR_CONFIG_LOADED:-false}" != true ] && [ -f "$AI_SETTINGS_FILE" ]; then
-        local sv_model sv_tokens sv_exec sv_provider sv_verbose sv_temp sv_ol_host sv_ol_model
+        local sv_model sv_tokens sv_mode sv_exec sv_provider sv_verbose sv_temp sv_ol_host sv_ol_model
         sv_model=$(   grep "^model="                    "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_tokens=$(  grep "^max_tokens="               "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_exec=$(     grep "^executive_mode="           "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
+        sv_mode=$(     grep "^ai_mode="                  "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_provider=$( grep "^provider="                "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_verbose=$(  grep "^verbose="                 "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
         sv_temp=$(     grep "^temperature="             "$AI_SETTINGS_FILE" 2>/dev/null | cut -d= -f2-)
@@ -1591,7 +1733,10 @@ menu_ai() {
         esac
         [ -n "$sv_model"    ] && model="$sv_model"
         [ -n "$sv_tokens"   ] && max_tokens="$sv_tokens"
-        [ "$sv_exec" = "true" ] && executive_mode=true
+        # The saved canonical value wins; legacy true/false migrates once read.
+        ai_mode=$(_ai_mode_from_settings "$sv_mode" "$sv_exec")
+        executive_mode=false
+        [ "$ai_mode" = executive ] && executive_mode=true
         [ -n "$sv_provider" ] && provider="$sv_provider"
         [ -n "$sv_verbose"  ] && IGOR_VERBOSE="$sv_verbose"
         [ -n "$sv_temp"     ] && NEXUS_TEMPERATURE="$sv_temp"
@@ -1600,26 +1745,26 @@ menu_ai() {
     fi
     # Normalize model for active provider
     model=$(_ai_model_for_provider "$model" "$provider")
-    export provider executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
+    export provider ai_mode executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
 
     _ai_save_settings() {
         mkdir -p "$(dirname "$AI_SETTINGS_FILE")"
         {
-            printf "model=%s\nmax_tokens=%s\nexecutive_mode=%s\nprovider=%s\nverbose=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
-                "$model" "$max_tokens" "$executive_mode" \
+            printf "model=%s\nmax_tokens=%s\nai_mode=%s\nprovider=%s\nverbose=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
+                "$model" "$max_tokens" "$ai_mode" \
                 "$provider" "$IGOR_VERBOSE" "${NEXUS_TEMPERATURE:-0.7}" \
                 "${AI_AUTOSTART:-false}" "${AI_HYBRID_MODE:-false}"
             [ -n "${IGOR_OLLAMA_HOST:-}" ] && printf "IGOR_OLLAMA_HOST=%s\n" "$IGOR_OLLAMA_HOST"
             [ -n "${IGOR_OLLAMA_DEFAULT_MODEL:-}" ] && printf "IGOR_OLLAMA_DEFAULT_MODEL=%s\n" "$IGOR_OLLAMA_DEFAULT_MODEL"
         } > "$AI_SETTINGS_FILE"
-        export executive_mode provider IGOR_VERBOSE NEXUS_TEMPERATURE
+        export ai_mode executive_mode provider IGOR_VERBOSE NEXUS_TEMPERATURE
     }
 
     ai_set_cost_rates "$model"
 
     # ── Pre-flight: validate key then render info to right pane ──────────────────
     local _el _prov_label _key_status _or_balance=""
-    ${executive_mode:-false} && _el="ON — TIER 2 auto-runs" || _el="off"
+    _el="${ai_mode^}"
 
     # Show a "checking..." placeholder while the key validation runs
     declare -f igor_right_render &>/dev/null && \
@@ -1679,7 +1824,7 @@ menu_ai() {
         "Model"     "${model}"
         "Tokens"    "${max_tokens}"
         "Temp"      "${NEXUS_TEMPERATURE:-0.7}"
-        "Executive" "${_el}"
+        "Mode"      "${_el}"
         "Tools"     "${_tools_fmt}"
         "Verbose"   "${IGOR_VERBOSE}"
     )
@@ -2098,23 +2243,28 @@ except: pass
             fi
 
             echo ""
-            # ── Executive mode ────────────────────────────────────────────────
-            local _exec_cur; ${executive_mode:-false} && _exec_cur="ON" || _exec_cur="off"
+            # ── Interaction mode ──────────────────────────────────────────────
+            local _exec_cur="${ai_mode^}"
             local echoice
-            echoice=$(igor_fzf_pick "Settings — Executive mode  (currently: ${_exec_cur})" \
-                "y:ENABLE:TIER 2 commands auto-run without confirm" \
-                "n:DISABLE:Always require confirmation" \
+            echoice=$(igor_fzf_pick "Settings — Interaction mode  (currently: ${_exec_cur})" \
+                "g:GUIDE:Propose READ actions for Run / Skip / Explain" \
+                "a:ASSIST:Auto-run READ actions; approve changes" \
+                "e:EXECUTIVE:Auto-run administrator-approved changes" \
                 "k:KEEP CURRENT:${_exec_cur}")
             case $? in
                 1) echoice="k" ;;
                 2)
-                    echo -e "  ${BOLD}Executive mode${NC} (TIER 2 auto-runs without confirm)"
-                    ${executive_mode:-false} && echo "  Currently: ON" || echo "  Currently: off"
-                    read -rp "  Enable? [y/n/keep]: " echoice ;;
+                    echo -e "  ${BOLD}Interaction mode${NC} (guide, assist, or executive)"
+                    echo "  Currently: ${ai_mode}"
+                    read -rp "  Mode [guide/assist/executive/keep]: " echoice ;;
             esac
             case "$echoice" in
-                y|Y) executive_mode=true  ;;
-                n|N) executive_mode=false ;;
+                guide|assist|executive) _ai_set_mode "$echoice" >/dev/null || true ;;
+                g|G) _ai_set_mode guide >/dev/null || true ;;
+                a|A) _ai_set_mode assist >/dev/null || true ;;
+                e|E) _ai_set_mode executive >/dev/null || true ;;
+                y|Y) _ai_set_mode executive >/dev/null || true ;;
+                n|N) _ai_set_mode assist >/dev/null || true ;;
             esac
 
             echo ""
@@ -2144,7 +2294,7 @@ except: pass
             # Refresh right panel immediately so it reflects the new provider/model
             # without waiting for the periodic refresh timer.
             if declare -f igor_right_render &>/dev/null; then
-                local _el2; ${executive_mode:-false} && _el2="ON" || _el2="off"
+                local _el2="${ai_mode^}"
                 local _prov2
                 case "$provider" in
                     openrouter) _prov2="OpenRouter" ;;
@@ -2156,7 +2306,7 @@ except: pass
                     "Model"     "${model}" \
                     "Tokens"    "${max_tokens}" \
                     "Temp"      "${NEXUS_TEMPERATURE:-0.7}" \
-                    "Executive" "${_el2}" \
+                    "Mode"      "${_el2}" \
                     "Verbose"   "${IGOR_VERBOSE}"
             fi
             ;;
@@ -2273,7 +2423,10 @@ except: pass
                 knowledge_block=$(ai_knowledge_load)
                 echo -e "  ${GRN}✔ WIP cleared.${NC}"
                 ;;
-            s|S) echo -e "  ${CYAN}WIP loaded but deprioritised.${NC}" ;;
+            s|S)
+                _wip_active=false
+                knowledge_block=$(ai_knowledge_load false)
+                echo -e "  ${CYAN}WIP kept for later; this session starts fresh.${NC}" ;;
             *)   echo -e "  ${GRN}✔ WIP active — Igor will continue from the open problem.${NC}" ;;
         esac
     fi
@@ -2352,7 +2505,7 @@ except: pass
     {
         echo "=== IGOR AI SESSION ==="
         echo "Date: $(date)"
-        echo "Model: $model  |  Max tokens: $max_tokens  |  Executive: $executive_mode"
+        echo "Model: $model  |  Max tokens: $max_tokens  |  Mode: $ai_mode"
         echo "Verbose: $IGOR_VERBOSE  |  Provider: $provider"
         echo "NOTE: Context below is scrubbed — [IGOR:TOKENS] replace real values."
         echo ""
@@ -2370,6 +2523,16 @@ except: pass
     declare -A _seen_cmd_hashes=()
     # P1-7: Set to true after any agentic continuation run this session
     local _investigation_active=false
+    # WIP/scratchpad may be resumed when the first question clearly continues
+    # its topic. Keep the reference private so unrelated questions can start a
+    # clean conversation without deleting the resumable files.
+    local _investigation_topic=""
+    local _investigation_state_enabled=false
+    if [ "$_wip_active" = true ] && [ -f "$WIP_FILE" ] &&
+       ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
+        _investigation_topic=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //' || true)
+        _investigation_state_enabled=true
+    fi
     # P3-1: Session-sticky runbook match (set once on first relevant user message)
     local _active_runbook=""
     # P3-2: Session metadata for post-mortem
@@ -2385,7 +2548,12 @@ except: pass
         local _ref_name _ref_syntax _ref_description
         while IFS=$'\t' read -r _ref_name _ref_syntax _ref_description; do
             [ -n "$_ref_name" ] || continue
-            _command_reference+=("[]" "${_ref_syntax}:${_ref_description}")
+            # igor_right_render's quick-action value is KEY:LABEL:DESCRIPTION.
+            # Keep the registry spelling as the label and pass its own
+            # description as the third field; omitting the key caused the
+            # fallback renderer to display each description as the next
+            # command's label.
+            _command_reference+=("[]" "${_ref_name}:${_ref_syntax}:${_ref_description}")
         done < <(python3 "${_AI_DIR}/session_commands.py" palette)
         igor_right_render "${_command_reference[@]}"
     fi
@@ -2410,12 +2578,11 @@ except: pass
         local _now; _now=$(date +%s)
         if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
             echo -e "  ${CYAN}↻ Context auto-refreshing (${_context_refresh_interval}s elapsed)...${NC}"
-            system_context=$(ai_gather_context)
-            ai_scrub_build_table
-            scrubbed_context=$(ai_scrub_outbound "$system_context")
-            system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
-            _context_captured_at=$_now
-            echo -e "  ${GRN}✔ Context refreshed.${NC}"
+            if _ai_refresh_context; then
+                _context_captured_at=$_now
+            else
+                warn "Context refresh failed."
+            fi
         fi
 
         # Dynamic prompt: Igor [MODE · N hypo · task X/Y] ›
@@ -2501,6 +2668,12 @@ except: pass
             [[ "${_invest_confirm,,}" != "y" ]] && { echo ""; continue; }
             echo ""
         fi
+
+        # A natural-language question starts a new topic unless it clearly
+        # shares a meaningful term with the resumable investigation. Preserve
+        # the scratchpad/WIP on disk, but remove it from this request and reset
+        # provider conversation so an old task cannot bleed into the answer.
+        _ai_prepare_user_topic "$user_input" "$_is_followup"
 
         # Guard 4: Prompt injection patterns — warn with [y/N]
         # Catches common attempts to override the system prompt or hijack tool calls.
@@ -2713,26 +2886,26 @@ PYEOF
             settings)
                 echo ""
                 local _el2 _p2
-                ${executive_mode:-false} && _el2="${YEL}ON${NC}" || _el2="off"
+                _el2="${ai_mode:-$(_ai_effective_mode)}"
                 [ "$provider" = "openrouter" ] && _p2="${CYAN}OpenRouter${NC}" || _p2="${MAG}Anthropic${NC}"
                 echo -e "  ${CYAN}Provider:${NC}       $(echo -e "$_p2")"
                 echo -e "  ${CYAN}Model:${NC}          $model"
                 echo -e "  ${CYAN}Temperature:${NC}    ${NEXUS_TEMPERATURE:-0.7}"
                 echo -e "  ${CYAN}Max tokens:${NC}     $max_tokens"
-                echo -e "  ${CYAN}Executive:${NC}      $(echo -e "$_el2")"
+                echo -e "  ${CYAN}Mode:${NC}           $(echo -e "$_el2")"
                 echo -e "  ${CYAN}Verbose:${NC}        ${IGOR_VERBOSE}"
                 echo -e "  ${CYAN}AI Autostart:${NC}   ${AI_AUTOSTART:-false}"
                 echo -e "  ${CYAN}Hybrid menu:${NC}    ${AI_HYBRID_MODE:-false}"
                 echo ""; continue ;;
             refresh)
                 echo -e "  ${CYAN}Re-scanning server and knowledge...${NC}"
-                system_context=$(ai_gather_context)
-                ai_scrub_build_table
-                scrubbed_context=$(ai_scrub_outbound "$system_context")
-                knowledge_block=$(ai_knowledge_load)
-                system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
-                _context_captured_at=$(date +%s)   # [FIX-1] reset auto-refresh timer
-                echo -e "  ${GRN}✔ Refreshed.${NC}"; echo ""; continue ;;
+                knowledge_block=$(ai_knowledge_load "${_investigation_state_enabled:-true}")
+                if _ai_refresh_context; then
+                    _context_captured_at=$(date +%s)   # reset auto-refresh timer
+                else
+                    warn "Context refresh failed."
+                fi
+                echo ""; continue ;;
             solved)
                 ai_knowledge_clear_wip
                 # Clear investigation scratchpad + reset conversation for fresh start
@@ -2740,6 +2913,8 @@ PYEOF
                 conversation="[]"
                 _hypothesis_block=""
                 _investigation_active=false
+                _investigation_state_enabled=false
+                _investigation_topic=""
                 knowledge_block=$(ai_knowledge_load)
                 system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
                 echo -e "  ${GRN}✔ Investigation cleared — ready for a new topic.${NC}"; echo ""; continue ;;
@@ -2817,11 +2992,15 @@ PYEOF
                 fi
                 echo ""; continue ;;
             "exec on")
-                executive_mode=true; _ai_save_settings
+                _ai_handle_mode_command executive >/dev/null || { echo ""; continue; }
                 echo -e "  ${YEL}✔ Executive mode ON.${NC}"; echo ""; continue ;;
             "exec off")
-                executive_mode=false; _ai_save_settings
-                echo -e "  ${GRN}✔ Executive mode off.${NC}"; echo ""; continue ;;
+                _ai_handle_mode_command assist >/dev/null || { echo ""; continue; }
+                echo -e "  ${GRN}✔ Assist mode (legacy exec off).${NC}"; echo ""; continue ;;
+            mode\ *)
+                local _requested_mode="${user_input#mode }"
+                _ai_handle_mode_command "$_requested_mode" >/dev/null || { echo ""; continue; }
+                echo -e "  ${CYAN}✔ Mode → $(_ai_effective_mode)${NC}"; echo ""; continue ;;
             "quiet on")
                 _igor_loop_quiet=true; export IGOR_LOOP_QUIET=true
                 echo -e "  ${GRN}✔ Quiet loop ON — READ-only steps run silently, final answer shown.${NC}"; echo ""; continue ;;
@@ -3006,7 +3185,8 @@ User message: ${scrubbed_input}"
         local _saved_scratchpad=""
         local _scratchpad_file="${IGOR_DIR}/data/scratchpad.txt"
         # Fix 1: trim commands_run to tail-3 before injecting (prevents token bloat)
-        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -f "$_scratchpad_file" ]; then
+        if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] &&
+           [ "$_investigation_state_enabled" = "true" ] && [ -f "$_scratchpad_file" ]; then
             _saved_scratchpad=$(jq -c '.commands_run = (.commands_run | if length > 3 then .[-3:] else . end)' \
                 "$_scratchpad_file" 2>/dev/null || cat "$_scratchpad_file" 2>/dev/null)
         fi
@@ -3424,7 +3604,8 @@ except: pass
             export NEXUS_MAX_TOKENS="$max_tokens"
             # Inject current scratchpad so AI retains investigation state across loop steps
             local _loop_sys="$system_prompt"
-            if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] && [ -f "$_scratchpad_file" ]; then
+            if [ "${IGOR_AI_CONTEXT:-full}" != "minimal" ] &&
+               [ "$_investigation_state_enabled" = "true" ] && [ -f "$_scratchpad_file" ]; then
                 # Fix 1: trim commands_run to tail-3 before injecting (prevents token bloat)
                 local _loop_sp
                 _loop_sp=$(jq -c '.commands_run = (.commands_run | if length > 3 then .[-3:] else . end)' \
@@ -3811,7 +3992,11 @@ except: print(sys.stdin.read()[:60])
             echo ""
         fi
         # P1-7: Mark that an investigation ran this session
-        [ "${_loop_steps:-0}" -gt 0 ] && _investigation_active=true
+        if [ "${_loop_steps:-0}" -gt 0 ]; then
+            _investigation_active=true
+            _investigation_state_enabled=true
+            [ -n "$_investigation_topic" ] || _investigation_topic="$_problem"
+        fi
 
         # P3-2: update session outcome from scratchpad when loop ends on RESULT
         if [ "${_loop_stop_reason:-}" = "result" ] || [ "${_loop_steps:-0}" -gt 0 ]; then

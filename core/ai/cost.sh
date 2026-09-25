@@ -148,10 +148,13 @@ print(f'{cost:.6f}')
 # ── Session status banner ─────────────────────────────────────────────────────
 ai_banner() {
     echo -e "  ${CYAN}tokens in:${NC} ${AI_SESSION_INPUT_TOKENS}  ${CYAN}out:${NC} ${AI_SESSION_OUTPUT_TOKENS}  ${YEL}session cost: \$${AI_SESSION_COST}${NC}"
-    echo -e "  Mode: $mode_display  ${CYAN}Executive mode:${NC} $(${executive_mode:-false} && echo -e "${YEL}ON${NC}" || echo "off")"
+    local _mode=assist
+    if declare -f ai_get_mode >/dev/null 2>&1; then
+        _mode=$(ai_get_mode)
+    fi
+    echo -e "  ${CYAN}Mode:${NC} ${_mode}"
 
     if [ "${AI_SESSION_INPUT_TOKENS:-0}" -gt 150000 ] 2>/dev/null; then
         echo -e "  ${YEL}⚠  Context large (${AI_SESSION_INPUT_TOKENS} tokens) — type 'refresh' to shrink it${NC}"
     fi
 }
-

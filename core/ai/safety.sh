@@ -32,6 +32,32 @@ AI_CMD_READ=0
 AI_CMD_CHANGE=0
 AI_CMD_BLOCKED=0
 
+# The mode is owned by the session/settings layer, but this is the single
+# policy-facing accessor used by the safety boundary.  Keep the old
+# executive_mode variable as a read-only compatibility input while sessions
+# migrate to ai_mode.
+ai_get_mode() {
+    case "${ai_mode:-}" in
+        guide|assist|executive) printf '%s\n' "$ai_mode" ;;
+        *)
+            # Legacy executive_mode is consulted only when the new setting is
+            # genuinely absent. A malformed explicit value fails closed to
+            # Assist instead of silently enabling Executive.
+            if [ "${ai_mode+x}" = x ]; then
+                printf '%s\n' assist
+            elif [ "${executive_mode:-false}" = true ]; then
+                printf '%s\n' executive
+            else
+                printf '%s\n' assist
+            fi
+            ;;
+    esac
+}
+
+ai_mode_is() {
+    [ "$(ai_get_mode)" = "$1" ]
+}
+
 _ai_reset_cmd_counters() {
     AI_CMD_READ=0
     AI_CMD_CHANGE=0
@@ -266,6 +292,8 @@ _ai_approval_prompt() {
         case "$tier" in
             DESTROY)
                 printf '  [E] Explain  [N] Cancel  type YES to execute  [/stop] Stop: ' >&2 ;;
+            READ)
+                printf '  [R] Run  [S] Skip  [E] Explain  [/stop] Stop: ' >&2 ;;
             *)
                 printf '  [Y] Run  [N] Cancel  [E] Explain  [/stop] Stop: ' >&2 ;;
         esac
@@ -295,15 +323,15 @@ _ai_approval_prompt() {
                     _ai_set_session_state awaiting_approval || true
                 _AI_APPROVAL_OUTCOME=WAITING_APPROVAL
                 ;;
-            n|no|cancel) _AI_APPROVAL_OUTCOME=DECLINE; return 1 ;;
-            y|yes)
+            n|no|cancel|s|skip) _AI_APPROVAL_OUTCOME=DECLINE; return 1 ;;
+            y|yes|r|run)
                 [ "$tier" = DESTROY ] && [ "$answer" != YES ] && {
                     echo "  Type YES exactly to execute this destructive action." >&2
                     continue
                 }
                 _AI_APPROVAL_OUTCOME=APPROVE
                 return 0 ;;
-            *) echo "  Choose Y, N, E, /stop${tier:+ (or type YES for destructive actions)}." >&2 ;;
+            *) echo "  Choose Run, Skip, Explain, or /stop${tier:+ (or type YES for destructive actions)}." >&2 ;;
         esac
     done
 }
@@ -333,7 +361,10 @@ _ai_pending_still_valid() {
     verdict=$(_ai_validate_tool_call "$tool_json") || return 1
     verdict_flags=$(printf '%s\n' "$verdict" | sed -n '/^BLOCKED: /p')
     [ "$verdict_flags" = "BLOCKED: false" ] || return 1
-    [ "$tier" = CHANGE ] || [ "$tier" = DESTROY ]
+    # Guide READ proposals are revalidated too: mode changes or policy/module
+    # changes while the prompt is open must never turn a stale request into an
+    # executable action.
+    [ "$tier" = READ ] || [ "$tier" = CHANGE ] || [ "$tier" = DESTROY ]
 }
 
 # Bound external READ commands; module capability functions keep their existing
@@ -735,14 +766,28 @@ ai_execute_tool() {
 
     # ── UI tier display ───────────────────────────────────────────────────────
     # In quiet loop mode, suppress display for READ-only commands.
+    local _mode; _mode=$(ai_get_mode)
     local _ui_quiet=false
-    [ "${IGOR_QUIET_LOOP:-false}" = "true" ] && [ "$tier" = "READ" ] && _ui_quiet=true
+    [ "${IGOR_QUIET_LOOP:-false}" = "true" ] && [ "$tier" = "READ" ] && \
+        [ "$_mode" != guide ] && _ui_quiet=true
 
     if [ "$_ui_quiet" = "false" ]; then
         echo "" >&2
         case "$tier" in
-            READ)    echo -e "  ${CYAN}── AUTO-RUNNING (read-only) ──────────────────────────────────${NC}" >&2 ;;
-            CHANGE)  echo -e "  ${YEL}── NEEDS APPROVAL (modifies system) ──────────────────────────${NC}" >&2 ;;
+            READ)
+                if [ "$_mode" = guide ]; then
+                    echo -e "  ${CYAN}── PROPOSED (read-only) ──────────────────────────────────────${NC}" >&2
+                else
+                    echo -e "  ${CYAN}── AUTO-RUNNING (read-only) ──────────────────────────────────${NC}" >&2
+                fi
+                ;;
+            CHANGE)
+                if [ "$_mode" = executive ]; then
+                    echo -e "  ${YEL}── AUTO-RUNNING (policy-approved change) ─────────────────────${NC}" >&2
+                else
+                    echo -e "  ${YEL}── NEEDS APPROVAL (modifies system) ──────────────────────────${NC}" >&2
+                fi
+                ;;
             DESTROY) echo -e "  ${RED}${BOLD}── DESTRUCTIVE — DATA LOSS POSSIBLE ─────────────────────────${NC}" >&2 ;;
         esac
         echo -e "  ${BOLD}${display_cmd}${NC}" >&2
@@ -753,9 +798,28 @@ ai_execute_tool() {
     local run=false
     local approval_mode="automatic-read"
     case "$tier" in
-        READ) run=true ;;
+        READ)
+            if [ "$_mode" = guide ]; then
+                approval_mode="guide"
+                _ai_build_pending_approval "$tool_json" "$tier" "$display_cmd" \
+                    "This read-only action is proposed for your review." "$_operation_id" "${T_CMD:-}" || {
+                    echo "[BLOCKED: Could not create approval record]"
+                    _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                    return 1
+                }
+                _ai_write_tool_meta "$tier" pending pending "" ""
+                declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
+                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" READ || true
+                case "$_AI_APPROVAL_OUTCOME" in
+                    APPROVE) run=true ;;
+                    STOP) approval_mode="stopped" ;;
+                esac
+            else
+                run=true
+            fi
+            ;;
         CHANGE)
-            if [ "${executive_mode:-false}" = true ]; then
+            if [ "$_mode" = executive ]; then
                 approval_mode="executive"
                 echo -e "  ${YEL}Executive mode — auto-running.${NC}" >&2
                 run=true

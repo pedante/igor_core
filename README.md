@@ -42,16 +42,22 @@ running through the same command handler used by typed commands.
 
 | Tier | Examples | Behaviour |
 |------|----------|-----------|
-| `READ` | `docker ps`, `occ status`, log tails | Runs automatically |
-| `CHANGE` | `docker compose restart`, `occ files:scan` | Pauses for Yes, No, Explain, or `/stop` unless executive policy auto-approves |
+| `READ` | `docker ps`, `occ status`, log tails | Proposed in Guide; automatic in Assist and Executive |
+| `CHANGE` | `docker compose restart`, `occ files:scan` | Pauses for Yes, No, Explain, or `/stop` unless Executive policy auto-approves |
 | `DESTROY` | `docker compose down -v`, `rm -rf` | Requires typing `YES`; Explain, No, and `/stop` are also available |
 
-Only explicitly recognized read-only command forms run automatically. A compound
+Only explicitly recognized read-only command forms qualify for automatic execution. A compound
 command remains READ when every branch is recognized as read-only; stderr
 suppression to `/dev/null` is allowed. Unknown commands, mutating branches,
 other redirections, and substitutions require approval (CHANGE commands can
 still run automatically in executive mode). Semantic OCC,
 container, and log tools validate their arguments and execute them without a shell.
+Type `mode guide`, `mode assist`, or `mode executive` in chat, or choose `mode`
+from the command palette. Guide proposes READ actions with Run, Skip, Explain,
+and `/stop`; Assist runs READ actions automatically and asks before CHANGE;
+Executive also auto-approves CHANGE under the existing policy. DESTROY always
+requires exact `YES`. The old `exec on` and `exec off` commands map to Executive
+and Assist, respectively. A pending action must be resolved before switching modes.
 At an approval prompt, `e` explains the pending action from Igor's parsed
 request and returns to the same prompt without running it. `n` declines that
 action; `/stop` cancels it and stops the current continuation. Explain asks the
@@ -236,7 +242,9 @@ override those values; migrate them into the standard directories.
 | OpenRouter | `secrets/openrouter.key` | Any model; DeepSeek, Gemini, etc. |
 | Ollama | no key | Local models, no data leaves the machine |
 
-Configure in `config/variables/ai.env`: `provider=`, `model=`, `executive_mode=`.
+Configure in `config/variables/ai.env`: `provider=`, `model=`, `ai_mode=`.
+An existing `executive_mode=true` setting migrates to Executive, and `false`
+migrates to Assist. New settings use the canonical `ai_mode` value.
 
 To replace a key inside Igor, open **AI Assistant → API KEY**, or select a
 provider in **SETTINGS**. Key entry is visible so you can check your paste;
