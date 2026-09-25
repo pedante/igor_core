@@ -148,6 +148,63 @@ _ai_audit_dispatch() {
     ai_audit_tool "$@" || warn "AI audit write failed" 2>/dev/null || true
 }
 
+# Frontends consume structured activity through the canonical event model.
+# Keep this boundary optional during bootstrap and isolated safety tests; event
+# creation must never affect authorization, execution, or the tool transcript.
+_ai_emit_event() {
+    local event_type="$1" payload="${2:-}"
+    [ -n "$payload" ] || payload='{}'
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    if declare -f _ai_event_emit >/dev/null 2>&1; then
+        _ai_event_emit "$event_type" "$payload" >/dev/null 2>&1 || true
+    fi
+}
+
+_ai_event_payload() {
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local operation_id="$1" tool="$2" tier="$3" approval="$4" status="$5"
+    local text_value="${6:-}" output_value="${7:-}" exit_value="${8:-}"
+    local scrubbed_text scrubbed_output
+    if declare -f ai_scrub_outbound >/dev/null 2>&1; then
+        scrubbed_text=$(ai_scrub_outbound "$text_value") || scrubbed_text=""
+        scrubbed_output=$(ai_scrub_outbound "$output_value") || scrubbed_output=""
+    else
+        scrubbed_text=""
+        scrubbed_output=""
+    fi
+    AI_EVENT_OPERATION="$operation_id" AI_EVENT_NATIVE_ID="${AI_EVENT_NATIVE_ID:-}" \
+        AI_EVENT_TOOL="$tool" \
+        AI_EVENT_TIER="$tier" AI_EVENT_APPROVAL="$approval" \
+        AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$scrubbed_text" \
+        AI_EVENT_OUTPUT="$scrubbed_output" AI_EVENT_EXIT="$exit_value" \
+        AI_EVENT_MODE="$(ai_get_mode 2>/dev/null || printf '%s' assist)" \
+        python3 - <<'PY'
+import json, os
+
+payload = {
+    "operation_id": os.environ.get("AI_EVENT_OPERATION", ""),
+    "tool_call_id": os.environ.get("AI_EVENT_NATIVE_ID", ""),
+    "session_id": os.environ.get("IGOR_AI_EVENT_SESSION_ID", ""),
+    "tool": os.environ.get("AI_EVENT_TOOL", ""),
+    "classification": os.environ.get("AI_EVENT_TIER", ""),
+    "approval_state": os.environ.get("AI_EVENT_APPROVAL", ""),
+    "status": os.environ.get("AI_EVENT_STATUS", ""),
+    "mode": os.environ.get("AI_EVENT_MODE", ""),
+}
+text = os.environ.get("AI_EVENT_TEXT", "")
+output = os.environ.get("AI_EVENT_OUTPUT", "")
+if text:
+    payload["display"] = text
+    payload["display_text"] = text
+if output:
+    payload["output"] = output
+exit_code = os.environ.get("AI_EVENT_EXIT", "")
+if exit_code.isdigit():
+    payload["exit_code"] = int(exit_code)
+print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+PY
+}
+
 _ai_reject_unrestored_tokens() {
     if [[ "$1" == *'[IGOR:'*']'* ]]; then
         echo "[BLOCKED: unresolved privacy token in executable input]"
@@ -286,6 +343,7 @@ _ai_explain_pending_approval() {
 # EOF fails closed as a decline.
 _ai_approval_prompt() {
     local pending_json="${1:-${AI_PENDING_APPROVAL_JSON:-}}" tier="${2:-CHANGE}"
+    local operation_id="${3:-}"
     local answer=""
     _AI_APPROVAL_OUTCOME=WAITING_APPROVAL
     while :; do
@@ -317,6 +375,8 @@ _ai_approval_prompt() {
                 _AI_EXPLANATION_DISPLAY_ONLY=true
                 if ! _ai_explain_pending_approval "$pending_json"; then
                     echo "  Unable to explain this pending action; nothing was executed." >&2
+                else
+                    _ai_emit_event explanation "$(_ai_event_payload "$operation_id" "" "$tier" pending explanation "${AI_EXPLANATION_CACHE_TEXT:-}")"
                 fi
                 _AI_EXPLANATION_DISPLAY_ONLY=false
                 declare -f _ai_set_session_state >/dev/null 2>&1 && \
@@ -452,8 +512,10 @@ ai_execute_tool() {
     local tool_json="$1"
     local explain_text="${2:-}"
     local output=""
-    local _operation_id
+    local _operation_id AI_EVENT_NATIVE_ID
     _operation_id="ai_$(date +%s%N 2>/dev/null || date +%s)_$$"
+    AI_EVENT_NATIVE_ID=$(printf '%s' "$tool_json" | python3 -c \
+        'import json,sys; print(json.load(sys.stdin).get("__native_id", ""))' 2>/dev/null || true)
     _ai_audit_dispatch REQUEST "unknown" "unknown" "none" "requested" "0" \
         "" "$tool_json" "" "$_operation_id"
 
@@ -715,6 +777,9 @@ ai_execute_tool() {
 
     _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$tier" none classified 0 \
         "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+    local _proposal_payload
+    _proposal_payload=$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" proposed proposed "$display_cmd")
+    _ai_emit_event action_proposed "$_proposal_payload"
     _ai_write_tool_meta "$tier" pending pending "" ""
 
     # ── P1-4: Pre-execution validation (CHANGE tier) ─────────────────────────
@@ -771,7 +836,12 @@ ai_execute_tool() {
     [ "${IGOR_QUIET_LOOP:-false}" = "true" ] && [ "$tier" = "READ" ] && \
         [ "$_mode" != guide ] && _ui_quiet=true
 
-    if [ "$_ui_quiet" = "false" ]; then
+    if [ "$_ui_quiet" = "false" ] &&
+       [ "${IGOR_AI_EVENT_RENDER:-false}" = true ] &&
+       [ -n "${IGOR_AI_EVENT_STREAM:-}" ] &&
+       declare -f _ai_event_render_payload >/dev/null 2>&1; then
+        _ai_event_render_payload action_proposed "$_proposal_payload"
+    elif [ "$_ui_quiet" = "false" ]; then
         echo "" >&2
         case "$tier" in
             READ)
@@ -808,8 +878,9 @@ ai_execute_tool() {
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
+                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
                 declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
-                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" READ || true
+                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" READ "$_operation_id" || true
                 case "$_AI_APPROVAL_OUTCOME" in
                     APPROVE) run=true ;;
                     STOP) approval_mode="stopped" ;;
@@ -832,8 +903,9 @@ ai_execute_tool() {
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
+                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
                 declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
-                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" CHANGE || true
+                _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" CHANGE "$_operation_id" || true
                 case "$_AI_APPROVAL_OUTCOME" in
                     APPROVE) run=true ;;
                     STOP) approval_mode="stopped" ;;
@@ -849,8 +921,9 @@ ai_execute_tool() {
                 return 1
             }
             _ai_write_tool_meta "$tier" pending pending "" ""
+            _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
             declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
-            _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" DESTROY || true
+            _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" DESTROY "$_operation_id" || true
             case "$_AI_APPROVAL_OUTCOME" in
                 APPROVE) run=true ;;
                 STOP) approval_mode="stopped" ;;
@@ -884,15 +957,16 @@ ai_execute_tool() {
     _ai_write_tool_meta "$tier" "$_meta_approval" pending "" ""
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
-
     if [ "$approval_mode" = "stopped" ]; then
         output="[USER STOPPED] Pending action cancelled: ${display_cmd}"
         echo -e "  ${YEL}  (stopped — command not run)${NC}" >&2
         _ai_write_tool_meta "$tier" denied action_denied "" approval_stopped
         _ai_audit_dispatch STOPPED "$T_TOOL" "$tier" stopped stopped "0" \
             "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+        _ai_emit_event action_stopped "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" denied stopped "$display_cmd")"
         (( AI_CMD_BLOCKED++ )) || true
     elif $run; then
+        _ai_emit_event action_started "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" started "$display_cmd")"
         # Backups and undo-state reads happen only after approval.
         if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
             declare -f config_backup_auto &>/dev/null && \
@@ -977,6 +1051,7 @@ ${tail_out}"
         _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
+        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code")"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
         case "$tier" in
@@ -1027,6 +1102,9 @@ ${tail_out}"
         _ai_write_tool_meta "$tier" denied action_denied "" approval_denied
         _ai_audit_dispatch DECLINED "$T_TOOL" "$tier" "declined" "declined" "0" \
             "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+        local _decline_event=action_declined
+        [ "$tier" = READ ] && _decline_event=action_skipped
+        _ai_emit_event "$_decline_event" "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" denied declined "$display_cmd")"
         # P3-2: count declined/blocked commands
         (( AI_CMD_BLOCKED++ )) || true
     fi

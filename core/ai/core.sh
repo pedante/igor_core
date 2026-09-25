@@ -26,6 +26,54 @@ source "${_AI_DIR}/keys.sh"
 source "${_AI_DIR}/cost.sh"
 source "${_AI_DIR}/safety.sh"
 source "${_AI_DIR}/context.sh"
+source "${_AI_DIR}/events.sh"
+
+# Session events are observations of existing state and transaction records.
+# Event failures must never change a provider turn or an authorization result.
+_ai_frontend_event() {
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local _kind="$1" _display="${2:-}" _status="${3:-}" _payload
+    if [ -n "$_display" ]; then
+        _display=$(ai_scrub_outbound "$_display" 2>/dev/null) || _display='[display unavailable]'
+    fi
+    _payload=$(AI_EVENT_DISPLAY="$_display" AI_EVENT_STATUS="$_status" \
+        AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" \
+        AI_EVENT_MODE="$(ai_get_mode)" AI_EVENT_PROVIDER="${provider:-}" \
+        AI_EVENT_MODEL="${model:-}" python3 - <<'PY'
+import json
+import os
+print(json.dumps({key: value for key, value in {
+    "session_id": os.environ["AI_EVENT_SESSION_ID"],
+    "mode": os.environ["AI_EVENT_MODE"],
+    "provider": os.environ["AI_EVENT_PROVIDER"],
+    "model": os.environ["AI_EVENT_MODEL"],
+    "status": os.environ["AI_EVENT_STATUS"],
+    "display": os.environ["AI_EVENT_DISPLAY"],
+}.items() if value}, ensure_ascii=True))
+PY
+    ) || return 0
+    _ai_event_emit "$_kind" "$_payload" >/dev/null 2>&1 || true
+}
+
+_ai_frontend_action_result() {
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local _safe_result _payload
+    _safe_result=$(ai_scrub_outbound "$1" 2>/dev/null) || return 0
+    _payload=$(AI_EVENT_RESULT="$_safe_result" \
+        AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 - <<'PY'
+import json
+import os
+try:
+    result = json.loads(os.environ["AI_EVENT_RESULT"])
+except (ValueError, KeyError):
+    raise SystemExit(1)
+print(json.dumps({"session_id": os.environ["AI_EVENT_SESSION_ID"],
+                  "action_id": result.get("tool_call_id", ""),
+                  "result": result}, ensure_ascii=True))
+PY
+    ) || return 0
+    _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
+}
 
 # ── Interaction mode authority ───────────────────────────────────────────────
 # The mode is deliberately a single value. executive_mode remains an
@@ -88,6 +136,7 @@ _ai_set_mode() {
        [ "${scrubbed_context+x}" = x ]; then
         system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
     fi
+    _ai_frontend_event mode_changed "Mode: $_mode" "$_mode"
     printf '%s' "$_mode"
 }
 
@@ -379,6 +428,7 @@ _ai_update_state() {
         echo "AI_SESSION_OUTPUT_TOKENS=${AI_SESSION_OUTPUT_TOKENS:-0}"
         echo "conversation_length=${conv_len}"
         echo "AI_SESSION_STATE=${_AI_SESSION_STATE:-investigating}"
+        echo "AI_EVENT_STREAM=${IGOR_AI_EVENT_STREAM:-}"
         echo "health_score=${_LAST_HEALTH_SCORE:-?}"
         echo "nc_running=${_LAST_NC_RUNNING:-?}"
         echo "tunnel_status=${_LAST_TUNNEL_STATUS:-?}"
@@ -410,7 +460,18 @@ _ai_set_session_state() {
     esac
     _AI_SESSION_STATE="$1"
     [ -n "${session_file:-}" ] && printf '[STATE] %s\n' "$1" >> "$session_file"
-    _ai_update_state
+    local _state_rc=0
+    _ai_update_state || _state_rc=$?
+    case "$1" in
+        start_requested) _ai_frontend_event session_started '' "$1" ;;
+        ready) _ai_frontend_event model_status '' "$1" ;;
+        user_exited|input_closed) _ai_frontend_event session_finished '' "$1" ;;
+        startup_failed|provider_failed|malformed_response|payload_blocked|configuration_error)
+            _ai_frontend_event error '' "$1" ;;
+        continuation_limit|repeated_action|verification_denied)
+            _ai_frontend_event warning '' "$1" ;;
+    esac
+    return "$_state_rc"
 }
 
 # Startup errors use fixed, non-secret reasons and a return code distinct from
@@ -2331,6 +2392,8 @@ except: pass
             "$_AI_RUNTIME_PATH" "$_AI_RUNTIME_DETAIL"
         return $?
     }
+    IGOR_AI_EVENT_STREAM="${_rt_dir}/frontend-${BASHPID}-$(date +%s%N).jsonl"
+    export IGOR_AI_EVENT_STREAM
     _ai_set_session_state start_requested || {
         _ai_startup_fail runtime_state 1 "Could not persist AI startup state." \
             "$_rt_dir" "Could not write the private runtime state file."
@@ -2355,6 +2418,8 @@ except: pass
         return $?
     }
     local session_id; session_id=$(basename "$session_file" .log)
+    IGOR_AI_EVENT_SESSION_ID="$session_id"
+    export IGOR_AI_EVENT_SESSION_ID
 
     # ── Create IPC FIFO for --extra TUI ──────────────────────────────────────
     _fifo_path="${_rt_dir}/commands.fifo"
@@ -3262,6 +3327,7 @@ END USER STEERING"
         _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt _ev_rejected _ev_injection_initial _validation_json
         ai_add_cost "$_in_tok" "$_out_tok"
         local reply="$_reply"
+        _ai_frontend_event model_status '' 'response_received'
 
         # ── Persist scratchpad to disk ──────────────────────────────────────
         # Scratchpad decoded from SCRATCHPAD_B64 by _nexus_parse_result.
@@ -3283,6 +3349,7 @@ END USER STEERING"
             local _conversation_before_trunc="$conversation" _trunc_failed=false
             while [ "${IGOR_RESPONSE_TRUNCATED:-false}" = "true" ] && [ "$_trunc_cont" -lt 2 ]; do
                 (( _trunc_cont++ ))
+                _ai_frontend_event continuation "Response truncated; continuing ${_trunc_cont}/2" 'truncated'
                 echo -e "  ${YEL}↩  Response truncated — continuing (${_trunc_cont}/2)...${NC}" >&2
                 # Append partial reply to conversation, ask to continue
                 conversation=$(_ai_append_with_summary "$conversation" "assistant" "$reply")
@@ -3369,6 +3436,7 @@ END USER STEERING"
         fi
 
         echo "[IGOR] $reply" >> "$session_file"
+        [ -n "$reply" ] && _ai_frontend_event assistant_message "$reply" 'received'
 
         # [FIX-3] Update in-session hypothesis block from this reply
         local _hypo_prev="$_hypothesis_block"
@@ -3453,6 +3521,7 @@ END USER STEERING"
                 warn "Could not record tool result."
                 break
             }
+            _ai_frontend_action_result "$_result_json"
             rm -f -- "$IGOR_AI_TOOL_META_FILE"
             unset IGOR_AI_TOOL_META_FILE
             _ai_set_session_state "$(_ai_tx_session_state "$_result_json")"
@@ -3569,13 +3638,16 @@ except: pass
 
         # Status indicator (suppressed in quiet mode)
         if [ "$_loop_ran" -gt 0 ] && [ "$_quiet" = "false" ]; then
+            _ai_frontend_event continuation "Igor is continuing (up to ${_loop_max} steps)" 'running'
             echo -e "  ${CYAN}⚙  Igor is continuing (up to ${_loop_max} steps)${NC}  ${YEL}· /stop at next prompt${NC}"
         elif [ "$_loop_ran" -gt 0 ] && [ "$_quiet" = "true" ]; then
+            _ai_frontend_event continuation 'Working' 'running'
             echo -ne "  ${CYAN}⚙  Working...${NC}\r"
         fi
 
         while [ -n "$_loop_output" ] && [ "$_loop_ran" -gt 0 ] && [ "$_loop_steps" -lt "$_loop_max" ]; do
             (( _loop_steps++ ))
+            _ai_frontend_event continuation "step ${_loop_steps}/${_loop_max} — querying" 'querying'
             # Poll --extra IPC commands at each step so pause/resume/steer/model-switch work mid-chain
             _ai_poll_fifo || { _loop_stop_reason="stopped_by_user"; _ai_set_session_state stopped_by_user; break; }
             # Break if user paused via /stop (IPC or chat command)
@@ -3700,6 +3772,7 @@ except: print(sys.stdin.read()[:60])
                 break
             fi
             [ -n "$_fu_reply" ] && echo "[IGOR FOLLOWUP $_loop_steps] $_fu_reply" >> "$session_file"
+            [ -n "$_fu_reply" ] && _ai_frontend_event assistant_message "$_fu_reply" 'received'
 
             # Show Igor's reasoning prose (suppressed in quiet mode)
             # Capture RESULT block — deferred until after "Igor finished" box
@@ -3754,6 +3827,7 @@ except: print(sys.stdin.read()[:60])
                     _ai_set_session_state malformed_response
                     break
                 }
+                _ai_frontend_action_result "$_fu_result_json"
                 rm -f -- "$IGOR_AI_TOOL_META_FILE"
                 unset IGOR_AI_TOOL_META_FILE
                 _ai_set_session_state "$(_ai_tx_session_state "$_fu_result_json")"
