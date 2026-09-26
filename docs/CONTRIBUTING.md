@@ -1,183 +1,83 @@
-# Contributing to IGOR
+# Contributing to Igor
 
-Thank you for your interest in contributing to IGOR! This guide will help you get started.
+Thanks for contributing to Igor.
 
-## Quick Start
+## Start here
 
-1. **Fork the repository** and create your feature branch
-   ```bash
-   git clone https://github.com/[your-username]/igor.git
-   cd igor
-   git checkout -b feature/your-feature-name
-   ```
+Before editing:
 
-2. **Make your changes**
-   - Follow the existing code style and conventions
-   - Add tests for new functionality
-   - Update documentation as needed
+1. Read the root [README](../README.md).
+2. Read [AGENTS.md](../AGENTS.md) for repository and validation rules.
+3. For module work, read [module_creation.md](module_creation.md) and [module_lifecycle.md](module_lifecycle.md).
+4. For Igor 2 architecture/migration work, read [igor2/README.md](igor2/README.md) and [igor2/STATUS.md](igor2/STATUS.md).
 
-3. **Run tests**
-   ```bash
-   cd tests
-   bats test_safety.sh
-   bats test_providers.sh
-   ```
-   All tests should pass before submitting a PR
+Current code/docs describe how Igor works today. `docs/igor2/` describes the target architecture and migration constraints.
 
-4. **Commit your changes**
-   ```bash
-   git add .
-   git commit -m "Add your feature"
-   ```
+## Development workflow
 
-5. **Push and create Pull Request**
-   ```bash
-   git push origin feature/your-feature-name
-   # Then create PR via GitHub web interface
-   ```
+- Keep changes scoped and preserve unrelated work.
+- Add or update tests for behavior changes.
+- Prefer existing backend contracts over duplicate implementations.
+- Keep application-specific behavior out of core where practical.
+- Preserve deterministic safety, approval, privilege and scrubbing boundaries.
+- Update current docs when current behavior changes.
+- For Igor 2 work, update `docs/igor2/STATUS.md` and `LEGACY.md` when migration state changes.
 
-## Development Workflow
+## Code style
 
-### Code Style
+- Bash: follow existing patterns and use four-space indentation.
+- Module public functions: `<module>__*`.
+- Module helpers: `_mod_<short>_*`.
+- AI helpers: `ai_*` / `_ai_*`.
+- Healing helpers: `healing_*` / `_healing_*`.
+- Prefer comments explaining non-obvious invariants rather than narrating simple code.
 
-- **Bash:** Follow existing patterns in `lib/`, `modules/`, `ai/`, `healing/`
-- **Function naming:**
-  - Module public functions: `menu_X()` (e.g., `menu_install()`)
-  - Module private functions: `_mod_X_*()` (e.g., `_mod_install_ensure_secrets()`)
-  - AI subsystem: `ai_*()` or `_ai_*()` for private
-  - Healing subsystem: `healing_*()` or `_healing_*()` for private
-- **Comments:** Add comments for complex logic; move hard-won lessons to docs
-- **Indentation:** Use 4 spaces for indentation (not tabs)
+## Modules
 
-### Adding Features
+The current Module API is v1 and is documented in [module_creation.md](module_creation.md).
 
-1. **Add tests** for new functionality to `tests/` directory
-2. **Update documentation** in `docs/` if changes affect architecture or user-facing behavior
-3. **Follow plugin contracts** when adding new providers or checks
-4. **Test on target platform** (Raspberry Pi 3) when possible
+Current activation semantics are documented in [module_lifecycle.md](module_lifecycle.md).
 
-### Adding AI Providers
-
-Follow the [Adding a Provider](../docs/adding-a-provider.md) guide:
-
-1. Create provider file: `ai/providers/[name].sh`
-2. Implement contract functions:
-   - `_provider_get_endpoint()` - Return API endpoint URL
-   - `_provider_get_headers()` - Return HTTP headers
-   - `_provider_build_request()` - Build request body (if needed)
-   - `_provider_parse_stream()` - Parse SSE stream (if needed)
-3. Add tests to `tests/test_providers.sh`
-4. Update provider documentation
-
-See also: [adding-a-provider.md](../docs/adding-a-provider.md)
-
-### Adding Health Checks
-
-Follow the [Adding a Check](../docs/adding-a-check.md) guide:
-
-1. Create check file: `healing/checks/[name].sh`
-2. Implement `run_check()` function:
-   - Returns status: ok/warn/fail
-   - Returns message: human-readable description
-   - Returns severity: OK/WARN/FAIL/CRITICAL
-   - Returns suggested_repair: command or action to fix issue
-3. Add tests for the check
-4. Update check documentation
-
-See also: [adding-a-check.md](../docs/adding-a-check.md)
+Do not implement the target Igor 2 Module API by inventing new hooks ad hoc. Igor 2 module-contract work belongs under the versioned migration described in [igor2/MODULE_API.md](igor2/MODULE_API.md).
 
 ## Testing
 
-### Running Tests
+Run tests from the repository root.
 
-IGOR uses BATS (Bash Automated Testing System) for testing.
+Common checks:
 
-**Install BATS:**
 ```bash
-# Ubuntu/Debian:
-sudo apt-get install bats
-
-# macOS:
-brew install bats-core
-
-# Other: https://bats-core.readthedocs.io/
+bash tests/run_all.sh
+bash tests/run_all.sh --fast
+bats tests/modules/
+ruff check .
+git diff --check
 ```
 
-**Run all tests:**
-```bash
-cd tests
-bats test_safety.sh
-bats test_providers.sh
-```
+For changed shell files also run `bash -n` and ShellCheck with the flags used by `.github/workflows/ci.yml`.
 
-**Run specific test file:**
-```bash
-bats tests/test_safety.sh
-bats tests/test_providers.sh
-```
+Run focused Python/unit tests for changed Python modules.
 
-### Test Requirements
+Report failures and skips clearly. Do not make unrelated changes just to hide a pre-existing baseline failure.
 
-- All new features must include tests
-- Tests must pass before PR submission
-- Test coverage should match the scope of changes
-- Edge cases should be considered
+## Platform support
 
-## Documentation
+Igor contains distro/package abstraction code and Arch-aware paths, but support claims should follow tests.
 
-If your change affects user-facing behavior:
+For Igor 2, Debian and Arch Linux are the initial explicit tested platform targets. Do not infer full derivative support from package-family detection alone.
 
-- Update [docs/ARCHITECTURE.md](ARCHITECTURE.md) if architecture changes
-- Add to [docs/troubleshooting.md](troubleshooting.md) if new failure modes
-- Update [docs/dynamic-menu-items.md](dynamic-menu-items.md) if dynamic items change
-- Update relevant plugin docs (adding-a-provider.md, adding-a-check.md)
+## Pull requests
 
-## Submitting a Pull Request
+A PR should explain:
 
-Before submitting your PR:
+- what changed;
+- why;
+- relevant architectural/migration impact;
+- tests/validation performed;
+- known limitations or deferred follow-up.
 
-- [x] Tests pass locally
-- [x] Documentation updated
-- [x] Code follows project style guidelines
-- [x] Commit messages are clear and descriptive
-- [x] PR description explains what and why
-
-## PR Template
-
-When creating a Pull Request, please include:
-
-### Description
-- What does this PR do?
-- Why is it needed?
-- How does it solve the problem?
-
-### Testing
-- How did you test this change?
-- What tests did you add or modify?
-- Did all tests pass?
-
-### Checklist
-- [ ] Tests pass for all affected functionality
-- [ ] Documentation updated if needed
-- [ ] Code follows project conventions
-- [ ] No merge conflicts expected
-
-## Questions?
-
-- Check existing [Issues](https://github.com/[username]/igor/issues) for known bugs
-- Review [docs/ARCHITECTURE.md](ARCHITECTURE.md) for system design
-- See [docs/troubleshooting.md](troubleshooting.md) for common problems
-
-## Code Review
-
-All PRs are reviewed by maintainers. We may:
-
-- Request changes for code style or clarity
-- Suggest additional tests or documentation
-- Discuss alternative approaches
-
-This is to ensure code quality and maintainability of the project.
+Keep commits understandable and avoid mixing unrelated cleanup with feature work.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [GPL v3](../LICENSE) license.
+Contributions are licensed under the repository's [GPL v3](../LICENSE).
