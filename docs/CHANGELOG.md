@@ -8,6 +8,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Add the full-screen `--ai-tui` with a structured frontend event stream,
+  registry-backed command palette, editable settings, semantic activity rendering,
+  navigation, output folding, and deterministic pending-choice handling.
+- Add Guide / Assist / Executive interaction modes, structured approval/explain/
+  decline/stop flow, and native sudo authentication that remains separate from AI
+  autonomy.
+- Add explicit module enable/disable policy with owner-aware hooks, menus and AI
+  actions so installed modules can remain inactive.
+- Add distro detection and package-name/package-manager abstraction with
+  Debian/Arch-aware paths as a foundation for broader tested platform support.
+
 ### Fixed
 
 - Validate AI tool fields without shell evaluation, execute semantic tool arguments
