@@ -1,57 +1,35 @@
 ---
 name: Feature request
-about: Suggest an enhancement or new feature for IGOR
+about: Suggest an enhancement or new capability for Igor
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
 
-## Feature Description
+## Problem
 
-A clear and concise description of the feature you'd like to see added to IGOR.
+What user/system-management problem should Igor solve?
 
-## Problem Statement
+## Desired outcome
 
-What problem does this feature solve? What pain point does it address?
+Describe the behavior or workflow you want, without requiring a specific internal implementation.
 
-## Proposed Solution
+## Context
 
-Describe the solution you'd like to see in detail. Include:
+- Is this core/platform behavior, a module/domain capability, UI work, automation, or an external interface?
+- Which current modules or subsystems are involved?
+- Are there safety, privilege, portability or compatibility constraints?
 
-- How the feature would work
-- Where it would fit in the existing menus/modules
-- Any configuration options it might need
-- How it would interact with existing features
+## Alternatives considered
 
-## Alternatives Considered
+What other approaches did you consider?
 
-Describe any alternative solutions or features you've considered. Why is your proposed solution better?
+## Igor 2 relevance
 
-## Additional Context
+If this touches the ongoing architecture migration, check [docs/igor2/README.md](../../docs/igor2/README.md) and note the relevant roadmap step/decision.
 
-Add any other context, screenshots, or examples about the feature request here.
+## Willing to contribute
 
-## Implementation Suggestions
-
-If you have ideas about how to implement this feature, please share:
-
-- Which files would need to be modified?
-- What new functions or modules would be needed?
-- Any existing code that could be reused?
-- Any technical considerations or constraints?
-
-## Have You Checked the Documentation?
-
-- [ ] I have read the [ARCHITECTURE.md](docs/ARCHITECTURE.md) documentation
-- [ ] I have searched for existing feature requests
-- [ ] I have confirmed this feature is not already in scope (see docs/ARCHITECTURE.md#project-scope)
-
-## Willing to Contribute
-
-- [ ] I'd be willing to implement this feature myself
-- [ ] I can help test this feature
-- [ ] I can provide more details or clarification
-
-## Additional Notes
-
-Add any other notes or observations about this feature request.
+- [ ] I can help implement
+- [ ] I can help test
+- [ ] I can provide a real deployment/use case
