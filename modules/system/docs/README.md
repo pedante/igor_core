@@ -11,8 +11,8 @@ standard x86/arm64 servers. Uses `/proc`, `/sys`, and optional tools
 | `health` | `system__health()` | CPU temp, RAM, undervoltage check |
 | `diagnose` | `system__diagnose()` | Phase 2 system checks in diagnose subsystem |
 | `ai_context` | `system__ai_context()` | Injects host metrics into AI context |
-| `ai_tools` | `system__ai_tools()` | Exposes system tools to the AI agent |
-| `mailcmd` | `system__mailcmd_verbs()` | Email command verbs (status, reboot, etc.) |
+| `ai_tools` | `system__ai_tools()` | legacy reference/tool text; current executable tools come from the core catalog/capability path |
+| `mailcmd` | `system__mailcmd_verbs()` | reserved v1 verbs; no mail dispatcher exists in the current tree |
 | `notify` | `system__notify_sources()` | Notification sources for alert subsystem |
 | `recovery` | `system__recovery_hooks()` | Recovery hooks for the journal framework |
 
