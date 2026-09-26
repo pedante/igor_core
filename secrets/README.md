@@ -12,12 +12,12 @@ it, you lose your credentials and site configuration.
 | `site.env` | Site identity: `DOMAIN`, `NC_USER_NAME`, `INSTALL_DIR`, `HD_MOUNT` | all modules |
 | `db.env` | PostgreSQL + Nextcloud admin credentials | nextcloud_docker |
 | `notifications.env` | SMTP host/user/password, `NOTIFY_FROM`, `NOTIFY_TO`, event toggles | notify subsystem |
-| `mailcmd.env` | Full mailcmd config: IMAP/SMTP hosts, users, passwords, GPG key ID | mailcmd |
+| `mailcmd.env` | Legacy mail-control template: IMAP/SMTP hosts, users, passwords, GPG key ID | retained for compatibility/reference; current `core/mailcmd/` implementation is unavailable |
 | `onlyoffice.env` | `JWT_SECRET` shared between Nextcloud and OnlyOffice | nextcloud_docker (`--profile extra`) |
 | `anthropic.key` | Anthropic API key (single line: `sk-ant-...`) | AI assistant |
 | `openrouter.key` | OpenRouter API key (single line: `sk-or-...`) | AI assistant (OpenRouter) |
 | `openai.key` | OpenAI API key (single line: `sk-...`) | AI assistant (optional) |
-| `gpg/` | GPG keyring for email command authentication | mailcmd |
+| `gpg/` | Legacy GPG keyring location for email command authentication | retained for compatibility/reference |
 
 ## What goes here vs config/variables/
 
@@ -47,7 +47,7 @@ cd secrets/
 cp site.env.example          site.env
 cp db.env.example            db.env
 cp notifications.env.example notifications.env
-cp mailcmd.env.example       mailcmd.env
+# cp mailcmd.env.example     mailcmd.env   # legacy template; mail control currently unavailable
 cp onlyoffice.env.example    onlyoffice.env   # only if using OnlyOffice
 
 chmod 600 *.env
