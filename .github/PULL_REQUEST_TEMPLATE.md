@@ -1,67 +1,48 @@
 ## Description
 
-Describe the changes you've made in this pull request. Include:
+- What problem does this solve?
+- What changed?
+- Why is this approach appropriate?
 
-- What problem does this PR solve?
-- What changes did you make?
-- How did you test these changes?
+## Type
 
-## Type of Change
+- [ ] Bug fix
+- [ ] Feature
+- [ ] Refactor
+- [ ] Documentation
+- [ ] Igor 2 migration/architecture
+- [ ] Other
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Refactoring (no functional changes, just code improvements)
-- [ ] Performance improvement
-- [ ] Other (please describe)
+## Validation
 
-## Testing
+List the exact checks you ran and their results.
 
-Describe how you tested these changes:
+- [ ] Focused tests for affected behavior
+- [ ] `bash -n` / ShellCheck for changed shell code where applicable
+- [ ] Python tests / `ruff check .` for changed Python code where applicable
+- [ ] `bash tests/run_all.sh` or an explained scoped alternative
+- [ ] `git diff --check`
+- [ ] Manual/PTY validation where interaction behavior changed
 
-- [ ] Ran existing tests (if applicable)
-- [ ] Added new tests (if applicable)
-- [ ] Tested manually on Raspberry Pi
-- [ ] Tested on a fresh installation
-- [ ] Tested on an existing installation
-- [ ] Verified all menu options work
-- [ ] Checked for syntax errors: `bash -n script.sh`
+Baseline failures/skips:
+
+## Architecture / migration
+
+- Does this alter a current public/runtime contract?
+- Does it add or retire a compatibility path?
+- For Igor 2 work, were `docs/igor2/STATUS.md`, `LEGACY.md`, or `DECISIONS.md` updated if needed?
+- Does the change preserve deterministic safety, privilege, module-ownership and AI reference-data boundaries?
 
 ## Documentation
 
-- [ ] Updated CHANGELOG.md with user-facing changes
-- [ ] Updated relevant documentation files
-- [ ] Added comments for non-obvious code
-- [ ] Updated ARCHITECTURE.md if needed
+- [ ] Current behavior docs updated if behavior changed
+- [ ] CHANGELOG updated for user-facing changes where appropriate
+- [ ] No stale duplicate documentation was introduced
 
-## Checklist
+## Breaking changes / migration
 
-- [ ] My code follows the project's coding standards
-- [ ] I have performed a self-review of my code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have tested my changes thoroughly
-- [ ] I have not broken any existing functionality
+Describe any compatibility impact and migration steps.
 
-## Breaking Changes
+## Related issues
 
-If this PR includes breaking changes, please:
-
-- Describe what breaks
-- Explain why the change is necessary
-- Provide migration instructions for users
-
-## Screenshots / Examples
-
-If applicable, add screenshots or code examples to help explain your changes.
-
-## Additional Notes
-
-Add any other context, screenshots, or examples about the pull request here.
-
-## Related Issues
-
-Closes #<issue_number>
-Related to #<issue_number>
+Closes #
