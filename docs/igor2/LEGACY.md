@@ -2,8 +2,6 @@
 
 This is a migration ledger, not a criticism of working code.
 
-Entries describe current architectural paths that should be retained, adapted, replaced or removed as Igor 2 becomes authoritative.
-
 Statuses:
 
 - KEEP
@@ -12,35 +10,37 @@ Statuses:
 - REMOVE
 - TEMPORARY COMPATIBILITY
 
-## Known items
+Only architecture-significant paths belong here. Step 1 must refine this table with repository evidence.
 
-| Area | Current path/behavior | Status | Igor 2 direction | Removal/transition target |
+| Area | Current path/behavior | Status | Igor 2 direction | Target |
 |---|---|---|---|---|
-| Module activation | Modules discovered from directories and generally loaded from filesystem presence | REPLACE | Explicit available/enabled/loaded/failed/disabled runtime state | Step 5 |
-| Diagnose checks | Direct discovery of `modules/*/checks/*.sh` in addition to module hooks | REPLACE | Active-module registry + unified check contract | Steps 5, 10 |
-| Healing checks | Direct discovery of module check files | REPLACE | Active-module registry + observation/check model | Steps 5, 10, 19 |
-| Module contract | Large named-hook surface documented in `docs/module_creation.md` | TEMPORARY COMPATIBILITY | Module API v2 concepts + compatibility adapter | Steps 6, 18, 23 |
-| AI module context | Multiple `ai_*` hooks concatenate knowledge/context/tools/patterns | ADAPT | Knowledge & Context Engine consumes active module contracts/state | Step 12 |
-| AI live probing | AI context gathering independently probes host/network/system data | ADAPT | System Model + observers become authoritative | Steps 8–12 |
-| Core application leakage | Known Nextcloud-specific validation/assumptions remain in core paths | REMOVE/ADAPT | Move domain assumptions to modules/integration rules | Steps 1, 5–10 |
-| Current host profile | Hardware/tier-focused host profile | KEEP/ADAPT | Contributor to broader System Model | Steps 7–9 |
-| Capabilities | Existing `ai_capabilities` catalog and `run_igor_action` | KEEP/ADAPT | General Capability System v2 used by all interfaces | Step 11 |
-| Safety tiers | READ/CHANGE/DESTROY classification and approvals | KEEP/ADAPT | Preserve deterministic backend; integrate capabilities/privilege broker | Steps 3–4, 11 |
-| New AI TUI | `./igor.sh --ai-tui` structured Codex-like interface | KEEP/ADAPT | Become canonical Igor human interface | Step 20 |
-| Old/menu interfaces | Traditional menus and older terminal flows | TEMPORARY COMPATIBILITY | Keep while needed; migrate useful surfaces into TUI/palette/backend | Step 20/23 |
-| Mail control | `core/mailcmd/` owns transport and command dispatch | ADAPT | Mail transport + interface adapter invoking shared capabilities | Step 22 |
-| Notification email | SMTP-centric notification implementation | ADAPT | Notification service with email as one transport | Step 22 |
-| Config ownership | Subsystems/scripts own portions of env/config behavior | ADAPT | Shared schema/settings ownership while preserving secrets separation | Incremental; Steps 6, 20, 22 |
-| Cron/scheduled behavior | External or subsystem-specific scheduling | REPLACE where applicable | Igor-owned Automation Engine | Step 14 |
-| Operational memory | Healing patterns/journal/chat each carry partial history | ADAPT | Structured incident/action/outcome history | Steps 15, 19 |
-| `--extra`/older split-pane UI | Legacy six-pane UI described in README | TEMPORARY COMPATIBILITY | New structured TUI is primary UX | Steps 1, 20, 23 |
+| Module activation | `config/modules.conf`, enabled/disabled policy, active/unavailable runtime, owner-aware registrations | KEEP/ADAPT | Formalize as Module Runtime v2; close remaining bypasses; no parallel loader | Steps 1, 5 |
+| Diagnose check discovery | Still enumerates active modules' `checks/*.sh` plus hooks | ADAPT | Unified structured check/observation contract | Steps 5, 10 |
+| Healing check discovery | Enumerates active module check files separately from diagnose | ADAPT | Unified structured check/observation contract | Steps 5, 10, 19 |
+| Module API v1 | Hook-heavy contract in `docs/module_creation.md` | TEMPORARY COMPATIBILITY | Versioned Module API v2 + proven compatibility path | Steps 6, 18, 23 |
+| AI module/context hooks | `ai_context`, `ai_knowledge`, `ai_tiers`, `ai_patterns`, capabilities | ADAPT | Knowledge/context composition from active contracts + System Model | Step 12 |
+| AI direct host probing | `ai_gather_context` probes host/network/storage directly | ADAPT | Observers + System Model become authoritative where migrated | Steps 8–12 |
+| AI reference-data boundary | `request_boundary.py`, privacy/redaction, reference envelope | KEEP | Preserve and feed it better structured context | Step 12 |
+| Frontend event stream | `core/ai/events.sh` JSONL activity stream | KEEP | Preserve for interfaces; do not misuse as domain event bus | Steps 3, 13 |
+| Interaction runtime | TUI/session registry/modes/approvals/pending choices | KEEP/ADAPT | Harden/generalize; future interfaces reuse backend state | Step 3 |
+| Privilege flow | backend/native sudo PTY + privilege events | KEEP/ADAPT | Generalize privilege metadata through capabilities | Steps 4, 11 |
+| Platform helpers | `distro.sh`, `pkg.sh`, Python shim | KEEP/ADAPT | Expand/test normalized Debian+Arch platform contract | Step 7 |
+| Capability/action catalog | `ai_capabilities`, ownership, `run_igor_action`, catalog/control code | KEEP/ADAPT | General Igor capability API | Step 11 |
+| Operational audit/journal | AI bounded audit + recovery journal/pattern history | KEEP/ADAPT | Structured incidents/actions/outcomes | Step 15 |
+| Core application leakage | Nextcloud/Docker/Cloudflare-specific assumptions remain in some core paths | REMOVE/ADAPT | Move domain behavior behind modules/integration rules | Steps 1, 5–12 |
+| Classic menu/line UI | Older menus and line-mode AI remain alongside full-screen TUI | TEMPORARY COMPATIBILITY | Preserve until TUI/shared backend covers normal workflows | Steps 20, 23 |
+| `--extra` monitoring UI | Separate legacy monitoring interface | TEMPORARY COMPATIBILITY | Audit unique value, then consolidate/remove when superseded | Steps 1, 20, 23 |
+| Email control references | Config/menu/docs references remain but `core/mailcmd/` implementation is absent | ADAPT/REMOVE | Do not imply availability; if reintroduced, make it a shared-engine interface | Steps 1, 22 |
+| SMTP notifications | Notify subsystem is email-centric | ADAPT | Notification service consuming domain events; email is one transport | Steps 13, 22 |
+| Subsystem-owned config | Multiple scripts/subsystems own portions of env/settings behavior | ADAPT | Move toward shared schemas/ownership as relevant contracts mature | Incremental |
+| External scheduling/cron behavior | Scheduling is not one Igor-owned automation contract | REPLACE where applicable | Automation Engine | Step 14 |
 
-## Rules for this file
+## Rules
 
-When implementation proves a replacement:
+When a replacement is proven:
 
-1. update the entry;
-2. remove the superseded code if compatibility no longer requires it;
-3. do not leave an entry permanently marked "temporary" without a concrete reason.
+1. update this entry;
+2. remove the superseded path if compatibility no longer requires it;
+3. do not leave temporary compatibility without a reason/removal condition.
 
-Add newly discovered legacy paths here only when they have architectural significance. Ordinary dead-code cleanup does not require a ledger entry.
+Do not add ordinary dead code here; delete it.
