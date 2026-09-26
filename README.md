@@ -13,6 +13,8 @@ Check `modules/` for the modules available in your checkout.
 The included `system` module monitors the host (CPU, RAM, disk, temperature).
 New modules can be added without touching core code.
 
+> **Igor 2 development:** this README documents the current implementation. The target architecture, migration rules, and current Igor 2 status live in [docs/igor2/](docs/igor2/README.md). Igor 2 evolves the recent TUI, module activation, safety, capability, and platform work rather than rebuilding those foundations.
+
 Modules can stay installed while disabled. Use `bash igor.sh --modules` to inspect
 state and `bash igor.sh --disable nextcloud_docker` to disable its participation
 in new Igor processes. Restart existing sessions after a policy change. This does
@@ -26,8 +28,8 @@ not stop running services or delete their data. See the
 
 ## What the core provides
 
-### Interactive TUI
-fzf-powered menus for every operation. Falls back to plain numbered menus when
+### Classic menu interface
+fzf-powered menus for current menu-driven operations. Falls back to plain numbered menus when
 fzf or tmux is not available. Module sections use manifest menu items and registered callbacks; the core also
 provides static assistant, diagnostics, recovery, and communications entries.
 
@@ -110,8 +112,7 @@ Inspect AI policy and capabilities with `bash igor.sh --ai status` or `--ai tool
 Use `--ai last` for the latest structured operational trace. The catalog comes
 from Igor's supported tool grammar and active module actions; legacy `ai_tools`
 text cannot introduce executable tools. Configure policy in `config/variables/ai.env`
-with private overrides in `secrets/ai.env`. See the [AI architecture report](aireport.md)
-for configuration, trust boundaries, completed changes, and remaining limitations.
+with private overrides in `secrets/ai.env`. For Igor 2 trust/context direction and migration constraints, see [docs/igor2/](docs/igor2/README.md).
 
 ### Self-healing
 Pluggable check files in `modules/*/checks/*.sh`. Each check emits
@@ -288,14 +289,13 @@ message. Saving other AI settings does not rewrite credentials.
 | Bash 4.2+ | Associative arrays required |
 | Python 3 | AI transport, tool validation, conversation processing, and rendering; CI uses 3.11 |
 | curl | API calls and health probes |
-| Linux with systemd | Raspberry Pi OS, Ubuntu, Debian, Arch, etc. |
+| Linux with systemd | Debian-family is the primary current baseline. Arch-aware distro/package paths exist; Igor 2 will make Debian and Arch explicitly tested targets. |
 | Docker + Compose plugin | Required by `nextcloud_docker` module only |
 | tmux *(optional)* | Split-pane AI panel, fzf popup menus |
 | fzf *(optional)* | Enhanced menus — plain text menus work without it |
 | bats *(optional)* | Running the test suite |
 
-Igor was developed on a **Raspberry Pi 3 (1 GB RAM)**. It runs on any Linux where
-Bash 4.2 is available. The `system` module supports Pi-specific hardware readings
+Igor was developed on a **Raspberry Pi 3 (1 GB RAM)**. It is designed for Linux with Bash 4.2+, but broad distro compatibility is not yet a tested guarantee. The `system` module supports Pi-specific hardware readings
 (vcgencmd temperature, undervoltage) with generic `/proc` fallbacks on other hardware.
 
 ---
@@ -357,7 +357,9 @@ igor/
 ├── scripts/                   inspect.sh — module dependency viewer
 ├── tests/                     BATS + Python tests
 └── docs/
-    ├── module_creation.md     Complete module development guide
+    ├── module_creation.md     Current Module API v1 guide
+    ├── module_lifecycle.md    Current activation/runtime semantics
+    ├── igor2/                 Target architecture + migration authority
     ├── CHANGELOG.md
     └── CONTRIBUTING.md
 ```
