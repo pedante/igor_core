@@ -1,38 +1,34 @@
 # Igor 2 roadmap
 
-The numbered steps are stable references. Implementation may combine adjacent steps into larger development waves when their contracts are tightly coupled.
+The numbered step names are stable references. They describe outcomes, not instructions to rebuild functionality that already exists.
+
+Status labels describe the current `igor2` baseline:
+
+- **CURRENT** — substantially present; audit/formalize rather than rebuild.
+- **PARTIAL** — useful implementation exists but target contract is incomplete.
+- **FUTURE** — target architecture is not yet established.
+- **NOW** — current work.
 
 ## Development waves
 
-### Wave A — Foundation
-Covers Steps 1–2.
+- **Wave A — Foundation:** Steps 1–2
+- **Wave B — Runtime & Safety:** Steps 3–4
+- **Wave C — Module Platform:** Steps 5–6
+- **Wave D — Host Intelligence:** Steps 7–10
+- **Wave E — Agent Architecture:** Steps 11–12
+- **Wave F — Reactive Igor:** Steps 13–16 and 19
+- **Wave G — Composable Igor:** Steps 17–18 and 20–22
+- **Wave H — Consolidation:** Step 23
 
-### Wave B — Runtime & Safety
-Covers Steps 3–4.
-
-### Wave C — Module Platform
-Covers Steps 5–6.
-
-### Wave D — Host Intelligence
-Covers Steps 7–10.
-
-### Wave E — Agent Architecture
-Covers Steps 11–12.
-
-### Wave F — Reactive Igor
-Covers Steps 13–16 and later Step 19.
-
-### Wave G — Composable Igor
-Covers Steps 17–18 and 20–22.
-
-### Wave H — Consolidation
-Covers Step 23.
+Recent work means Waves B and parts of C/D/E already have substantial foundations. The roadmap must preserve and generalize them rather than create parallel systems.
 
 ---
 
-## Step 1 — Legacy Audit & Cleanup Map
+## Step 1 — Legacy Audit & Cleanup Map — NOW
 
-Inspect current architecture and classify significant paths as:
+Audit the **current** repository against Igor 2 invariants.
+
+Classify significant architecture paths as:
 
 - KEEP;
 - ADAPT;
@@ -40,47 +36,62 @@ Inspect current architecture and classify significant paths as:
 - REMOVE;
 - TEMPORARY COMPATIBILITY.
 
-Record surviving legacy paths in `LEGACY.md` with a replacement and removal target.
+Also classify roadmap requirements as already implemented, partial, implemented differently-but-acceptably, or missing.
 
-Do not perform a speculative rewrite during this step.
+Update `LEGACY.md` and `STATUS.md` with evidence. Establish the test/lint baseline. Make only small, clearly safe baseline/doc fixes; do not start later architecture.
 
-## Step 2 — Architecture Rules
+## Step 2 — Architecture Rules — PARTIAL
 
-Maintain the stable Igor 2 invariants in `ARCHITECTURE.md` and architecture-level regression tests where practical.
+The repository-resident architecture package exists.
 
-## Step 3 — Interaction Runtime
+Complete this step by turning critical invariants into focused regression tests where practical and reconciling accepted decisions with Step 1 evidence.
 
-Make TUI interaction state deterministic:
+## Step 3 — Interaction Runtime — CURRENT / HARDEN
 
-- pending question/selection;
-- approval/explain/decline/stop;
-- session state transitions;
-- replies such as `3`, `logs`, `yes`, `continue`, `cancel`;
-- structured event rendering.
+The structured TUI, event stream, command registry, session states, approvals and pending conversational choices already exist.
 
-Do not solve state continuity only by increasing prompt history.
+Audit and harden:
 
-## Step 4 — Privilege Broker
+- explicit pending interaction state;
+- deterministic replies such as `3`, `logs`, `yes`, `continue`, `cancel`;
+- conversation/approval state transitions;
+- frontend/backend ownership;
+- reuse by future interfaces.
 
-Separate OS privilege from Guide/Assist/Executive autonomy.
+Do not replace this runtime with a second state machine merely to satisfy the roadmap.
 
-Support per-operation elevation with explicit authorization, scoped execution and auditable results. Do not expose blanket root authority to the model.
+## Step 4 — Privilege Boundary — CURRENT / HARDEN
 
-## Step 5 — Module Runtime v2
+Native sudo authentication through the backend PTY and privilege events already separate OS authentication from AI autonomy.
 
-Introduce explicit module state:
+Formalize the general contract:
 
-- available;
-- enabled;
-- loaded;
-- failed;
-- disabled.
+- privilege metadata belongs to capabilities/runtime;
+- exact approved operation is preserved;
+- authentication never enters model context/history/events;
+- Executive never grants blanket root;
+- failures close safely.
 
-Remove filesystem presence as a source of runtime activation. Active behavior must derive from the module registry.
+Extend only where current behavior does not cover general capabilities/interfaces.
 
-Keep v1 compatibility during migration.
+## Step 5 — Module Runtime v2 — CURRENT / FORMALIZE
 
-## Step 6 — Module API v2
+Current code already has:
+
+- installed/discovered modules;
+- explicit enable/disable policy in `config/modules.conf`;
+- active/unavailable state;
+- owner-aware hooks, menus and capabilities;
+- active-module filtering in major subsystems;
+- regression tests.
+
+Do not introduce a parallel loader or rename states without value.
+
+Complete the target semantics by auditing every runtime contribution path and ensuring inactive modules contribute nothing. Clarify dependency/lifecycle semantics and compatibility boundaries for Module API v2.
+
+Restart-based activation is acceptable; hot unload is not a requirement.
+
+## Step 6 — Module API v2 — FUTURE
 
 Define and validate a versioned contract based on durable concepts rather than an expanding hook list:
 
@@ -89,154 +100,198 @@ Define and validate a versioned contract based on durable concepts rather than a
 - observers;
 - capabilities;
 - checks;
-- events;
+- domain events;
 - automations;
 - relationships;
 - configuration;
 - lifecycle.
 
-Contracts are optional: simple modules implement only what they need.
+Contracts are optional. Keep API v1 working through an explicit migration/compatibility path until real v2 modules prove the contract.
 
-## Step 7 — Platform Abstraction
+## Step 7 — Platform Abstraction — PARTIAL
 
-Build normalized platform services with tested Debian and Arch Linux backends.
+Current `distro.sh`, `pkg.sh` and Python resolution already include Debian/Arch-aware behavior and additional family mappings.
 
-Initial areas:
+Audit and generalize rather than replace.
 
-- package operations;
+Target at minimum:
+
+- tested distro/platform detection;
+- package query/install/remove/update abstractions;
 - systemd service operations;
-- host identity and platform facts;
-- common filesystem/user/network primitives needed by Igor capabilities.
+- host identity and common user/filesystem/network operations needed by capabilities;
+- tests for Debian and Arch behavior.
 
-Do not claim derivative support solely by ancestry.
+Do not claim full derivative support merely from `ID_LIKE` or package mappings.
 
-## Step 8 — System Model
+## Step 8 — System Model — FUTURE
 
 Create Igor-owned structured state for host, OS, storage, networking, services/packages, Igor runtime/modules, domain instances and relationships.
 
-Facts must distinguish observation, configuration, inference and uncertainty.
+Facts distinguish:
 
-## Step 9 — Observation Framework
+- observed;
+- configured;
+- inferred;
+- user-declared;
+- known/unknown/stale.
+
+Start with stable interfaces and simple storage; do not choose a large persistence system prematurely.
+
+## Step 9 — Observation Framework — FUTURE
 
 Standardize observers that populate the System Model.
 
-Observers declare ownership, cost, freshness, privilege, timeout, dependencies and outputs where applicable.
+Observers declare ownership, output types, cost/freshness, privilege, timeout and dependencies as needed.
 
-## Step 10 — Unified Health
+Consumers should query Igor state instead of repeatedly issuing their own probes.
 
-Unify the underlying check model used by diagnostics and healing.
+## Step 10 — Unified Health — PARTIAL
 
-Keep Diagnose and Self-healing as different user-facing workflows, but make them consume the same structured observations/check results.
+Diagnostics and healing already share module check conventions and activation filtering, but remain separate discovery/execution paths.
 
-## Step 11 — Capability System v2
+Unify the underlying structured observation/check result while keeping Diagnose and Self-healing as different user workflows.
 
-Promote capabilities to Igor's canonical operational API.
+One check result should be reusable by health score, diagnosis, AI, healing, notifications and history.
 
-Capabilities define structured inputs, safety, privilege, preconditions, execution, verification and optional rollback.
+## Step 11 — Capability System v2 — PARTIAL
 
-TUI, CLI, automation, healing and external interfaces use the same capabilities.
+The current action catalog, `run_igor_action`, ownership and safety metadata are the seed.
 
-## Step 12 — Knowledge & Context Engine
+Generalize them into Igor's canonical operational API with structured:
 
-Separate durable knowledge from live state and operational history.
+- inputs;
+- owner;
+- safety;
+- privilege;
+- preconditions;
+- execution;
+- verification;
+- rollback where available;
+- affected objects;
+- platform requirements.
 
-Compose only context relevant to the current intent. Disabled modules contribute nothing.
+TUI, CLI, automation, healing and future external interfaces should invoke the same capabilities.
 
-Replace ad-hoc prompt concatenation as the architecture becomes authoritative.
+## Step 12 — Knowledge & Context Engine — PARTIAL
 
-## Step 13 — Event Bus
+The current request boundary/reference envelope is a strong trust foundation. Preserve it.
 
-Introduce structured internal events with source, type, related object, timestamp, severity/evidence and correlation where useful.
+Replace broad ad-hoc context gathering over time with composition of relevant:
 
-Avoid direct module-to-module hard wiring when an event/relationship can express the interaction.
+- core operating guidance;
+- System Model facts;
+- active module knowledge;
+- relationships;
+- capabilities;
+- relevant history.
 
-## Step 14 — Automation Engine
+Disabled modules contribute nothing. Reference material never becomes authorization policy.
+
+## Step 13 — Domain Event Bus — FUTURE
+
+Do not confuse this with the existing AI frontend event stream.
+
+Introduce structured operational events such as:
+
+- service.failed;
+- container.stopped;
+- disk.threshold_exceeded;
+- backup.failed;
+- capability.completed/failed;
+- module.enabled/disabled.
+
+Events include source, related object, timestamp, severity/evidence and correlation where useful.
+
+## Step 14 — Automation Engine — FUTURE
 
 Igor owns scheduled, periodic, conditional and event-triggered actions.
 
-Modules may declare automations; they do not independently create invisible scheduling infrastructure.
+Modules may declare/propose automations; they do not create unmanaged cron behavior as the normal contract.
 
-Expose automations and their history in the TUI.
+Track enablement, trigger, capability, policy, privilege, previous/next run, retries and result. Expose automations in the TUI.
 
-## Step 15 — Operational History
+## Step 15 — Operational History — PARTIAL
 
-Persist meaningful incidents/actions:
+Current bounded AI audit and recovery journal are useful inputs.
 
-- observations;
-- diagnosis;
-- approvals;
-- privilege use;
-- action;
-- verification;
-- result.
+Evolve toward structured incidents/actions containing observations, diagnosis, approvals, privilege use, execution, verification and outcome.
 
 Chat history is not operational memory.
 
-## Step 16 — Baselines
+## Step 16 — Baselines — FUTURE
 
-Use transparent history-based baselines to identify what is unusual for this machine.
+Use transparent operational history to learn normal ranges/behavior for this machine.
 
-Begin with explainable statistics and thresholds rather than opaque ML.
+Begin with explainable statistics and thresholds, not opaque ML.
 
-## Step 17 — Relationships & Deployments
-
-Model module-owned instances and explicit relationships between them.
+## Step 17 — Relationships & Deployments — FUTURE
 
 Separate:
 
 - module/domain knowledge;
-- discovered/configured instances;
+- instances on this machine;
 - relationships;
 - deployments.
 
-## Step 18 — Composable Modules
+Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships.
 
-Use the current `nextcloud_docker` deployment as the first proof case.
+## Step 18 — Composable Modules — FUTURE
 
-Only after the v2 contracts exist, evaluate decomposition into coherent domains such as Nextcloud, Docker and Cloudflare.
+Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
+
+Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
 
 Preserve the working v1 deployment during migration.
 
-## Step 19 — Self-Healing v2
+## Step 19 — Self-Healing v2 — FUTURE
 
-Rebuild healing as normal Igor operation:
+Rebuild self-healing on normal Igor primitives:
 
-observation -> check -> incident -> diagnosis -> capability -> policy -> execution -> verification -> history.
+```text
+observation -> check -> incident -> diagnosis -> capability
+            -> policy -> execution -> verification -> history
+```
 
-Automatic recovery considers safety, confidence, policy, privilege, retries and prior outcomes.
+Automatic recovery considers safety, confidence, user policy, privilege, retries and prior outcomes.
 
-## Step 20 — Igor TUI as Default
+## Step 20 — Igor TUI as Default — PARTIAL
 
-Once normal workflows are available through the new backend, make `./igor.sh` launch the primary TUI.
+The full-screen Codex-like TUI is already a strong interface.
 
-Keep CLI/headless paths for scripting, tests, recovery and automation. Preserve `--ai-tui` as a migration alias until safe to remove.
+Once normal system/module workflows use the shared backend foundations, make `./igor.sh` launch it by default.
 
-## Step 21 — Integration Rules
+Keep CLI/headless paths for scripting, recovery, tests and automation. Preserve `--ai-tui` as a migration alias until removal is clearly safe.
 
-Support lightweight rules for knowledge/checks/capabilities that only make sense when specific domains interact.
+## Step 21 — Integration Rules — FUTURE
+
+Support lightweight knowledge/check/capability rules that only make sense when specific domains interact.
 
 Avoid combinatorial giant modules.
 
-## Step 22 — Module Developer Tooling & Unified External Interfaces
+## Step 22 — Module Developer Tooling & External Interfaces — PARTIAL/FUTURE
 
 After Module API v2 is proven:
 
-- module create/validate/test/inspect tooling;
-- standard module skeletons;
-- email control migrated to shared capabilities/policy/history;
-- notifications separated from command/control;
-- future external interfaces use the same engine.
+- converge module create/validate/test/inspect tooling on one supported path;
+- generate v2 module skeletons;
+- remove duplicate/experimental validators;
+- make notification transports consume shared domain events;
+- if authenticated mail control is reintroduced, implement it as an interface over shared capabilities/policy/history;
+- future API/webhook interfaces use the same engine.
 
-## Step 23 — Igor 2 Consolidation
+The current repository does not contain the old `core/mailcmd/` implementation; do not plan a migration of code that is not present.
 
-Before declaring the migration complete:
+## Step 23 — Igor 2 Consolidation — FUTURE
+
+Before declaring Igor 2 complete:
 
 - remove obsolete v1 compatibility paths;
-- remove dead hooks/helpers;
-- remove deprecated config paths where migration is complete;
-- remove duplicate execution/state paths;
+- remove dead hooks/helpers and duplicate validators;
+- remove deprecated configuration paths where migration is complete;
+- remove duplicate state/execution paths;
 - update primary documentation to the final architecture;
 - verify core is application-agnostic;
-- run architecture-level regression checks.
+- run architecture-level regression suites.
 
-No compatibility path should survive indefinitely without an explicit reason.
+No compatibility path survives indefinitely without an explicit reason.
