@@ -13,7 +13,7 @@ setup() {
 teardown() { rm -rf "$TEST_ROOT"; }
 
 @test "events have stable envelope fields and preserve order" {
-    [ "$AI_EVENT_TYPES" = 'session_started model_status assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped continuation warning error mode_changed session_finished' ]
+    [ "$AI_EVENT_TYPES" = 'session_started model_status assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot session_finished' ]
     _ai_event_emit session_started '{"session_id":"s1","mode":"guide"}'
     _ai_event_emit action_proposed '{"session_id":"s1","action_id":"a1","classification":"READ"}'
     run python3 -c 'import json,sys; e=[json.loads(x) for x in open(sys.argv[1])]; assert [x["event_type"] for x in e] == ["session_started","action_proposed"]; assert [x["sequence"] for x in e] == [1,2]; assert e[1]["classification"] == "READ"' "$IGOR_AI_EVENT_STREAM"

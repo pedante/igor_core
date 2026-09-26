@@ -5,7 +5,7 @@
 # dispatcher emits JSON payloads through _ai_event_emit; terminal and future
 # frontends consume the resulting ordered JSONL stream.
 
-AI_EVENT_TYPES='session_started model_status assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped continuation warning error mode_changed session_finished'
+AI_EVENT_TYPES='session_started model_status assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot session_finished'
 
 _ai_event_stream_path() {
     if [ -n "${IGOR_AI_EVENT_STREAM:-}" ]; then
@@ -106,6 +106,8 @@ labels = {
     "action_skipped": "Action skipped",
     "action_declined": "Action declined",
     "action_stopped": "Action stopped",
+    "privilege_waiting": "Administrator authentication required",
+    "privilege_result": "Administrator authentication",
     "continuation": "Progress",
     "warning": "Warning",
     "error": "Error",

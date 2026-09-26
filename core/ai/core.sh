@@ -75,6 +75,43 @@ PY
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
 }
 
+# Publish the current editable session settings for structured frontends.  The
+# values come from the same shell variables used by the classic command
+# handlers and _ai_save_settings, so the TUI never needs a second settings
+# store or to parse the textual summary.
+_ai_emit_settings_snapshot() {
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" \
+    AI_EVENT_MODE="$(ai_get_mode 2>/dev/null || printf '%s' "${ai_mode:-assist}")" \
+    AI_EVENT_PROVIDER="${provider:-}" \
+    AI_EVENT_MODEL="${model:-}" \
+    AI_EVENT_TEMPERATURE="${NEXUS_TEMPERATURE:-0.7}" \
+    AI_EVENT_MAX_TOKENS="${max_tokens:-4096}" \
+    AI_EVENT_VERBOSE="${IGOR_VERBOSE:-false}" \
+    AI_EVENT_AUTOSTART="${AI_AUTOSTART:-false}" \
+    AI_EVENT_HYBRID="${AI_HYBRID_MODE:-false}" \
+    python3 - <<'PY' | while IFS= read -r _snapshot; do
+import json, os
+def value(name, default=""):
+    return os.environ.get(name, default)
+print(json.dumps({
+    "session_id": value("AI_EVENT_SESSION_ID"),
+    "settings": {
+        "mode": value("AI_EVENT_MODE", "assist"),
+        "provider": value("AI_EVENT_PROVIDER"),
+        "model": value("AI_EVENT_MODEL"),
+        "temperature": value("AI_EVENT_TEMPERATURE", "0.7"),
+        "max_tokens": value("AI_EVENT_MAX_TOKENS", "4096"),
+        "verbose": value("AI_EVENT_VERBOSE", "false"),
+        "ai_autostart": value("AI_EVENT_AUTOSTART", "false"),
+        "hybrid_menu": value("AI_EVENT_HYBRID", "false"),
+    },
+}, ensure_ascii=True))
+PY
+        _ai_event_emit settings_snapshot "$_snapshot" >/dev/null 2>&1 || true
+    done
+}
+
 # ── Interaction mode authority ───────────────────────────────────────────────
 # The mode is deliberately a single value. executive_mode remains an
 # exported compatibility flag for older callers; policy reads ai_get_mode.
@@ -241,6 +278,98 @@ if not d.get("matched"): print("")
 elif not d.get("valid", True): print("INVALID:" + d.get("usage", d.get("reason", "invalid arguments")))
 else: print(d["command"]["name"] + (" " + " ".join(d["arguments"]) if d["arguments"] else ""))
 '
+}
+
+# The classic session and the TUI command path use this one settings writer.
+_ai_persist_settings() {
+    local _path="${1:-}"
+    [ -n "$_path" ] || return 2
+    mkdir -p "$(dirname "$_path")" || return 1
+    {
+        printf "model=%s\nmax_tokens=%s\nai_mode=%s\nprovider=%s\nverbose=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
+            "$model" "$max_tokens" "$ai_mode" \
+            "$provider" "$IGOR_VERBOSE" "${NEXUS_TEMPERATURE:-0.7}" \
+            "${AI_AUTOSTART:-false}" "${AI_HYBRID_MODE:-false}"
+        [ -n "${IGOR_OLLAMA_HOST:-}" ] && printf "IGOR_OLLAMA_HOST=%s\n" "$IGOR_OLLAMA_HOST"
+        [ -n "${IGOR_OLLAMA_DEFAULT_MODEL:-}" ] && printf "IGOR_OLLAMA_DEFAULT_MODEL=%s\n" "$IGOR_OLLAMA_DEFAULT_MODEL"
+        :
+    } > "$_path" || return 1
+    export ai_mode executive_mode provider IGOR_VERBOSE NEXUS_TEMPERATURE
+}
+
+# Apply editable values through the classic session's save hook. Authorization
+# and mode changes still go through their canonical handlers.
+_ai_apply_session_setting() {
+    local _key="${1:-}" _value="${2:-}" _lower _candidate
+    local _old_provider="${provider:-}" _old_model="${model:-}"
+    local _old_temperature="${NEXUS_TEMPERATURE:-}" _old_tokens="${max_tokens:-}"
+    local _old_ollama_model="${IGOR_OLLAMA_DEFAULT_MODEL:-}"
+    [ -n "$_key" ] && [ -n "$_value" ] || {
+        printf 'A setting value is required.\n' >&2
+        return 2
+    }
+    case "$_key" in
+        provider)
+            _lower="${_value,,}"
+            case "$_lower" in anthropic|openrouter|ollama) ;; *) printf 'Unsupported provider: %s\n' "$_value" >&2; return 2 ;; esac
+            provider="$_lower"
+            export provider
+            case "$provider" in
+                anthropic)
+                    model=$(_ai_model_for_provider "${model:-}" anthropic)
+                    [[ "$model" == claude-* ]] || model=claude-sonnet-4-6 ;;
+                openrouter)
+                    model=$(_ai_model_for_provider "${model:-}" openrouter)
+                    [[ "$model" == */* ]] || model=anthropic/claude-sonnet-4-6 ;;
+                ollama)
+                    model="${IGOR_OLLAMA_DEFAULT_MODEL:-llama3.2:3b}" ;;
+            esac
+            ai_scrub_build_table 2>/dev/null || true
+            ;;
+        model)
+            [[ ! "$_value" =~ [[:space:]] ]] || {
+                printf 'Model must be a single nonempty value.\n' >&2
+                return 2
+            }
+            _candidate=$(_ai_model_for_provider "$_value" "${provider:-openrouter}")
+            if [ "${provider:-}" = anthropic ] && [[ "$_candidate" != claude-* ]]; then
+                printf 'Direct Anthropic needs a claude-* model.\n' >&2
+                return 2
+            fi
+            model="$_candidate"
+            if [ "${provider:-}" = ollama ]; then
+                IGOR_OLLAMA_DEFAULT_MODEL="$model"
+                export IGOR_OLLAMA_DEFAULT_MODEL
+            fi
+            ;;
+        temperature)
+            [[ "$_value" =~ ^[0-9]+([.][0-9]+)?$ ]] || { printf 'Temperature must be a nonnegative number.\n' >&2; return 2; }
+            awk -v value="$_value" 'BEGIN { exit !(value <= 2) }' || { printf 'Temperature must be between 0 and 2.\n' >&2; return 2; }
+            NEXUS_TEMPERATURE="$_value"
+            export NEXUS_TEMPERATURE
+            ;;
+        max_tokens)
+            [[ "$_value" =~ ^[1-9][0-9]*$ ]] || { printf 'Max tokens must be a positive integer.\n' >&2; return 2; }
+            max_tokens="$_value"
+            ;;
+        *) printf 'Unsupported setting: %s\n' "$_key" >&2; return 2 ;;
+    esac
+    ai_set_cost_rates "$model" 2>/dev/null || true
+    if ! declare -f _ai_save_settings >/dev/null 2>&1 || ! _ai_save_settings; then
+        provider="$_old_provider" model="$_old_model"
+        NEXUS_TEMPERATURE="$_old_temperature" max_tokens="$_old_tokens"
+        IGOR_OLLAMA_DEFAULT_MODEL="$_old_ollama_model"
+        export provider NEXUS_TEMPERATURE IGOR_OLLAMA_DEFAULT_MODEL
+        ai_set_cost_rates "$model" 2>/dev/null || true
+        ai_scrub_build_table 2>/dev/null || true
+        return 1
+    fi
+    _ai_emit_settings_snapshot
+    if [ "$_key" = provider ] && [ "$provider" = openrouter ] && [ -z "${or_api_key:-}" ]; then
+        _ai_frontend_event warning 'OpenRouter key unavailable; use apikey before the next request.'
+    elif [ "$_key" = provider ] && [ "$provider" = anthropic ] && [ -z "${api_key:-}" ]; then
+        _ai_frontend_event warning 'Anthropic key unavailable; use apikey before the next request.'
+    fi
 }
 
 # The palette only chooses a registry command. The normal route and case below
@@ -1305,6 +1434,155 @@ _ai_prepare_user_topic() {
     _investigation_topic="$_input"
 }
 
+# ── Pending conversational choices ──────────────────────────────────────────
+# Keep explicit alternatives from Igor's last reply as structured, ephemeral
+# state.  This lets short replies such as "2" or "logs" retain their meaning
+# without making the model infer the choice from a long conversation history.
+# The state lives only for the active chat session and is never sent to a
+# provider as an instruction or used to authorize an action.
+_ai_pending_choice_clear() {
+    _AI_PENDING_CHOICE_JSON=""
+    _AI_PENDING_CHOICE_RESOLUTION=""
+    _AI_PENDING_CHOICE_ANSWERED=false
+}
+
+_ai_pending_choice_capture() {
+    local _reply="${1:-}" _captured
+    _AI_PENDING_CHOICE_JSON=""
+    _AI_PENDING_CHOICE_RESOLUTION=""
+    _AI_PENDING_CHOICE_ANSWERED=false
+    [ -n "${_reply//[[:space:]]/}" ] || return 0
+    _captured=$(AI_PENDING_REPLY="$_reply" python3 - <<'PY'
+import json, os, re
+
+reply = os.environ.get("AI_PENDING_REPLY", "")
+lines = reply.splitlines()
+cue = re.search(r"\?|\b(?:would you like|which|choose|select|pick|option|prefer)\b", reply, re.I)
+items = []
+first_item_line = None
+for line_number, line in enumerate(lines):
+    match = re.match(r"^\s*(?:(\d+)[.)]|[-*•])\s+(.+?)\s*$", line)
+    if not match:
+        continue
+    number, text = match.groups()
+    text = re.sub(r"[`*_]", "", text).strip()
+    text = re.sub(r"\s+", " ", text)
+    if text and len(text) <= 160:
+        if first_item_line is None:
+            first_item_line = line_number
+        items.append({"number": int(number) if number else len(items) + 1,
+                      "label": text})
+
+# A colon immediately before a list is also a common explicit-choice form
+# ("Available areas:").  Avoid treating procedural numbered instructions as
+# a choice by excluding headers that describe steps or commands.
+if not cue and first_item_line is not None:
+    header = " ".join(lines[:first_item_line]).strip()
+    cue = bool(re.search(r":\s*$", header)) and not re.search(
+        r"\b(?:run|step|command|procedure|instruction)s?\b", header, re.I)
+
+# A list is a choice only when the surrounding response asks for a choice.
+# This avoids treating numbered diagnostic steps as answers the next input
+# must satisfy.  Duplicate numbers or fewer than two options are ignored.
+numbers = [item["number"] for item in items]
+if not cue or len(items) < 2 or len(numbers) != len(set(numbers)):
+    raise SystemExit(0)
+print(json.dumps({"prompt": reply[-500:], "options": items}, ensure_ascii=True))
+PY
+    ) || true
+    [ -n "$_captured" ] && _AI_PENDING_CHOICE_JSON="$_captured"
+    return 0
+}
+
+_ai_pending_choice_resolve() {
+    local _input="${1:-}" _result _status _encoded
+    _AI_PENDING_CHOICE_RESOLUTION=""
+    _AI_PENDING_CHOICE_ANSWERED=false
+    [ -n "${_AI_PENDING_CHOICE_JSON:-}" ] || return 2
+    _result=$(AI_PENDING_JSON="$_AI_PENDING_CHOICE_JSON" AI_PENDING_INPUT="$_input" python3 - <<'PY'
+import base64, json, os, re
+
+try:
+    state = json.loads(os.environ.get("AI_PENDING_JSON", ""))
+    options = state.get("options", [])
+except Exception:
+    raise SystemExit(2)
+raw = os.environ.get("AI_PENDING_INPUT", "").strip()
+if not raw or len(raw) > 120 or "\n" in raw:
+    raise SystemExit(1)
+norm = re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
+ordinals = {"first": 1, "1st": 1, "one": 1, "second": 2, "2nd": 2,
+            "two": 2, "third": 3, "3rd": 3, "three": 3,
+            "fourth": 4, "4th": 4, "four": 4, "fifth": 5,
+            "5th": 5, "five": 5}
+match_number = re.fullmatch(r"(?:option\s+)?(\d+)", norm)
+number = int(match_number.group(1)) if match_number else None
+ordinal_number = None
+if number is None:
+    words = norm.split()
+    ordinal_number = next((ordinals[word] for word in words if word in ordinals), None)
+    if ordinal_number is None and norm.startswith("the ") and norm.endswith(" one"):
+        ordinal_number = ordinals.get(norm.split()[1])
+if ordinal_number is not None:
+    # Ordinals refer to the displayed position, even when an assistant used
+    # nonconsecutive labels in the source list.
+    matches = [options[ordinal_number - 1]] if 0 < ordinal_number <= len(options) else []
+elif number is not None:
+    matches = [item for item in options if item.get("number") == number]
+else:
+    def words(value):
+        return set(re.findall(r"[a-z0-9]+", value.lower()))
+    query = words(norm)
+    matches = []
+    for item in options:
+        label_words = words(item.get("label", ""))
+        if norm == re.sub(r"[^a-z0-9]+", " ", item.get("label", "").lower()).strip():
+            matches.append(item)
+        elif query and query <= label_words:
+            matches.append(item)
+if len(matches) != 1:
+    raise SystemExit(1)
+label = matches[0].get("label", "")
+payload = f"[USER CHOICE: {label}]"
+print("0\t" + base64.b64encode(payload.encode()).decode())
+PY
+    ) || { return 1; }
+    IFS=$'\t' read -r _status _encoded <<< "$_result"
+    [ "$_status" = 0 ] || return 1
+    _AI_PENDING_CHOICE_RESOLUTION=$(printf '%s' "$_encoded" | base64 -d 2>/dev/null) || return 1
+    _AI_PENDING_CHOICE_ANSWERED=true
+    _AI_PENDING_CHOICE_JSON=""
+    return 0
+}
+
+_ai_pending_choice_route_input() {
+    local _input="${1:-}" _route=""
+    _AI_PENDING_CHOICE_ROUTED_INPUT="$_input"
+    _AI_PENDING_CHOICE_ANSWERED=false
+    [ -n "${_AI_PENDING_CHOICE_JSON:-}" ] || return 2
+
+    # A recognized local command always wins.  Invalid command spellings are
+    # also not conversational answers and must not be captured by a stale
+    # question.
+    if declare -f _ai_session_route >/dev/null 2>&1; then
+        _route=$(_ai_session_route "$_input" 2>/dev/null || true)
+        if [ -n "$_route" ]; then
+            _ai_pending_choice_clear
+            return 3
+        fi
+    fi
+    if _ai_pending_choice_resolve "$_input"; then
+        _AI_PENDING_CHOICE_ROUTED_INPUT="${_input}
+${_AI_PENDING_CHOICE_RESOLUTION}"
+        return 0
+    fi
+    if printf '%s' "$_input" | grep -qiE '^(new topic|cancel|stop|never mind|forget it)\b|\?|^(check|show|tell|is|are|can|could|please|why|how|what|where|when|which|inspect|list|find|run|install|update|restart|diagnose)\b'; then
+        _ai_pending_choice_clear
+        return 3
+    fi
+    return 1
+}
+
 # ── [FIX-2] Diagnostic burst on problem keywords ──────────────────────────────
 # Detects problem-report keywords in user input and runs a fast parallel burst
 # of 4 diagnostic checks. Returns a formatted text block (empty if no match).
@@ -1814,16 +2092,7 @@ menu_ai() {
     export provider ai_mode executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
 
     _ai_save_settings() {
-        mkdir -p "$(dirname "$AI_SETTINGS_FILE")"
-        {
-            printf "model=%s\nmax_tokens=%s\nai_mode=%s\nprovider=%s\nverbose=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
-                "$model" "$max_tokens" "$ai_mode" \
-                "$provider" "$IGOR_VERBOSE" "${NEXUS_TEMPERATURE:-0.7}" \
-                "${AI_AUTOSTART:-false}" "${AI_HYBRID_MODE:-false}"
-            [ -n "${IGOR_OLLAMA_HOST:-}" ] && printf "IGOR_OLLAMA_HOST=%s\n" "$IGOR_OLLAMA_HOST"
-            [ -n "${IGOR_OLLAMA_DEFAULT_MODEL:-}" ] && printf "IGOR_OLLAMA_DEFAULT_MODEL=%s\n" "$IGOR_OLLAMA_DEFAULT_MODEL"
-        } > "$AI_SETTINGS_FILE"
-        export ai_mode executive_mode provider IGOR_VERBOSE NEXUS_TEMPERATURE
+        _ai_persist_settings "$AI_SETTINGS_FILE"
     }
 
     ai_set_cost_rates "$model"
@@ -2615,6 +2884,7 @@ except: pass
         _investigation_topic=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //' || true)
         _investigation_state_enabled=true
     fi
+    _ai_pending_choice_clear
     # P3-1: Session-sticky runbook match (set once on first relevant user message)
     local _active_runbook=""
     # P3-2: Session metadata for post-mortem
@@ -2741,6 +3011,17 @@ except: pass
         local _is_followup=false
         printf '%s' "$user_input" | grep -qiE '^\?|^y$|^n$|^yes$|^no$|^continue$|^done$|^undo$|^retry$' \
             && _is_followup=true
+
+        # Resolve a short answer against Igor's most recent explicit choices
+        # before topic continuation logic can discard the conversational turn.
+        # Registry commands always retain their normal meaning and clear a
+        # pending question instead of being intercepted as an answer.
+        if [ -n "${_AI_PENDING_CHOICE_JSON:-}" ]; then
+            if _ai_pending_choice_route_input "$user_input"; then
+                user_input="$_AI_PENDING_CHOICE_ROUTED_INPUT"
+                _is_followup=true
+            fi
+        fi
         if [ "$_investigation_active" = "true" ] \
             && [ "$_input_len" -gt 150 ] \
             && [ "$_is_followup" = "false" ]; then
@@ -2888,6 +3169,20 @@ except: print('unknown')
                 AI_HYBRID_MODE=false; _ai_save_settings
                 ok "AI Hybrid menu OFF"
                 echo ""; continue ;;
+            "settings snapshot")
+                _ai_emit_settings_snapshot
+                continue ;;
+            settings\ provider\ *|settings\ model\ *|settings\ temperature\ *|settings\ max_tokens\ *)
+                local _setting_rest="${user_input#settings }" _setting_key _setting_value
+                _setting_key="${_setting_rest%% *}"
+                _setting_value="${_setting_rest#* }"
+                if _ai_apply_session_setting "$_setting_key" "$_setting_value"; then
+                    ok "Setting '${_setting_key}' updated."
+                else
+                    warn "Could not update setting '${_setting_key}'."
+                    _ai_frontend_event warning "Could not update setting '${_setting_key}'."
+                fi
+                echo ""; continue ;;
             # ── Undo stack ────────────────────────────────────────────────────
             "undo list")
                 echo ""
@@ -2978,6 +3273,7 @@ PYEOF
                 echo -e "  ${CYAN}Verbose:${NC}        ${IGOR_VERBOSE}"
                 echo -e "  ${CYAN}AI Autostart:${NC}   ${AI_AUTOSTART:-false}"
                 echo -e "  ${CYAN}Hybrid menu:${NC}    ${AI_HYBRID_MODE:-false}"
+                _ai_emit_settings_snapshot
                 echo ""; continue ;;
             refresh)
                 echo -e "  ${CYAN}Re-scanning server and knowledge...${NC}"
@@ -3454,6 +3750,7 @@ END USER STEERING"
 
         echo "[IGOR] $reply" >> "$session_file"
         [ -n "$reply" ] && _ai_frontend_event assistant_message "$reply" 'received'
+        _ai_pending_choice_capture "$reply"
 
         # [FIX-3] Update in-session hypothesis block from this reply
         local _hypo_prev="$_hypothesis_block"
@@ -3790,6 +4087,7 @@ except: print(sys.stdin.read()[:60])
             fi
             [ -n "$_fu_reply" ] && echo "[IGOR FOLLOWUP $_loop_steps] $_fu_reply" >> "$session_file"
             [ -n "$_fu_reply" ] && _ai_frontend_event assistant_message "$_fu_reply" 'received'
+            _ai_pending_choice_capture "$_fu_reply"
 
             # Show Igor's reasoning prose (suppressed in quiet mode)
             # Capture RESULT block — deferred until after "Igor finished" box

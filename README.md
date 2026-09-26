@@ -43,11 +43,22 @@ standard-library curses support and needs an interactive terminal. The classic
 line UI remains available through `bash igor.sh`; use it for initial provider
 setup or whenever the full-screen UI is unavailable. In the full-screen UI,
 activity scrolls above a fixed input area. Press Enter to send, Ctrl+O or
-Alt+Enter for another input line, Page Up/Page Down to scroll, and `:` on an
-empty input to open the registry-backed command palette. Palette entries that
-need arguments fill the input for you. `/stop` uses the same backend stop action
-as the classic UI. Pending actions show the available Run/Skip/Explain or
-Yes/No/Explain choices; destructive actions still require exact `YES`.
+Alt+Enter for another input line, and F1 for the full key list. Up/Down recall
+previous prompts or move within multiline input; Left/Right, Home/End,
+Backspace/Delete, and Ctrl+W edit the draft. Page Up/Page Down scroll activity;
+End returns to live output when the input is empty. Ctrl+P, or `:` on an empty
+input, opens the registry-backed palette. Type to filter, use Up/Down to select,
+and Esc to return to the draft. Unavailable commands are marked and cannot be
+chosen from the palette; typed commands still go to the backend registry.
+Choose **Settings** in the palette to edit provider, model, temperature, token
+limit, mode, verbose output, AI autostart, and the hybrid menu. Up/Down selects
+a setting, Enter toggles or edits it, and Esc returns to the current draft.
+Typing `settings` in the TUI opens the same view; the classic UI still prints
+a summary.
+Ctrl+G collapses or expands successful tool output, while failures stay visible.
+Esc clears the draft; Ctrl+C or `/stop` uses the backend stop action. Pending
+actions show Run/Skip/Explain or Yes/No/Explain choices; destructive actions
+still require exact `YES`.
 
 **Three-tier safety gate** — every AI-proposed command is classified before running:
 

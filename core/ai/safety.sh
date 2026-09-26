@@ -164,6 +164,7 @@ _ai_event_payload() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local operation_id="$1" tool="$2" tier="$3" approval="$4" status="$5"
     local text_value="${6:-}" output_value="${7:-}" exit_value="${8:-}"
+    local admin_required="${9:-false}"
     local scrubbed_text scrubbed_output
     if declare -f ai_scrub_outbound >/dev/null 2>&1; then
         scrubbed_text=$(ai_scrub_outbound "$text_value") || scrubbed_text=""
@@ -178,6 +179,7 @@ _ai_event_payload() {
         AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$scrubbed_text" \
         AI_EVENT_OUTPUT="$scrubbed_output" AI_EVENT_EXIT="$exit_value" \
         AI_EVENT_MODE="$(ai_get_mode 2>/dev/null || printf '%s' assist)" \
+        AI_EVENT_ADMIN_REQUIRED="$admin_required" \
         python3 - <<'PY'
 import json, os
 
@@ -190,6 +192,7 @@ payload = {
     "approval_state": os.environ.get("AI_EVENT_APPROVAL", ""),
     "status": os.environ.get("AI_EVENT_STATUS", ""),
     "mode": os.environ.get("AI_EVENT_MODE", ""),
+    "requires_admin_auth": os.environ.get("AI_EVENT_ADMIN_REQUIRED", "false") == "true",
 }
 text = os.environ.get("AI_EVENT_TEXT", "")
 output = os.environ.get("AI_EVENT_OUTPUT", "")
@@ -203,6 +206,16 @@ if exit_code.isdigit():
     payload["exit_code"] = int(exit_code)
 print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 PY
+}
+
+# Return success when a command explicitly delegates execution to sudo.  This
+# is presentation metadata and an execution input selector only; it never
+# grants authorization.  The approved command remains the exact command that
+# is executed below, and sudo itself decides whether administrator credentials
+# are needed.
+_ai_command_requires_admin() {
+    local command="${1:-}"
+    printf '%s\n' "$command" | grep -qE '(^|[;|&()])[[:space:]]*sudo([[:space:]]|$)'
 }
 
 _ai_reject_unrestored_tokens() {
@@ -589,6 +602,7 @@ ai_execute_tool() {
     local tier="READ"
     local run_cmd=""
     local display_cmd=""
+    local _requires_admin=false
     # For run_igor_action: populated in case block, used in execution block
     local _ria_fn="" _ria_mod=""
 
@@ -775,10 +789,12 @@ ai_execute_tool() {
             ;;
     esac
 
+    _ai_command_requires_admin "$run_cmd" && _requires_admin=true
+
     _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$tier" none classified 0 \
         "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
     local _proposal_payload
-    _proposal_payload=$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" proposed proposed "$display_cmd")
+    _proposal_payload=$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" proposed proposed "$display_cmd" "" "" "$_requires_admin")
     _ai_emit_event action_proposed "$_proposal_payload"
     _ai_write_tool_meta "$tier" pending pending "" ""
 
@@ -878,7 +894,7 @@ ai_execute_tool() {
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
-                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
+                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd" "" "" "$_requires_admin")"
                 declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
                 _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" READ "$_operation_id" || true
                 case "$_AI_APPROVAL_OUTCOME" in
@@ -903,7 +919,7 @@ ai_execute_tool() {
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
-                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
+                _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd" "" "" "$_requires_admin")"
                 declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
                 _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" CHANGE "$_operation_id" || true
                 case "$_AI_APPROVAL_OUTCOME" in
@@ -921,7 +937,7 @@ ai_execute_tool() {
                 return 1
             }
             _ai_write_tool_meta "$tier" pending pending "" ""
-            _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd")"
+            _ai_emit_event approval_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" pending awaiting_approval "$display_cmd" "" "" "$_requires_admin")"
             declare -f _ai_set_session_state >/dev/null 2>&1 && _ai_set_session_state awaiting_approval || true
             _ai_approval_prompt "$AI_PENDING_APPROVAL_JSON" DESTROY "$_operation_id" || true
             case "$_AI_APPROVAL_OUTCOME" in
@@ -966,19 +982,45 @@ ai_execute_tool() {
         _ai_emit_event action_stopped "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" denied stopped "$display_cmd")"
         (( AI_CMD_BLOCKED++ )) || true
     elif $run; then
-        _ai_emit_event action_started "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" started "$display_cmd")"
+        local exit_code=0
+        _ai_emit_event action_started "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" started "$display_cmd" "" "" "$_requires_admin")"
+        local _admin_auth_failed=false
+        if [ "$_requires_admin" = true ]; then
+            # Authenticate before backups or undo-state reads. sudo owns the
+            # password exchange through /dev/tty; Igor never reads it.
+            if sudo -n -v </dev/null >/dev/null 2>&1; then
+                _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" authenticated "Administrator authentication already available" "" 0 true)"
+            elif [ -t 0 ] && [ -r /dev/tty ]; then
+                _ai_emit_event privilege_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" waiting "Administrator authentication required" "" "" true)"
+                if sudo -v </dev/tty >/dev/tty 2>&1; then
+                    _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" authenticated "Administrator authentication completed" "" 0 true)"
+                else
+                    _admin_auth_failed=true
+                    output="[ADMIN AUTHENTICATION FAILED] The approved action was not run."
+                    exit_code=1
+                    _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" failed "Administrator authentication failed; action not run" "" 1 true)"
+                fi
+            else
+                _admin_auth_failed=true
+                output="[ADMIN AUTHENTICATION FAILED] A terminal is required; the approved action was not run."
+                exit_code=1
+                _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" failed "Administrator authentication requires a terminal; action not run" "" 1 true)"
+            fi
+        fi
         # Backups and undo-state reads happen only after approval.
-        if [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
+        if [ "$_admin_auth_failed" = false ] && [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
             declare -f config_backup_auto &>/dev/null && \
                 config_backup_auto "pre-ai:${T_TOOL}" 2>/dev/null || true
         fi
         local _undo_prev_occ=""
-        if [[ "$tier" == "CHANGE" && "$T_TOOL" == "occ" ]] &&
+        if [ "$_admin_auth_failed" = false ] && [[ "$tier" == "CHANGE" && "$T_TOOL" == "occ" ]] &&
            [[ "$run_cmd" == *"config:system:set"* ]]; then
             local _undo_occ_arg; _undo_occ_arg=$(echo "$run_cmd" | sed 's/.*php occ //')
             _undo_prev_occ=$(python3 "${IGOR_DIR}/core/lib/undo_stack.py" get-prev-occ "$_undo_occ_arg" 2>/dev/null || echo "UNSET")
         fi
-        if [ "$T_TOOL" = "edit_file" ]; then
+        if [ "$_admin_auth_failed" = true ]; then
+            :
+        elif [ "$T_TOOL" = "edit_file" ]; then
             output=$(_safe_file_edit "$T_PATH" "$T_FIND" "$T_REPLACE" 2>&1)
             local exit_code=$?
         elif [ "$T_TOOL" = "propose_menu_item" ]; then
@@ -1010,12 +1052,21 @@ ai_execute_tool() {
                     output=$(printf '%s\n' "$output" | grep -i -- "$T_SEARCH")
                 fi
             else
-                if [ "$tier" = "READ" ]; then
+                if [ "$_admin_auth_failed" = true ]; then
+                    :
+                elif [ "$tier" = "READ" ]; then
                     output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; _ai_run_read_command bash -c "$run_cmd" </dev/null 2>&1)
+                    local exit_code=$?
+                elif [ "$_requires_admin" = true ]; then
+                    # Authentication, when needed, was completed above.  Keep the
+                    # approved command's stdin closed so later input cannot become
+                    # a command argument or an accidental password channel.
+                    output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; bash -c "$run_cmd" </dev/null 2>&1)
+                    local exit_code=$?
                 else
                     output=$(cd "${IGOR_DIR:-.}" 2>/dev/null || cd /tmp || exit 1; bash -c "$run_cmd" </dev/null 2>&1)
+                    local exit_code=$?
                 fi
-                local exit_code=$?
             fi
         fi
 
@@ -1051,20 +1102,25 @@ ${tail_out}"
         _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
-        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code")"
-        [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && ai_knowledge_mark_changed
+        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code" "$_requires_admin")"
+        [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
+            [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
-        case "$tier" in
-            READ)            (( AI_CMD_READ++ ))   || true ;;
-            CHANGE|DESTROY)  (( AI_CMD_CHANGE++ )) || true ;;
-        esac
-        # Signal tier to the agentic loop so it can inject a verify reminder
-        _IGOR_LAST_EXEC_TIER="$tier"
+        if [ "$_admin_auth_failed" = false ]; then
+            case "$tier" in
+                READ)            (( AI_CMD_READ++ ))   || true ;;
+                CHANGE|DESTROY)  (( AI_CMD_CHANGE++ )) || true ;;
+            esac
+            # Signal tier to the agentic loop so it can inject a verify reminder.
+            _IGOR_LAST_EXEC_TIER="$tier"
+        else
+            _IGOR_LAST_EXEC_TIER=""
+        fi
 
         # ── Change journal hook ────────────────────────────────────────────
         # Records every executed Igor (AI) action. ACTOR=igor distinguishes
         # AI-originated actions from diagnose fixes, menu actions, and web-UI changes.
-        if declare -f journal_record &>/dev/null; then
+        if [ "$_admin_auth_failed" = false ] && declare -f journal_record &>/dev/null; then
             local _js="OK"; [ $exit_code -ne 0 ] && _js="FAIL"
             journal_record "igor" "occ_exec" "$tier" \
                 "${run_cmd:-${display_cmd}}" "$_js" "exit:${exit_code}"
@@ -1077,7 +1133,7 @@ ${tail_out}"
         fi
 
         # ── Notify hook — DESTROY-tier actions ────────────────────────────────
-        if [ "$tier" = "DESTROY" ]; then
+        if [ "$_admin_auth_failed" = false ] && [ "$tier" = "DESTROY" ]; then
             local _ns="OK"; [ $exit_code -ne 0 ] && _ns="FAIL (exit ${exit_code})"
             declare -f notify_event &>/dev/null && \
                 notify_event "destroy_action" \

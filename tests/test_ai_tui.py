@@ -352,9 +352,8 @@ class InputAndRenderingTests(unittest.TestCase):
         buffer = tui.InputBuffer()
         entries = [{"name": "mode", "syntax": "mode guide|assist|executive",
                     "description": "select mode"}]
-        with patch.object(tui, "registry_palette", return_value=entries), \
-                patch.object(tui, "_send") as send:
-            tui._palette_overlay(Screen(), 17, buffer)
+        with patch.object(tui, "_send") as send:
+            tui._palette_overlay(Screen(), 17, buffer, commands=entries)
         self.assertEqual(buffer.text(), "mode ")
         send.assert_not_called()
 
@@ -379,9 +378,8 @@ class InputAndRenderingTests(unittest.TestCase):
                 return 10
 
         entries = [{"name": "stats", "syntax": "stats", "description": "show stats"}]
-        with patch.object(tui, "registry_palette", return_value=entries), \
-                patch.object(tui, "_send") as send:
-            tui._palette_overlay(Screen(), 17, tui.InputBuffer())
+        with patch.object(tui, "_send") as send:
+            tui._palette_overlay(Screen(), 17, tui.InputBuffer(), commands=entries)
         send.assert_called_once_with(17, "stats")
 
     def test_approval_hint_includes_the_backend_classification(self):

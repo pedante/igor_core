@@ -153,9 +153,9 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "id": "settings",
         "name": "settings",
         "aliases": (),
-        "syntax": "settings [autostart|hybrid on|off]",
+        "syntax": "settings [FIELD VALUE]",
         "category": "control",
-        "description": "show settings or change startup options",
+        "description": "show or edit AI settings",
         "handler": "settings",
     },
     {
@@ -323,9 +323,18 @@ def lookup(line: str, state: str | None = None) -> dict[str, Any]:
         valid = len(args) <= 1
         reason = "expected at most one session id" if not valid else ""
     elif name == "settings":
-        valid = not args or (len(args) == 2 and args[0] in {"autostart", "hybrid"}
-                             and args[1] in {"on", "off"})
-        reason = "expected autostart or hybrid followed by on or off" if not valid else ""
+        # The no-argument form retains the classic textual summary.
+        valid = not args
+        if args:
+            if args == ["snapshot"]:
+                valid = True
+            elif len(args) == 2 and args[0] in {"autostart", "hybrid"}:
+                valid = args[1] in {"on", "off"}
+            elif len(args) == 2 and args[0] in {"provider", "model", "temperature", "max_tokens"}:
+                valid = bool(args[1])
+            else:
+                valid = False
+        reason = "expected a supported setting and value" if not valid else ""
     elif name == "canary":
         valid = args == ["dismiss"]
         reason = "expected dismiss" if not valid else ""

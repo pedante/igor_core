@@ -110,9 +110,29 @@ class SessionCommandRegistryTests(unittest.TestCase):
             with self.subTest(invalid=line):
                 self.assertFalse(lookup(line)["valid"])
         help_lines = help_text()
-        for syntax in ("settings [autostart|hybrid on|off]", "apikey", "canary dismiss",
+        for syntax in ("settings [FIELD VALUE]", "apikey", "canary dismiss",
                        "/diagnose [focus]", "mode guide|assist|executive"):
             self.assertIn(syntax, help_lines)
+
+    def test_settings_editor_commands_are_registry_local(self):
+        valid = {
+            "settings snapshot",
+            "settings provider ollama",
+            "settings model deepseek/deepseek-chat",
+            "settings temperature 0.5",
+            "settings max_tokens 2048",
+            "settings autostart off",
+            "settings hybrid on",
+        }
+        for line in valid:
+            with self.subTest(line=line):
+                result = lookup(line)
+                self.assertTrue(result["matched"] and result["valid"], result)
+                self.assertEqual(result["command"]["handler"], "settings")
+        for line in ("settings provider", "settings mode guide",
+                     "settings max_tokens", "settings unknown on"):
+            with self.subTest(line=line):
+                self.assertFalse(lookup(line)["valid"])
 
     def test_unknown_text_is_not_a_builtin(self):
         self.assertFalse(lookup("check warnings in boot logs")["matched"])
