@@ -1,90 +1,72 @@
 # Igor 2 architectural decisions
 
-This file records decisions that coding agents should not repeatedly reopen without new evidence.
-
-Accepted decisions are architecture constraints. Open decisions are questions to resolve at the indicated roadmap stage.
+Accepted decisions should not be repeatedly reopened without new repository evidence. Open decisions are resolved at the roadmap stage where they become necessary.
 
 ## Accepted
 
-### D001 — The Codex-like TUI is the primary human interface
+### D001 — Codex-like TUI is the primary human-interface direction
 
-Status: accepted.
-
-The new structured AI TUI is the direction for the main Igor experience. CLI/headless interfaces remain for automation, scripting, recovery and testing.
-
-Long-term, `./igor.sh` should launch the primary TUI when migration permits.
+The structured full-screen TUI is the main Igor UX direction. CLI/headless paths remain for scripting, recovery, testing and automation. Long-term, `./igor.sh` should launch the primary TUI when migration permits.
 
 ### D002 — AI autonomy and OS privilege are separate
 
-Status: accepted.
-
-Guide/Assist/Executive determine decision/execution autonomy. They do not grant root privileges.
-
-Privilege must be brokered for approved operations.
+Guide/Assist/Executive determine interaction autonomy. They do not grant root. Privilege is authenticated/authorized by the runtime for the exact operation.
 
 ### D003 — Module presence is not module activation
 
-Status: accepted.
+A module existing under `modules/` is insufficient for runtime contribution.
 
-A module existing under `modules/` is not sufficient for runtime contribution.
+### D004 — Core remains application-agnostic
 
-### D004 — Core must remain application-agnostic
+Application/deployment-specific behavior belongs to modules or integration rules rather than core.
 
-Status: accepted.
+### D005 — Debian and Arch Linux are initial tested platform targets
 
-Application/deployment-specific behavior belongs to modules/integration rules rather than core.
-
-### D005 — Debian and Arch Linux are initial platform targets
-
-Status: accepted.
-
-Igor should provide normalized platform operations with tests for Debian and Arch. Derivative support must not be assumed without validation.
+Existing family detection/package mappings are useful seeds. Support is claimed only to the level tests demonstrate.
 
 ### D006 — Knowledge and observed state are different
 
-Status: accepted.
-
-Module/core knowledge may explain how a domain works. The System Model represents what is actually known about this machine.
+Knowledge explains domains. The System Model represents what is known about this machine.
 
 ### D007 — Capabilities are the shared operational API
 
-Status: accepted.
+TUI, CLI, healing, automation and future external control converge on shared capabilities instead of duplicate domain operations.
 
-TUI, CLI, healing, automations and external control should converge on shared capabilities rather than duplicate domain operations.
+### D008 — Modules may declare automation; Igor owns scheduling
 
-### D008 — Modules may declare automations; Igor owns scheduling
+Scheduling, policy, retries, privilege, execution and history are runtime responsibilities.
 
-Status: accepted.
+### D009 — Modules compose through instances/relationships
 
-Scheduling, policy, retries, privilege, execution and history are Igor runtime responsibilities.
+Prefer coherent reusable domain modules plus deployment relationships over monolithic combination modules when the separation provides real reuse. Do not split working modules before composition contracts exist.
 
-### D009 — Modules should compose through instances/relationships
+### D010 — Mail control, if reintroduced, is an interface
 
-Status: accepted direction.
-
-Prefer reusable coherent domain modules plus deployment relationships over monolithic combination modules when the separation is useful.
-
-Do not prematurely split working modules before the composition contracts exist.
-
-### D010 — Mail control is an interface
-
-Status: accepted.
-
-Mail transport/authentication/encryption may remain as implementation code, but incoming commands must ultimately use the same Igor capabilities, safety, privilege, verification and history as other interfaces.
-
-Notifications are conceptually separate from incoming control.
+The current tree does not contain the old `core/mailcmd/` implementation. If authenticated mail control returns, it must invoke shared Igor capabilities/safety/privilege/verification/history. Notifications remain conceptually separate from incoming control.
 
 ### D011 — Operational memory is not chat history
-
-Status: accepted.
 
 Incidents/actions/outcomes belong in structured Igor-owned history.
 
 ### D012 — Cleanup is continuous
 
-Status: accepted.
+A new authoritative path retires the superseded path when safe. Final consolidation is not an excuse to leave duplicates active indefinitely.
 
-A new authoritative path should retire its superseded path when safe. Final consolidation is not an excuse to leave duplicates active throughout development.
+### D013 — Preserve the current AI reference-data trust boundary
+
+Module prose, context, logs, reports, tool results and history summaries are reference data. They can inform reasoning but cannot authorize actions or modify deterministic policy.
+
+### D014 — Frontend events and domain events are different contracts
+
+`core/ai/events.sh` is a valuable frontend activity stream. The future Domain Event Bus represents operational events consumed by automation/healing/notifications/history. Do not conflate the two.
+
+### D015 — Evolve the existing module activation runtime
+
+Current enable/disable and owner-aware activation is the Module Runtime v2 starting point. Do not introduce a parallel module loader or rename state vocabulary solely for architectural cosmetics.
+
+### D016 — Evolve the existing platform helpers
+
+`distro.sh`, `pkg.sh` and Python resolution are the platform-abstraction starting point. Expand/test them rather than create a second distro layer.
 
 ---
 
@@ -92,19 +74,19 @@ A new authoritative path should retire its superseded path when safe. Final cons
 
 ### Q001 — Module implementation boundary
 
-Question: Should Module API v2 remain Bash-first, or be language-neutral with Bash/Python/other implementations behind a structured contract?
+Should Module API v2 remain Bash-first, or be language-neutral with Bash/Python/other implementations behind a structured contract?
 
-Decision target: Steps 5–6.
+Decision target: Step 6.
 
 ### Q002 — Module manifest/schema format
 
-Question: Keep INI/current `module.conf`, adopt YAML/TOML/JSON, or separate a simple manifest from structured schemas?
+Keep current INI-style `module.conf`, adopt YAML/TOML/JSON, or separate a simple manifest from structured schemas?
 
 Decision target: Step 6.
 
 ### Q003 — System Model persistence
 
-Question: Which state should survive restart, and which storage mechanism best fits the required operations (ephemeral JSON/files, SQLite, hybrid, other)?
+Which state survives restart, and what storage mechanism best fits actual access/history requirements?
 
 Do not block System Model v1 on premature storage selection.
 
@@ -112,54 +94,52 @@ Decision target: before Step 15.
 
 ### Q004 — Module trust model
 
-Question: What trust/permission levels apply to third-party modules that can provide executable code, knowledge, capabilities and automations?
+What trust/permission levels apply to future third-party modules providing executable code, knowledge, capabilities and automations?
 
 Decision target: initial constraints in Step 6; deeper hardening later.
 
 ### Q005 — Dependency semantics
 
-Question: How are hard module dependencies, optional integrations, capability dependencies and platform requirements represented/resolved?
+How are hard module dependencies, optional integrations, capability requirements and platform requirements represented/resolved?
 
 Decision target: Step 6.
 
-### Q006 — Core versus system module boundary
+### Q006 — Core versus system-module boundary
 
-Question: Which host/Linux responsibilities are core platform primitives versus higher-level domain behavior in the `system` module?
+Which Linux responsibilities are core platform primitives versus higher-level host-domain behavior in `system`?
 
 Decision target: Steps 5–9.
 
 ### Q007 — Relationship/deployment ownership
 
-Question: How are relationships created and reconciled between discovery, configuration, installers, users and AI proposals?
-
-Likely requires provenance rather than a single owner.
+How are relationships created/reconciled among discovery, configuration, installers, users and AI proposals?
 
 Decision target: Step 17.
 
 ### Q008 — Automation activation policy
 
-Question: Can installed modules activate automations automatically, or only propose defaults that require administrator policy/approval?
+Can a module activate an automation automatically, or only propose defaults that administrator/runtime policy enables?
 
-Current preference: modules propose; administrator/runtime policy activates.
+Current preference: modules propose; policy activates.
 
 Decision target: Step 14.
 
 ### Q009 — Integration-rule packaging
 
-Question: Do cross-module rules live with one module, in separate integration packages, or in a normalized registry supporting both?
+Do cross-module rules live with one module, separate integration packages, or a registry supporting both?
 
-Resolve using concrete Nextcloud/Docker/Cloudflare cases.
+Resolve using real Nextcloud/Docker/Cloudflare cases.
 
 Decision target: Steps 18–21.
 
 ### Q010 — Raw shell fallback policy
 
-Question: Under what conditions may the AI use arbitrary shell when no registered capability fits, and what extra approval/verification requirements apply?
+When may AI use arbitrary shell because no capability fits, and what additional approval/verification applies?
 
 Decision target: Step 11.
 
 ### Q011 — Remote approval policy
 
-Question: What READ/CHANGE/DESTROY operations may an authenticated email interface execute without an interactive TUI approval?
+If remote control is added, which READ/CHANGE/DESTROY operations may execute without an interactive TUI approval?
 
 Decision target: Step 22.
