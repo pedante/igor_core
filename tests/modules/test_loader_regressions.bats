@@ -28,6 +28,21 @@ CONF
     [[ "$output" == *"secrets/second.env"* ]]
 }
 
+@test "startup config validation ignores an inactive loaded owner" {
+    printf 'variables_file=config/variables/missing.env\n' \
+        >> "$IGOR_DIR/modules/example/module.conf"
+    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_MODULE_STATUS[example]=active
+
+    run _cfg_validate_all_loaded_modules
+    [[ "$output" == *"missing.env"* ]]
+
+    _IGOR_MODULE_STATUS[example]=disabled
+    run _cfg_validate_all_loaded_modules
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"missing.env"* ]]
+}
+
 @test "a module without registration is not marked loaded" {
     printf 'example__health() { echo ok:ready; }\n' > "$IGOR_DIR/modules/example/module.sh"
     if igor_load_module example; then
@@ -59,6 +74,28 @@ MODULE
     run igor_dispatch_menu_item x
     [ "$status" -eq 1 ]
     [ ! -e "$IGOR_DIR/menu-ran" ]
+}
+
+@test "legacy lazy menu cannot load or run after its owner becomes inactive" {
+    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_REGISTERING_MODULE=example
+    igor_register_menu_item l Legacy module legacy_file menu_example
+    _IGOR_REGISTERING_MODULE=""
+    _igor_record_recent() { :; }
+    _igor_load_module() { touch "$IGOR_DIR/legacy-loaded"; }
+    menu_example() { touch "$IGOR_DIR/menu-ran"; }
+
+    _IGOR_MODULE_STATUS[example]=disabled
+    run igor_dispatch_menu_item l
+    [ "$status" -eq 1 ]
+    [ ! -e "$IGOR_DIR/legacy-loaded" ]
+    [ ! -e "$IGOR_DIR/menu-ran" ]
+
+    _IGOR_MODULE_STATUS[example]=unavailable
+    run igor_dispatch_menu_item l
+    [ "$status" -eq 1 ]
+    [ ! -e "$IGOR_DIR/legacy-loaded" ]
 }
 
 @test "hook failure reports the original exit status and continues" {
@@ -103,4 +140,48 @@ CAPS
     igor_load_capabilities
     [ -n "${_IGOR_CAPABILITIES[available_action]:-}" ]
     [ -z "${_IGOR_CAPABILITIES[unavailable_action]:-}" ]
+}
+
+@test "capability catalog advertises actions only while their owner is active" {
+    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_REGISTERING_MODULE=example
+    example__capabilities() {
+        cat <<'CAPS'
+ACTION owned_action
+DESCRIPTION owned action
+FUNCTION example_owned_action
+TIER READ
+CAPS
+    }
+    example_owned_action() { printf owned; }
+    igor_register_hook ai_capabilities example__capabilities
+    _IGOR_REGISTERING_MODULE=""
+
+    igor_load_capabilities
+    [ -n "${_IGOR_CAPABILITIES[owned_action]:-}" ]
+    [ "${_IGOR_CAPABILITY_OWNERS[owned_action]}" = example ]
+
+    _IGOR_MODULE_STATUS[example]=disabled
+    igor_load_capabilities
+    [ -z "${_IGOR_CAPABILITIES[owned_action]:-}" ]
+}
+
+@test "legacy ai_tools prose cannot create an executable catalog action" {
+    source "${BATS_TEST_DIRNAME}/../../core/ai/control.sh"
+    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_REGISTERING_MODULE=example
+    example__ai_tools() {
+        printf '[{"name":"prose_only_action","description":"legacy text"}]'
+    }
+    igor_register_hook ai_tools example__ai_tools
+    _IGOR_REGISTERING_MODULE=""
+    declare -gA _IGOR_CAPABILITIES=()
+    declare -gA _IGOR_CAPABILITY_OWNERS=()
+
+    run ai_catalog_json
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"prose_only_action"* ]]
+    [[ "$output" == *'"actions": []'* ]]
 }

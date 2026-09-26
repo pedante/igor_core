@@ -63,6 +63,63 @@ _module() {
     ! igor_dispatch_menu_item d
 }
 
+@test "disabled module cannot contribute to runtime hook paths" {
+    _module demo '' 'demo__register() {
+        igor_register_hook ai_context demo__ai_context
+        igor_register_hook ai_knowledge demo__ai_knowledge
+        igor_register_hook ai_tools demo__ai_tools
+        igor_register_hook ai_capabilities demo__ai_capabilities
+        igor_register_hook config_validate demo__config_validate
+        igor_register_hook backup demo__backup
+        igor_register_hook restore demo__restore
+        igor_register_hook notify_events demo__notify_events
+    }
+    demo__ai_context() { printf disabled-context; }
+    demo__ai_knowledge() { printf disabled-knowledge; }
+    demo__ai_tools() { printf disabled-tools; }
+    demo__ai_capabilities() { printf "ACTION disabled_action\\nFUNCTION demo__disabled_action\\nTIER READ\\n"; }
+    demo__config_validate() { printf disabled-config; }
+    demo__backup() { printf disabled-backup; }
+    demo__restore() { printf disabled-restore; }
+    demo__notify_events() { printf disabled-events; }'
+    printf 'demo=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    igor_load_all_modules
+    [ -n "$(igor_get_hooks ai_context)" ]
+    [ -n "$(igor_get_hooks ai_knowledge)" ]
+    [ -n "$(igor_get_hooks ai_tools)" ]
+    [ -n "$(igor_get_hooks ai_capabilities)" ]
+    [ -n "$(igor_get_hooks config_validate)" ]
+    [ -n "$(igor_get_hooks backup)" ]
+    [ -n "$(igor_get_hooks restore)" ]
+    [ -n "$(igor_get_hooks notify_events)" ]
+
+    igor_module_set_enabled demo disabled >/dev/null
+    for hook in ai_context ai_knowledge ai_tools ai_capabilities config_validate backup restore notify_events; do
+        [ -z "$(igor_get_hooks "$hook")" ]
+        run igor_run_all_hooks "$hook"
+        [ "$status" -eq 0 ]
+        [ -z "$output" ]
+    done
+}
+
+@test "unavailable required dependency cannot contribute hooks or menus" {
+    _module app 'required_modules=missing' 'app__register() {
+        igor_register_hook ai_context app__ai_context
+        igor_register_menu_item a App module app menu_app
+    }
+    app__ai_context() { touch "$IGOR_DIR/app-context-ran"; }
+    menu_app() { touch "$IGOR_DIR/app-menu-ran"; }'
+    igor_load_all_modules
+
+    [ "${_IGOR_MODULE_STATUS[app]}" = unavailable ]
+    [ -z "$(igor_get_hooks ai_context)" ]
+    run igor_dispatch_menu_item a
+    [ "$status" -ne 0 ]
+    [ ! -e "$IGOR_DIR/app-context-ran" ]
+    [ ! -e "$IGOR_DIR/app-menu-ran" ]
+}
+
 @test "failed registration cannot expose its hook" {
     _module broken '' 'broken__register() {
         igor_register_hook probe broken__probe
@@ -73,4 +130,3 @@ _module() {
     [ "${_IGOR_MODULE_STATUS[broken]}" = unavailable ]
     [ -z "$(igor_get_hooks probe)" ]
 }
-

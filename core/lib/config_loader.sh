@@ -286,6 +286,10 @@ _cfg_validate_all_loaded_modules() {
 
     local _name
     for _name in "${!_IGOR_LOADED_MODULES[@]}"; do
+        # A loaded function can remain in this process after its owner is
+        # disabled; only active owners may contribute validation.
+        declare -f igor_has_module >/dev/null 2>&1 || continue
+        igor_has_module "$_name" || continue
         igor_validate_module_config "$_name"
     done
     return 0

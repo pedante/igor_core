@@ -28,29 +28,30 @@ run_storage_check() {
     [[ "$output" != *"nc_data_missing"* ]]
 }
 
-@test "explicit Nextcloud storage toggle preserves legacy checks" {
+@test "legacy Nextcloud toggle does not activate application checks in system" {
     run bash --noprofile --norc -c "
         export IGOR_NEXTCLOUD_STORAGE_CHECK=true
         source '${REPO_DIR}/modules/system/checks/storage.sh'
         run_check
     " 2>/dev/null
     [ "$status" -eq 0 ]
-    [[ "$output" == *"hd_not_mounted"* ]]
-    [[ "$output" == *"nc_data_missing"* ]]
+    [[ "$output" == *"disk_"* ]]
+    [[ "$output" != *"hd_not_mounted"* ]]
+    [[ "$output" != *"nc_data_missing"* ]]
 }
 
-@test "loaded Nextcloud module marker enables legacy checks" {
+@test "Nextcloud stack path alone does not activate application checks in system" {
     run bash --noprofile --norc -c "
         export NEXTCLOUD_DOCKER_STACK_DIR='${IGOR_DIR}/config/stacks/nextcloud'
         source '${REPO_DIR}/modules/system/checks/storage.sh'
         run_check
     " 2>/dev/null
     [ "$status" -eq 0 ]
-    [[ "$output" == *"hd_not_mounted"* ]]
-    [[ "$output" == *"nc_data_missing"* ]]
+    [[ "$output" != *"hd_not_mounted"* ]]
+    [[ "$output" != *"nc_data_missing"* ]]
 }
 
-@test "custom legacy storage paths enable the application checks" {
+@test "custom Nextcloud paths leave system storage host-only" {
     local custom_mount="${IGOR_DIR}/external"
     local custom_data="${custom_mount}/next"
     run bash --noprofile --norc -c "
@@ -59,8 +60,8 @@ run_storage_check() {
         run_check
     " 2>/dev/null
     [ "$status" -eq 0 ]
-    [[ "$output" == *"hd_not_mounted"* ]]
-    [[ "$output" == *"${custom_data}"* ]]
+    [[ "$output" != *"hd_not_mounted"* ]]
+    [[ "$output" != *"${custom_data}"* ]]
 }
 
 @test "explicit false toggle suppresses checks even with custom paths" {
@@ -73,4 +74,19 @@ run_storage_check() {
     [ "$status" -eq 0 ]
     [[ "$output" != *"hd_not_mounted"* ]]
     [[ "$output" != *"nc_data_missing"* ]]
+}
+
+@test "Nextcloud module owns the application storage result" {
+    local custom_mount="${IGOR_DIR}/external"
+    local custom_data="${custom_mount}/next"
+    run bash --noprofile --norc -c "
+        export HD_MOUNT='${custom_mount}' NC_DATA='${custom_data}'
+        mount() { :; }
+        source '${REPO_DIR}/modules/nextcloud_docker/checks/storage.sh'
+        run_check
+    " 2>/dev/null
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"hd_not_mounted"* ]]
+    [[ "$output" == *"nc_data_missing"* ]]
+    [[ "$output" == *"${custom_data}"* ]]
 }

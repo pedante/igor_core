@@ -51,9 +51,7 @@ _healing_discover_checks() {
         # a subprocess and only the exported active set is available).
         local module_name="${f#"${_HEALING_CHECKS_DIR}/"}"
         module_name="${module_name%%/*}"
-        if declare -f igor_has_capability >/dev/null 2>&1; then
-            igor_has_capability "${module_name}" || continue
-        elif declare -f igor_has_module >/dev/null 2>&1; then
+        if declare -f igor_has_module >/dev/null 2>&1; then
             igor_has_module "$module_name" || continue
         else
             # Standalone healing callers have no activation authority.  Do
@@ -281,18 +279,20 @@ calculate_health_score() {
 validate_configuration() {
     local issues=()
 
-    [ ! -f "${IGOR_DIR:-}/config/stacks/nextcloud/docker-compose.yml" ] && \
-        issues+=("docker-compose.yml not found in config/stacks/nextcloud/")
+    if declare -f igor_has_module >/dev/null 2>&1 && igor_has_module nextcloud_docker; then
+        [ ! -f "${IGOR_DIR:-}/config/stacks/nextcloud/docker-compose.yml" ] && \
+            issues+=("docker-compose.yml not found in config/stacks/nextcloud/")
 
-    [ ! -f "${IGOR_DIR:-}/db.env" ] && \
-        issues+=("db.env missing — services cannot start")
+        [ ! -f "${IGOR_DIR:-}/db.env" ] && \
+            issues+=("db.env missing — services cannot start")
 
-    if ! mount | grep -q "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null; then
-        issues+=("HD_MOUNT (${HD_MOUNT:-/mnt/nextclouddata}) is not mounted")
-    fi
+        if ! mount | grep -q "${HD_MOUNT:-/mnt/nextclouddata}" 2>/dev/null; then
+            issues+=("HD_MOUNT (${HD_MOUNT:-/mnt/nextclouddata}) is not mounted")
+        fi
 
-    if [ -n "${NC_DATA:-}" ] && [ ! -d "$NC_DATA" ]; then
-        issues+=("NC_DATA directory does not exist: $NC_DATA")
+        if [ -n "${NC_DATA:-}" ] && [ ! -d "$NC_DATA" ]; then
+            issues+=("NC_DATA directory does not exist: $NC_DATA")
+        fi
     fi
 
     SELF_HEALING_CONFIG_DRIFT=${#issues[@]}
