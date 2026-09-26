@@ -31,14 +31,14 @@ Template stack files live in `defaults/`. The user's running copies live in
 | `ai_context` | `nextcloud_docker__ai_context` | occ status, key config, tunnel, NC log |
 | `ai_knowledge` | `nextcloud_docker__ai_knowledge` | Architecture, nginx rules, decision tree |
 | `ai_tiers` | `nextcloud_docker__ai_tiers` | Tool safety classifications |
-| `ai_tools` | `nextcloud_docker__ai_tools` | occ, container, run_igor_action tool defs |
+| `ai_tools` | `nextcloud_docker__ai_tools` | legacy prompt/tool text; executable catalog comes from current core grammar + `ai_capabilities` |
 | `ai_patterns` | `nextcloud_docker__ai_patterns` | Known repair patterns |
 | `ai_capabilities` | `nextcloud_docker__ai_capabilities` | 12 callable actions for run_igor_action |
 | `backup` | `nextcloud_docker__backup` | occ config export + DB dump |
 | `restore` | `nextcloud_docker__restore` | DB restore + occ config import |
 | `recovery` | `nextcloud_docker__recovery` | Recovery procedures |
 | `notify_events` | `nextcloud_docker__notify_events` | 7 event declarations |
-| `mailcmd` | `nextcloud_docker__mailcmd` | Email command verbs |
+| `mailcmd` | `nextcloud_docker__mailcmd` | reserved v1 verbs; no mail dispatcher exists in the current tree |
 | `config_validate` | `_nc_validate_config` | Warn on missing NC credentials |
 | `rollback_handler` | `_nc_rollback_dispatch` | Undo app_enable/disable/occ actions |
 
