@@ -38,6 +38,17 @@ command palette. Enter a number to choose an action, `/text` to filter the list,
 or `b` to return to chat. Actions that need arguments prompt for them before
 running through the same command handler used by typed commands.
 
+Launch the full-screen AI chat with `bash igor.sh --ai-tui`. It uses Python 3's
+standard-library curses support and needs an interactive terminal. The classic
+line UI remains available through `bash igor.sh`; use it for initial provider
+setup or whenever the full-screen UI is unavailable. In the full-screen UI,
+activity scrolls above a fixed input area. Press Enter to send, Ctrl+O or
+Alt+Enter for another input line, Page Up/Page Down to scroll, and `:` on an
+empty input to open the registry-backed command palette. Palette entries that
+need arguments fill the input for you. `/stop` uses the same backend stop action
+as the classic UI. Pending actions show the available Run/Skip/Explain or
+Yes/No/Explain choices; destructive actions still require exact `YES`.
+
 **Three-tier safety gate** — every AI-proposed command is classified before running:
 
 | Tier | Examples | Behaviour |

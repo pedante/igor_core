@@ -28,6 +28,20 @@ export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 # source its code, run its validators, or create a tmux session first.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --ai-tui)
+            if [ ! -t 0 ] || [ ! -t 1 ]; then
+                printf 'The AI TUI needs an interactive terminal. Use bash igor.sh for the classic UI.\n' >&2
+                exit 2
+            fi
+            if command -v python3 >/dev/null 2>&1; then
+                exec python3 "${IGOR_DIR}/core/ai/tui.py"
+            elif command -v python >/dev/null 2>&1 &&
+                 python --version 2>&1 | grep -q '^Python 3'; then
+                exec python "${IGOR_DIR}/core/ai/tui.py"
+            fi
+            printf 'Python 3 is required for the AI TUI. Use bash igor.sh for the classic UI.\n' >&2
+            exit 2
+            ;;
         --ai)
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
@@ -148,7 +162,7 @@ _IGOR_RICH_AVAILABLE=false
 _IGOR_SKIP_SESSION=false
 for _a in "$@"; do
     case "$_a" in
-        --extra|--status|--help|-h|--capture|--tune|--check)
+        --extra|--status|--help|-h|--capture|--tune|--check|--ai-tui-backend)
             _IGOR_SKIP_SESSION=true; break ;;
     esac
 done
@@ -562,6 +576,7 @@ _igor_show_help() {
 
     echo -e "${C}${B}CLI FLAGS${N}"
     printf "  ${Y}%-30s${N} %s\n" "--help, -h"          "Show this help page"
+    printf "  ${Y}%-30s${N} %s\n" "--ai-tui"            "Launch the full-screen AI chat (classic UI: bash igor.sh)"
     printf "  ${Y}%-30s${N} %s\n" "--diagnose [mode]"   "Run Igor Diagnose (modes: normal deep fix watch report recovery)"
     printf "  ${Y}%-30s${N} %s\n" "--extra"             "Launch the 6-lens monitoring TUI in a second terminal"
     printf "  ${Y}%-30s${N} %s\n" "--status"            "Print current session / worker status and exit"
@@ -1079,6 +1094,11 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # ── Command-line flag handling ────────────────────────────────────────────
     for _igor_arg in "$@"; do
         case "$_igor_arg" in
+            --ai-tui-backend)
+                _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
+                IGOR_TUI_MODE=true AI_SKIP_INTERSTITIAL=true menu_ai
+                exit $?
+                ;;
             --help|-h)
                 _igor_show_help
                 exit 0

@@ -1717,6 +1717,11 @@ menu_ai() {
         && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
 
     # ── First-run key setup ────────────────────────────────────────────────────
+    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ] &&
+       [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_frontend_event error 'No provider key configured. Run bash igor.sh for initial setup.' configuration_error
+        return 2
+    fi
     if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ]; then
         echo -e "  ${MAG}${BOLD}╔══ IGOR AI ASSISTANT — SETUP ══╗${NC}"
         echo ""
@@ -1940,7 +1945,10 @@ menu_ai() {
     fi
 
     local preflight
-    preflight=$(igor_fzf_pick "AI Assistant" \
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        preflight=s
+    else
+        preflight=$(igor_fzf_pick "AI Assistant" \
         "s:START:Full session — scan server context" \
         "f:FAST:Quick session — skip server scan" \
         "c:SETTINGS:Provider, API key, model, tokens, temperature" \
@@ -1948,13 +1956,14 @@ menu_ai() {
         "o:LOCAL AI:Manage Ollama (models, host, pull)" \
         "l:SESSION LOG:Browse previous AI sessions" \
         "q:BACK:Return to main menu")
-    case $? in
-        1) return 0 ;;
-        2)
-            echo -e "  ${CYAN}s${NC} = start   ${CYAN}f${NC} = fast   ${CYAN}c${NC} = settings   ${CYAN}k${NC} = API key   ${CYAN}o${NC} = local AI   ${CYAN}l${NC} = session log   ${CYAN}q${NC} = back"
-            echo ""
-            read -rp "  [s/f/c/k/o/l/q]: " preflight || return 0 ;;
-    esac
+        case $? in
+            1) return 0 ;;
+            2)
+                echo -e "  ${CYAN}s${NC} = start   ${CYAN}f${NC} = fast   ${CYAN}c${NC} = settings   ${CYAN}k${NC} = API key   ${CYAN}o${NC} = local AI   ${CYAN}l${NC} = session log   ${CYAN}q${NC} = back"
+                echo ""
+                read -rp "  [s/f/c/k/o/l/q]: " preflight || return 0 ;;
+        esac
+    fi
 
     # IDEA-06: fast/quick mode flag — skip ai_gather_context()
     local _quick_mode=false
@@ -2392,7 +2401,10 @@ except: pass
             "$_AI_RUNTIME_PATH" "$_AI_RUNTIME_DETAIL"
         return $?
     }
-    IGOR_AI_EVENT_STREAM="${_rt_dir}/frontend-${BASHPID}-$(date +%s%N).jsonl"
+    if [ "${IGOR_TUI_MODE:-false}" != true ] ||
+       [ "${IGOR_AI_EVENT_STREAM%/*}" != "$_rt_dir" ]; then
+        IGOR_AI_EVENT_STREAM="${_rt_dir}/frontend-${BASHPID}-$(date +%s%N).jsonl"
+    fi
     export IGOR_AI_EVENT_STREAM
     _ai_set_session_state start_requested || {
         _ai_startup_fail runtime_state 1 "Could not persist AI startup state." \
@@ -2480,7 +2492,12 @@ except: pass
         echo -e "  ${BOLD}Is this problem still open?${NC}"
         echo -e "  ${GRN}y${NC} = still open  ${CYAN}n${NC} = solved  ${YEL}s${NC} = skip"
         echo ""
-        local _wip_ans; read -rp "  [y/n/s]: " _wip_ans </dev/tty
+        local _wip_ans
+        if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+            _wip_ans=s
+        else
+            read -rp "  [y/n/s]: " _wip_ans </dev/tty
+        fi
         case "$_wip_ans" in
             n|N)
                 _wip_active=false
