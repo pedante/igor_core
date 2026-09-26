@@ -12,7 +12,7 @@ Roadmap descriptions are **not evidence that functionality is missing**. Step 1 
 
 **Wave A — Foundation / Step 1 ready**
 
-No new Igor 2 architecture implementation has begun on this branch beyond documentation preparation.
+Repository documentation has been reconciled for the start of Igor 2: the current README/contribution/module docs are separated from target architecture docs, stale duplicate roadmap/handoff documents were removed, and AGENTS.md now directs coding agents to the correct authority. No new Igor 2 architecture implementation has begun beyond this preparation.
 
 ## Strong foundations already present
 
