@@ -1,5 +1,7 @@
 # Igor Module Development Guide
 
+> **Current contract (Module API v1).** This guide documents the implementation that exists today. Igor 2's target module contract is documented separately in [igor2/MODULE_API.md](igor2/MODULE_API.md). Do not treat the v2 document as already implemented, and do not extend v1 with speculative hooks merely to imitate the target design.
+
 ## Table of Contents
 
 1. [Overview](#overview)
