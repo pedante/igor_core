@@ -2,37 +2,39 @@
 
 Status: **design target, not yet implemented**.
 
-The current module contract is documented in `docs/module_creation.md`. That documentation remains authoritative for Module API v1 until migration occurs.
+The current module contract is documented in `docs/module_creation.md`; current activation/runtime semantics are documented in `docs/module_lifecycle.md`.
+
+The existing loader already provides explicit enable/disable policy, active/unavailable state and owner-aware registrations. Module API v2 must evolve that runtime rather than create a second plugin system.
 
 ## Purpose
 
 A module teaches Igor how to understand and operate a coherent domain.
 
-A module is not merely a menu bundle or a collection of hooks.
+A module is not merely a menu bundle or a list of prompt hooks.
 
-Installing a module makes a domain available. Enabling/loading it may contribute knowledge, observations and abilities to the current Igor runtime.
+## Runtime semantics
 
-## Runtime states
+Igor 2 requires these concepts, but does not require renaming the current implementation solely for vocabulary:
 
-Target states:
+- **installed/available** — module package exists and can be inspected;
+- **enabled** — administrator policy allows activation;
+- **disabled** — policy prevents activation;
+- **active/loaded** — initialization and registration succeeded in this process;
+- **unavailable/failed** — enabled but requirements/initialization prevented activation.
 
-- **available** — package exists and can be inspected;
-- **enabled** — administrator configuration says it participates in this installation;
-- **loaded** — initialization succeeded for the current runtime;
-- **failed** — enabled but initialization failed;
-- **disabled** — present but intentionally inactive.
+Only active modules may contribute runtime behavior.
 
-Only loaded modules may contribute runtime behavior.
+Restart-based activation is acceptable. Hot unloading is not a v2 requirement unless a future use case justifies it.
 
 ## Versioning
 
-The v2 contract must be explicitly versioned, for example:
+The v2 contract is explicitly versioned, for example:
 
 ```text
 module_api = 2
 ```
 
-Igor must reject unsupported contracts clearly or use an explicit compatibility layer. Compatibility must never be inferred silently.
+Unsupported contracts are rejected clearly or handled through an explicit compatibility adapter. Compatibility is never silently guessed.
 
 ## Contract areas
 
@@ -40,34 +42,31 @@ A module may implement any subset of the following.
 
 ### Identity
 
-Defines:
-
 - canonical module name;
 - display name;
-- module version;
-- module API version;
-- domain;
+- module/API version;
+- coherent domain;
 - compatibility constraints;
-- dependencies.
+- dependencies/requirements.
 
 ### Knowledge
 
-Durable domain knowledge for reasoning:
+Durable reference knowledge:
 
 - architecture;
 - terminology;
 - normal behavior;
-- known failure modes;
+- failure modes;
 - operating constraints;
 - troubleshooting guidance.
 
-Knowledge is not live system state.
+Knowledge is not live state and cannot authorize operations or change Igor policy.
 
 ### Observers
 
 Deterministic ways to discover domain state.
 
-Observers should declare enough metadata for Igor to manage them, including where applicable:
+Observers may declare:
 
 - produced fact/object types;
 - cost;
@@ -76,7 +75,7 @@ Observers should declare enough metadata for Igor to manage them, including wher
 - privilege requirement;
 - dependencies.
 
-Observers populate Igor-owned state rather than returning arbitrary prompt text as the primary contract.
+Observers populate Igor-owned state instead of primarily returning arbitrary prompt text.
 
 ### Capabilities
 
@@ -85,6 +84,7 @@ Canonical actions the module can perform.
 A capability should expose:
 
 - canonical name;
+- owner;
 - description;
 - input schema;
 - safety tier;
@@ -94,74 +94,66 @@ A capability should expose:
 - verification;
 - optional rollback;
 - affected object types;
-- emitted events;
-- supported platforms/requirements.
+- domain events;
+- platform requirements.
 
-Capabilities are reusable by every Igor interface and automation path.
+The existing action catalog / `run_igor_action` path is the migration seed.
 
 ### Checks
 
-Checks evaluate state and produce structured results usable by Diagnose, Health, Healing, AI and notifications.
+Checks evaluate structured state and produce results reusable by Diagnose, Health, Healing, AI, notifications and history.
 
-Checks should not be independently auto-discovered merely because a file exists in a module directory.
+File presence alone is never activation authority.
 
-### Events
+### Domain events
 
-A module may emit and/or consume defined event types.
+A module may emit and/or consume operational event types.
 
-Event handling should prefer structured contracts over direct calls into unrelated modules.
+These are distinct from the existing AI frontend activity stream. Prefer domain events/relationships over direct calls into unrelated modules.
 
 ### Automations
 
 A module may propose scheduled, periodic, conditional or event-driven behavior.
 
-Igor owns:
+Igor owns activation, scheduling, safety, privilege, retries, history and notification/escalation.
 
-- enable/disable state;
-- scheduling;
-- safety policy;
-- privilege handling;
-- retries;
-- history;
-- notification/escalation.
-
-Modules do not create unmanaged cron jobs as their normal integration path.
+Modules do not create unmanaged cron jobs as their normal contract.
 
 ### Relationships
 
 A module defines relationship types meaningful to its objects and may discover/propose relationships.
 
-Relationships connect instances from different domains without requiring giant combination modules.
+Relationships connect domain instances without requiring giant combination modules.
 
 ### Configuration
 
 A module declares configuration schema, defaults, sensitive fields, validation and migration.
 
-The final manifest/config representation is an open design decision; do not hard-code a v2 format before that decision is accepted.
+The final manifest/schema representation is an open decision. Do not hard-code a v2 format before that decision is accepted.
 
 ### Lifecycle
 
-Lifecycle covers installation-specific operations such as:
+Lifecycle may cover:
 
-- enable/disable;
-- install/bootstrap;
+- enable/disable policy;
+- install/bootstrap of managed resources;
 - upgrade/migrate;
 - uninstall/remove.
 
-Lifecycle behavior must distinguish removing a module package from changing/removing the domain resources it manages.
+Removing a module package is distinct from destroying the resources it manages.
 
 ## Dependencies
 
-Module API v2 must distinguish at least conceptually:
+The v2 design must distinguish conceptually:
 
 - hard module dependency;
-- optional module integration;
+- optional integration;
 - capability requirement;
 - platform requirement.
 
-A dependency on a capability is preferable when the implementation provider does not matter.
+Prefer capability requirements when the provider implementation does not matter.
 
-Exact semantics remain an open decision.
+Exact representation/resolution remains an open decision.
 
 ## Composition
 
@@ -175,22 +167,24 @@ nextcloud:home
   exposed_by -> cloudflare:tunnel/home
 ```
 
-This allows Docker, Nextcloud and Cloudflare to remain reusable domains.
+Do not split `nextcloud_docker` before relationships/composition contracts exist.
 
 ## Integration rules
 
-Some behavior exists only at domain boundaries. Igor 2 may support lightweight integration rules activated by the presence/relationship of specific domains.
+Some behavior exists only at domain boundaries. Igor 2 may support lightweight integration rules activated by domain presence/relationships.
 
-The physical ownership/packaging of these rules remains an open decision.
+Physical ownership/packaging remains an open decision.
 
 ## Trust
 
-Third-party modules may eventually provide executable code, knowledge and automation definitions.
+Current modules are trusted local executable code; the registry is not a sandbox.
 
-The v2 design must leave room for an explicit trust/permission model. Exact signing/sandbox policy is not yet decided.
+For AI reasoning, module prose remains reference data. It may inform decisions but cannot alter authorization, safety or privilege policy.
+
+A future third-party module ecosystem may require explicit trust/permission/signing rules. The v2 contract must leave room for them.
 
 ## Migration rule
 
-Do not split `nextcloud_docker` merely to satisfy this document.
+Preserve working v1 modules and the current activation boundary while v2 is designed.
 
-First establish the runtime/contracts and compatibility path; then use the existing working deployment as a regression fixture and composition proof case.
+Prove v2 with real modules before removing v1 compatibility.
