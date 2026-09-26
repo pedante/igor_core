@@ -60,7 +60,9 @@ a summary.
 Ctrl+G collapses or expands successful tool output, while failures stay visible.
 Esc clears the draft; Ctrl+C or `/stop` uses the backend stop action. Pending
 actions show Run/Skip/Explain or Yes/No/Explain choices; destructive actions
-still require exact `YES`.
+still require exact `YES`. Stop is handled at an approval prompt or the next
+backend chat prompt; it does not interrupt a provider or tool
+call already in progress.
 
 **Three-tier safety gate** — every AI-proposed command is classified before running:
 
@@ -88,6 +90,10 @@ action; `/stop` cancels it and stops the current continuation. Explain asks the
 configured AI model for a focused explanation. The model's wording cannot change
 Igor's classification, approval requirement, or pending command. A provider
 failure returns to the same approval prompt.
+When Igor offers numbered choices in chat, short replies such as `2`, `logs`,
+or `the second one` are resolved against that pending question by the backend.
+A bare `cancel` dismisses the question locally; a new request clears it before
+the provider handles the new topic.
 
 **Outbound secrets scrubbing** — before any context is sent to an external API,
 `ai_scrub_outbound()` replaces sensitive values with tokens:

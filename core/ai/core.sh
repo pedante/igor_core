@@ -1444,13 +1444,14 @@ _ai_pending_choice_clear() {
     _AI_PENDING_CHOICE_JSON=""
     _AI_PENDING_CHOICE_RESOLUTION=""
     _AI_PENDING_CHOICE_ANSWERED=false
+    _AI_PENDING_INTERACTION_OWNER=""
+    _AI_PENDING_INTERACTION_TYPE=""
+    _AI_PENDING_INTERACTION_STATE=""
 }
 
 _ai_pending_choice_capture() {
     local _reply="${1:-}" _captured
-    _AI_PENDING_CHOICE_JSON=""
-    _AI_PENDING_CHOICE_RESOLUTION=""
-    _AI_PENDING_CHOICE_ANSWERED=false
+    _ai_pending_choice_clear
     [ -n "${_reply//[[:space:]]/}" ] || return 0
     _captured=$(AI_PENDING_REPLY="$_reply" python3 - <<'PY'
 import json, os, re
@@ -1490,7 +1491,15 @@ if not cue or len(items) < 2 or len(numbers) != len(set(numbers)):
 print(json.dumps({"prompt": reply[-500:], "options": items}, ensure_ascii=True))
 PY
     ) || true
-    [ -n "$_captured" ] && _AI_PENDING_CHOICE_JSON="$_captured"
+    if [ -n "$_captured" ]; then
+        _AI_PENDING_CHOICE_JSON="$_captured"
+        # This is an interaction owned by the backend assistant turn.  Keep
+        # its lifecycle explicit so future interfaces can inspect the same
+        # state without inferring it from conversation text.
+        _AI_PENDING_INTERACTION_OWNER="assistant"
+        _AI_PENDING_INTERACTION_TYPE="conversational_choice"
+        _AI_PENDING_INTERACTION_STATE="awaiting_input"
+    fi
     return 0
 }
 
@@ -1552,6 +1561,9 @@ PY
     _AI_PENDING_CHOICE_RESOLUTION=$(printf '%s' "$_encoded" | base64 -d 2>/dev/null) || return 1
     _AI_PENDING_CHOICE_ANSWERED=true
     _AI_PENDING_CHOICE_JSON=""
+    _AI_PENDING_INTERACTION_STATE="resolved"
+    _AI_PENDING_INTERACTION_OWNER=""
+    _AI_PENDING_INTERACTION_TYPE=""
     return 0
 }
 
@@ -1571,12 +1583,19 @@ _ai_pending_choice_route_input() {
             return 3
         fi
     fi
+    # A bare cancellation dismisses this question locally.  Longer requests
+    # remain user input and are not swallowed by a stale choice.
+    if [[ "$_input" =~ ^[[:space:]]*[Cc][Aa][Nn][Cc][Ee][Ll][[:space:]]*$ ]]; then
+        _ai_pending_choice_clear
+        _AI_PENDING_CHOICE_ROUTED_INPUT=""
+        return 4
+    fi
     if _ai_pending_choice_resolve "$_input"; then
         _AI_PENDING_CHOICE_ROUTED_INPUT="${_input}
 ${_AI_PENDING_CHOICE_RESOLUTION}"
         return 0
     fi
-    if printf '%s' "$_input" | grep -qiE '^(new topic|cancel|stop|never mind|forget it)\b|\?|^(check|show|tell|is|are|can|could|please|why|how|what|where|when|which|inspect|list|find|run|install|update|restart|diagnose)\b'; then
+    if printf '%s' "$_input" | grep -qiE '^(new topic|cancel|stop|/stop|never mind|forget it|yes|no|continue)\b|\?|^(check|show|tell|is|are|can|could|please|why|how|what|where|when|which|inspect|list|find|run|install|update|restart|diagnose)\b'; then
         _ai_pending_choice_clear
         return 3
     fi
@@ -3020,6 +3039,10 @@ except: pass
             if _ai_pending_choice_route_input "$user_input"; then
                 user_input="$_AI_PENDING_CHOICE_ROUTED_INPUT"
                 _is_followup=true
+            elif [ "$?" -eq 4 ]; then
+                echo "  Choice cancelled."
+                echo ""
+                continue
             fi
         fi
         if [ "$_investigation_active" = "true" ] \

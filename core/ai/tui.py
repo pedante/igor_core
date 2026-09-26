@@ -82,7 +82,12 @@ class EventState:
         """Apply one event if it is valid and newer than the current stream."""
         kind = event.get("event_type")
         sequence = event.get("sequence", 0)
-        if kind not in EVENT_TYPES or not isinstance(sequence, int):
+        # The backend stream uses strictly positive integer sequence numbers.
+        # Reject malformed values at the projection boundary so a forged or
+        # truncated frontend record cannot move the rendered state backwards
+        # or make the first event appear authoritative.
+        if (kind not in EVENT_TYPES or not isinstance(sequence, int)
+                or isinstance(sequence, bool) or sequence <= 0):
             return False
         if sequence <= self.sequence:
             return False

@@ -1,16 +1,20 @@
 # Igor 2 migration status
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
 ## Baseline and stage
 
-**Wave A / Step 2 — Architecture Rules / Regression Guards complete.** This
-step adds focused tests for accepted current invariants and makes three narrow
-corrections: Healing check discovery uses module identity; inactive Nextcloud
-does not trigger generic Healing configuration checks; same-process disabled
-modules do not receive startup configuration validation. The three stale
-system-storage tests now reflect host-only `system` ownership. No later-wave
-architecture was started.
+**Wave B / Steps 3–4 — Interaction Runtime and Privilege Boundary complete.**
+The existing backend session, deterministic approval dispatcher, frontend
+event stream, TUI projection and native sudo-through-PTY path remain the
+authoritative implementation. Wave B adds narrow pending-choice lifecycle
+handling and event-sequence validation, plus regression guards for cancellation
+and privilege ordering. No second state, approval, event or privilege system
+was added.
+
+Wave A / Step 2 completed the accepted architecture guards and removed the
+three stale system-storage test failures. Its baseline is retained below for
+comparison.
 
 The Step 1 audit was performed on a clean `igor2` tree at `6675ece`; local
 `master` `76f04e3` remains an ancestor. Its findings and red baseline are
@@ -25,8 +29,8 @@ claim about a newer un-fetched remote branch.
 |---|---|
 | 1 Legacy Audit | Implemented by this evidence ledger and baseline. |
 | 2 Architecture Rules | Implemented for accepted current invariants: focused ownership, trust, platform and safety guards now run in existing test suites. Later contracts get their own tests when implemented. |
-| 3 Interaction Runtime | Implemented in substantial form. `core/ai/tui.py` projects backend JSONL events; command registry, pending choices, modes and approval states exist. Harden/reuse, do not replace. |
-| 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows exact approval. General capability metadata is partial. |
+| 3 Interaction Runtime | Implemented for current chat/TUI use. Backend command routing, pending choice/approval state, mode policy, provider continuation and ordered frontend events are guarded. Future interfaces can consume the same backend authority; no new interface was built. |
+| 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows approval of the exact command. General capability privilege metadata remains Step 11 work. |
 | 5 Module Runtime v2 | Implemented in substantial form: policy, discovered/active/unavailable state and owner-aware registrations exist. Step 2 corrected Healing's active-check defect and same-process config validation; full contract formalization remains Step 5. |
 | 6 Module API v2 | Missing; v1 hooks are live compatibility. No v2 contract was started. |
 | 7 Platform Abstraction | Partial: distro/family detection, Debian/Arch-aware package mappings/install and Python resolution exist. Other normalized operations and broad test proof are missing. |
@@ -82,6 +86,44 @@ claim about a newer un-fetched remote branch.
 Generalized capability verification, System Model, observers and domain events
 receive tests when those later contracts are implemented.
 
+## Wave B runtime and privilege assessment
+
+- `core/ai/core.sh` remains the backend session authority. Its registry handles
+  typed and palette commands; its pending choice record now carries an explicit
+  assistant owner, conversational-choice type and awaiting/resolved lifecycle.
+  Numbered, ordinal and matching text replies resolve against that record.
+  A bare `cancel` dismisses an active choice locally; commands and clearly new
+  requests clear stale choice state. Without a pending interaction, ordinary
+  chat still goes to the provider.
+- `core/ai/safety.sh` remains the approval authority. Explain returns to the
+  same pending request; Guide/Assist/Executive alter READ/CHANGE autonomy but
+  cannot change DESTROY's exact `YES` requirement or grant OS privilege. The
+  TUI sends input to this backend and projects ordered `core/ai/events.sh`
+  activity events. Invalid event sequence values now fail at the projection
+  boundary; frontend text or event fields cannot authorize execution.
+- Sudo authentication stays in the backend PTY after Igor approval. The
+  dispatcher uses the approved command for execution, may reuse OS-cached
+  credentials, and fails closed on unavailable/failed authentication before
+  backup or execution. Password input bypasses chat draft/history/events and
+  audit. No separate sudo broker is justified by current callers. Step 11 may
+  add declarative capability privilege metadata to this same execution gate;
+  it must not create a second elevation path.
+- The current pending-choice extraction is intentionally limited to explicit
+  alternatives in the most recent assistant reply. Other natural-language
+  intent and the narrative after `continue` still use provider conversation;
+  the latter builds a failure recap from prior message text in
+  `core/ai/core.sh`. Pause/resume routing is explicit and authorization stays
+  deterministic at dispatch; this narrative is not authoritative operational
+  state. `/stop` is handled at approval or the next backend chat prompt;
+  boundary; a synchronous provider or tool call is not preempted. The classic
+  line UI, `--extra`, old `exec on/off` setting bridge and
+  v1 module APIs remain compatibility inputs under their existing removal
+  conditions. No compatibility path met the safe-removal criteria in Wave B.
+
+No accepted decision changed. Q010 raw-shell policy and Q011 remote approval
+remain at their assigned later steps; neither blocks this current backend
+contract. Q006 remains a module/platform placement question for Wave C/D.
+
 ## Step 1 test and lint baseline (before Step 2)
 
 Run against the clean pre-edit branch; documentation changes cannot affect the
@@ -125,3 +167,17 @@ remains the next material placement question for Steps 5–9. Q001/Q002/Q005
 (module implementation, schema and dependency contracts), Q010 (raw shell)
 and the other open decisions remain at their assigned roadmap steps. No open
 decision blocks Step 2 regression tests.
+
+## Wave B validation compared with Wave A
+
+| Check | Wave B result | Comparison with green Wave A |
+|---|---|---|
+| Focused interaction, approval, safety, privilege and frontend BATS | 101 focused cases passed. | New choice lifecycle, cancellation and declined-sudo guards pass alongside the existing approval and event guards. |
+| Relevant Python TUI/PTY tests and full Python suite | Focused TUI, privilege PTY and session command tests: 56 tests and 46 subtests passed. Full `pytest tests/ -q`: 204 tests and 93 subtests passed. | Wave A full suite: 203 tests and 89 subtests; one new TUI event-sequence test with four subcases, no failure. |
+| `bash tests/run_all.sh` | 5 suite groups passed, 0 failed, 0 skipped; core BATS 288/288, module BATS 73/73, integration BATS 40/40. | Wave A: all 5 groups passed; core BATS 284/284, modules 73/73, integration 40/40. No new behavioral failure. |
+| `bash -n core/ai/core.sh`; `git diff --check` | Passed. | No syntax or whitespace regression. |
+| Ruff 0.16.9 and CI-configured ShellCheck on changed files | Ruff remains at 135 repository findings, unchanged from Wave A. `core/ai/core.sh` retains its three pre-existing ShellCheck warnings (SC2174, SC2010, SC2011); changed BATS files pass ShellCheck. No warning appears on changed lines. | Lint backlog remains outside Wave B. |
+
+Wave B is complete and the green behavioral baseline is preserved. Igor is
+ready for Wave C — Module Platform. `DECISIONS.md` remains unchanged; no new
+decision gate was encountered for Steps 3–4.

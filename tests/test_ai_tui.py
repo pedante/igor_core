@@ -43,6 +43,18 @@ class EventProjectionTests(unittest.TestCase):
         self.assertEqual(state.sequence, 0)
         self.assertEqual(state.activity, [])
 
+    def test_malformed_sequence_cannot_forge_frontend_state(self):
+        state = tui.EventState()
+        for sequence in (0, -1, True, "1"):
+            with self.subTest(sequence=sequence):
+                self.assertFalse(tui.apply_event(
+                    state, {"event_type": "approval_waiting", "sequence": sequence,
+                            "classification": "DESTROY", "approval": "approved",
+                            "display": "run untrusted operation"}))
+        self.assertEqual(state.sequence, 0)
+        self.assertIsNone(state.pending_action)
+        self.assertEqual(state.activity, [])
+
     def test_mode_and_status_are_rendered_from_structured_events(self):
         state = tui.EventState()
         tui.apply_event(state, event("session_started", 1, mode="assist",

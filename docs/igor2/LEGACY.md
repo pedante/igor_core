@@ -19,8 +19,8 @@ give a removal condition.
 | Direct context probes | `core/ai/context.sh:14-92,218-245` probes host/network/files and filters Nextcloud/Redis/DB pattern names. Module context probes application state (`modules/nextcloud_docker/module.sh:583-640`). | ADAPT | Replace equivalent probes when observers and System Model facts become authoritative (Steps 8–12); preserve the reference envelope. |
 | Action catalog | `core/lib/module_loader.sh:877-932`, `core/ai/control.sh:15-100`, `core/ai/catalog.py:36-66` provide owned, tiered `ai_capabilities` and `run_igor_action`. General inputs, privilege, preconditions, verification, affected objects and events are absent. | KEEP/ADAPT | Step 11 generalizes this registry into the shared capability API, without a parallel catalog. |
 | Legacy `ai_tools` text | V1 hook remains registered/documented but is not an executable catalog source (`README.md` hook table; `modules/*/module.sh`). | TEMPORARY COMPATIBILITY | Remove after v1 consumers migrate (Steps 6/11/23); test prose cannot add executable tools. |
-| Interaction runtime and frontend events | `core/ai/tui.py:1-8,81-163` projects ordered backend events; `core/ai/events.sh:1-80`, command registry, pending choices, approvals and Guide/Assist/Executive exist. | KEEP/ADAPT | Steps 3/20 harden/reuse backend state. Frontend JSONL events stay distinct from future domain events. |
-| Safety and privilege | `core/ai/safety.sh:883-1041` owns tiers, approval and native sudo authentication for the approved operation. `executive_mode` setting translation remains (`:35-54`). | KEEP/ADAPT; TEMPORARY COMPATIBILITY for old setting | Steps 3/4/11 generalize privilege metadata through capabilities; remove old setting after persisted callers migrate. Autonomy never grants root. |
+| Interaction runtime and frontend events | `core/ai/core.sh` owns session command routing, approval state and an explicit ephemeral assistant-owned conversational choice; `core/ai/tui.py` projects ordered `core/ai/events.sh` activity events. Wave B guards short replies, local choice cancellation and malformed event sequence rejection. | KEEP/ADAPT | Reuse this backend in Step 20 and future interfaces. Frontend JSONL events stay distinct from future domain events; choice extraction remains limited to explicit alternatives in the latest reply. |
+| Safety and privilege | `core/ai/safety.sh` owns tiers, approval and native sudo authentication for the exact approved command. Wave B guards that a declined action never authenticates; existing PTY tests cover password isolation and failure. `executive_mode` setting translation remains (`:35-54`). | KEEP/ADAPT; TEMPORARY COMPATIBILITY for old setting | Step 11 can declare privilege requirements in capability metadata and feed the same backend execution gate; do not add a second sudo broker. Remove the old setting only after persisted callers migrate. Autonomy never grants root. |
 | Classic menu, line chat and `--extra` | `igor.sh:471-485,1097-1120`, `core/lib/ui.sh:224-362`, `core/ai/core.sh` retain older interfaces. `core/extras/extra.sh:229-303` directly probes applications. | TEMPORARY COMPATIBILITY | Retain until shared TUI/backend covers their workflows (Step 20), then consolidate/remove in Step 23. |
 | Unused hybrid AI path | `core/lib/ai_hybrid.sh:27-243` has a separate context/provider loop and Nextcloud fallback; no repository caller was found in Step 1. | REMOVE, pending external-use check | Remove after external use is checked (Steps 20/23); do not make it a second active backend. |
 | Core application leakage | `core/diagnose/phases.sh:450-453,644-648,923-927,1040-1044`, `core/lib/config.sh:13-45,145-200`, `core/lib/security_config.sh:20-60`, `core/lib/helpers.sh:35-61`, `core/extras/extra.sh:264-309` and recovery files embed Nextcloud/Docker/Cloudflare/Redis logic. Some paths gate on active capability, but core still owns deployment behavior. | ADAPT/REMOVE | Move domain behavior behind modules/integrations as Steps 5–12/18 make them authoritative. Preserve working gated workflows until then. |
@@ -58,3 +58,27 @@ their assigned roadmap steps.
 - Generic Healing configuration checks and startup module-config validation
   now respect active ownership; their broader core/configuration placement
   remains migration work.
+
+## Wave B / Steps 3–4 disposition
+
+- Keep the backend interaction state, registry and `events.sh` stream. The
+  choice record now states its owner/type/lifecycle, and a bare `cancel`
+  dismisses an active choice before provider input. The TUI rejects invalid
+  event sequence values. Neither change creates a second authority.
+- Keep the native sudo-through-PTY implementation. Approval precedes
+  authentication and exact command execution; a declined action emits no
+  privilege event and invokes no sudo command. A shared capability privilege
+  declaration is deferred to Step 11 because the current v1 catalog has no
+  general privilege metadata to pass through this gate.
+- Retain `exec on/off` and persisted `executive_mode` as compatibility with
+  current settings and callers. Retain classic line UI and `--extra` until
+  Step 20 covers their workflows. No Wave B compatibility path was proven
+  unused with an authoritative replacement, so none was removed.
+- Retain the `continue` failure recap derived from conversation text as
+  non-authoritative narrative. Its pause/resume command is backend-owned;
+  Step 15 can replace the recap source once structured operational outcomes
+  cover that history. Conversation prose cannot approve or elevate work.
+- `/stop` currently acts at an approval prompt or the next backend chat
+  prompt. Synchronous provider/tool calls are not
+  interrupted mid-call. Keep that boundary explicit in the UI until a tested
+  cancellation contract exists; do not imply preemptive cancellation.

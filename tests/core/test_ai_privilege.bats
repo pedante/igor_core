@@ -54,6 +54,18 @@ run_destroy_tool() {
     [[ "$output" != *SHOULD_NEVER_APPEAR* ]]
 }
 
+@test "declined sudo action never authenticates or reaches the approved operation" {
+    run run_sudo_tool 'n'
+    [ "$status" -eq 0 ]
+    [ ! -e "$IGOR_DIR/exact-marker" ]
+    [ ! -e "$IGOR_DIR/sudo-argv" ]
+    run cat "$IGOR_DIR/data/runtime/events.jsonl"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"event_type":"action_declined"'* ]]
+    [[ "$output" != *'"event_type":"privilege_waiting"'* ]]
+    [[ "$output" != *'"event_type":"privilege_result"'* ]]
+}
+
 @test "executive mode does not bypass DESTROY exact confirmation" {
     ai_mode=executive
     run run_destroy_tool 'yes'
