@@ -1,62 +1,45 @@
 ---
 name: Bug report
-about: Report a bug or issue with IGOR
+about: Report a bug or regression in Igor
 title: '[BUG] '
 labels: bug
 assignees: ''
 ---
 
-## Bug Description
+## Description
 
-A clear and concise description of what the bug is.
+What happened?
 
-## Steps to Reproduce
+## Steps to reproduce
 
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+1.
+2.
+3.
 
-## Expected Behavior
+## Expected behavior
 
-A clear and concise description of what you expected to happen.
+What should have happened?
 
-## Actual Behavior
+## Logs / screenshots
 
-A clear and concise description of what actually happened.
+Redact credentials, tokens, personal paths and other sensitive data.
 
-## Screenshots / Logs
+## System information
 
-If applicable, add screenshots or log output to help explain your problem.
+- Igor version / commit:
+- Distribution and version:
+- Architecture:
+- Interface used: full-screen TUI / classic UI / CLI / other
+- Active Igor modules:
+- AI provider/model, if relevant:
+- Docker/Compose version, if relevant:
+- Application/module version, if relevant:
 
-```bash
-# Paste logs here
-```
+## Additional context
 
-## System Information
+Include recent changes, whether this is reproducible, and any relevant configuration state.
 
-- **IGOR version:** (e.g., 1.0.0)
-- **Operating System:** (e.g., Raspberry Pi OS 12)
-- **Raspberry Pi model:** (e.g., Pi 3 Model B+)
-- **Docker version:** (run `docker --version`)
-- **Docker Compose version:** (run `docker compose version`)
-- **Nextcloud version:** (if applicable)
+## Documentation check
 
-## Additional Context
-
-Add any other context about the problem here, such as:
-
-- Configuration file contents (redact sensitive data)
-- Recent changes to the system
-- Whether this is a new installation or an upgrade
-- Whether the issue occurs consistently or intermittently
-
-## Have You Checked the Documentation?
-
-- [ ] I have read the [ARCHITECTURE.md](docs/ARCHITECTURE.md) documentation
-- [ ] I have searched for existing issues
-- [ ] I have checked the troubleshooting section in the README
-
-## Additional Notes
-
-Add any other notes or observations about the issue here.
+- [ ] I checked the current [README](../../README.md)
+- [ ] I searched existing issues
