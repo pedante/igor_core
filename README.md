@@ -235,7 +235,7 @@ every password and API key. They live entirely in `secrets/` which is gitignored
 | `site.env` | `DOMAIN`, `NC_USER_NAME`, `INSTALL_DIR`, `HD_MOUNT` |
 | `db.env` | PostgreSQL + Nextcloud admin credentials |
 | `notifications.env` | SMTP host/user/password, `NOTIFY_FROM`, `NOTIFY_TO`, event toggles |
-| `mailcmd.env` | Full mailcmd config: IMAP/SMTP hosts, users, passwords, GPG key ID |
+| `mailcmd.env` | Legacy mail-control template (current `core/mailcmd/` implementation is unavailable) |
 | `onlyoffice.env` | JWT secret for OnlyOffice integration |
 | `anthropic.key` | Anthropic API key (single line) |
 | `openrouter.key` | OpenRouter API key (single line) |
