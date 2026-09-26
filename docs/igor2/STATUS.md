@@ -1,75 +1,94 @@
 # Igor 2 migration status
 
-Last architecture-package update: 2026-09-26
+Last updated: 2026-09-26
+
+## Baseline
+
+The `igor2` branch was created from current `master` after the recent TUI/runtime/module work. The architecture package is being reconciled to that baseline before implementation starts.
+
+Roadmap descriptions are **not evidence that functionality is missing**. Step 1 must inspect current code/tests first.
 
 ## Current stage
 
-**Pre-implementation architecture package / Wave A preparation**
+**Wave A — Foundation / Step 1 ready**
 
-No Igor 2 subsystem should be considered implemented merely because it is described in this directory.
+No new Igor 2 architecture implementation has begun on this branch beyond documentation preparation.
 
-The current codebase remains the production implementation.
+## Strong foundations already present
 
-## Already achieved in the current codebase
+Preserve and formalize these:
 
-These are useful foundations to preserve and adapt:
+- full-screen Codex-like `--ai-tui`;
+- structured frontend JSONL event stream;
+- canonical session command registry and palette;
+- Guide / Assist / Executive modes;
+- READ / CHANGE / DESTROY classification and approval/explain/decline/stop flow;
+- structured provider/tool transactions and execution results;
+- pending conversational choice handling for numbered/textual replies;
+- native sudo authentication through the backend PTY with privilege events;
+- request/reference-data trust boundary and last-mile redaction;
+- bounded AI operational audit;
+- explicit module enable/disable policy;
+- owner-aware module hooks, menus and capability actions;
+- active-module filtering in diagnostics/healing and subsystem regression tests;
+- distro detection and package abstraction with Debian/Arch mappings;
+- existing action/capability catalog and `run_igor_action`;
+- recovery journal, diagnostics, healing and notifications.
 
-- Codex-like full-screen `--ai-tui`;
-- structured backend event stream;
-- canonical command registry/palette direction;
-- READ / CHANGE / DESTROY backend classification;
-- approval / decline / explain / stop workflow;
-- Guide / Assist / Executive interaction modes;
-- AI-powered explanation while backend owns authorization;
-- improved structured rendering and history/navigation direction;
-- existing module loader/hook registry;
-- existing capability catalog / `run_igor_action`;
-- secret scrubbing;
-- diagnostics, healing, recovery journal, notifications and GPG mail control.
+## Important corrections to the earlier plan
 
-## Known immediate concerns
+- Interaction Runtime is no longer greenfield; Step 3 is audit/hardening.
+- Privilege Broker is no longer greenfield; Step 4 is generalization/hardening.
+- Module Runtime v2 has a substantial current implementation; Step 5 must reconcile/complete it, not replace it.
+- Platform Abstraction already has `distro.sh`/`pkg.sh`; Step 7 expands/tests them.
+- The existing AI frontend event stream is not the future Domain Event Bus.
+- The existing AI request boundary/reference envelope is a foundation for Step 12.
+- The old `core/mailcmd/` implementation is absent from the current tree. Email control should not be treated as a working subsystem to migrate.
 
-- conversational selection continuity needs deterministic runtime state;
-- privilege/elevation UX is not yet the desired per-operation broker;
-- active module behavior still leaks from filesystem discovery in some subsystems;
-- core still contains application-specific assumptions;
-- host/system knowledge is not yet a coherent System Model;
-- prompt/module knowledge injection is hook-heavy and mostly text-oriented;
-- README/current docs still describe legacy UI/module architecture as current behavior;
-- Debian/Arch support needs a deliberate platform abstraction and tests rather than broad claims.
+## Known architectural work still ahead
 
-## Next implementation focus
+- establish a trustworthy test/lint baseline and current legacy map;
+- remove/contain remaining application-specific core behavior;
+- define Module API v2 without proliferating hooks;
+- build a coherent System Model and observer framework;
+- unify diagnose/healing check semantics;
+- generalize capabilities beyond AI-specific catalog terminology;
+- compose relevant knowledge/state/history instead of broad direct context probing;
+- add operational Domain Event Bus and Igor-owned automation;
+- add relationships/deployments and prove module composition;
+- evolve audit/journal data into operational history and baselines;
+- converge interfaces on the shared engine;
+- eventually make the new TUI the default Igor human interface.
 
-### Wave A — Foundation
+## Wave A / Step 1 objective
 
-1. Perform Step 1 Legacy Audit against the current repository and expand `LEGACY.md` only with evidence.
-2. Turn critical Igor 2 invariants into targeted tests where practical.
-3. Resolve only the architectural questions needed before Wave B/C implementation.
+Step 1 should:
 
-### Then Wave B — Runtime & Safety
+1. audit the current repository against Igor 2 invariants;
+2. classify significant current/legacy paths;
+3. identify which later roadmap outcomes are already implemented or partial;
+4. establish the real test/lint/CI baseline;
+5. update `LEGACY.md` and this file from evidence;
+6. identify architecture regression tests that Step 2 should add;
+7. make only small, clearly safe baseline/documentation fixes.
 
-- Step 3 Interaction Runtime;
-- Step 4 Privilege Broker.
-
-### Then Wave C — Module Platform
-
-- Step 5 Module Runtime v2;
-- Step 6 Module API v2.
+It must not begin Module API v2, System Model, module splitting or other later-wave architecture.
 
 ## Do not do yet
 
-- Do not split `nextcloud_docker` into separate modules.
-- Do not rewrite all current hooks.
-- Do not choose a persistence database before System Model requirements are concrete.
-- Do not rewrite working mail transport solely to move files.
-- Do not make `./igor.sh` default to the new TUI until migration acceptance criteria are met.
-- Do not claim Arch/Debian-family support beyond what tests demonstrate.
+- do not split `nextcloud_docker`;
+- do not replace the current module loader;
+- do not replace the TUI/event/approval runtime with a second implementation;
+- do not rewrite all v1 hooks;
+- do not choose a persistence database before System Model requirements are concrete;
+- do not re-create mail control merely because old docs referenced it;
+- do not make `./igor.sh` default to the new TUI yet;
+- do not claim cross-distro support beyond tested behavior.
 
-## Package maintenance
+## After each substantial Igor 2 task
 
-After a substantial Igor 2 task:
-
-- update this file with the current wave and completed milestones;
-- update `LEGACY.md` if a compatibility path was added/removed;
-- add accepted architectural decisions to `DECISIONS.md`;
-- keep details in code/tests rather than expanding this status file into a changelog.
+- update this file;
+- update `LEGACY.md` when compatibility/debt changes;
+- record accepted decisions in `DECISIONS.md`;
+- update current subsystem docs when behavior actually changes;
+- keep detailed implementation notes in code/tests, not this status file.
