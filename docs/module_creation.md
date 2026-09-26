@@ -708,7 +708,7 @@ providers of the `nextcloud` and `docker` capabilities, respectively.
 
 Do not place instructions, runtime logs, credentials, or arbitrary schemas in
 tool metadata. Use the reference-data hooks for descriptions and observations.
-See the [AI architecture report](../aireport.md) for migration details and limits.
+For Igor 2 AI/context migration direction, see [igor2/ARCHITECTURE.md](igor2/ARCHITECTURE.md) and [igor2/ROADMAP.md](igor2/ROADMAP.md).
 
 ---
 
