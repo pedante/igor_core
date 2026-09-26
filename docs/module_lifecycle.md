@@ -1,5 +1,7 @@
 # Module activation and architecture
 
+> **Current implementation.** This document describes the activation/runtime model that exists today and is the starting point for Igor 2 Module Runtime work. The target architecture is in [igor2/ARCHITECTURE.md](igor2/ARCHITECTURE.md) and [igor2/MODULE_API.md](igor2/MODULE_API.md). Igor 2 should evolve this runtime rather than create a parallel loader.
+
 ## Assessment
 
 The manifest loader and hook registry are a sound basis for detachable modules.
