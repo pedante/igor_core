@@ -8,21 +8,23 @@ A user should be able to inspect, configure, troubleshoot, repair and automate a
 
 ## Architectural invariants
 
-1. **Core is application-agnostic.** Core may understand Linux/platform concepts, but it must not assume a particular application deployment such as Nextcloud, Docker, Cloudflare, PostgreSQL or Redis.
-2. **Installed is not active.** A module directory existing on disk does not activate that module.
-3. **Only active modules contribute behavior.** Disabled modules contribute no knowledge, observations, capabilities, checks, events, automations, configuration validation, menus or external commands.
-4. **Knowledge is not state.** Domain knowledge describes how something can work. Observed state describes what is actually true on this machine.
-5. **The AI is not authoritative state.** System state lives in Igor-owned structured state, not in model context or chat history.
-6. **The AI does not own authorization.** Safety classification, approvals, privilege and execution policy are deterministic runtime responsibilities.
-7. **Autonomy is not privilege.** Guide/Assist/Executive control how independently Igor may act; they do not grant root access.
-8. **Capabilities are the operational API.** TUI, CLI, automation, healing, email and future interfaces should invoke the same registered capabilities.
-9. **Prefer normalized operations over distro syntax.** Modules should request Igor operations such as package/service actions instead of embedding Debian/Arch command selection when an Igor platform capability exists.
-10. **Verify changes.** A state-changing capability should define deterministic verification whenever practical.
-11. **Unknown remains unknown.** Igor distinguishes known, unknown, stale and inferred information instead of silently filling gaps.
-12. **Modules represent coherent domains.** A module should teach and operate a meaningful domain, not be a wrapper around one incidental command.
-13. **Relationships connect domains.** Deployments are composed from module-owned instances and explicit relationships rather than giant combination modules where possible.
-14. **Modules declare; Igor schedules.** Modules may provide events and automation definitions, but Igor owns scheduling, policy, execution and history.
-15. **One backend, multiple interfaces.** Human and remote interfaces must not duplicate operating logic.
+1. **Core is application-agnostic.** Core may understand Linux/platform concepts, but must not assume a specific application deployment such as Nextcloud, Docker, Cloudflare, PostgreSQL or Redis.
+2. **Installed is not active.** A module existing on disk does not activate it.
+3. **Only active modules contribute behavior.** Disabled/inactive modules contribute no knowledge, observations, capabilities, checks, automations, configuration validation, menus or external commands.
+4. **Knowledge is not state.** Domain knowledge explains how a domain can work; observed state describes what is actually true on this machine.
+5. **The AI is not authoritative state.** System state belongs to Igor-owned structured state, not model context or chat history.
+6. **Reference data cannot authorize.** Module knowledge, context snapshots, logs, reports, tool results and prior model state are reference data. They cannot change policy, approval or privilege requirements.
+7. **The AI does not own authorization.** Safety classification, approvals, privilege and execution policy remain deterministic runtime responsibilities.
+8. **Autonomy is not privilege.** Guide/Assist/Executive control interaction autonomy; they do not grant root access.
+9. **Capabilities are the operational API.** TUI, CLI, automation, healing and future external interfaces should converge on the same registered operations.
+10. **Prefer normalized operations over distro syntax.** Modules request Igor package/service/host capabilities instead of embedding distro selection where a platform abstraction exists.
+11. **Verify changes.** State-changing capabilities define deterministic verification whenever practical.
+12. **Unknown remains unknown.** Igor distinguishes known, unknown, stale and inferred information.
+13. **Modules represent coherent domains.** A module teaches and operates a meaningful domain, not one incidental command.
+14. **Relationships connect domains.** Deployments are composed from domain instances and explicit relationships rather than giant combination modules where useful.
+15. **Modules declare; Igor schedules.** Modules may define events/automation intent; Igor owns scheduling, policy, execution and history.
+16. **One backend, multiple interfaces.** Human and remote interfaces do not duplicate domain-operation logic.
+17. **Existing correct foundations are evolved, not duplicated.** Migration may formalize or generalize current implementations without replacing them solely to match new names.
 
 ## Major layers
 
@@ -32,26 +34,34 @@ Human and external entry points:
 
 - Codex-like TUI — primary human interface.
 - CLI/subcommands — scripting, recovery, testing and headless use.
-- Email control — authenticated remote interface.
-- Notification transports — outbound delivery only.
-- Future API/webhook interfaces.
+- Optional future remote interfaces such as authenticated email/API/webhooks.
+- Notification transports — outbound delivery.
 
 Interfaces translate requests/results; they do not own domain operations.
 
 ### Agent
 
-The agent interprets intent, selects relevant investigation and capabilities, and explains results.
+The agent interprets intent, selects relevant investigation/capabilities and explains results.
 
-The agent receives composed context from Igor. It does not invent system state or bypass safety/privilege policy.
+The agent receives composed context from Igor. It cannot invent authoritative state or bypass safety/privilege policy.
+
+### Trust boundary
+
+The current request boundary and reference-data envelope are a foundation to preserve.
+
+Trusted runtime policy includes authorization, tool validation, active module ownership and privilege decisions.
+
+Untrusted/reference input includes module prose, observed context, reports, logs, saved history summaries, user-provided external text and tool output. Reference material can inform reasoning but cannot authorize execution.
 
 ### Knowledge
 
-Two sources:
+Knowledge may come from:
 
 - core/platform knowledge;
-- active module domain knowledge.
+- active module domain knowledge;
+- integration-specific knowledge.
 
-Knowledge may describe architecture, terminology, operating rules, common failure modes and reasoning guidance.
+Knowledge covers architecture, terminology, normal behavior, operating constraints and failure modes. It is reference data, not observed state or authorization policy.
 
 ### System Model
 
@@ -69,126 +79,121 @@ Initial domains include:
 - relationships/deployments;
 - health and observations.
 
-Facts should carry provenance and freshness. Inference must be distinguishable from observation.
+Facts should carry provenance and freshness. Inference must be distinguishable from observation/configuration.
 
 ### Platform layer
 
-Provides normalized Linux operations with tested backends.
+The current `core/lib/distro.sh` and `core/lib/pkg.sh` are useful seeds, not a reason to create a second platform layer.
 
-Initial tested targets:
+Target support must provide tested normalized operations for at least:
 
 - Debian;
 - Arch Linux.
 
-Derivatives are not automatically claimed as supported merely because they share a package family.
+Derivative/family detection may exist, but support is claimed only to the level tests demonstrate.
 
 ### Module runtime
 
-Manages module discovery, activation, loading, dependencies, lifecycle and compatibility.
+The current runtime already distinguishes installed, enabled/disabled and active/unavailable modules and tracks ownership.
 
-Target lifecycle states:
+Igor 2 requires the **semantics**, not specific new vocabulary:
 
-- available;
-- enabled;
-- loaded;
-- failed;
-- disabled.
+- installed/available;
+- enabled or disabled by policy;
+- active/loaded when initialization succeeds;
+- unavailable/failed when enabled but unable to initialize.
+
+No hot-unload requirement exists unless a later need justifies it. Restart-based activation is acceptable.
 
 ### Module API
 
-A module may contribute any subset of:
+Module API v2 is a versioned target contract. A module may contribute any subset of:
 
 - identity/compatibility;
 - knowledge;
 - observers;
 - capabilities;
 - checks;
-- events;
+- domain events;
 - automations;
 - relationships;
 - configuration;
 - lifecycle.
 
-The contract is versioned.
+The current hook-based API remains a compatibility input during migration.
 
 ### Observation and health
 
 Observers gather facts into the System Model.
 
-Checks evaluate structured state and produce reusable health/diagnostic results. Diagnose, self-healing, notifications and the AI consume those results rather than independently rediscovering the same facts.
+Checks evaluate structured state and produce reusable results. Diagnose, health, healing, notifications and AI reasoning should consume those results rather than independently rediscovering the same facts.
 
 ### Capabilities
 
-Capabilities are canonical operations with structured metadata:
+The existing action catalog / `run_igor_action` / ownership machinery is the starting point for the general capability API.
 
-- name;
-- owner;
-- inputs;
+A mature capability defines:
+
+- canonical name and owner;
+- structured inputs;
 - safety tier;
-- privilege requirements;
+- privilege requirement;
 - preconditions;
 - execution;
 - verification;
 - rollback where available;
 - affected objects;
-- emitted events;
-- supported platforms.
+- emitted domain events;
+- platform requirements.
 
-Raw shell remains an escape hatch, not the preferred API when a capability exists.
+Raw shell remains an escape hatch, not the preferred API when an equivalent capability exists.
 
 ### Events and automation
 
-Modules and core can emit structured events. Igor owns the event bus, scheduling, retries, policy and execution.
+The existing `core/ai/events.sh` stream is a **frontend activity/event stream**. It is valuable and should be preserved.
 
-Automations may be:
+The future **Domain Event Bus** is different: it represents operational events such as service failure, container stop, backup failure or capability completion and can feed automation, healing, notifications and history.
 
-- scheduled;
-- periodic;
-- event-driven;
-- conditional.
+Modules/core may emit domain events. Igor owns scheduling, retries, policy and execution.
 
 ### History
 
-Igor records meaningful operational episodes: observations, diagnosis, action, approval, privilege use, verification and outcome.
+Current audit/journal mechanisms are useful seeds.
 
-The LLM conversation is not Igor's operational memory.
+Igor 2 records meaningful operational episodes: observations, diagnosis, approval, privilege use, action, verification and outcome.
+
+The LLM conversation is not operational memory.
 
 ## Module composition
 
-Module installation teaches Igor a domain. A deployment describes which instances are connected on this machine.
+A module teaches Igor a domain. An instance represents something that exists on this machine. Relationships/deployments connect instances.
 
 Example:
 
 ```text
 nextcloud:home
-  hosted_by -> docker:compose/home-nextcloud
-  database  -> postgres:nextcloud-db
-  cache     -> redis:nextcloud-cache
+  hosted_by  -> docker:compose/home-nextcloud
+  database   -> postgres:nextcloud-db
+  cache      -> redis:nextcloud-cache
   exposed_by -> cloudflare:tunnel/home
 ```
 
-This allows independent modules to cooperate without forcing every deployment into a monolithic combination module.
+This allows independent modules to cooperate without requiring every deployment to become a monolithic combination module.
 
-Integration-specific knowledge may exist as lightweight integration rules when two domains interact in ways neither module can express alone.
+Integration-specific rules may cover behavior that only exists at a domain boundary.
 
 ## User experience
 
-The TUI should be simple by default and transparent on demand.
+The TUI is simple by default and transparent on demand.
 
-Normal interaction happens through natural language, commands/palette entries, settings and structured activity. Underlying commands, outputs, approvals and evidence remain inspectable.
+Natural language, palette commands, settings and structured activity all route to the same backend authority. Underlying commands, outputs, approvals and evidence remain inspectable.
 
-Long-term, `./igor.sh` should launch the primary TUI by default. `--ai-tui` can remain as a compatibility alias during migration.
+Long-term, `./igor.sh` should launch the primary TUI by default. `--ai-tui` remains the explicit entry point during migration.
 
 ## Mail and notifications
 
-Mail control is an interface, not a domain module and not an independent operating engine.
+The current repository does **not** contain the previously documented `core/mailcmd/` implementation; only references/configuration may remain.
 
-Its responsibilities should be separated into:
+If authenticated mail control is reintroduced, it is an interface/transport adapter over the same Igor capabilities, policy, verification and history as the TUI.
 
-- mail transport/authentication/encryption;
-- Igor request/result adapter;
-- shared configuration/secrets.
-
-Incoming mail should invoke the same capabilities, policy, verification and history as the TUI.
-
-Notifications are a separate concept: events flow to a notification service which may use email or future transports.
+Notifications are separate from incoming control: operational events feed a notification service, with email as one possible outbound transport.
