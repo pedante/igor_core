@@ -25,7 +25,7 @@ all belong in `secrets/`.
 | Mount paths specific to your machine | `secrets/site.env` |
 | SMTP host, user, password | `secrets/notifications.env` |
 | DB + Nextcloud admin passwords | `secrets/db.env` |
-| IMAP/SMTP credentials for mailcmd | `secrets/mailcmd.env` |
+| Legacy IMAP/SMTP mail-control credentials | `secrets/mailcmd.env` (template retained; current `core/mailcmd/` implementation is unavailable) |
 | API keys | `secrets/anthropic.key`, `secrets/openrouter.key` |
 
 ## Rules
