@@ -142,6 +142,81 @@ privilege requirement, but Igor's existing runtime remains the authority for
 authorization and OS authentication. A future third-party trust model can add
 provenance/permissions without changing the contribution envelope.
 
+### D023 — Core is internally separated into testable services/components
+
+Core remains one conceptual authority boundary, but configuration, secrets,
+canonical paths/ownership, persistent state, module registration, capability
+registration, compatibility, authority/privilege, events, machine memory,
+context/AI and provenance/audit must not become one undifferentiated global
+implementation. This is a contract/dependency rule, not a microservices
+requirement.
+
+### D024 — Roadmap completion is evidence-based
+
+A foundation/wave is not complete because its design prose exists. Completion
+requires the relevant proof categories defined in EXECUTION.md: contract,
+regression, real vertical slice, inspection, and migration/recovery where
+persistent state/contracts change. Exit criteria should be falsifiable and
+automated where practical.
+
+### D025 — Observability begins with subsystem authority
+
+A subsystem exposes a minimal inspection surface when it becomes authoritative.
+Later TUI work consolidates those surfaces; it does not postpone observability
+until the UI consolidation step.
+
+### D026 — Persistent ownership classes are explicit
+
+Code/package content, configuration, secrets, persistent state, machine memory,
+knowledge, learned local artifacts, investigations, operational history and
+disposable runtime have distinct ownership/lifecycle semantics. Modules may
+declare schemas/contributions but do not store mutable machine-specific state
+inside their installed package.
+
+### D027 — Secret use is mediated and auditable
+
+Secret storage and secret use are separate concerns. Secret values do not enter
+AI context by default. Consumers should receive references or non-secret status
+where sufficient. Authorized value access is mediated by Igor and should be
+auditable where practical without logging the value.
+
+### D028 — Recovery semantics belong to capabilities/plans
+
+Igor does not guarantee generic rollback for arbitrary system work.
+State-changing capabilities declare recovery semantics such as reversible,
+best-effort, compensating action, snapshot-required or irreversible. Plans
+surface these semantics before execution and verify recovery/compensation where
+practical.
+
+### D029 — Machine memory separates observed state, desired state and responsibility
+
+Igor-owned structured memory distinguishes what is observed, configured or
+user-declared, desired, inferred, stale/unknown and what Igor has been asked to
+maintain/watch. Investigation findings and verification outcomes may reference
+this model. Chat history is never the authoritative substitute.
+
+### D030 — Multi-step system work uses structured plans
+
+Installation, configuration, repair and migration workflows compose registered
+capabilities into inspectable plans with preconditions, ordered steps,
+approval/privilege points, affected objects, recovery semantics and
+verification. AI may propose/explain plans; deterministic Igor runtime resolves
+providers, authorizes, executes and verifies them.
+
+### D031 — Persistent migrations require explicit cutover and recovery
+
+Any change to persistent layout or contract defines source, target, validation,
+idempotency/re-entry, verification, recovery/backup behavior where needed and a
+cutover rule that prevents indefinite dual-source ambiguity.
+
+### D032 — ServerMind and Steward are design influences, not dependencies
+
+The discovery/machine-model lessons adopted from ServerMind and the durable
+state/desired-state/planning/investigation lessons adopted from Steward are
+recorded in INFLUENCES.md. Igor adapts those ideas to its own local Linux,
+module, capability and deterministic authority model; no compatibility or
+runtime dependency on either project is implied.
+
 ---
 
 ## Open decisions

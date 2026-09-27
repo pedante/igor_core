@@ -99,3 +99,24 @@ verification belongs with its later contract. D020 now sets the core versus
   and diagnose functions. Make that test version-aware when `system` migrates;
   v2 permits a package with only knowledge and observers. Do not restore empty
   hooks merely to satisfy the old test.
+
+
+## Cross-cutting execution implications
+
+The ServerMind/Steward-derived machine-model and execution lessons are now
+explicit target contracts, but they do not authorize premature rewrites.
+
+- Existing direct probes remain ADAPT paths until authoritative observers/System
+  Model facts replace them and regression/inspection proof is green.
+- Existing configuration/secrets paths remain migration inputs; broad Module v2
+  migration must not make their current mixed ownership layout permanent.
+- `system` is the Wave C v2 proving module. `nextcloud_docker` remains v1
+  during Wave C and becomes the first broader post-Wave-C vertical slice.
+- Existing journal rollback hooks remain useful compatibility/recovery inputs,
+  but Igor 2 does not promise generic rollback; capability/plan recovery
+  semantics become authoritative when Step 11 is implemented.
+- Chat/context/history compatibility paths remain non-authoritative. Durable
+  machine memory and investigations replace them only when structured state
+  and migration/recovery proof exist.
+- Inspection is added with each new authoritative subsystem; later TUI work
+  consolidates it rather than introducing it for the first time.

@@ -25,8 +25,55 @@ A user should be able to inspect, configure, troubleshoot, repair and automate a
 15. **Modules declare; Igor schedules.** Modules may define events/automation intent; Igor owns scheduling, policy, execution and history.
 16. **One backend, multiple interfaces.** Human and remote interfaces do not duplicate domain-operation logic.
 17. **Existing correct foundations are evolved, not duplicated.** Migration may formalize or generalize current implementations without replacing them solely to match new names.
+18. **Ownership classes are explicit.** Code, configuration, secrets, persistent state, machine memory, knowledge, learned local artifacts, investigations, operational history and disposable runtime do not silently share one storage/ownership model.
+19. **Authority is inspectable.** A subsystem exposes a minimal inspection surface when it becomes authoritative; observability is not postponed to a late UI phase.
+20. **Secret use is controlled as well as secret storage.** Secret values do not enter AI context by default, and authorized value access should be auditable where practical.
+21. **Rollback is capability-specific.** Igor never promises universal rollback for arbitrary system operations; recovery semantics are declared by the capability/plan.
+22. **Persistent migrations are explicit.** Storage/contract migrations define source, target, validation, idempotency, cutover, verification and recovery.
+23. **Multi-step work uses structured plans.** AI may propose or explain a plan, but deterministic runtime resolves capabilities, policy, privilege, execution and verification.
+24. **Machine memory separates reality, intent and responsibility.** Observed state, configured/user-declared state, desired state, responsibilities and investigation findings remain distinguishable and provenance-bearing.
+
+## Ownership classes
+
+The target architecture separates at least:
+
+- module/package code — replaceable executable/reference content;
+- configuration — validated user/system intent;
+- secrets — protected credentials and secret references;
+- persistent state — Igor-managed component/runtime state that must survive restart;
+- machine memory — observed/configured/desired facts, responsibilities, findings and history references;
+- knowledge — non-authoritative operating/domain understanding;
+- learning — evidence-backed local runbooks, patterns and adaptations;
+- investigations — durable problem-solving state;
+- operational history — actions, approvals, verification and outcomes;
+- runtime — disposable locks, IPC, process/session state and temporary files.
+
+Modules may declare schemas and contributions, but machine-specific mutable data does
+not live inside the installed module package.
 
 ## Major layers
+
+### Core internal services
+
+Core is one authority boundary, not one undifferentiated implementation. The
+target internal services/components include:
+
+- session/task state;
+- canonical path and ownership;
+- configuration;
+- secrets;
+- persistent state;
+- module/extension registry;
+- capability registry;
+- compatibility evaluation;
+- approval/authority and privilege mediation;
+- events;
+- machine memory/System Model;
+- context/AI gateway;
+- provenance/audit.
+
+These may remain in one process/repository. The requirement is explicit
+contracts, dependency direction and independent testability, not microservices.
 
 ### Interfaces
 
@@ -41,9 +88,9 @@ Interfaces translate requests/results; they do not own domain operations.
 
 ### Agent
 
-The agent interprets intent, selects relevant investigation/capabilities and explains results.
+The agent interprets intent, selects relevant investigations/capabilities, proposes structured plans and explains results.
 
-The agent receives composed context from Igor. It cannot invent authoritative state or bypass safety/privilege policy.
+The agent receives composed context from Igor. It cannot invent authoritative state, silently turn inference into fact, expose secrets by default, claim execution success without verification or bypass safety/privilege policy.
 
 ### Trust boundary
 
@@ -51,7 +98,12 @@ The current request boundary and reference-data envelope are a foundation to pre
 
 Trusted runtime policy includes authorization, tool validation, active module ownership and privilege decisions.
 
-Untrusted/reference input includes module prose, observed context, reports, logs, saved history summaries, user-provided external text and tool output. Reference material can inform reasoning but cannot authorize execution.
+Untrusted/reference input includes module prose, observed context, reports, logs, saved history summaries, investigation notes, user-provided external text and tool output. Reference material can inform reasoning but cannot authorize execution.
+
+Secret values are outside normal AI reference context. Most AI reasoning should
+receive typed statements such as "credential configured" rather than the value.
+Where an integration genuinely needs the value, Igor mediates that access and
+records appropriate audit metadata without logging the secret itself.
 
 ### Knowledge
 
@@ -77,9 +129,33 @@ Initial domains include:
 - Igor runtime/modules;
 - application/domain instances;
 - relationships/deployments;
-- health and observations.
+- health and observations;
+- configured/user-declared state;
+- desired state;
+- responsibilities Igor has been asked to maintain/watch;
+- installation/configuration records;
+- findings and verification outcomes.
 
-Facts should carry provenance and freshness. Inference must be distinguishable from observation/configuration.
+Facts should carry owner, provenance and freshness. Inference must be
+distinguishable from observation/configuration. Desired state is not rewritten
+to match observed state merely because drift exists.
+
+### Machine memory, desired state and responsibilities
+
+"Memory" in Igor means durable structured machine understanding, not model
+conversation history.
+
+Igor should be able to answer separately:
+
+- what is true now;
+- what is configured or user-declared;
+- what should be true;
+- what Igor is responsible for maintaining or watching;
+- what is inferred and with what evidence;
+- what was previously changed and verified.
+
+This separation enables drift detection, reconciliation, proactive discovery
+and provider-independent reasoning.
 
 ### Platform layer
 
@@ -126,7 +202,30 @@ The current hook-based API remains a compatibility input during migration.
 
 Observers gather facts into the System Model.
 
+Discovery is deterministic infrastructure, not a model-only activity. An
+observer declares ownership, cost/freshness, privilege and typed output as
+needed. Consumers reuse those facts instead of repeatedly issuing independent
+probes.
+
 Checks evaluate structured state and produce reusable results. Diagnose, health, healing, notifications and AI reasoning should consume those results rather than independently rediscovering the same facts.
+
+### Investigations
+
+A troubleshooting problem can outlive one prompt or provider call. Igor may
+therefore maintain a durable investigation containing, as appropriate:
+
+- problem/question;
+- evidence;
+- hypotheses;
+- decisions/choices;
+- actions;
+- findings;
+- verification;
+- resolution/status.
+
+The AI can reason over an investigation and propose the next useful question or
+capability. The investigation record itself is Igor-owned structured state and
+does not grant authorization.
 
 ### Capabilities
 
@@ -140,13 +239,29 @@ A mature capability defines:
 - privilege requirement;
 - preconditions;
 - execution;
-- verification;
-- rollback where available;
+- deterministic verification where practical;
+- recovery semantics (reversible, best-effort, compensating action,
+  snapshot-required or irreversible);
 - affected objects;
 - emitted domain events;
-- platform requirements.
+- platform requirements;
+- secret references/access requirements when applicable.
 
 Raw shell remains an escape hatch, not the preferred API when an equivalent capability exists.
+
+### Plans, installation and configuration
+
+Complex installation, configuration, repair and migration work should compose
+registered capabilities into an inspectable plan rather than rely on one opaque
+model-authored command sequence.
+
+A plan identifies intended outcome, preconditions, ordered steps, affected
+objects, approval/privilege points, recovery semantics and verification. The AI
+may propose the plan; Igor resolves providers, applies policy, executes and
+verifies it.
+
+Successful installation/configuration updates the System Model and operational
+history so Igor understands what was created/configured and why.
 
 ### Events and automation
 
@@ -160,9 +275,27 @@ Modules/core may emit domain events. Igor owns scheduling, retries, policy and e
 
 Current audit/journal mechanisms are useful seeds.
 
-Igor 2 records meaningful operational episodes: observations, diagnosis, approval, privilege use, action, verification and outcome.
+Igor 2 records meaningful operational episodes: observations, diagnosis,
+investigation references, approval, privilege use, action, verification and
+outcome.
 
 The LLM conversation is not operational memory.
+
+### Learning
+
+Igor may retain evidence-backed local operating experience such as patterns,
+runbooks, successful investigation procedures and symptom/cause/resolution
+relationships.
+
+Learned artifacts:
+
+- keep provenance and evidence;
+- are separate from installed module files;
+- remain reference material unless deliberately promoted into a trusted
+  executable capability through a later review process;
+- can be reset without replacing the module package.
+
+This allows modules to stay portable while local experience evolves.
 
 ## Module composition
 

@@ -13,7 +13,9 @@ For Igor 2 work, also read:
 
 1. [docs/igor2/README.md](docs/igor2/README.md)
 2. [docs/igor2/STATUS.md](docs/igor2/STATUS.md)
-3. only the Igor 2 documents relevant to the task
+3. [docs/igor2/EXECUTION.md](docs/igor2/EXECUTION.md) before implementing or closing a roadmap wave
+4. [docs/igor2/INFLUENCES.md](docs/igor2/INFLUENCES.md) when changing discovery, memory, plans, learning or AI/system boundaries
+5. only the remaining Igor 2 documents relevant to the task
 
 Before a roadmap wave, verify the working branch contains the intended current `master` baseline. Do not audit or migrate from a stale branch.
 
@@ -24,8 +26,9 @@ For target architecture and migration decisions, use this order:
 1. `docs/igor2/ARCHITECTURE.md`
 2. accepted decisions in `docs/igor2/DECISIONS.md`
 3. `docs/igor2/MIGRATION.md`
-4. `docs/igor2/ROADMAP.md`
-5. current implementation documentation
+4. `docs/igor2/EXECUTION.md`
+5. `docs/igor2/ROADMAP.md`
+6. current implementation documentation
 
 The code and current docs remain the authority for how Igor works **today**. Igor 2 documents describe the target and migration boundaries. If current behavior conflicts with a target invariant, surface the conflict instead of silently inventing a third design.
 
@@ -84,6 +87,14 @@ A roadmap item may already be partly or substantially implemented. Inspect befor
 - Do not split `nextcloud_docker` before the Module API/composition contracts are ready.
 - Do not use chat history as authoritative operational state.
 - Do not expand scope unless repository evidence shows a cross-cutting dependency.
+- Treat Core as internally separated services/components; do not solve coupling with new global helpers that every subsystem reaches into.
+- A new authoritative subsystem must expose a minimal inspection surface for its owned state, availability and provenance.
+- Do not declare a wave complete from prose alone: require contract, regression, vertical-slice, inspection and migration/recovery proof as defined in `docs/igor2/EXECUTION.md`.
+- Persistent layout changes require explicit migration, idempotency, verification and recovery semantics.
+- Secret values do not enter AI context by default; secret-value access should be auditable where practical.
+- Rollback is capability-specific. Do not promise generic undo for arbitrary system operations.
+- During Wave C, use `system` as the incremental v2 reference and keep `nextcloud_docker` on v1.
+- Do not freeze current mixed config/secret/state storage assumptions into Module API v2; broad module migration waits for the Ownership Foundation gate.
 - If an unresolved decision would create a durable public contract, stop and surface the decision.
 
 ## Current Module API v1
@@ -120,6 +131,8 @@ Common checks:
 - `git diff --check`
 
 For documentation-only edits, verify links/references and inspect the final diff.
+
+For roadmap completion, also verify the evidence categories in `docs/igor2/EXECUTION.md`; a green test suite alone does not prove a missing vertical slice, inspection surface or persistent migration.
 
 Do not hide pre-existing baseline failures by restoring unrelated files or changing behavior outside the task.
 

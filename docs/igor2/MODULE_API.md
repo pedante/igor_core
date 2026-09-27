@@ -14,6 +14,20 @@ can later implement the same JSON invocation protocol without changing module
 identity or contribution metadata. A declared unsupported runtime is
 unavailable with a clear reason, never guessed as Bash.
 
+### Execution and ownership boundary
+
+Wave C implements the accepted contribution/handler contract without turning
+the current repository layout into a permanent storage API. Module v2 may
+declare configuration/state/secret needs, but canonical paths, mutable
+machine-specific storage and secret-value access are owned by Igor services,
+not by arbitrary paths inside a module package.
+
+Wave C uses a small part of `system` as the incremental v2 reference and keeps
+`nextcloud_docker` on v1. Completion follows `EXECUTION.md`: strict contract
+proof, regression proof, a real `system` slice, module inspection, and any
+required migration/recovery proof. Broad application-module migration waits
+for the Ownership Foundation gate in `ROADMAP.md`.
+
 | Option | Repository consequence | Decision |
 |---|---|---|
 | Extend Bash hooks as the v2 API | Smallest immediate edit, but ties observers, actions and future events to shell function names, in-process globals and current hook output formats. | Reject as the public contract. Keep as v1 compatibility. |
