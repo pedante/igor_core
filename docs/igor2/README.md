@@ -13,7 +13,9 @@ For most Igor 2 work:
 3. Read only the task-relevant document:
    - `ROADMAP.md` — stable step names, development waves and current implementation status.
    - `MODULE_API.md` — target Module API v2.
-   - `MIGRATION.md` — compatibility and cleanup policy.
+   - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
+   - `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.
+   - `INFLUENCES.md` — ServerMind/Steward lessons intentionally adopted by Igor.
    - `DECISIONS.md` — accepted and unresolved architectural decisions.
    - `LEGACY.md` — significant current paths that must be kept, adapted or retired.
 
@@ -29,7 +31,7 @@ Important current foundations already exist. Igor 2 must **not** recreate them u
 
 ## Design goal
 
-Igor is a local AI-assisted operating layer for Linux. It should understand the host, gain domain knowledge and abilities through modules, investigate before acting, execute safely through deterministic capabilities, verify changes, retain useful operational history, and let users operate the machine without needing to know the underlying commands.
+Igor is a local AI-assisted operating layer for Linux. It should maintain typed machine memory, discover the host deterministically, distinguish observed state from desired state and responsibilities, gain domain knowledge and abilities through modules, preserve durable investigations, plan installation/configuration work through structured capabilities, execute safely, verify changes deterministically, retain useful operational history and local learning, and let users operate the machine without needing to know the underlying commands.
 
 The Codex-like TUI is the primary human-interface direction. CLI and future external interfaces remain useful, but should use the same backend state/capability engine rather than implement parallel operating logic.
 
@@ -38,6 +40,8 @@ The Codex-like TUI is the primary human-interface direction. CLI and future exte
 These files are architectural memory, not a second implementation.
 
 - Stable principles belong in `ARCHITECTURE.md`.
+- Execution/completion rules belong in `EXECUTION.md`.
+- Adopted external design lessons belong in `INFLUENCES.md`; they do not override accepted Igor decisions.
 - Accepted/open decisions belong in `DECISIONS.md`.
 - Temporary migration state belongs in `STATUS.md`.
 - Significant compatibility/debt belongs in `LEGACY.md`.
