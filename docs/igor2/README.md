@@ -13,6 +13,7 @@ For most Igor 2 work:
 3. Read only the task-relevant document:
    - `ROADMAP.md` — stable step names, development waves and current implementation status.
    - `MODULE_API.md` — target Module API v2.
+   - `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
    - `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.
    - `INFLUENCES.md` — ServerMind/Steward lessons intentionally adopted by Igor.

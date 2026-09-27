@@ -217,6 +217,48 @@ recorded in INFLUENCES.md. Igor adapts those ideas to its own local Linux,
 module, capability and deterministic authority model; no compatibility or
 runtime dependency on either project is implied.
 
+### D033 — System Model facts have independent state-class slots (Wave D)
+
+The canonical fact key is `(object_id, property, state_class)`. `observed`,
+`configured`, `user_declared`, `desired` and `inferred` are distinct slots;
+`known`, `unknown`, `stale` and `not_observed` are separate availability states.
+Intent never overwrites observation. Responsibility is a separate sourced
+`watch`/`maintain` record, not a fact value or execution authorization. Core
+owns typed validation, provenance, freshness and inspection. The minimum
+record, object identifiers and source rules are in
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
+
+### D034 — Igor commits observer output through one validation boundary (Wave D)
+
+Active v2 observers return declared typed data through the existing handler
+envelope. Igor stamps identity/time, validates the complete response and
+commits it to the System Model. Modules cannot write internal storage or
+declare themselves authoritative. Refresh is explicit/on-demand and bounded;
+there is no Wave D scheduler. A failed/invalid/timeout refresh makes prior
+values stale or new slots unknown without deleting last evidence. Privileged
+observers cannot create another sudo path. See
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
+
+### D035 — One structured check result feeds existing health workflows (Wave D)
+
+One active-owner check registry/runner produces reusable structured results.
+Diagnose and Healing retain their distinct workflows and receive projections
+from the same result. V1 `CHECK:` and `CHECK_RESULT` are compatibility inputs
+until each canonical check cuts over; one pass must not execute that check
+twice. Health text and remediation references are advisory and cannot
+authorize an action. See [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
+
+### D036 — Wave D defers a persistent observed-fact backend (Q003 remains open)
+
+Rebuildable observations and health results may be runtime snapshots. Existing
+authoritative configuration/user policy or verified installer records remain
+the persistent source for configured, desired and responsibility intent where
+such source exists; Wave D rehydrates them through a backend-independent
+System Model interface and adds no general intent editor or fact database.
+Absent sources remain absent. Q003 still decides whether observed snapshots or
+history need durable storage before Step 15. See
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
+
 ---
 
 ## Open decisions
@@ -271,3 +313,15 @@ Decision target: Step 11.
 If remote control is added, which READ/CHANGE/DESTROY operations may execute without an interactive TUI approval?
 
 Decision target: Step 22.
+
+### Q012 — Effective `system` threshold configuration
+
+`config/variables/system.env` documents `SYSTEM_RAM_WARN_MB=80`, but current
+RAM checks execute hardcoded 80 MiB critical / 150 MiB warning boundaries.
+Wave D preserves those executed boundaries and exposes them as effective
+check metadata. When the Ownership Foundation gives module configuration one
+authoritative validation path, which settings and migration rule should make
+host thresholds configurable without silently changing existing behavior?
+
+Decision target: before making `system.env` RAM settings authoritative; this
+does not block the Wave D memory slice.

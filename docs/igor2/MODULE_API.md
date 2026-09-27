@@ -4,6 +4,9 @@ Status: **accepted Wave C contract with the first implementation complete**. V1
 remains the compatibility API for modules that have not migrated. The existing
 loader remains the single activation authority; the strict validator,
 owner-aware contribution index and Bash adapter implement the initial v2 path.
+The kind-specific observer and check result/ingestion contract selected for
+Wave D is in [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md); it extends this
+existing envelope when implemented.
 
 ## Choice and boundary
 

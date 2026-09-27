@@ -198,6 +198,14 @@ Target at minimum:
 
 Do not claim full derivative support merely from `ID_LIKE` or package mappings.
 
+The Wave D design in [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md) keeps the
+existing helpers and limits immediate additions to read/query mechanisms and
+tested package/service mutation argv resolution. Actual new privileged
+execution remains behind the current gate and Step 11 generalization. New
+normalized resolution fails closed on unknown families; preserve legacy
+`pkg_install` callers until their cutover. Move Docker
+post-install behavior with its domain capability, not into `system`.
+
 ## Step 8 — System Model — FUTURE
 
 Create Igor-owned structured state for host, OS, storage, networking, services/packages, Igor runtime/modules, domain instances and relationships.
@@ -220,6 +228,11 @@ Every fact/intent record should expose owner, source/provenance and freshness as
 applicable. Start with stable interfaces and simple storage; do not choose a
 large persistence system prematurely.
 
+Wave D implementation uses the accepted D033/D036 record, availability,
+responsibility and source-backed intent contract in
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md). Observed facts are rebuildable
+in the first slice; Q003 remains open for later durable observed history.
+
 ## Step 9 — Observation Framework — FUTURE
 
 Standardize observers that populate the System Model.
@@ -234,6 +247,11 @@ Consumers should query Igor state instead of repeatedly issuing their own
 probes. Observer/fact provenance and freshness must be inspectable from the
 first authoritative implementation.
 
+Wave D extends the existing Wave C observer adapter with declared typed
+properties, runtime validation, atomic System Model updates and deterministic
+failure/staleness semantics. The invocation and inspection contract is in
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md); no general scheduler is added.
+
 ## Step 10 — Unified Health — PARTIAL
 
 Diagnostics and healing already share module check conventions and activation filtering, but remain separate discovery/execution paths.
@@ -241,6 +259,11 @@ Diagnostics and healing already share module check conventions and activation fi
 Unify the underlying structured observation/check result while keeping Diagnose and Self-healing as different user workflows.
 
 One check result should be reusable by health score, diagnosis, AI, healing, notifications and history.
+
+The Wave D gate selects one active-owner runner and structured result with
+v1 line adapters. Keep the distinct workflows, suppress a legacy check when
+its canonical v2 result becomes authoritative, and prove one execution per
+pass. See [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
 
 ## Step 11 — Capability System v2 — PARTIAL
 

@@ -140,6 +140,13 @@ Facts should carry owner, provenance and freshness. Inference must be
 distinguishable from observation/configuration. Desired state is not rewritten
 to match observed state merely because drift exists.
 
+The first authoritative host-intelligence contract is specified in
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md): a fact has separate
+`(object_id, property, state_class)` slots, availability is a different axis,
+responsibility is separate intent, and Igor validates observer output before
+writing state. This is the Wave D implementation contract; broader durable
+storage remains Q003.
+
 ### Machine memory, desired state and responsibilities
 
 "Memory" in Igor means durable structured machine understanding, not model

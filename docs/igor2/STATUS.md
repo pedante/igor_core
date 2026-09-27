@@ -2,6 +2,51 @@
 
 Last updated: 2026-09-27
 
+## Wave D Host Intelligence design gate
+
+**Design accepted; Steps 7–10 are not implemented.** The implementation
+contract and falsifiable exit checks are in
+[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md), with D033–D036 accepted in
+[DECISIONS.md](DECISIONS.md). Wave C remains the green implementation baseline.
+This gate changes documentation only; it does not claim a new runtime test run
+or Wave D completion.
+
+The gate was made on a clean `igor2` worktree at `a8dda91`
+(`origin/igor2`), with local `master` `76f04e3` confirmed as an ancestor.
+Wave C's recorded baseline is five `run_all.sh` suite groups passing (core
+288/288, modules 103/103, integration 40/40), with two environment skips
+inside core, and 216 Python tests plus 93 subtests passing. Ruff's 135
+pre-existing repository findings are unchanged by documentation. These are
+the **recorded Wave C results**, not tests rerun for this gate.
+
+Step 7 remains partial: Debian/Arch detection, logical package/service name
+mapping, install command selection and Python resolution exist; package
+query/remove/update, service operations and shared host read mechanisms do
+not. `pkg.sh` defaults unknown family resolution to Debian and owns Docker
+post-install work, both explicit migration points. Step 8 has no Igor-owned
+fact store/query. Step 9 has a real invokable `host.memory` handler but no
+typed ingestion, freshness or failure model. Step 10 has active-owner legacy
+checks, but Diagnose and Healing discover/execute/parse them separately.
+Direct AI/context host probes remain compatibility inputs.
+
+The selected first slice is `system` `host.memory` -> validated observation
+-> `host:local/memory.available_bytes` -> structured memory check ->
+inspection and selected existing workflow/context projection. The source
+fact and check must each have one authority per consumer at cutover.
+Configured/desired/responsibility intent is rehydrated from an existing
+authoritative source when one exists; observed facts are rebuildable. No
+database or new persistent layout is selected, so Q003 remains open for
+Step 15. The Ownership Foundation still gates broad module migration, not
+this bounded host slice.
+
+**Wave D implementation is unblocked by architecture decisions.** It must
+follow the order and five proof classes in the contract document. Accepted
+D017–D022 and the Wave C loader/adapter are unchanged; `nextcloud_docker`
+continues as v1. Remaining Q004 and Q007–Q011 retain their later decision
+points; Q012 records the later effective-threshold configuration question.
+The gate does not imply that Step 7 package/service mutations may
+bypass current approval or sudo behavior.
+
 ## Baseline and stage
 
 **Wave C Steps 5–6 are complete.** The first Module API v2 path is active,
