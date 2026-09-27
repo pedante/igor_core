@@ -21,6 +21,25 @@ When a new subsystem becomes authoritative, remove or explicitly disable the sup
 
 Do not leave two permanent implementations of the same responsibility.
 
+## Persistent migration rule
+
+A persistent layout/contract change is not complete until an existing-style
+installation can move through it safely.
+
+Document and test:
+
+- source version/location;
+- target version/location;
+- validation before cutover;
+- recovery point/backup behavior where needed;
+- idempotency and safe re-entry after interruption;
+- verification after migration;
+- the cutover rule that prevents permanent dual-source ambiguity.
+
+Configuration, secrets, state, machine memory, learned data, investigations and
+operational history must not be silently co-located merely because the current
+tree does so.
+
 ## Compatibility lifecycle
 
 A legacy path remains only when all are true:
@@ -51,6 +70,31 @@ Examples:
 
 Step 23 removes compatibility shims and obsolete contracts intentionally retained during migration.
 
+## Vertical-slice migration rule
+
+Do not migrate every domain at once.
+
+During Wave C:
+
+- extend the existing loader rather than create a second one;
+- use a small part of `system` as the mixed v1/v2 reference;
+- keep `nextcloud_docker` on v1 to prove compatibility.
+
+After Wave C is green, use one narrow Nextcloud workflow as the first broader
+slice across ownership/configuration, module contribution, capability,
+approval/privilege, execution, deterministic verification and history.
+
+Generalize only after that slice proves the contracts compose correctly.
+
+## Ownership Foundation gate
+
+Broad Module v2 migration waits for one authoritative ownership model for
+canonical paths, configuration, secrets, persistent state, machine memory,
+knowledge, learning, investigations, history and runtime.
+
+Early Wave C contract/loader work may proceed where independent, but public
+Module v2 contracts must not encode the current mixed storage assumptions.
+
 ## Preserve proven implementation, change ownership where needed
 
 Working code does not need rewriting solely because its architectural ownership changes.
@@ -74,6 +118,11 @@ Important migration properties include:
 - safety tiers and approvals remain deterministic;
 - privilege remains separate from autonomy;
 - state-changing operations are verifiable where practical;
+- recovery semantics are declared per capability/plan rather than assumed
+  universally reversible;
+- secret values remain outside normal AI context and secret access follows the
+  mediated/auditable contract;
+- each new authoritative subsystem has a minimal inspection surface;
 - the current TUI remains usable throughout migration;
 - module/context reference data cannot authorize actions;
 - Debian and Arch behavior is tested wherever support is claimed.
@@ -88,7 +137,8 @@ For implementation work:
 4. implement through the requested roadmap boundary;
 5. add/update tests;
 6. remove superseded paths that are safe to retire;
-7. update `STATUS.md` and `LEGACY.md`.
+7. update `STATUS.md` and `LEGACY.md`;
+8. satisfy the relevant completion proof categories in `EXECUTION.md`.
 
 Do not repeatedly perform whole-repository audits except at planned milestones.
 
