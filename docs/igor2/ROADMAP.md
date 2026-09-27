@@ -9,6 +9,20 @@ Status labels describe the current `igor2` baseline:
 - **FUTURE** — target architecture is not yet established.
 - **NOW** — current work.
 
+## Execution gates
+
+Roadmap prose does not make a wave complete. Each foundation/wave closes with
+evidence for the five proof classes in [EXECUTION.md](EXECUTION.md):
+
+1. contract proof;
+2. regression proof;
+3. a real vertical slice;
+4. inspection/observability proof;
+5. migration/recovery proof where persistent data or contracts change.
+
+Exit conditions should be scriptable/falsifiable wherever practical. The
+existing green baseline remains part of every later wave's regression gate.
+
 ## Development waves
 
 - **Wave A — Foundation:** Steps 1–2
@@ -21,6 +35,39 @@ Status labels describe the current `igor2` baseline:
 - **Wave H — Consolidation:** Step 23
 
 Recent work means Waves B and parts of C/D/E already have substantial foundations. The roadmap must preserve and generalize them rather than create parallel systems.
+
+## Cross-cutting Ownership Foundation
+
+Before broad Module v2 migration, Igor must establish one authoritative
+ownership model for:
+
+- canonical paths;
+- user configuration;
+- secrets and secret references/access;
+- persistent state;
+- machine memory;
+- knowledge;
+- learned local artifacts;
+- investigations;
+- operational history;
+- disposable runtime.
+
+Every important persistent value should have an owner, source, scope,
+lifecycle, migration/reset behavior and appropriate inspection surface.
+
+This is a hard architectural gate, not a new wave name. Early non-conflicting
+Wave C loader/contract implementation may proceed, but Wave C must not freeze
+the current mixed config/secret/state layout into the public Module v2
+contract, and broad application-module migration waits for this foundation to
+be green.
+
+## Igor 2.0 scope boundary
+
+The A-H roadmap through Step 23 defines Igor 2.0. Post-2.0 ideas such as
+AI-assisted capability promotion, a module marketplace/packs/signing
+infrastructure, sophisticated dependency solving, hot unload and a second
+handler-language adapter do not block Igor 2.0 unless a concrete requirement
+moves one into scope.
 
 ---
 
@@ -91,6 +138,19 @@ Complete the target semantics by auditing every runtime contribution path and en
 
 Restart-based activation is acceptable; hot unload is not a requirement.
 
+Wave C completion must prove at minimum:
+
+- invalid v2 metadata fails before handler execution;
+- inactive/unavailable owners contribute no active v2 behavior or reference
+  data;
+- one owner-stamped contribution index serves v2 plus temporary v1 consumer
+  views;
+- the Bash adapter executes the language-neutral handler envelope;
+- `system` exercises a small mixed v1/v2 slice;
+- `nextcloud_docker` remains working on v1;
+- current Wave B interaction/approval/privilege regressions remain green;
+- module state, API version, ownership and unavailable reasons are inspectable.
+
 ## Step 6 — Module API v2 — FUTURE
 
 Define and validate a versioned contract based on durable concepts rather than an expanding hook list:
@@ -110,6 +170,11 @@ The Wave C design gate has selected the contract in `MODULE_API.md` and
 D017–D022. Runtime implementation and migration are still future work.
 
 Contracts are optional. Keep API v1 working through an explicit migration/compatibility path until real v2 modules prove the contract.
+
+Implementation follows D017–D022: one loader, strict v2 validation, one
+owner-aware contribution index and Bash as the first handler adapter.
+`system` is the incremental v2 reference module during Wave C;
+`nextcloud_docker` stays on v1 throughout the wave.
 
 ## Step 7 — Platform Abstraction — PARTIAL
 
@@ -137,9 +202,17 @@ Facts distinguish:
 - configured;
 - inferred;
 - user-declared;
+- desired;
+- responsibility/maintain-watch intent;
 - known/unknown/stale.
 
-Start with stable interfaces and simple storage; do not choose a large persistence system prematurely.
+Machine memory also links relevant installation/deployment records,
+investigation findings and deterministic verification outcomes without turning
+chat history into state.
+
+Every fact/intent record should expose owner, source/provenance and freshness as
+applicable. Start with stable interfaces and simple storage; do not choose a
+large persistence system prematurely.
 
 ## Step 9 — Observation Framework — FUTURE
 
@@ -147,7 +220,13 @@ Standardize observers that populate the System Model.
 
 Observers declare ownership, output types, cost/freshness, privilege, timeout and dependencies as needed.
 
-Consumers should query Igor state instead of repeatedly issuing their own probes.
+Problem discovery is a deterministic Igor function: observers/checks can detect
+unhealthy, drifting or surprising state before the model explains it. AI may
+choose follow-up questions or capabilities, but should not be the only sensor.
+
+Consumers should query Igor state instead of repeatedly issuing their own
+probes. Observer/fact provenance and freshness must be inspectable from the
+first authoritative implementation.
 
 ## Step 10 — Unified Health — PARTIAL
 
@@ -169,10 +248,17 @@ Generalize them into Igor's canonical operational API with structured:
 - privilege;
 - preconditions;
 - execution;
-- verification;
-- rollback where available;
+- deterministic verification where practical;
+- per-capability recovery semantics rather than universal rollback;
 - affected objects;
-- platform requirements.
+- platform requirements;
+- secret-reference/access requirements where applicable.
+
+Add a structured plan model for multi-step installation, configuration, repair
+and migration work. A plan composes capabilities, exposes preconditions,
+approval/privilege points, recovery semantics and verification before
+execution. AI may propose/explain a plan; Igor resolves providers, authorizes,
+executes and verifies it.
 
 TUI, CLI, automation, healing and future external interfaces should invoke the same capabilities.
 
@@ -190,6 +276,11 @@ Replace broad ad-hoc context gathering over time with composition of relevant:
 - relevant history.
 
 Disabled modules contribute nothing. Reference material never becomes authorization policy.
+
+Keep shipped/module knowledge separate from local learned artifacts. Evidence-
+backed runbooks, patterns and successful investigation procedures may become
+local learning with provenance, but they do not become executable authority
+merely because the AI produced or used them.
 
 ## Step 13 — Domain Event Bus — FUTURE
 
@@ -220,11 +311,28 @@ Current bounded AI audit and recovery journal are useful inputs.
 
 Evolve toward structured incidents/actions containing observations, diagnosis, approvals, privilege use, execution, verification and outcome.
 
-Chat history is not operational memory.
+Also support durable investigations that can outlive one model call/session and
+retain, as appropriate:
+
+- problem/question;
+- evidence;
+- hypotheses;
+- decisions/choices;
+- actions;
+- findings;
+- verification;
+- resolution/status.
+
+Chat history is not operational memory. Investigation records are structured
+reference/state and cannot authorize execution.
 
 ## Step 16 — Baselines — FUTURE
 
 Use transparent operational history to learn normal ranges/behavior for this machine.
+
+Also allow evidence-backed local learning such as patterns, runbooks and
+symptom/cause/resolution relationships, stored outside installed module
+packages with provenance and reset semantics.
 
 Begin with explainable statistics and thresholds, not opaque ML.
 
@@ -238,6 +346,10 @@ Separate:
 - deployments.
 
 Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships.
+
+Installation/configuration workflows use structured plans and leave an
+inspectable deployment/relationship record plus verification outcome, rather
+than only a command transcript.
 
 ## Step 18 — Composable Modules — FUTURE
 
@@ -263,6 +375,10 @@ Automatic recovery considers safety, confidence, user policy, privilege, retries
 The full-screen Codex-like TUI is already a strong interface.
 
 Once normal system/module workflows use the shared backend foundations, make `./igor.sh` launch it by default.
+
+The TUI consolidates inspection surfaces already introduced with modules,
+configuration, facts, capabilities, plans, investigations, events and history;
+Wave G is not the first point at which those systems become observable.
 
 Keep CLI/headless paths for scripting, recovery, tests and automation. Preserve `--ai-tui` as a migration alias until removal is clearly safe.
 
@@ -295,6 +411,26 @@ Before declaring Igor 2 complete:
 - remove duplicate state/execution paths;
 - update primary documentation to the final architecture;
 - verify core is application-agnostic;
-- run architecture-level regression suites.
+- run architecture-level regression suites;
+- prove the Ownership Foundation and persistent migrations on an existing-style
+  installation fixture;
+- prove at least one real application workflow end-to-end through ownership,
+  module/capability, approval/privilege, execution, verification and history;
+- confirm every authoritative subsystem has an inspection surface and explicit
+  ownership/provenance;
+- confirm secret values stay out of normal AI context and secret access follows
+  the secret-service/audit contract;
+- confirm irreversible/best-effort recovery semantics are surfaced rather than
+  hidden behind a generic rollback promise.
 
 No compatibility path survives indefinitely without an explicit reason.
+
+## Post-2.0 horizons
+
+Keep extension points for, but do not staff as Igor 2.0 requirements:
+
+- reviewed promotion of learned/AI-generated capability candidates into trusted
+  executable code;
+- module packs/marketplace and third-party signing/distribution;
+- richer external adapters and interoperability;
+- sophisticated dependency resolution beyond demonstrated need.
