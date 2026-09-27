@@ -2,6 +2,46 @@
 
 Last updated: 2026-09-27
 
+## Wave E Agent Architecture design gate
+
+**Steps 11–12 have an accepted implementation contract, not a runtime
+implementation.** The contract and falsifiable exit checks are in
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md); D037–D039 in
+[DECISIONS.md](DECISIONS.md) settle the canonical capability/plan boundary,
+Q010 raw-shell fallback and deterministic Context Engine selection. The gate
+was prepared on clean `igor2` at `a07de42` (`origin/igor2`), with local
+`master` verified as an ancestor. Wave D implementation and D033–D036 are
+present. This documentation pass did not rerun runtime tests; the recorded
+Wave D green proof below remains the baseline.
+
+Step 11 is partial: v1 `ai_capabilities` gives active-owner tiered actions,
+`run_igor_action` calls a no-input function, and the AI catalog/parser and
+approval dispatcher protect current tools. The Wave C contribution index
+records v2 capability declarations but does not dispatch them. Inputs,
+preconditions, privilege metadata, deterministic verification, recovery,
+affected-object and secret-reference contracts are missing. Legacy action
+functions may invoke sudo internally; they are not yet v2 privilege-mediation
+proof. Step 12 is partial: `IGOR_REFERENCE_V1`, outbound privacy scrubbing
+and active knowledge filtering work, but `context.sh` still gathers broad
+direct probes, hooks, patterns and saved text without item-level relevance
+and provenance.
+
+The selected Wave E proof combines a real active `system` READ path
+(`system.host.memory.refresh` -> existing observer -> fresh System Model fact
+-> `host.memory.health` context and verification) with a disposable
+`system.service.restart` CHANGE fixture that exercises frozen inputs,
+approval, existing PTY privilege mediation and execution-success/
+verification-failure distinction. `nextcloud_docker` remains v1; no broad
+application migration or persistent layout change is implied. The
+Ownership Foundation still gates broad migration and later secret/history/
+learning storage rules.
+
+**The bounded Wave E implementation is unblocked by architecture decisions.**
+Its required order and contract, regression, vertical-slice, inspection and
+migration/recovery proof are specified in the Wave E contract. Q003, Q004,
+Q007–Q009 and Q011–Q012 remain at their assigned later gates. Design
+acceptance does not mark either Step 11 or 12 complete.
+
 ## Wave D Host Intelligence implementation
 
 **Steps 7–10 are implemented at the accepted Wave D boundary.** Platform
@@ -89,8 +129,9 @@ this bounded host slice.
 **Wave D implementation is unblocked by architecture decisions.** It must
 follow the order and five proof classes in the contract document. Accepted
 D017–D022 and the Wave C loader/adapter are unchanged; `nextcloud_docker`
-continues as v1. Remaining Q004 and Q007–Q011 retain their later decision
-points; Q012 records the later effective-threshold configuration question.
+continues as v1. At that gate Q004 and Q007–Q011 retained later decision
+points; Wave E has since resolved Q010. Q012 records the later
+effective-threshold configuration question.
 The gate does not imply that Step 7 package/service mutations may
 bypass current approval or sudo behavior.
 
@@ -147,8 +188,8 @@ claim about a newer un-fetched remote branch.
 | 7 Platform Abstraction | Wave D boundary complete: normalized Debian/Arch package query and install/remove/update argv, systemd state query and operation argv, strict names, timeout/error behavior and unknown-family failure. Legacy `pkg_install` remains compatible. |
 | 8 System Model; 9 Observation Framework | Initial Wave D contract complete: typed keyed facts, independent intent/responsibility records, active v2 observation validation, freshness/failure state and read-only inspection. Broader domain inventory and persistence remain later work. |
 | 10 Unified Health | Initial Wave D contract complete: one active-owner runner, structured v2 memory result, v1 line adapters and Diagnose/Healing projections. |
-| 11 Capability System v2 | Partial: current owned, tiered AI action catalog and `run_igor_action` are the seed. General structured metadata, verification and shared interface use are missing. |
-| 12 Knowledge & Context Engine | Partial: a sound request/reference trust boundary and active module hooks exist; composition still uses broad direct probes and saved files. |
+| 11 Capability System v2 | Partial; D037–D038 and `AGENT_ARCHITECTURE.md` settle the design gate. Current owned, tiered AI action catalog and `run_igor_action` are the seed. Structured metadata, verification and shared interface use remain implementation work. |
+| 12 Knowledge & Context Engine | Partial; D039 and `AGENT_ARCHITECTURE.md` settle the design gate. Request/reference trust boundary and active module hooks work; relevance selection and provenance remain implementation work. |
 | 13 Domain Event Bus; 14 Automation Engine | Missing. `core/ai/events.sh` is a frontend activity stream, not the domain bus. Existing schedules are not an Igor-owned automation contract. |
 | 15 Operational History | Partial: private bounded AI audit, recovery journal and backup records exist; structured incidents/outcomes are missing. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
@@ -276,8 +317,8 @@ test suite is green; the known Ruff/ShellCheck backlog remains outside Step 2.
 
 At Step 2, repository evidence did not resolve an accepted decision, so
 `DECISIONS.md` was unchanged. Q001/Q002/Q005 and Q006 were then open; this
-Wave C design gate resolves them in D017–D020. Q010 and other later questions
-remain at their assigned roadmap steps. No decision blocked Step 2 tests.
+Wave C design gate resolves them in D017–D020. Q010 was later resolved by
+Wave E in D038. No decision blocked Step 2 tests.
 
 ## Wave B validation compared with Wave A
 
@@ -345,8 +386,9 @@ explicit enablement. `nextcloud_docker` remains on v1.
 | Lint and syntax | Bash syntax and `git diff --check` pass. Ruff 0.16.9 passes on new Python files; full `ruff check .` retains 135 pre-existing findings, matching the earlier baseline. CI-configured ShellCheck on changed shell/BATS files reports only five pre-existing SC2155 warnings in `core/ai/context.sh` and `igor.sh`; no new warning remains. |
 
 No accepted Wave C decision was reopened and no new blocking question arose.
-Q004 remains a future third-party distribution policy; Q003 and Q007–Q011
-remain at their assigned later steps. System Model, observer scheduling,
+Q004 remains a future third-party distribution policy; at Wave C completion,
+Q003 and Q007–Q011 remained at their assigned later steps (Q010 is now
+resolved by D038). System Model, observer scheduling,
 domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.

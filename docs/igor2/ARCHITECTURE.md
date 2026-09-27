@@ -255,6 +255,8 @@ A mature capability defines:
 - secret references/access requirements when applicable.
 
 Raw shell remains an escape hatch, not the preferred API when an equivalent capability exists.
+The accepted Steps 11–12 contract, including Q010 fallback policy, is in
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 ### Plans, installation and configuration
 

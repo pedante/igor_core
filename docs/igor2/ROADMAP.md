@@ -271,6 +271,16 @@ pass. See [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
 
 The current action catalog, `run_igor_action`, ownership and safety metadata are the seed.
 
+**Wave E design accepted; runtime work remains.** D037–D038 and
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define identity/provider
+resolution, typed inputs, deterministic policy/privilege/preconditions,
+postcondition verification, recovery, affected objects, secret references,
+Q010 shell fallback, inspection and the minimal resolved-plan contract.
+Implementation must extend the current owner-aware catalog and dispatcher,
+not introduce a parallel action system. The selected real READ slice is
+`system.host.memory.refresh`, with an isolated `system.service.restart`
+CHANGE/privilege/verification fixture.
+
 Generalize them into Igor's canonical operational API with structured:
 
 - inputs;
@@ -296,6 +306,14 @@ TUI, CLI, automation, healing and future external interfaces should invoke the s
 ## Step 12 — Knowledge & Context Engine — PARTIAL
 
 The current request boundary/reference envelope is a strong trust foundation. Preserve it.
+
+**Wave E design accepted; runtime work remains.** D039 and
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define bounded deterministic
+selection, source kinds/provenance, active-owner filtering, sensitive-field
+exclusion and inspection inside the current `IGOR_REFERENCE_V1` pipeline.
+The memory slice must prove relevant fact/health/capability context without
+dumping unrelated machine/module data. Broad direct probes cut over only
+when their corresponding authoritative source is available.
 
 Replace broad ad-hoc context gathering over time with composition of relevant:
 

@@ -259,6 +259,49 @@ Absent sources remain absent. Q003 still decides whether observed snapshots or
 history need durable storage before Step 15. See
 [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
 
+### D037 — One canonical capability registry extends the owned action catalog (Wave E)
+
+Step 11 extends the Wave C owner-stamped contribution index and existing
+`run_igor_action`/AI dispatcher, not a second execution catalog. Canonical
+dotted IDs identify observable operations; reviewed adapters explicitly map
+v1 actions into them. One active executable provider resolves automatically;
+multiple active providers are ambiguous unless the caller explicitly selects
+one. Inputs, tier/privilege floor, preconditions, affected objects,
+verification and recovery are validated contract metadata. Igor freezes the
+resolved operation before the existing approval and PTY privilege gates;
+provider output cannot alter authority. Process success and deterministic
+postcondition success are separate result fields. A minimal ordered plan is a
+resolved composition of those same capabilities, not a new execution engine.
+See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
+### D038 — Raw shell is a stricter unstructured fallback (Q010, Wave E)
+
+AI uses a registered available capability for a recognized equivalent
+operation. It may use bounded allowlisted shell READ discovery where no
+structured capability fits. AI-proposed raw CHANGE requires explicit
+approval even in Executive; raw DESTROY still requires exact `YES` in every
+mode. The existing denylist, validation, privilege and exact-command gates
+remain. Known equivalent shell forms are rejected at dispatch in favor of
+the capability; unavailable/disabled domain providers do not authorize an AI
+shell workaround. Shell has no implied verifier or recovery: record it as
+unstructured with verification unavailable unless a separate named
+deterministic postcondition ran. An operator's explicit OS command remains
+subject to the shell interface's safety policy, independent of module
+activation. See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
+### D039 — Context selection stays inside the AI reference boundary (Wave E)
+
+Step 12 adds deterministic, bounded selection and item-level provenance to
+the existing context pipeline and `IGOR_REFERENCE_V1` envelope. It selects
+real System Model/health records, active module knowledge, available
+capabilities and other existing non-secret sources by intent/object/owner,
+freshness and severity. Disabled owners contribute nothing. Shipped
+knowledge, observed/inferred state and local learning retain distinct kinds;
+all are AI reference data, never authorization or System Model truth. Secret
+values are excluded before composition and redacted again at transport.
+Provider adapters render the same Igor semantics without becoming policy.
+See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
 ---
 
 ## Open decisions
@@ -301,12 +344,6 @@ Do cross-module rules live with one module, separate integration packages, or a 
 Resolve using real Nextcloud/Docker/Cloudflare cases.
 
 Decision target: Steps 18–21.
-
-### Q010 — Raw shell fallback policy
-
-When may AI use arbitrary shell because no capability fits, and what additional approval/verification applies?
-
-Decision target: Step 11.
 
 ### Q011 — Remote approval policy
 
