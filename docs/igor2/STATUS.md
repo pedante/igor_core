@@ -4,13 +4,17 @@ Last updated: 2026-09-27
 
 ## Baseline and stage
 
-**Wave B / Steps 3–4 — Interaction Runtime and Privilege Boundary complete.**
-The existing backend session, deterministic approval dispatcher, frontend
-event stream, TUI projection and native sudo-through-PTY path remain the
-authoritative implementation. Wave B adds narrow pending-choice lifecycle
-handling and event-sequence validation, plus regression guards for cancellation
-and privilege ordering. No second state, approval, event or privilege system
-was added.
+**Wave C design gate complete; Steps 5–6 implementation not started.**
+Decisions D017–D022 select a language-neutral data contract with a Bash-first
+handler adapter, a small strict v2 `module.conf` plus explicit JSON contract
+files, typed dependency semantics, a core/platform versus `system` rule, one
+loader with temporary v1 compatibility, and an initial reviewed-local-code
+trust boundary. The current module runtime and green Wave B behavioral
+baseline are unchanged by this documentation-only pass.
+
+Wave B / Steps 3–4 completed the interaction and privilege work. Its backend
+session, deterministic approval dispatcher, frontend event stream, TUI
+projection and native sudo-through-PTY path remain authoritative.
 
 Wave A / Step 2 completed the accepted architecture guards and removed the
 three stale system-storage test failures. Its baseline is retained below for
@@ -31,8 +35,8 @@ claim about a newer un-fetched remote branch.
 | 2 Architecture Rules | Implemented for accepted current invariants: focused ownership, trust, platform and safety guards now run in existing test suites. Later contracts get their own tests when implemented. |
 | 3 Interaction Runtime | Implemented for current chat/TUI use. Backend command routing, pending choice/approval state, mode policy, provider continuation and ordered frontend events are guarded. Future interfaces can consume the same backend authority; no new interface was built. |
 | 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows approval of the exact command. General capability privilege metadata remains Step 11 work. |
-| 5 Module Runtime v2 | Implemented in substantial form: policy, discovered/active/unavailable state and owner-aware registrations exist. Step 2 corrected Healing's active-check defect and same-process config validation; full contract formalization remains Step 5. |
-| 6 Module API v2 | Missing; v1 hooks are live compatibility. No v2 contract was started. |
+| 5 Module Runtime v2 | Implemented in substantial form: policy, discovered/active/unavailable state and owner-aware registrations exist. The completion design is settled; formal state/reason queries, v2 validation, staged registration and consistent ownership still require implementation. |
+| 6 Module API v2 | Target design settled in `MODULE_API.md` and D017–D022; implementation is missing. V1 hooks remain live compatibility, and `system` is the first incremental reference case. |
 | 7 Platform Abstraction | Partial: distro/family detection, Debian/Arch-aware package mappings/install and Python resolution exist. Other normalized operations and broad test proof are missing. |
 | 8 System Model; 9 Observation Framework | Missing as coherent shared contracts; current direct probes are inputs, not a System Model. |
 | 10 Unified Health | Partial: module check conventions and activation filtering exist, but Diagnose and Healing have separate discovery/execution/result paths. |
@@ -55,7 +59,8 @@ claim about a newer un-fetched remote branch.
   Healing no longer requires Nextcloud files when that owner is inactive.
   Diagnose, configuration, security defaults, recovery, old UI and platform
   post-install paths still contain application assumptions. The active-owner
-  guard does not settle Q006 or complete physical core/module separation.
+  guard does not complete physical core/module separation; D020 now sets the
+  placement rule for that later migration.
 - The three stale `test_system_storage.bats` assertions were corrected to the
   current host-only `system` contract. A Nextcloud module check test preserves
   application storage behavior without restoring it to `system`.
@@ -115,14 +120,15 @@ receive tests when those later contracts are implemented.
   `core/ai/core.sh`. Pause/resume routing is explicit and authorization stays
   deterministic at dispatch; this narrative is not authoritative operational
   state. `/stop` is handled at approval or the next backend chat prompt;
-  boundary; a synchronous provider or tool call is not preempted. The classic
+  a synchronous provider or tool call is not preempted. The classic
   line UI, `--extra`, old `exec on/off` setting bridge and
   v1 module APIs remain compatibility inputs under their existing removal
   conditions. No compatibility path met the safe-removal criteria in Wave B.
 
-No accepted decision changed. Q010 raw-shell policy and Q011 remote approval
-remain at their assigned later steps; neither blocks this current backend
-contract. Q006 remains a module/platform placement question for Wave C/D.
+At Wave B completion, no accepted decision changed. Q010 raw-shell policy and
+Q011 remote approval remained at their assigned later steps; neither blocked
+that backend contract. Q006 was subsequently resolved by the Wave C design
+gate in D020.
 
 ## Step 1 test and lint baseline (before Step 2)
 
@@ -159,14 +165,12 @@ blocking and were red at the Step 1 baseline for separate existing reasons.
 Wave A is complete and ready for the next implementation wave. The current
 test suite is green; the known Ruff/ShellCheck backlog remains outside Step 2.
 
-## Decision gates
+## Step 2 decision gates (historical)
 
-Repository evidence does not resolve or materially change an accepted
-decision, so `DECISIONS.md` is unchanged. Q006 (core versus `system` ownership)
-remains the next material placement question for Steps 5–9. Q001/Q002/Q005
-(module implementation, schema and dependency contracts), Q010 (raw shell)
-and the other open decisions remain at their assigned roadmap steps. No open
-decision blocks Step 2 regression tests.
+At Step 2, repository evidence did not resolve an accepted decision, so
+`DECISIONS.md` was unchanged. Q001/Q002/Q005 and Q006 were then open; this
+Wave C design gate resolves them in D017–D020. Q010 and other later questions
+remain at their assigned roadmap steps. No decision blocked Step 2 tests.
 
 ## Wave B validation compared with Wave A
 
@@ -178,6 +182,34 @@ decision blocks Step 2 regression tests.
 | `bash -n core/ai/core.sh`; `git diff --check` | Passed. | No syntax or whitespace regression. |
 | Ruff 0.16.9 and CI-configured ShellCheck on changed files | Ruff remains at 135 repository findings, unchanged from Wave A. `core/ai/core.sh` retains its three pre-existing ShellCheck warnings (SC2174, SC2010, SC2011); changed BATS files pass ShellCheck. No warning appears on changed lines. | Lint backlog remains outside Wave B. |
 
-Wave B is complete and the green behavioral baseline is preserved. Igor is
-ready for Wave C — Module Platform. `DECISIONS.md` remains unchanged; no new
-decision gate was encountered for Steps 3–4.
+Wave B completed with the green behavioral baseline preserved. At that point
+`DECISIONS.md` was unchanged; no new decision gate arose for Steps 3–4.
+
+## Wave C Module Platform design gate
+
+The design review inspected the current loader, both bundled manifests and
+modules, activation/dependency/capability/configuration tests, the v1 module
+docs, config policy and Debian/Arch platform helpers. The branch contains its
+local `master` baseline. This pass changed documentation only; it did not
+rerun or alter the green Wave B behavioral suite.
+
+- Q001, Q002 and Q005 are resolved by D017–D019. The current first-key
+  manifest parser stays v1 compatibility; strict v2 parsing and JSON contracts
+  are implementation work. Hard module dependencies name identities;
+  substitutable requirements name canonical capabilities. Missing or disabled
+  providers never auto-enable.
+- Q006 is resolved as an ownership rule in D020: core/platform supplies
+  reusable Linux mechanisms; `system` supplies host-domain meaning. Existing
+  application logic and platform post-install leakage move only when later
+  replacements are ready.
+- D021 preserves the current state model and restart behavior. V1 hooks and
+  lazy menus continue during migration; v2 declarations join one owner-aware
+  index, with `system` as the first mixed reference and `nextcloud_docker`
+  unchanged as v1. D022 settles the initial local-code trust boundary and
+  explicit enablement for new v2 packages.
+
+The next task can implement Steps 5–6 in the sequence in `MODULE_API.md`.
+Q004 remains open only for a future third-party distribution policy; Q003 and
+Q007–Q011 remain at their planned later steps. None blocks Wave C
+implementation. The behavioral baseline remains the Wave B result above;
+documentation checks for this pass are recorded with the final diff.

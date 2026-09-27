@@ -68,21 +68,83 @@ Current enable/disable and owner-aware activation is the Module Runtime v2 start
 
 `distro.sh`, `pkg.sh` and Python resolution are the platform-abstraction starting point. Expand/test them rather than create a second distro layer.
 
+### D017 — Module API v2 has a language-neutral contract and a Bash-first adapter (Q001)
+
+The manifest, contribution descriptors and handler input/output envelope are
+data contracts independent of implementation language. Wave C implements Bash
+handlers through the existing loader; a Python handler adapter is added only
+when a real module needs one. The API names domain contributions and their
+requirements, while the adapter knows how to invoke a handler. This preserves
+the two working Bash modules without making Bash hook names the public v2 API
+or adding a plugin process manager now. Unsupported handler runtimes fail
+validation clearly; they are not silently interpreted as Bash.
+
+### D018 — Keep a small INI bootstrap manifest and use explicit JSON declarations (Q002)
+
+`module.conf` remains the discovery and identity file. A v2 manifest declares
+`module_api=2`, identity/version, handler runtime/entrypoint if needed, explicit
+contract file paths and module-wide requirements. V2 parsing is strict and
+section-aware; the permissive first-key v1 parser remains compatibility only.
+JSON files named by the manifest contain optional contribution descriptors and
+can be split only by explicit path, never directory auto-discovery. Python's
+standard library can validate them without a new dependency. TOML would imply
+an unestablished Python 3.11 floor, YAML adds a parser dependency, and a large
+INI manifest cannot express nested metadata cleanly.
+
+### D019 — Dependencies are small, typed gates, not a solver (Q005)
+
+A hard module dependency names an exact module and determines load order. An
+optional module integration never activates its provider or blocks the base
+module. A capability requirement names a canonical registered capability;
+use it when the provider identity is irrelevant, and require one unambiguous
+active executable provider. Module-wide requirements can block activation;
+requirements on one contribution only withhold that contribution. Platform/runtime
+requirements are checked by core before activation or invocation as declared.
+Disabled, missing or failed providers never auto-enable; the dependent reports
+an unavailable reason. V1 `depends_on` remains ordering-only compatibility;
+v2 has no new ordering-only field until a concrete need arises.
+
+### D020 — Core provides OS mechanisms; `system` owns host-domain meaning (Q006)
+
+If an operation is needed to activate modules or offers a reusable Linux
+mechanism without host-health meaning, it belongs in core/platform: distro
+detection, normalized package/service/process/filesystem/user/network
+operations, privilege, execution and registries. If it interprets host facts,
+thresholds or administrative intent that should disappear when `system` is
+disabled, it belongs in `system`: host observations, health checks, knowledge
+and higher-level service administration. Modules request normalized operations;
+core does not choose application-specific workflows. This rule applies on both
+Debian and Arch. Moving existing files follows later steps and is not implied
+by this decision alone.
+
+### D021 — V2 evolves one activation runtime with explicit compatibility
+
+The current discovered/disabled/active/unavailable states and restart-based
+activation remain; no hot unload or new persistent state is needed. V2
+declarations join one owner-stamped contribution index under the current
+loader. V1 registrations are adapted into that index while legacy hook views
+remain temporary for current consumers. A package may opt into v1 compatibility
+alongside v2 declarations, but the same canonical contribution may have only
+one execution path per consumer. Unsupported API versions or invalid v2
+declarations make the module unavailable with a reason. Step 23 removes v1 only
+after consumers, bundled modules and external-use checks are migrated.
+
+### D022 — Initial v2 module trust is reviewed local code (initial Q004)
+
+V2 executable modules remain trusted local code, not sandboxed plugins.
+Unlike the v1 omitted-entry compatibility default, a newly installed v2
+module requires an explicit enabled policy entry before its code can run.
+Migrating an already active bundled module must preserve its prior policy by
+writing or carrying an explicit enabled entry; a disabled entry remains
+disabled. Module knowledge and handler output are reference data for AI,
+never approval or privilege. Executable capability metadata may declare a
+privilege requirement, but Igor's existing runtime remains the authority for
+authorization and OS authentication. A future third-party trust model can add
+provenance/permissions without changing the contribution envelope.
+
 ---
 
 ## Open decisions
-
-### Q001 — Module implementation boundary
-
-Should Module API v2 remain Bash-first, or be language-neutral with Bash/Python/other implementations behind a structured contract?
-
-Decision target: Step 6.
-
-### Q002 — Module manifest/schema format
-
-Keep current INI-style `module.conf`, adopt YAML/TOML/JSON, or separate a simple manifest from structured schemas?
-
-Decision target: Step 6.
 
 ### Q003 — System Model persistence
 
@@ -92,23 +154,14 @@ Do not block System Model v1 on premature storage selection.
 
 Decision target: before Step 15.
 
-### Q004 — Module trust model
+### Q004 — Later third-party module trust policy
 
-What trust/permission levels apply to future third-party modules providing executable code, knowledge, capabilities and automations?
+D022 settles the initial v2 boundary: explicitly enabled, reviewed local
+executable code, with AI reference data kept outside authorization. If Igor
+later distributes unreviewed third-party modules, what provenance,
+permissions, isolation and signing policy is needed?
 
-Decision target: initial constraints in Step 6; deeper hardening later.
-
-### Q005 — Dependency semantics
-
-How are hard module dependencies, optional integrations, capability requirements and platform requirements represented/resolved?
-
-Decision target: Step 6.
-
-### Q006 — Core versus system-module boundary
-
-Which Linux responsibilities are core platform primitives versus higher-level host-domain behavior in `system`?
-
-Decision target: Steps 5–9.
+Decision target: before a third-party distribution or marketplace contract.
 
 ### Q007 — Relationship/deployment ownership
 

@@ -106,6 +106,9 @@ Define and validate a versioned contract based on durable concepts rather than a
 - configuration;
 - lifecycle.
 
+The Wave C design gate has selected the contract in `MODULE_API.md` and
+D017–D022. Runtime implementation and migration are still future work.
+
 Contracts are optional. Keep API v1 working through an explicit migration/compatibility path until real v2 modules prove the contract.
 
 ## Step 7 — Platform Abstraction — PARTIAL

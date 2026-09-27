@@ -8,10 +8,10 @@ give a removal condition.
 
 | Area | Current evidence and assessment | Classification | Migration target / removal condition |
 |---|---|---|---|
-| Module activation and ownership | `core/lib/module_loader.sh:68-98,324-353,470-573` separates policy, discovery and successful activation. Hooks, menus and actions have owners and filter inactive owners (`:710-803,877-932`). `tests/modules/test_module_state.bats` covers key transitions. | KEEP/ADAPT | Step 5 audits every contribution and execution path; retain this loader. Restart-based activation is acceptable. |
+| Module activation and ownership | `core/lib/module_loader.sh:68-98,324-353,470-573` separates policy, discovery and successful activation. Hooks, menus and actions have owners and filter inactive owners (`:710-803,877-932`). `tests/modules/test_module_state.bats` covers key transitions. | KEEP/ADAPT | Step 5 extends this loader with strict v2 validation, precise failure provenance and staged registrations. Keep its state vocabulary and restart semantics; no second loader or hot unload. |
 | Healing check activation | `core/healing/core.sh:43-65` now uses `igor_has_module` for module identity. `tests/modules/test_healing_activation.bats` guards active, disabled, unavailable and installed-only discovery against Diagnose's active set. | KEEP/ADAPT | Step 10 can unify result/discovery contracts without regressing active-owner filtering. |
 | Diagnose and healing checks | `core/lib/diagnose_runner.sh:39-104` dispatches hooks and active module check files; `core/healing/core.sh:43-147` discovers and caches checks separately. Diagnose accepts `CHECK:` and `CHECK_RESULT`; healing consumes `CHECK_RESULT`. | ADAPT | Steps 5/10 share structured results/discovery while keeping distinct user workflows. |
-| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the current manifest, hook and isolated check contracts. | TEMPORARY COMPATIBILITY | Keep v1 through Step 6 and real v2 adoption; retire unused hooks in Step 23 once callers/modules migrate. |
+| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the current permissive manifest, hook and isolated check contracts. Bundled `nextcloud_docker` remains v1 during Wave C; `system` can retain explicit v1 hooks while adding disjoint v2 contributions. | TEMPORARY COMPATIBILITY | Adapt registrations into the v2 owner-aware index and keep old hook views only for current consumers. Remove in Step 23 after bundled/external migration, equivalent tests, consumer retirement and a deprecation period. |
 | Legacy menu loader | `core/lib/module_loader.sh:766-789` has owner-aware dispatch plus `_igor_load_module` fallback for old menu-file arguments. | TEMPORARY COMPATIBILITY | Remove after menus use the active registry/shared backend (Steps 5/20/23); meanwhile test disabled owners cannot be loaded. |
 | Combined Nextcloud deployment | `modules/nextcloud_docker/` owns a working combined deployment, context and actions. | KEEP / TEMPORARY COMPATIBILITY | Preserve until v2 contracts and relationships prove a replacement in Step 18; do not split in Step 1. |
 | AI request trust boundary | `core/ai/request_boundary.py:12-19,50-106` separates policy from `IGOR_REFERENCE_V1`; `core/ai/privacy.py:9-58` redacts before transport. | KEEP | Step 12 composes better reference material into this boundary. Reference material never authorizes. |
@@ -43,10 +43,9 @@ give a removal condition.
 5. Pin Debian and Arch detection/package mappings with fixtures and mocked calls; test unsupported families separately.
 6. Preserve exact operation dispatch and active ownership across interfaces; add verification-state guards when the capability contract defines them.
 
-Step 2 adds focused guards for current mechanisms. Broader capability
-verification belongs with its later contract. Q006 (core versus `system`
-ownership) affects later migration placement; other open decisions remain at
-their assigned roadmap steps.
+Step 2 added focused guards for current mechanisms. Broader capability
+verification belongs with its later contract. D020 now sets the core versus
+`system` ownership rule; physical code movement remains later work.
 
 ## Resolved in Wave A / Step 2
 
@@ -82,3 +81,21 @@ their assigned roadmap steps.
   prompt. Synchronous provider/tool calls are not
   interrupted mid-call. Keep that boundary explicit in the UI until a tested
   cancellation contract exists; do not imply preemptive cancellation.
+
+## Wave C design gate — compatibility conditions
+
+- Keep `_ml_read_conf` and its section-blind first-key behavior for v1 only.
+  A strict section-aware v2 manifest parser replaces it for v2 metadata;
+  v1 files do not silently acquire new parsing semantics.
+- Keep omitted `config/modules.conf` entries enabled for v1 compatibility.
+  Newly installed v2 modules require explicit enablement. Before converting
+  the bundled `system` module, preserve an implicitly enabled installation
+  with an explicit `system=enabled` entry; never override a disabled entry.
+- Keep v1 `depends_on` as ordering-only and `provides` as a legacy feature
+  token. `nextcloud_docker` must continue working without active `system`;
+  neither field becomes a v2 hard dependency or executable capability by
+  inference.
+- Existing `test_module_contracts.bats` assumes every module has v1 health
+  and diagnose functions. Make that test version-aware when `system` migrates;
+  v2 permits a package with only knowledge and observers. Do not restore empty
+  hooks merely to satisfy the old test.
