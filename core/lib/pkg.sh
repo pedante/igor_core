@@ -127,6 +127,163 @@ pkg_install() {
     esac
 }
 
+# Wave D platform primitives
+#
+# These helpers deliberately return mechanisms or an argv specification.  The
+# latter is data until an already-authorized capability executes it.  They do
+# not add a second privilege path and fail closed for unsupported families.
+_pkg_validate_name() {
+    local _name="${1:-}"
+    [[ "$_name" =~ ^[A-Za-z0-9][A-Za-z0-9+_.:@-]*$ ]]
+}
+
+_pkg_wave_d_family() {
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian|arch) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_pkg_query_timeout() {
+    local _seconds="${IGOR_PLATFORM_QUERY_TIMEOUT_SECONDS:-5}"
+    [[ "$_seconds" =~ ^[1-9][0-9]?$ ]] || return 2
+    printf '%s\n' "$_seconds"
+}
+
+_pkg_wave_d_names() {
+    local _arg
+    [ "$#" -gt 0 ] || return 2
+    _pkg_wave_d_family || return 1
+    for _arg in "$@"; do
+        _pkg_validate_name "$_arg" || return 2
+        _pkg_resolve "$_arg"
+    done
+}
+
+# pkg_query <package>
+# Return 0 when installed, 1 when absent, and 2 for invalid/unsupported or
+# package-manager errors.  Query output is intentionally left to the caller.
+pkg_query() {
+    local _name="${1:-}" _real _timeout
+    [ "$#" -eq 1 ] && _pkg_validate_name "$_name" || return 2
+    _pkg_wave_d_family || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    _timeout="$(_pkg_query_timeout)" || return 2
+    _real="$(_pkg_resolve "$_name")"
+    case "$IGOR_DISTRO_FAMILY" in
+        debian)
+            local _status
+            _status="$(timeout "$_timeout" dpkg-query -W -f='${Status}' -- "$_real" 2>/dev/null)"
+            local _query_rc=$?
+            # dpkg-query uses exit 1 for a package that is not installed.
+            [ "$_query_rc" -eq 1 ] && return 1
+            [ "$_query_rc" -ne 0 ] && return 2
+            [ "$_status" = 'install ok installed' ] && return 0
+            return 1
+            ;;
+        arch) timeout "$_timeout" pacman -Q -- "$_real" >/dev/null 2>&1 || {
+                local _rc=$?
+                [ "$_rc" -eq 1 ] && return 1
+                return 2
+            } ;;
+    esac
+    local _rc=$?
+    [ "$_rc" -eq 0 ] && return 0
+    [ "$_rc" -eq 1 ] && return 1
+    return 2
+}
+
+pkg_install_argv() {
+    [ "$#" -gt 0 ] || return 2
+    local _arg
+    for _arg in "$@"; do _pkg_validate_name "$_arg" || return 2; done
+    local -a _names=()
+    for _arg in "$@"; do
+        _names+=( "$(_pkg_resolve "$_arg")" )
+    done
+    case "$IGOR_DISTRO_FAMILY" in
+        debian) printf 'apt-get install -y';;
+        arch) printf 'pacman -S --noconfirm';;
+        *) return 2;;
+    esac
+    printf ' %s' "${_names[@]}"
+    printf '\n'
+}
+
+pkg_remove_argv() {
+    [ "$#" -gt 0 ] || return 2
+    local _arg
+    for _arg in "$@"; do _pkg_validate_name "$_arg" || return 2; done
+    local -a _names=()
+    for _arg in "$@"; do
+        _names+=( "$(_pkg_resolve "$_arg")" )
+    done
+    case "$IGOR_DISTRO_FAMILY" in
+        debian) printf 'apt-get remove -y';;
+        arch) printf 'pacman -R --noconfirm';;
+        *) return 2;;
+    esac
+    printf ' %s' "${_names[@]}"
+    printf '\n'
+}
+
+pkg_update_argv() {
+    [ "$#" -eq 0 ] || return 2
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian) printf '%s\n' 'apt-get update' ;;
+        arch) printf '%s\n' 'pacman -Syu --noconfirm' ;;
+        *) return 2 ;;
+    esac
+}
+
+pkg_upgrade_argv() {
+    [ "$#" -eq 0 ] || return 2
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian) printf '%s\n' 'apt-get upgrade -y' ;;
+        arch) printf '%s\n' 'pacman -Syu --noconfirm' ;;
+        *) return 2 ;;
+    esac
+}
+
+_svc_validate_name() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]]
+}
+
+svc_query() {
+    [ "$#" -eq 1 ] && _svc_validate_name "$1" || return 2
+    _pkg_wave_d_family || return 2
+    command -v systemctl >/dev/null 2>&1 || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    local _state _rc _timeout
+    _timeout="$(_pkg_query_timeout)" || return 2
+    _state="$(timeout "$_timeout" \
+        systemctl is-active -- "$1" 2>/dev/null)"
+    _rc=$?
+    [ "$_rc" -eq 124 ] && return 2
+    # systemctl returns 3 for an inactive/failed unit, which is still a
+    # deterministic state.  Exit 4 means the unit is not known.
+    case "$_rc" in
+        0|3) printf '%s\n' "${_state:-unknown}"; return 0 ;;
+        4) printf '%s\n' "${_state:-unknown}"; return 1 ;;
+        *) return 2 ;;
+    esac
+}
+
+_svc_argv() {
+    local _op="${1:-}" _unit="${2:-}"
+    [[ "$_op" =~ ^(start|stop|restart|enable|disable)$ ]] || return 2
+    [ "$#" -eq 2 ] && _svc_validate_name "$_unit" || return 2
+    _pkg_wave_d_family || return 2
+    command -v systemctl >/dev/null 2>&1 || return 2
+    printf 'systemctl %s %s\n' "$_op" "$_unit"
+}
+
+svc_start_argv() { _svc_argv start "$@"; }
+svc_stop_argv() { _svc_argv stop "$@"; }
+svc_restart_argv() { _svc_argv restart "$@"; }
+svc_enable_argv() { _svc_argv enable "$@"; }
+svc_disable_argv() { _svc_argv disable "$@"; }
+
 # ── pkg_install_docker_post ───────────────────────────────────────────────────
 # Post-install activation for Docker.  Safe to call on any distro — no-ops
 # if Docker is already running.

@@ -25,6 +25,11 @@ _DR_DIM="${DIM:-\033[2m}"
 _DR_NC="${NC:-\033[0m}"
 _DR_BOLD="${BOLD:-\033[1m}"
 
+if ! declare -f igor_health_legacy_to_json >/dev/null 2>&1 && [ -f "${IGOR_DIR:-.}/core/lib/health_runner.sh" ]; then
+    # shellcheck source=core/lib/health_runner.sh
+    source "${IGOR_DIR:-.}/core/lib/health_runner.sh"
+fi
+
 # ---------------------------------------------------------------------------
 # igor_diagnose_collect [--timeout <seconds>]
 #
@@ -50,6 +55,28 @@ igor_diagnose_collect() {
     local _results=()
     local _fn _out _line
 
+    # V2 checks are the canonical execution path. Their result is projected
+    # once into the legacy Diagnose line format for the existing UI.
+    if declare -f igor_health_collect_v2_diagnose >/dev/null 2>&1; then
+        declare -f igor_health_prepare_v2_checks >/dev/null 2>&1 && igor_health_prepare_v2_checks
+        while IFS= read -r _line; do
+            [[ "$_line" =~ ^CHECK:[^:]+:(ok|warn|fail|skip): ]] && _results+=("$_line")
+        done < <(igor_health_collect_v2_diagnose)
+    fi
+    # Shared legacy pass prevents Healing and Diagnose from each discovering
+    # and executing the same v1 checks independently.
+    if declare -f igor_health_collect_legacy_results >/dev/null 2>&1; then
+        local _legacy_json _legacy_code
+        while IFS= read -r _legacy_json; do
+            _legacy_code="$(printf '%s' "$_legacy_json" | "$(_igor_health_python)" -c 'import json,sys; print(json.load(sys.stdin)["finding_code"])')" || continue
+            if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "$_legacy_code" =~ ^(ram|low_ram|ram_low)$ ]]; then continue; fi
+            _line="$(igor_health_json_to_diagnose "$_legacy_json")" || continue
+            _results+=("$_line")
+        done < <(igor_health_collect_legacy_results "$_script_timeout")
+        printf '%s\n' "${_results[@]}"
+        return 0
+    fi
+
     # ── Source 1: module __diagnose() hooks ───────────────────────────────
     if declare -f igor_get_hooks >/dev/null 2>&1; then
         for _fn in $(igor_get_hooks "diagnose"); do
@@ -57,6 +84,7 @@ igor_diagnose_collect() {
             _out=$(timeout "$_hook_timeout" bash -c \
                 "$(declare -f "$_fn"); $_fn" 2>/dev/null)
             while IFS= read -r _line; do
+                if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "$_line" =~ ^CHECK:(ram|low_ram|ram_low): ]]; then continue; fi
                 [[ "$_line" =~ ^CHECK:[^:]+:(ok|warn|fail|skip): ]] && \
                     _results+=("$_line")
             done <<< "$_out"
@@ -88,8 +116,10 @@ igor_diagnose_collect() {
                 _ "$_check_script" 2>/dev/null)
             while IFS= read -r _line; do
                 if [[ "$_line" =~ ^CHECK:[^:]+:(ok|warn|fail|skip): ]]; then
+                    if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "$_line" =~ ^CHECK:(ram|low_ram|ram_low): ]]; then continue; fi
                     _results+=("$_line")
                 elif [[ "$_line" =~ ^CHECK_RESULT[[:space:]]+(OK|WARN|FAIL|CRITICAL)[[:space:]]+([^[:space:]]+)[[:space:]]*(.*)$ ]]; then
+                    if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "${BASH_REMATCH[2]}" =~ ^(ram|low_ram|ram_low)$ ]]; then continue; fi
                     local _severity="${BASH_REMATCH[1]}" _code="${BASH_REMATCH[2]}" _message="${BASH_REMATCH[3]}" _status
                     case "$_severity" in
                         OK) _status=ok ;; WARN) _status=warn ;; FAIL|CRITICAL) _status=fail ;;
@@ -101,6 +131,16 @@ igor_diagnose_collect() {
     fi
 
     printf '%s\n' "${_results[@]}"
+}
+
+# Structured adapter for callers that need the authoritative Step 10 result
+# contract. The existing collect function remains the presentation-compatible
+# CHECK line API; this wrapper does not execute checks a second time.
+igor_diagnose_collect_structured() {
+    local _line
+    while IFS= read -r _line; do
+        igor_health_legacy_to_json "$_line" || true
+    done < <(igor_diagnose_collect "$@")
 }
 
 # ---------------------------------------------------------------------------

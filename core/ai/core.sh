@@ -430,6 +430,8 @@ _ai_scrub_context_for_display() {
 # Heuristic warnings do not replace the final provider request redaction gate.
 _ai_refresh_context() {
     local _new_context _new_scrubbed _new_prompt _scrub_status=0
+    declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+        igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
     _new_context=$(ai_gather_context) || return 1
     ai_scrub_build_table || return 1
     _new_scrubbed=$(_ai_scrub_context_for_display "$_new_context") || _scrub_status=$?
@@ -2818,6 +2820,8 @@ except: pass
         # Load capability catalog before context gather so _ai_inject_capabilities()
         # has data to format. Idempotent — safe to call multiple times.
         declare -f igor_load_capabilities &>/dev/null && igor_load_capabilities 2>/dev/null || true
+        declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+            igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
         system_context=$(ai_gather_context)
         ai_scrub_build_table
         local _context_scrub_status=0

@@ -55,6 +55,8 @@ declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
 
 # Root of the Igor installation — resolved relative to this file's location
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
+# shellcheck source=core/lib/observation.sh
+source "${_IGOR_LOADER_DIR}/core/lib/observation.sh"
 
 # ---------------------------------------------------------------------------
 # _ml_log <level> <message>
@@ -1007,7 +1009,7 @@ _ml_load_v2() {
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
         case "$_key" in
-            capability:*|check:*|domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
+            capability:*|domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
                 _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                 _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
                 ;;
@@ -1033,7 +1035,7 @@ igor_v2_contribution_get() {
 igor_v2_invoke() {
     local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _record _owner _handler _timeout _entrypoint
     [ -n "$_input" ] || _input='{}'
-    case "$_kind" in observer|knowledge) ;; *) return 1 ;; esac
+    case "$_kind" in observer|check|knowledge) ;; *) return 1 ;; esac
     _record="$(igor_v2_contribution_get "$_kind" "$_id")" || return 1
     _owner="${_IGOR_CONTRIBUTION_OWNER[${_kind}:${_id}]}"
     _handler="$(_ml_json_field "$_record" handler)"

@@ -38,7 +38,17 @@ ai_gather_context() {
     ctx+="Timestamp: $(date)\n"
     ctx+="Hostname: $(hostname 2>/dev/null)  LAN IP: $(_ai_lan_ip)\n"
     ctx+="OS: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')\n"
-    ctx+="RAM: $(free -h | awk '/^Mem:/{print $2}') total  $(free -h | awk '/^Mem:/{print $7}') available\n"
+    # Memory is an Igor-owned observation, including its freshness label.
+    # This context remains reference data under IGOR_REFERENCE_V1.
+    if declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+       igor_v2_contribution_get observer host.memory >/dev/null 2>&1; then
+        igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
+        local _memory_fact
+        _memory_fact="$(igor_model_read host:local memory.available_bytes observed 2>/dev/null || true)"
+        if [ -n "$_memory_fact" ]; then
+            ctx+="$(printf '%s' "$_memory_fact" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; x=json.load(sys.stdin); print("RAM available: {} bytes ({})\\n".format(x.get("value", "unknown"), x["availability"]))')"
+        fi
+    fi
     ctx+="Swap: $(free -h | awk '/^Swap:/{print $2}')\n"
     ctx+="Load: $(cat /proc/loadavg | cut -d' ' -f1-3)\n"
 
@@ -69,9 +79,11 @@ ai_gather_context() {
     fi
 
     ctx+="\n=== HEALTH SCORE ===\n"
-    local health_score
+    local health_score health_availability=unknown
     health_score=$(calculate_health_score 2>/dev/null || echo "unknown")
-    ctx+="System health score: ${health_score}/100\n"
+    declare -f health_score_availability >/dev/null 2>&1 &&
+        health_availability="$(health_score_availability)"
+    ctx+="System health score: ${health_score}/100 (${health_availability})\n"
 
     # Inject hook inventory — live listing of what modules have plugged in
     local _hook_inv; _hook_inv=$(_ai_inject_hook_inventory 2>/dev/null)

@@ -62,6 +62,29 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --model)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            source "${IGOR_DIR}/core/lib/health_runner.sh"
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            case "${2:-facts}" in
+                facts) igor_model_list "${3:-}" "${4:-}" "${5:-}" ;;
+                observers) igor_observer_inspect "${3:-}" ;;
+                fact)
+                    [ "$#" -ge 4 ] || { printf 'Usage: bash igor.sh --model fact OBJECT PROPERTY [STATE_CLASS]\n' >&2; exit 2; }
+                    igor_model_read "$3" "$4" "${5:-observed}" ;;
+                refresh)
+                    igor_observer_refresh "${3:-host.memory}" "${4:-host:local}" || exit 1
+                    igor_model_list ;;
+                evaluate)
+                    igor_health_run_v2_check "${3:-host.memory.health}" || exit 1 ;;
+                health) igor_health_inspect "${3:-}" ;;
+                summary) igor_health_summary ;;
+                *) printf 'Usage: bash igor.sh --model [facts|fact|observers|refresh|evaluate|health|summary]\n' >&2; exit 2 ;;
+            esac
+            exit $?
+            ;;
         --enable|--disable|--modules)
             source "${IGOR_DIR}/core/lib/module_loader.sh"
             if [[ "$1" == --modules ]]; then
@@ -239,6 +262,9 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
     # M2-1: diagnose runner — hook-based aggregator available everywhere
     if [ -f "${IGOR_DIR}/core/lib/diagnose_runner.sh" ]; then
         source "${IGOR_DIR}/core/lib/diagnose_runner.sh"
+    fi
+    if [ -f "${IGOR_DIR}/core/lib/health_runner.sh" ]; then
+        source "${IGOR_DIR}/core/lib/health_runner.sh"
     fi
     # M2-3: notify aggregator
     if [ -f "${IGOR_DIR}/core/notify/aggregator.sh" ]; then
@@ -586,6 +612,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--mailcmd heartbeat" "Send daily heartbeat email (used by crontab)"
     printf "  ${Y}%-30s${N} %s\n" "--backup [config|full]" "Run scheduled backup (used by crontab)"
     printf "  ${Y}%-30s${N} %s\n" "--modules"           "List module policy and activation status"
+    printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
     printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"
     printf "  ${Y}%-30s${N} %s\n" "--disable <module>"  "Disable module for the next Igor process"

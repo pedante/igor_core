@@ -32,8 +32,48 @@ system__observe_memory() {
         return 0
     fi
 
-    printf '{"status":"ok","result":{"available_bytes":%s}}\n' "$((available_kb * 1024))"
+    printf '{"status":"ok","result":{"object_id":"host:local","facts":[{"property":"memory.available_bytes","value":%s,"evidence":["/proc/meminfo:MemAvailable"]}],"unavailable":[]}}\n' "$((available_kb * 1024))"
     return 0
+}
+
+# A v2 check receives only Igor's fact snapshot. It does not probe /proc or
+# choose its own check identity, owner, time, approval or execution policy.
+system__check_memory() {
+    local request
+    IFS= read -r request || return 1
+    "${IGOR_PYTHON:-python3}" - "$request" <<'PY'
+import json
+import sys
+
+try:
+    envelope = json.loads(sys.argv[1])
+    if envelope.get("api_version") != 2 or envelope.get("contribution_id") != "host.memory.health":
+        raise ValueError("wrong check request")
+    fact = envelope["input"]["facts"]["memory.available_bytes"]
+    if not isinstance(fact, dict):
+        raise ValueError("invalid fact")
+    availability = fact.get("availability")
+    used = [{"key": ["host:local", "memory.available_bytes", "observed"],
+             "recorded_at": fact.get("recorded_at"), "availability": availability}]
+    if availability != "known":
+        status, code, message = "UNKNOWN", "memory_unknown", f"Available memory is {availability or 'unknown'}"
+    else:
+        value = fact.get("value")
+        if type(value) is not int or value < 0:
+            raise ValueError("invalid available bytes")
+        mib = value // (1024 * 1024)
+        if value < 80 * 1024 * 1024:
+            status, code, message = "CRITICAL", "low_ram", f"Only {mib}MiB RAM available — critical"
+        elif value < 150 * 1024 * 1024:
+            status, code, message = "WARN", "ram_low", f"Only {mib}MiB RAM available — low"
+        else:
+            status, code, message = "OK", "ram", f"{mib}MiB RAM available"
+    result = {"status": status, "finding_code": code, "message": message,
+              "used_facts": used, "evidence": ["/proc/meminfo:MemAvailable"]}
+    print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
+except (KeyError, ValueError, TypeError) as exc:
+    print(json.dumps({"status": "error", "error": {"code": "invalid_input", "message": str(exc)}}))
+PY
 }
 
 # REQUIRED — called at igor startup
@@ -64,11 +104,6 @@ system__health() {
         [ "$temp_int" -ge 85 ] && issues+="CPU ${temp}°C CRITICAL; "
         [ "$temp_int" -ge 75 ] && [ "$temp_int" -lt 85 ] && issues+="CPU ${temp}°C; "
     fi
-
-    # Available RAM
-    local avail_mb
-    avail_mb=$(awk '/^MemAvailable:/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
-    [ -n "$avail_mb" ] && [ "$avail_mb" -lt 80 ] && issues+="RAM ${avail_mb}MB free; "
 
     # Undervoltage (Pi-specific, no-op on other hardware)
     if igor_has_bin vcgencmd; then
@@ -106,16 +141,6 @@ system__diagnose() {
         fi
     else
         echo "CHECK:cpu_temp:skip:temperature sensor not available"
-    fi
-
-    # Available RAM
-    local avail_mb
-    avail_mb=$(awk '/^MemAvailable:/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
-    if [ -n "$avail_mb" ]; then
-        if   [ "$avail_mb" -lt 80 ];  then echo "CHECK:ram:fail:only ${avail_mb}MB RAM available — CRITICAL"
-        elif [ "$avail_mb" -lt 150 ]; then echo "CHECK:ram:warn:only ${avail_mb}MB RAM available — low"
-        else                               echo "CHECK:ram:ok:${avail_mb}MB RAM available"
-        fi
     fi
 
     # Undervoltage (Pi-specific)
@@ -176,8 +201,8 @@ system__ai_context() {
         ctx+="CPU temp: ${temp}°C\n"
     fi
 
-    # RAM + load
-    ctx+="$(free -h 2>/dev/null | grep -E '^(Mem|Swap):')\n"
+    # Memory availability is supplied once by the Igor System Model context.
+    ctx+="$(free -h 2>/dev/null | grep -E '^Swap:')\n"
     ctx+="Load: $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)\n"
 
     # Recent I/O errors

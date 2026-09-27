@@ -40,7 +40,8 @@ _KINDS = {
     "knowledge", "observer", "capability", "check", "domain_event",
     "automation", "relationship", "configuration", "lifecycle",
 }
-_COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds"}
+_COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
+                "object_kind", "properties", "freshness_seconds", "privilege", "required_facts"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -279,6 +280,59 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
         result["timeout_seconds"] = timeout
     if kind == "observer" and "output_type" not in result:
         raise _error(f"{where} requires output_type")
+    if kind == "observer" and "properties" in item:
+        if item.get("object_kind") != "host":
+            raise _error(f"{where}.object_kind must be host")
+        props = item["properties"]
+        if not isinstance(props, list) or not props:
+            raise _error(f"{where}.properties must be non-empty")
+        names = set()
+        for prop in props:
+            if not isinstance(prop, dict) or set(prop) - {"name", "value_type", "minimum"} or set(prop) & {"name", "value_type"} != {"name", "value_type"}:
+                raise _error(f"{where}.properties has invalid entry")
+            name = prop["name"]
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_.]*", name) or name in names:
+                raise _error(f"{where}.properties has duplicate or invalid name")
+            names.add(name)
+            if not isinstance(prop["value_type"], str) or prop["value_type"] not in {"integer", "number", "boolean", "string"}:
+                raise _error(f"{where}.properties has unsupported value type")
+            if "minimum" in prop and (prop["value_type"] not in {"integer", "number"} or type(prop["minimum"]) not in (int, float)):
+                raise _error(f"{where}.properties has invalid minimum")
+        ttl = item.get("freshness_seconds")
+        if type(ttl) is not int or ttl <= 0 or ttl > 86400:
+            raise _error(f"{where}.freshness_seconds must be 1..86400")
+        if not isinstance(item.get("privilege", "none"), str) or item.get("privilege", "none") not in {"none", "required"}:
+            raise _error(f"{where}.privilege must be none or required")
+        result.update(object_kind="host", properties=props, freshness_seconds=ttl,
+                      privilege=item.get("privilege", "none"))
+    elif kind == "observer" and set(item) & {"object_kind", "freshness_seconds", "privilege"}:
+        raise _error(f"{where}.properties required with observer metadata")
+    if kind == "check" and "required_facts" in item:
+        if item.get("object_kind") != "host":
+            raise _error(f"{where}.object_kind must be host")
+        required = item["required_facts"]
+        if not isinstance(required, list) or not required:
+            raise _error(f"{where}.required_facts must be non-empty")
+        names = set()
+        for fact in required:
+            if not isinstance(fact, dict) or set(fact) != {"property", "state_class", "observer"}:
+                raise _error(f"{where}.required_facts has invalid entry")
+            if not all(isinstance(fact[k], str) and fact[k] for k in fact):
+                raise _error(f"{where}.required_facts has invalid value")
+            if fact["state_class"] != "observed" or not _ID_RE.fullmatch(fact["observer"]):
+                raise _error(f"{where}.required_facts has unsupported source")
+            if fact["property"] in names:
+                raise _error(f"{where}.required_facts has duplicate property")
+            names.add(fact["property"])
+        result.update(object_kind="host", required_facts=required)
+    elif kind == "check" and "object_kind" in item:
+        raise _error(f"{where}.required_facts required with object_kind")
+    if kind != "observer" and set(item) & {"properties", "freshness_seconds", "privilege"}:
+        raise _error(f"{where} has observer-only metadata")
+    if kind not in {"observer", "check"} and "object_kind" in item:
+        raise _error(f"{where}.object_kind is unsupported")
+    if kind != "check" and "required_facts" in item:
+        raise _error(f"{where}.required_facts is check-only")
     if "path" in result and kind != "knowledge":
         raise _error(f"{where}.path is only valid for knowledge contributions")
     if "handler" in result and kind not in {"knowledge", "observer", "check", "capability", "configuration", "lifecycle"}:

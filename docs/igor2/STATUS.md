@@ -2,14 +2,61 @@
 
 Last updated: 2026-09-27
 
-## Wave D Host Intelligence design gate
+## Wave D Host Intelligence implementation
 
-**Design accepted; Steps 7–10 are not implemented.** The implementation
+**Steps 7–10 are implemented at the accepted Wave D boundary.** Platform
+package/service query and install/remove/update/upgrade argv resolvers extend `core/lib/pkg.sh`
+without adding an execution path. The process-local System Model in
+`core/lib/system_model.py` separates observed, configured, user-declared,
+desired and inferred slots from watch/maintain responsibilities. Its Bash
+bridge in `observation.sh` validates active v2 observer results before an
+atomic runtime snapshot update. Observed values are rebuilt after restart;
+there is no fact database. The shared `health_runner.sh` evaluates active v2
+checks and adapts active v1 checks for Diagnose and Healing.
+
+The real `system` path is `host.memory` → validated
+`host:local/memory.available_bytes` → `host.memory.health` → read-only
+inspection and Diagnose/Healing/AI projections. Igor stamps provenance,
+freshness and check time. The 80/150 MiB boundaries are preserved. The old
+`system__diagnose`, `system__health`, hardware check and AI-context RAM probes
+were retired for this slice; other hardware and Nextcloud v1 checks remain.
+`bash igor.sh --model fact host:local memory.available_bytes` and
+`--model observers` are read-only;
+`--model refresh host.memory` and `--model evaluate host.memory.health` are
+explicit operations. The backend model/health inspection APIs retain state
+within a running Igor process. Q003 and Q012 remain open.
+
+### Wave D proof
+
+- Contract: System Model unit tests cover independent slots, provenance,
+  type rejection, availability, partial output, inference and source replay.
+  Observer BATS cover active/inactive owner, malformed/failure cutover,
+  no implicit read refresh and restart reconstruction. The health runner
+  validates used-fact references and fails to `UNKNOWN` on stale input.
+- Vertical slice: live `system` handler invocation produced a typed memory
+  fact and a structured result with the same fact key/time. Diagnose and
+  Healing each projected one RAM result. AI context uses the fact and keeps
+  it inside `IGOR_REFERENCE_V1`.
+- Inspection/recovery: `--model fact` is initially `not_observed`; explicit
+  refresh populates it; a new Igor process again starts `not_observed` and
+  rebuilds on refresh. Health inspection exposes the check's used fact and
+  timestamp. Source-backed desired/responsibility replay is covered without
+  adding a persistent layout.
+- Regression: `bash tests/run_all.sh` passed all five groups (46 Bash core,
+  46 Python render, 303 core BATS, 114 module BATS and 40 integration BATS),
+  with one environment-dependent GPG-agent skip inside core. Full `pytest -q`
+  passed 224 tests and 93 subtests. Bash syntax and `git diff --check` passed.
+  Ruff passed on changed Python files. Full-repo Ruff still reports its
+  pre-existing backlog; ShellCheck on changed shell files reports only the
+  pre-existing warnings in `core/ai`, Healing and `igor.sh`.
+
+## Wave D Host Intelligence design gate (historical baseline)
+
+**Design accepted before implementation.** The implementation
 contract and falsifiable exit checks are in
 [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md), with D033–D036 accepted in
 [DECISIONS.md](DECISIONS.md). Wave C remains the green implementation baseline.
-This gate changes documentation only; it does not claim a new runtime test run
-or Wave D completion.
+This paragraph records the design gate's preimplementation evidence.
 
 The gate was made on a clean `igor2` worktree at `a8dda91`
 (`origin/igor2`), with local `master` `76f04e3` confirmed as an ancestor.
@@ -97,9 +144,9 @@ claim about a newer un-fetched remote branch.
 | 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows approval of the exact command. General capability privilege metadata remains Step 11 work. |
 | 5 Module Runtime v2 | Complete for Wave C in `core/lib/module_loader.sh`: v1/v2 dispatch, strict preflight, staged declarations, owner-aware contribution index, typed module/contribution state and inspection queries. |
 | 6 Module API v2 | Initial Bash-first contract complete for Wave C in `core/lib/module_contract.py` and `core/lib/module_handler.sh`. `system` is a mixed v1/v2 reference; `nextcloud_docker` remains v1. Later kind-specific consumers remain deferred. |
-| 7 Platform Abstraction | Partial: distro/family detection, Debian/Arch-aware package mappings/install and Python resolution exist. Other normalized operations and broad test proof are missing. |
-| 8 System Model; 9 Observation Framework | Missing as coherent shared contracts; current direct probes are inputs, not a System Model. |
-| 10 Unified Health | Partial: module check conventions and activation filtering exist, but Diagnose and Healing have separate discovery/execution/result paths. |
+| 7 Platform Abstraction | Wave D boundary complete: normalized Debian/Arch package query and install/remove/update argv, systemd state query and operation argv, strict names, timeout/error behavior and unknown-family failure. Legacy `pkg_install` remains compatible. |
+| 8 System Model; 9 Observation Framework | Initial Wave D contract complete: typed keyed facts, independent intent/responsibility records, active v2 observation validation, freshness/failure state and read-only inspection. Broader domain inventory and persistence remain later work. |
+| 10 Unified Health | Initial Wave D contract complete: one active-owner runner, structured v2 memory result, v1 line adapters and Diagnose/Healing projections. |
 | 11 Capability System v2 | Partial: current owned, tiered AI action catalog and `run_igor_action` are the seed. General structured metadata, verification and shared interface use are missing. |
 | 12 Knowledge & Context Engine | Partial: a sound request/reference trust boundary and active module hooks exist; composition still uses broad direct probes and saved files. |
 | 13 Domain Event Bus; 14 Automation Engine | Missing. `core/ai/events.sh` is a frontend activity stream, not the domain bus. Existing schedules are not an Igor-owned automation contract. |

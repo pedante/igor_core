@@ -110,7 +110,12 @@ header() {
     # Calculate health score for display
     local health_score health_color
     health_score=$(calculate_health_score 2>/dev/null || echo "-1")
-    if [ "$health_score" = "-1" ]; then
+    local _health_availability=known
+    declare -f health_score_availability >/dev/null 2>&1 &&
+        _health_availability="$(health_score_availability)"
+    if [ "$_health_availability" = unknown ]; then
+        health_color="${DIM}"
+    elif [ "$health_score" = "-1" ]; then
         health_color="${DIM}"       # unknown — no healing data yet
     elif [ "$health_score" -ge 80 ]; then
         health_color="${GRN}"
@@ -158,7 +163,9 @@ except:
         [ "${_cache_age:-9999}" -gt 30 ] 2>/dev/null && _health_stale=true
     fi
 
-    if [ "$health_score" = "-1" ]; then
+    if [ "$_health_availability" = unknown ]; then
+        printf "  %-10s: %b\n" "Health" "${DIM}UNKNOWN — no valid check result${NC}"
+    elif [ "$health_score" = "-1" ]; then
         printf "  %-10s: %b\n" "Health" "${DIM}— not checked yet  (run D or A to scan)${NC}"
     else
         local _stale_tag=""

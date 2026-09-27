@@ -1,9 +1,9 @@
 # Wave D host-intelligence contract — design gate
 
-Status: **accepted design; not implemented**. Steps 7–10 use the Wave C
+Status: **accepted design; implemented for the Wave D boundary**. Steps 7–10 use the Wave C
 Module API v2 loader, contribution index and Bash handler envelope. The
-implementation must satisfy the five proof classes in [EXECUTION.md](EXECUTION.md)
-before Wave D is marked complete. This document specifies the smallest first
+implementation evidence for the five proof classes is in [STATUS.md](STATUS.md).
+This document specifies the smallest first
 authority path, not a general inventory database or monitoring service.
 
 ```text
@@ -187,8 +187,7 @@ short positive TTL. The validator rejects unknown fields/types, duplicate
 properties and invalid TTL before activation. Do not introduce an arbitrary
 telemetry schema language.
 
-Illustrative extension of the current `host.memory` descriptor (the current
-Wave C file does **not** yet contain the new fields):
+The implemented extension of the Wave C `host.memory` descriptor is:
 
 ```json
 {
@@ -298,8 +297,8 @@ with missing required fact references is rejected; Igor emits a named
 `UNKNOWN` evaluation result for timeout/malformed output instead of treating
 the check as passed.
 
-Step 10 extends the existing v2 `check` descriptor/dispatcher, which Wave C
-currently indexes but does not invoke. The first check declares an
+Step 10 extends the v2 `check` descriptor/dispatcher, which Wave C had indexed
+without invocation. The first check declares an
 `object_kind=host` and one `required_facts` entry for observed
 `memory.available_bytes`; Igor resolves that entry from a single snapshot,
 refreshes it at most once for the pass, and passes the exact value,

@@ -122,8 +122,10 @@ text cannot introduce executable tools. Configure policy in `config/variables/ai
 with private overrides in `secrets/ai.env`. For Igor 2 trust/context direction and migration constraints, see [docs/igor2/](docs/igor2/README.md).
 
 ### Self-healing
-Pluggable check files in `modules/*/checks/*.sh`. Each check emits
-`CHECK_RESULT SEVERITY code message` lines. The healing engine runs all checks
+Pluggable v1 check files in `modules/*/checks/*.sh` emit
+`CHECK_RESULT SEVERITY code message` lines. A shared active-owner runner also
+evaluates v2 structured checks and projects their results into the existing
+Diagnose and Healing flows. The healing engine runs checks
 on a configurable interval, calculates a health score (0–100), logs patterns,
 suppresses repeated alerts (4 h stale window), and fires the `alert_hook`.
 
@@ -165,8 +167,12 @@ state, steer, conversation, and captured terminal output. IPC via FIFO-based com
 
 The loader supports Module API v1 and the first Module API v2 path. The v1
 package and hook contract below remains live for `nextcloud_docker`; `system`
-uses a strict v2 manifest and JSON contributions for host knowledge and a
-memory observer while keeping its current v1 hooks. New v2 packages require
+uses a strict v2 manifest and JSON contributions for host knowledge, a
+typed memory observer and a structured memory health check while keeping its
+other v1 hooks. Inspect the process-local host model with
+`bash igor.sh --model facts`, `--model observers`, `--model health` or
+`--model summary`; explicit
+`--model refresh host.memory` reads the host. New v2 packages require
 explicit enablement. See [Module API v2](docs/igor2/MODULE_API.md).
 
 A module is a directory under `modules/` containing:

@@ -19,9 +19,16 @@ _ml_bash_handler_error() {
 }
 
 _ml_bash_handler_python() {
-    local _py="${IGOR_PYTHON:-python3}"
-    command -v "$_py" >/dev/null 2>&1 || return 1
-    printf '%s\n' "$_py"
+    local _py="${IGOR_PYTHON:-}"
+    if [ -n "$_py" ] && command -v "$_py" >/dev/null 2>&1; then
+        printf '%s\n' "$_py"
+    elif command -v python3 >/dev/null 2>&1; then
+        printf 'python3\n'
+    elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q '^Python 3'; then
+        printf 'python\n'
+    else
+        return 1
+    fi
 }
 
 _ml_bash_handler_path() {
@@ -125,7 +132,7 @@ print(json.dumps({"api_version": 2, "contribution_id": sys.argv[1], "input": val
         _ml_bash_handler_error "timeout command is unavailable"
         return 1
     fi
-    _response="$(printf '%s\n' "$_request" | timeout --signal=TERM "${_timeout}s" \
+    _response="$(printf '%s\n' "$_request" | IGOR_PYTHON="$_py" timeout --signal=TERM "${_timeout}s" \
         bash --noprofile --norc -c '
             set -e
             entrypoint=$1

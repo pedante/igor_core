@@ -32,6 +32,11 @@ _HEALING_STARTUP_CHECK_DONE=false
 source "${_HEALING_DIR}/alerts.sh"
 source "${_HEALING_DIR}/patterns.sh"
 
+if [ -f "${IGOR_DIR:-${_HEALING_DIR}/../..}/core/lib/health_runner.sh" ]; then
+    # shellcheck source=core/lib/health_runner.sh
+    source "${IGOR_DIR:-${_HEALING_DIR}/../..}/core/lib/health_runner.sh"
+fi
+
 # Load file locking for concurrent operations
 if [ -f "${IGOR_DIR}/core/lib/file_locking.sh" ]; then
     source "${IGOR_DIR}/core/lib/file_locking.sh"
@@ -113,6 +118,38 @@ health_check_full() {
     _healing_discover_checks >/dev/null
     local _check_files=("${_HEALING_CHECK_FILES[@]}")
 
+    # Run active v2 checks once and project their structured result into the
+    # existing cache format. Legacy checks remain adapters during migration.
+    if declare -f igor_health_collect_v2_healing >/dev/null 2>&1; then
+        declare -f igor_health_prepare_v2_checks >/dev/null 2>&1 && igor_health_prepare_v2_checks
+        while IFS= read -r _v2_line; do
+            [[ "$_v2_line" == CHECK_RESULT\ * ]] || continue
+            _v2_severity=$(awk '{print $2}' <<<"$_v2_line")
+            _v2_code=$(awk '{print $3}' <<<"$_v2_line")
+            _v2_message=$(cut -d' ' -f4- <<<"$_v2_line")
+            echo "${_v2_severity} ${_v2_code} ${_v2_message}" >> "$_HEALING_CACHE_FILE"
+            all_results+=("${_v2_severity}|${_v2_code}|${_v2_message}")
+        done < <(igor_health_collect_v2_healing)
+    fi
+
+    # The shared runner owns one v1 discovery/execution pass. Healing only
+    # projects its results into the historical cache and score.
+    if declare -f igor_health_collect_legacy_results >/dev/null 2>&1; then
+        while IFS= read -r _legacy_json; do
+            _legacy_code="$(printf '%s' "$_legacy_json" | "$(_igor_health_python)" -c 'import json,sys; print(json.load(sys.stdin)["finding_code"])')" || continue
+            if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "$_legacy_code" =~ ^(ram|low_ram|ram_low)$ ]]; then
+                continue
+            fi
+            _legacy_result=$(igor_health_json_to_healing "$_legacy_json") || continue
+            _legacy_severity=$(awk '{print $2}' <<<"$_legacy_result")
+            _legacy_code=$(awk '{print $3}' <<<"$_legacy_result")
+            _legacy_message=$(cut -d' ' -f4- <<<"$_legacy_result")
+            echo "${_legacy_severity} ${_legacy_code} ${_legacy_message}" >> "$_HEALING_CACHE_FILE"
+            all_results+=("${_legacy_severity}|${_legacy_code}|${_legacy_message}")
+        done < <(igor_health_collect_legacy_results "${_script_timeout:-30}")
+        _check_files=()
+    fi
+
     if [ "$show_output" = "true" ]; then
         step "Running health checks..."
         echo ""
@@ -140,6 +177,9 @@ health_check_full() {
             code=$(echo "$line" | awk '{print $3}')
             message=$(echo "$line" | cut -d' ' -f4-)
             [ -z "$severity" ] && continue
+            if declare -f igor_health_memory_check_active >/dev/null 2>&1 && igor_health_memory_check_active && [[ "$code" =~ ^(ram|low_ram|ram_low)$ ]]; then
+                continue
+            fi
             echo "${severity} ${code} ${message}" >> "$_HEALING_CACHE_FILE"
             all_results+=("${severity}|${code}|${message}")
         done <<< "$result"
@@ -193,7 +233,7 @@ health_check_full() {
         [ "$score" -lt 50 ] && score_color="$RED"
 
         # Count by severity first so we can show the summary line up top
-        local ok_count=0 warn_count=0 fail_count=0 crit_count=0
+        local ok_count=0 warn_count=0 fail_count=0 crit_count=0 unknown_count=0
         for r in "${all_results[@]}"; do
             local sev="${r%%|*}"
             case "$sev" in
@@ -201,11 +241,16 @@ health_check_full() {
                 WARN)     (( warn_count++ )) ;;
                 FAIL)     (( fail_count++ )) ;;
                 CRITICAL) (( crit_count++ )) ;;
+                UNKNOWN) (( unknown_count++ )) ;;
             esac
         done
 
         # Summary line — always shown first
-        echo -e "  Health score: ${score_color}${score}/100${NC}   ${GRN}✔ ${ok_count} OK${NC}  ${YEL}⚠ ${warn_count} WARN${NC}  ${RED}✘ ${fail_count} FAIL  ✘ ${crit_count} CRITICAL${NC}"
+        if [ $((ok_count + warn_count + fail_count + crit_count)) -eq 0 ]; then
+            echo -e "  Health: ${YEL}UNKNOWN${NC} — no valid check could evaluate"
+        else
+            echo -e "  Health score: ${score_color}${score}/100${NC}   ${GRN}✔ ${ok_count} OK${NC}  ${YEL}⚠ ${warn_count} WARN${NC}  ${RED}✘ ${fail_count} FAIL  ✘ ${crit_count} CRITICAL${NC}  ${YEL}? ${unknown_count} UNKNOWN${NC}"
+        fi
         echo ""
 
         # Only list non-OK results — OK results are expected and just add noise
@@ -217,6 +262,7 @@ health_check_full() {
                 WARN)     warn "$msg";                           _has_issues=true ;;
                 FAIL)     fail "$msg";                           _has_issues=true ;;
                 CRITICAL) echo -e "  ${RED}${BOLD}✘ CRITICAL${NC} ${msg}"; _has_issues=true ;;
+                UNKNOWN)  warn "UNKNOWN: ${msg}"; _has_issues=true ;;
             esac
         done
 
@@ -271,6 +317,27 @@ calculate_health_score() {
 
     [ $score -lt 0 ] && score=0
     echo "$score"
+}
+
+# The numeric cache score is a legacy projection. It has no healthy meaning
+# when every check is UNKNOWN/SKIP or the cache is empty.
+health_score_availability() {
+    [ -s "$_HEALING_CACHE_FILE" ] || { printf 'unknown\n'; return 0; }
+    if grep -Eq '^(OK|WARN|FAIL|CRITICAL) ' "$_HEALING_CACHE_FILE"; then
+        printf 'known\n'
+    else
+        printf 'unknown\n'
+    fi
+}
+
+# Project the most recent Healing cache through the shared structured result
+# contract. This is read-only and never authorizes or executes remediation.
+igor_healing_collect_structured() {
+    [ -f "$_HEALING_CACHE_FILE" ] || return 0
+    local _line
+    while IFS= read -r _line; do
+        igor_health_legacy_to_json "CHECK_RESULT $_line" || true
+    done < "$_HEALING_CACHE_FILE"
 }
 
 # ── Validate critical configuration ──────────────────────────────────────────

@@ -1,14 +1,14 @@
 #!/bin/bash
 # ==============================================================================
 #  IGOR — modules/system/checks/hardware.sh
-#  Host hardware health check: CPU temperature, RAM, undervoltage, disk, swap.
+#  Host hardware health check: CPU temperature, undervoltage, disk, swap.
 #
 #  Discoverable by _healing_discover_checks() in core/healing/core.sh.
 #  Architecture-agnostic: uses /proc, /sys, and optional vcgencmd (Pi).
 # ==============================================================================
 
 CHECK_NAME="hardware"
-CHECK_DESCRIPTION="CPU temperature, RAM, undervoltage (Pi), root filesystem, swap"
+CHECK_DESCRIPTION="CPU temperature, undervoltage (Pi), root filesystem, swap"
 CHECK_SCHEDULE="60"
 
 # PATTERN_HINT cpu_overtemp "CPU temperature critical (≥85°C)" CHANGE "sudo systemctl stop docker && sleep 30 && sudo systemctl start docker"
@@ -35,19 +35,6 @@ run_check() {
         fi
     else
         echo "CHECK_RESULT OK cpu_temp CPU temperature sensor not available (non-Pi hardware)"
-    fi
-
-    # ── Available RAM ─────────────────────────────────────────────────────────
-    local avail_mb
-    avail_mb=$(awk '/^MemAvailable:/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
-    if [ -n "$avail_mb" ]; then
-        if   [ "$avail_mb" -lt 80 ];  then
-            echo "CHECK_RESULT CRITICAL low_ram Only ${avail_mb}MB RAM available — critical"
-        elif [ "$avail_mb" -lt 150 ]; then
-            echo "CHECK_RESULT WARN ram_low Only ${avail_mb}MB RAM available — low"
-        else
-            echo "CHECK_RESULT OK ram ${avail_mb}MB RAM available"
-        fi
     fi
 
     # ── Undervoltage (Pi-specific, no-op on other hardware) ──────────────────

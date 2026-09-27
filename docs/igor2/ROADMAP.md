@@ -182,7 +182,7 @@ owner-aware contribution index and Bash as the first handler adapter.
 `system` is the incremental v2 reference module during Wave C;
 `nextcloud_docker` stays on v1 throughout the wave.
 
-## Step 7 — Platform Abstraction — PARTIAL
+## Step 7 — Platform Abstraction — WAVE D BOUNDARY COMPLETE
 
 Current `distro.sh`, `pkg.sh` and Python resolution already include Debian/Arch-aware behavior and additional family mappings.
 
@@ -206,7 +206,7 @@ normalized resolution fails closed on unknown families; preserve legacy
 `pkg_install` callers until their cutover. Move Docker
 post-install behavior with its domain capability, not into `system`.
 
-## Step 8 — System Model — FUTURE
+## Step 8 — System Model — INITIAL CONTRACT COMPLETE FOR WAVE D
 
 Create Igor-owned structured state for host, OS, storage, networking, services/packages, Igor runtime/modules, domain instances and relationships.
 
@@ -233,7 +233,7 @@ responsibility and source-backed intent contract in
 [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md). Observed facts are rebuildable
 in the first slice; Q003 remains open for later durable observed history.
 
-## Step 9 — Observation Framework — FUTURE
+## Step 9 — Observation Framework — INITIAL CONTRACT COMPLETE FOR WAVE D
 
 Standardize observers that populate the System Model.
 
@@ -252,9 +252,11 @@ properties, runtime validation, atomic System Model updates and deterministic
 failure/staleness semantics. The invocation and inspection contract is in
 [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md); no general scheduler is added.
 
-## Step 10 — Unified Health — PARTIAL
+## Step 10 — Unified Health — INITIAL CONTRACT COMPLETE FOR WAVE D
 
-Diagnostics and healing already share module check conventions and activation filtering, but remain separate discovery/execution paths.
+Diagnostics and healing share an active-owner check runner and structured
+result contract while keeping separate user workflows. V1 line adapters
+remain during module migration.
 
 Unify the underlying structured observation/check result while keeping Diagnose and Self-healing as different user workflows.
 

@@ -121,3 +121,134 @@ EOF
     [ "$status" -eq 1 ]
     [[ "$output" == *"unsupported distro family 'unknown'"* ]]
 }
+
+@test "Wave D package argv resolution is deterministic on Debian and Arch" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    IGOR_DISTRO_FAMILY=debian
+    [ "$(pkg_install_argv pkg_docker pkg_python)" = "apt-get install -y docker.io python3" ]
+    [ "$(pkg_remove_argv pkg_docker)" = "apt-get remove -y docker.io" ]
+    [ "$(pkg_update_argv)" = "apt-get update" ]
+    [ "$(pkg_upgrade_argv)" = "apt-get upgrade -y" ]
+    IGOR_DISTRO_FAMILY=arch
+    [ "$(pkg_install_argv pkg_docker pkg_python)" = "pacman -S --noconfirm docker python" ]
+    [ "$(pkg_remove_argv pkg_docker)" = "pacman -R --noconfirm docker" ]
+    [ "$(pkg_update_argv)" = "pacman -Syu --noconfirm" ]
+    [ "$(pkg_upgrade_argv)" = "pacman -Syu --noconfirm" ]
+}
+
+@test "Wave D package argv rejects invalid names and unknown families" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    IGOR_DISTRO_FAMILY=debian
+    run pkg_install_argv 'bad name'
+    [ "$status" -eq 2 ]
+    run pkg_remove_argv --bad
+    [ "$status" -eq 2 ]
+    IGOR_DISTRO_FAMILY=unknown
+    run pkg_update_argv
+    [ "$status" -eq 2 ]
+    run pkg_upgrade_argv
+    [ "$status" -eq 2 ]
+}
+
+@test "Wave D package query distinguishes installed and missing packages" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/dpkg-query" <<'EOF'
+#!/bin/bash
+case "$4" in
+    installed) printf 'install ok installed';;
+    missing) printf 'unknown ok not-installed';;
+    *) exit 3;;
+esac
+EOF
+    chmod +x "$IGOR_DIR/bin/dpkg-query"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    IGOR_DISTRO_FAMILY=debian
+    run pkg_query installed
+    [ "$status" -eq 0 ]
+    run pkg_query missing
+    [ "$status" -eq 1 ]
+    run pkg_query error
+    [ "$status" -eq 2 ]
+    run pkg_query 'bad name'
+    [ "$status" -eq 2 ]
+}
+
+@test "Wave D Arch package and service queries distinguish states and errors" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/pacman" <<'EOF'
+#!/bin/bash
+case "$3" in installed) exit 0;; missing) exit 1;; *) exit 2;; esac
+EOF
+    cat > "$IGOR_DIR/bin/systemctl" <<'EOF'
+#!/bin/bash
+case "$3" in active) printf 'active\n'; exit 0;; inactive) printf 'inactive\n'; exit 3;; *) exit 4;; esac
+EOF
+    chmod +x "$IGOR_DIR/bin/pacman" "$IGOR_DIR/bin/systemctl"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    IGOR_DISTRO_FAMILY=arch
+    run pkg_query installed
+    [ "$status" -eq 0 ]
+    run pkg_query missing
+    [ "$status" -eq 1 ]
+    run pkg_query error
+    [ "$status" -eq 2 ]
+    # shellcheck disable=SC2218 # pkg.sh is sourced above through a dynamic path.
+    [ "$(svc_query active)" = active ]
+    # shellcheck disable=SC2218 # pkg.sh is sourced above through a dynamic path.
+    [ "$(svc_query inactive)" = inactive ]
+    [ "$(svc_stop_argv cronie.service)" = "systemctl stop cronie.service" ]
+}
+
+@test "Wave D service query and operation argv validate units" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    IGOR_DISTRO_FAMILY=debian
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/systemctl" <<'EOF'
+#!/bin/bash
+[ "$1" = is-active ] && printf 'active\n'
+EOF
+    chmod +x "$IGOR_DIR/bin/systemctl"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    [ "$(svc_query docker.service)" = active ]
+    [ "$(svc_restart_argv docker.service)" = "systemctl restart docker.service" ]
+    [ "$(svc_enable_argv docker.service)" = "systemctl enable docker.service" ]
+    run svc_start_argv 'bad unit'
+    [ "$status" -eq 2 ]
+}
+
+@test "Wave D service query distinguishes inactive and unknown units" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    IGOR_DISTRO_FAMILY=debian
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/systemctl" <<'EOF'
+#!/bin/bash
+case "$3" in
+    inactive) printf 'inactive\n'; exit 3;;
+    unknown) printf 'unknown\n'; exit 4;;
+    *) printf 'active\n'; exit 0;;
+esac
+EOF
+    chmod +x "$IGOR_DIR/bin/systemctl"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    # shellcheck disable=SC2218 # pkg.sh is sourced above through a dynamic path.
+    [ "$(svc_query inactive)" = inactive ]
+    run svc_query unknown
+    [ "$status" -eq 1 ]
+    [ "$output" = unknown ]
+}
+
+@test "Wave D service operations fail closed without systemctl" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/empty-bin"
+    PATH="$IGOR_DIR/empty-bin" run svc_stop_argv docker.service
+    [ "$status" -eq 2 ]
+}
+
+@test "Wave D service operations fail closed for unknown family" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    IGOR_DISTRO_FAMILY=unknown
+    run svc_restart_argv docker.service
+    [ "$status" -eq 2 ]
+}

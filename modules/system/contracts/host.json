@@ -11,7 +11,20 @@
       "id": "host.memory",
       "handler": "system__observe_memory",
       "output_type": "host.memory",
-      "timeout_seconds": 10
+      "timeout_seconds": 10,
+      "object_kind": "host",
+      "properties": [{"name": "memory.available_bytes", "value_type": "integer", "minimum": 0}],
+      "freshness_seconds": 60,
+      "privilege": "none"
+    },
+    {
+      "kind": "check",
+      "id": "host.memory.health",
+      "handler": "system__check_memory",
+      "output_type": "health.result",
+      "timeout_seconds": 10,
+      "object_kind": "host",
+      "required_facts": [{"property": "memory.available_bytes", "state_class": "observed", "observer": "host.memory"}]
     }
   ]
 }
