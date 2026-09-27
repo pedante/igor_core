@@ -16,7 +16,8 @@ New modules can be added without touching core code.
 > **Igor 2 development:** this README documents the current implementation. The target architecture, migration rules, and current Igor 2 status live in [docs/igor2/](docs/igor2/README.md). Igor 2 evolves the recent TUI, module activation, safety, capability, and platform work rather than rebuilding those foundations.
 
 Modules can stay installed while disabled. Use `bash igor.sh --modules` to inspect
-state and `bash igor.sh --disable nextcloud_docker` to disable its participation
+API version, activation state, unavailable reasons and owned contributions.
+Use `bash igor.sh --disable nextcloud_docker` to disable its participation
 in new Igor processes. Restart existing sessions after a policy change. This does
 not stop running services or delete their data. See the
 [module lifecycle and architecture assessment](docs/module_lifecycle.md).
@@ -161,6 +162,12 @@ state, steer, conversation, and captured terminal output. IPC via FIFO-based com
 ---
 
 ## Module system
+
+The loader supports Module API v1 and the first Module API v2 path. The v1
+package and hook contract below remains live for `nextcloud_docker`; `system`
+uses a strict v2 manifest and JSON contributions for host knowledge and a
+memory observer while keeping its current v1 hooks. New v2 packages require
+explicit enablement. See [Module API v2](docs/igor2/MODULE_API.md).
 
 A module is a directory under `modules/` containing:
 

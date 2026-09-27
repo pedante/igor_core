@@ -138,6 +138,9 @@ _ai_load_base_prompt() {
         if [ "${IGOR_AI_CONTEXT:-standard}" != minimal ] && declare -f igor_run_all_hooks &>/dev/null; then
             _module_tiers=$(igor_run_all_hooks "ai_tiers" 2>/dev/null || true)
             _module_knowledge=$(igor_run_all_hooks "ai_knowledge" 2>/dev/null || true)
+            if declare -f igor_v2_collect_knowledge >/dev/null 2>&1; then
+                _module_knowledge+=$'\n'"$(igor_v2_collect_knowledge 2>/dev/null || true)"
+            fi
         fi
 
         local _user_reference="" _owners="" _hook _fn

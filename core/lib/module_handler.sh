@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  MODULE API v2 — Bash handler adapter
+#
+#  This file only knows how to invoke a trusted Bash handler.  Activation,
+#  ownership, requirements and policy checks belong to module_loader.sh.
+#
+#  _ml_bash_handler_invoke <module_dir> <owner> <handler> <contribution_id>
+#                          <timeout_seconds> [input_json]
+#
+#  The function writes one validated response envelope to stdout.  Handler
+#  diagnostics may be written to stderr.  A non-zero return means that the
+#  handler was not successfully invoked or did not return a valid envelope.
+# =============================================================================
+
+_ml_bash_handler_error() {
+    printf 'module handler: %s\n' "$*" >&2
+    return 1
+}
+
+_ml_bash_handler_python() {
+    local _py="${IGOR_PYTHON:-python3}"
+    command -v "$_py" >/dev/null 2>&1 || return 1
+    printf '%s\n' "$_py"
+}
+
+_ml_bash_handler_path() {
+    local _module_dir="$1" _entrypoint="$2" _base _path _real_base _real_path
+    [ -n "$_module_dir" ] && [ -n "$_entrypoint" ] || return 1
+    case "$_entrypoint" in
+        /*|..|../*|*/../*|*/..) return 1 ;;
+    esac
+    _base="$(cd -- "$_module_dir" 2>/dev/null && pwd -P)" || return 1
+    _path="$_base/$_entrypoint"
+    [ -f "$_path" ] || return 1
+    _real_base="$(realpath -e -- "$_base" 2>/dev/null)" || return 1
+    _real_path="$(realpath -e -- "$_path" 2>/dev/null)" || return 1
+    case "$_real_path" in
+        "$_real_base"/*) printf '%s\n' "$_real_path" ;;
+        *) return 1 ;;
+    esac
+}
+
+_ml_bash_handler_validate_response() {
+    local _response="$1" _py
+    _py="$(_ml_bash_handler_python)" || {
+        _ml_bash_handler_error "Python JSON runtime is unavailable"
+        return 1
+    }
+    printf '%s' "$_response" | "$_py" -c '
+import json, sys
+raw = sys.stdin.read()
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError as exc:
+    print(f"invalid JSON response: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(value, dict):
+    print("response must be a JSON object", file=sys.stderr)
+    raise SystemExit(1)
+status = value.get("status")
+if status == "ok":
+    if set(value) != {"status", "result"}:
+        print("ok response must contain result and no error", file=sys.stderr)
+        raise SystemExit(1)
+elif status == "error":
+    error = value.get("error")
+    if not isinstance(error, dict) or not isinstance(error.get("code"), str) or not isinstance(error.get("message"), str):
+        print("error response must contain error.code and error.message strings", file=sys.stderr)
+        raise SystemExit(1)
+    if set(value) != {"status", "error"}:
+        print("error response must contain only status and error", file=sys.stderr)
+        raise SystemExit(1)
+    print("handler error {}: {}".format(error["code"], error["message"]), file=sys.stderr)
+    raise SystemExit(1)
+else:
+    print("response status must be ok or error", file=sys.stderr)
+    raise SystemExit(1)
+' || return 1
+}
+
+_ml_bash_handler_invoke() {
+    local _module_dir="${1:-}" _owner="${2:-}" _handler="${3:-}"
+    local _contribution_id="${4:-}" _timeout="${5:-}" _input="${6:-}"
+    local _entrypoint _py _request _response _rc
+
+    [ -d "$_module_dir" ] || { _ml_bash_handler_error "module directory is missing"; return 1; }
+    [[ "$_owner" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || {
+        _ml_bash_handler_error "invalid owner '${_owner}'"; return 1;
+    }
+    [[ "$_handler" =~ ^${_owner}__[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+        _ml_bash_handler_error "handler '${_handler}' is outside owner '${_owner}'"; return 1;
+    }
+    [[ "$_contribution_id" =~ ^[A-Za-z_][A-Za-z0-9_.-]*$ ]] || {
+        _ml_bash_handler_error "invalid contribution id '${_contribution_id}'"; return 1;
+    }
+    [[ "$_timeout" =~ ^[1-9][0-9]*$ ]] || {
+        _ml_bash_handler_error "timeout must be a positive integer"; return 1;
+    }
+    _entrypoint="${V2_HANDLER_ENTRYPOINT:-module.sh}"
+    _entrypoint="$(_ml_bash_handler_path "$_module_dir" "$_entrypoint")" || {
+        _ml_bash_handler_error "entrypoint is missing or escapes module package"; return 1;
+    }
+    bash -n -- "$_entrypoint" 2>&1 || {
+        _ml_bash_handler_error "entrypoint failed Bash syntax validation"; return 1;
+    }
+    _py="$(_ml_bash_handler_python)" || {
+        _ml_bash_handler_error "Python JSON runtime is unavailable"; return 1;
+    }
+    [ -n "$_input" ] || _input='{}'
+    _request="$(printf '%s' "$_input" | "$_py" -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+except json.JSONDecodeError as exc:
+    print(f"invalid input JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if not isinstance(value, dict):
+    print("handler input must be a JSON object", file=sys.stderr)
+    raise SystemExit(1)
+print(json.dumps({"api_version": 2, "contribution_id": sys.argv[1], "input": value}, separators=(",", ":")))
+' "$_contribution_id")" || return 1
+
+    if ! command -v timeout >/dev/null 2>&1; then
+        _ml_bash_handler_error "timeout command is unavailable"
+        return 1
+    fi
+    _response="$(printf '%s\n' "$_request" | timeout --signal=TERM "${_timeout}s" \
+        bash --noprofile --norc -c '
+            set -e
+            entrypoint=$1
+            handler=$2
+            source -- "$entrypoint"
+            declare -F "$handler" >/dev/null 2>&1 || {
+                printf "handler function is not defined: %s\\n" "$handler" >&2
+                exit 127
+            }
+            "$handler"
+        ' _ "$_entrypoint" "$_handler")"
+    _rc=$?
+    [ "$_rc" -eq 0 ] || {
+        [ "$_rc" -eq 124 ] && _ml_bash_handler_error "handler timed out after ${_timeout}s" ||
+            _ml_bash_handler_error "handler exited with status ${_rc}"
+        return 1
+    }
+    [ -n "$_response" ] || { _ml_bash_handler_error "handler returned an empty response"; return 1; }
+    _ml_bash_handler_validate_response "$_response" || return 1
+    printf '%s\n' "$_response"
+}

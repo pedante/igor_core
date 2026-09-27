@@ -42,8 +42,16 @@ declare -gA _IGOR_MODULE_STATUS 2>/dev/null || true
 declare -gA _IGOR_HOOK_OWNERS 2>/dev/null || true
 declare -gA _IGOR_MENU_OWNERS 2>/dev/null || true
 declare -gA _IGOR_CAPABILITY_OWNERS 2>/dev/null || true
+declare -gA _IGOR_MODULE_API 2>/dev/null || true
+declare -gA _IGOR_V2_DATA 2>/dev/null || true
+declare -gA _IGOR_CONTRIBUTIONS 2>/dev/null || true
+declare -gA _IGOR_CONTRIBUTION_STATE 2>/dev/null || true
+declare -gA _IGOR_CONTRIBUTION_REASON 2>/dev/null || true
+declare -gA _IGOR_CONTRIBUTION_OWNER 2>/dev/null || true
+declare -gA _IGOR_CONTRIBUTION_SOURCE 2>/dev/null || true
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
+declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
 
 # Root of the Igor installation — resolved relative to this file's location
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
@@ -65,10 +73,231 @@ _ml_log() {
 
 _ml_valid_name() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; }
 
+# This probe only selects the parser. V2 validity is decided by the strict
+# validator before executable code is touched. V1 deliberately keeps its old
+# section-blind parser.
+_ml_probe_api() {
+    local _file="$1/module.conf" _line _value _seen=0 _section=""
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+        [[ "$_line" =~ ^[[:space:]]*\; ]] && continue
+        if [[ "$_line" =~ ^[[:space:]]*\[([^]]+)\] ]]; then
+            _section="${BASH_REMATCH[1]}"
+            continue
+        fi
+        if [[ "$_line" =~ ^[[:space:]]*module_api[[:space:]]*= ]]; then
+            if [ -n "$_section" ] && [ "$_section" != module ]; then
+                printf 'malformed:module_api outside [module]'
+                return 0
+            fi
+            _seen=$((_seen + 1))
+            _value="${_line#*=}"
+            _value="${_value#"${_value%%[![:space:]]*}"}"
+            _value="${_value%"${_value##*[![:space:]]}"}"
+        fi
+    done < "$_file"
+    if [ "$_seen" -gt 1 ]; then printf 'malformed:duplicate module_api';
+    elif [ "$_seen" -eq 0 ] || [ "$_value" = 1 ]; then printf '1';
+    elif [ "$_value" = 2 ]; then printf '2';
+    else printf 'unsupported:%s' "${_value:-empty module_api}"; fi
+}
+
+_ml_python() {
+    if [ -n "${IGOR_PYTHON:-}" ]; then printf '%s' "$IGOR_PYTHON"
+    elif command -v python3 >/dev/null 2>&1; then printf python3
+    else printf python; fi
+}
+
+_ml_v2_query() {
+    local _name="$1" _path="$2" _py
+    _py="$(_ml_python)"
+    printf '%s' "${_IGOR_V2_DATA[$_name]:-}" | "$_py" -c '
+import json,sys
+try:
+    value=json.load(sys.stdin)
+    for key in sys.argv[1].split("."):
+        value=value[int(key)] if isinstance(value,list) else value[key]
+    if isinstance(value,list):
+        print("\n".join(str(item) for item in value))
+    elif isinstance(value,bool):
+        print("true" if value else "false")
+    elif value is not None:
+        print(value)
+except (ValueError,KeyError,TypeError):
+    raise SystemExit(1)
+' "$_path"
+}
+
+_ml_v2_rows() {
+    local _name="$1" _py
+    _py="$(_ml_python)"
+    printf '%s' "${_IGOR_V2_DATA[$_name]:-}" | "$_py" -c '
+import json,sys
+for item in json.load(sys.stdin)["contributions"]:
+    print(item["kind"]+":"+item["id"])
+'
+}
+
+_ml_v2_record() {
+    local _name="$1" _key="$2" _py
+    _py="$(_ml_python)"
+    printf '%s' "${_IGOR_V2_DATA[$_name]:-}" | "$_py" -c '
+import json,sys
+for item in json.load(sys.stdin)["contributions"]:
+    if item["kind"]+":"+item["id"] == sys.argv[1]:
+        print(json.dumps(item,separators=(",",":")))
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$_key"
+}
+
+_ml_v2_module_requirements() {
+    local _py
+    _py="$(_ml_python)"
+    printf '%s' "${_IGOR_V2_DATA[$1]:-}" | "$_py" -c '
+import json,sys
+r=json.load(sys.stdin)["manifest"]["requirements"]
+print(json.dumps({"modules":r["required_modules"],"capabilities":r["required_capabilities"],"platform_families":r["platform_families"],"bins":r["required_bins"]},separators=(",",":")))
+'
+}
+
+_ml_v2_capability_reason() {
+    local _cap="$1" _providers=()
+    mapfile -t _providers < <(_ml_v2_capability_providers "$_cap")
+    if [ "${#_providers[@]}" -eq 0 ]; then
+        printf 'required capability %s has no declared provider' "$_cap"
+    elif [ "${#_providers[@]}" -gt 1 ]; then
+        printf 'required capability %s has ambiguous providers: %s' "$_cap" "${_providers[*]}"
+    elif ! _ml_owner_active "${_providers[0]}"; then
+        printf 'required capability %s provider %s is %s' "$_cap" "${_providers[0]}" \
+            "${_IGOR_MODULE_STATUS[${_providers[0]}]:-discovered}"
+    else
+        printf 'required capability %s provider %s is not executable by the Wave C capability consumer' \
+            "$_cap" "${_providers[0]}"
+    fi
+    return 1
+}
+
+_ml_v2_capability_providers() {
+    local _cap="$1" _owner _entry
+    for _owner in "${!_IGOR_V2_DATA[@]}"; do
+        while IFS= read -r _entry; do
+            [ "$_entry" = "capability:$_cap" ] && printf '%s\n' "$_owner"
+        done < <(_ml_v2_rows "$_owner")
+    done | sort -u
+}
+
+# Emit one precise failure reason, if any. Module-wide and local requirements
+# use the same checker; the caller decides whether owner or contribution fails.
+_ml_v2_requirement_failure() {
+    local _json="$1" _item _list _family
+    _list="$(_ml_json_field "$_json" modules)"
+    while IFS= read -r _item; do
+        [ -n "$_item" ] || continue
+        if ! igor_has_module "$_item"; then
+            printf 'required module %s is %s%s' "$_item" \
+                "${_IGOR_MODULE_STATUS[$_item]:-missing}" \
+                "${_IGOR_MODULE_REASON[$_item]:+ (${_IGOR_MODULE_REASON[$_item]})}"
+            return 1
+        fi
+    done <<< "$_list"
+    _list="$(_ml_json_field "$_json" capabilities)"
+    while IFS= read -r _item; do
+        [ -n "$_item" ] || continue
+        _ml_v2_capability_reason "$_item"
+        return 1
+    done <<< "$_list"
+    _list="$(_ml_json_field "$_json" platform_features)"
+    if [ -n "$_list" ]; then
+        printf 'unsupported platform feature requirement: %s' "${_list//$'\n'/, }"
+        return 1
+    fi
+    _list="$(_ml_json_field "$_json" platform_families)"
+    if [ -n "$_list" ]; then
+        if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+            # shellcheck source=core/lib/distro.sh
+            source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+            igor_detect_distro
+        fi
+        _family="${IGOR_DISTRO_FAMILY:-unknown}"
+        if ! printf '%s\n' "$_list" | grep -Fxq -- "$_family"; then
+            printf 'platform family %s is outside allowed set %s' "$_family" "${_list//$'\n'/, }"
+            return 1
+        fi
+    fi
+    _list="$(_ml_json_field "$_json" bins)"
+    while IFS= read -r _item; do
+        [ -n "$_item" ] || continue
+        if ! command -v "$_item" >/dev/null 2>&1; then
+            printf 'required binary %s is missing' "$_item"
+            return 1
+        fi
+    done <<< "$_list"
+    return 0
+}
+
+_ml_json_field() {
+    local _json="$1" _field="$2" _py
+    _py="$(_ml_python)"
+    printf '%s' "$_json" | "$_py" -c '
+import json,sys
+try:
+    value=json.load(sys.stdin)
+    for key in sys.argv[1].split("."):
+        value=value[key]
+    if isinstance(value,list): print("\n".join(str(item) for item in value))
+    elif isinstance(value,bool): print("true" if value else "false")
+    elif value is not None: print(value)
+except (ValueError,KeyError,TypeError): pass
+' "$_field"
+}
+
+_ml_v2_validate() {
+    local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _py _result
+    _py="$(_ml_python)"
+    if ! command -v "$_py" >/dev/null 2>&1; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="Python 3 runtime unavailable for v2 validation"
+        return 1
+    fi
+    _result="$("$_py" "${_IGOR_LOADER_DIR}/core/lib/module_contract.py" validate "$_dir" 2>&1)" || {
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="$_result"
+        return 1
+    }
+    _IGOR_V2_DATA["$_name"]="$_result"
+}
+
+_ml_v2_prepare_all() {
+    local _name _api
+    for _name in "${!_IGOR_MODULE_DIRS[@]}"; do
+        _api="${_IGOR_MODULE_API[$_name]:-1}"
+        case "$_api" in
+            1) ;;
+            2)
+                _ml_v2_validate "$_name" || true
+                if ! igor_module_enabled "$_name"; then
+                    _IGOR_MODULE_STATUS["$_name"]="disabled"
+                fi
+                ;;
+            *)
+                if igor_module_enabled "$_name"; then
+                    _IGOR_MODULE_STATUS["$_name"]="unavailable"
+                fi
+                _IGOR_MODULE_REASON["$_name"]="unsupported or malformed module_api: $_api"
+                ;;
+        esac
+    done
+}
+
 _ml_load_module_config() {
     [ "${_IGOR_MODULE_CONFIG_LOADED:-0}" -eq 1 ] && return 0
     _IGOR_MODULE_CONFIG_LOADED=1
     local _cfg="${IGOR_DIR:-$_IGOR_LOADER_DIR}/config/modules.conf"
+    if ! _ml_migrate_system_policy "$_cfg"; then
+        _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=1
+        _ml_log error "system policy migration failed; module will remain unavailable until config/modules.conf is writable"
+    fi
     [ -f "$_cfg" ] || return 0
     local _line _name _state _rhs
     while IFS= read -r _line || [ -n "$_line" ]; do
@@ -92,9 +321,40 @@ _ml_load_module_config() {
     done < "$_cfg"
 }
 
+# Existing installations implicitly enabled the bundled system module. Record
+# that policy once when its package moves to v2; a new v2 package has no such
+# compatibility exception. The original policy is retained for recovery.
+_ml_migrate_system_policy() {
+    local _cfg="$1" _root="${IGOR_DIR:-$_IGOR_LOADER_DIR}"
+    local _manifest="$_root/modules/system/module.conf" _tmp
+    [ -f "$_manifest" ] || return 0
+    [ "$(_ml_probe_api "$_root/modules/system")" = 2 ] || return 0
+    [ ! -L "$_cfg" ] && [ ! -L "${_cfg}.pre-wave-c.bak" ] || return 1
+    if [ -f "$_cfg" ] && grep -Eq '^[[:space:]]*system[[:space:]]*=' "$_cfg"; then return 0; fi
+    mkdir -p "$(dirname "$_cfg")" || return 1
+    _tmp="$(mktemp "${_cfg}.XXXXXX")" || return 1
+    if [ -f "$_cfg" ]; then
+        cat "$_cfg" > "$_tmp" || { rm -f "$_tmp"; return 1; }
+        if [ ! -e "${_cfg}.pre-wave-c.bak" ]; then
+            cp -p "$_cfg" "${_cfg}.pre-wave-c.bak" || { rm -f "$_tmp"; return 1; }
+        fi
+    fi
+    printf 'system=enabled\n' >> "$_tmp"
+    chmod 600 "$_tmp" || { rm -f "$_tmp"; return 1; }
+    mv -f "$_tmp" "$_cfg"
+}
+
 igor_module_enabled() {
     _ml_load_module_config
-    [ "${_IGOR_MODULE_STATE[${1:-}]:-enabled}" = enabled ]
+    local _name="${1:-}"
+    if [ -n "${_IGOR_MODULE_STATE[$_name]+set}" ]; then
+        [ "${_IGOR_MODULE_STATE[$_name]}" = enabled ]
+    else
+        if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
+            return 0
+        fi
+        [ "${_IGOR_MODULE_API[$_name]:-1}" != 2 ]
+    fi
 }
 
 igor_module_set_enabled() {
@@ -155,16 +415,82 @@ igor_has_capability() {
 }
 
 igor_module_list() {
-    local _n _state _reason
-    for _n in "${!_IGOR_MODULE_DIRS[@]}"; do
+    local _n _state _reason _key
+    while IFS= read -r _n; do
         _state="${_IGOR_MODULE_STATUS[$_n]:-$(igor_module_enabled "$_n" && printf enabled || printf disabled)}"
         _reason="${_IGOR_MODULE_REASON[$_n]:-}"
         if [ -n "$_reason" ]; then
-            printf '%s\t%s (%s)\n' "$_n" "$_state" "$_reason"
+            printf '%s\t%s api=%s (%s)\n' "$_n" "$_state" "${_IGOR_MODULE_API[$_n]:-1}" "$_reason"
         else
-            printf '%s\t%s\n' "$_n" "$_state"
+            printf '%s\t%s api=%s\n' "$_n" "$_state" "${_IGOR_MODULE_API[$_n]:-1}"
         fi
+        while IFS= read -r _key; do
+            [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "$_n" ] || continue
+            printf '  %s owner=%s state=%s source=%s' "$_key" "$_n" \
+                "$(igor_contribution_state "$_key")" "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}"
+            _reason="$(igor_contribution_reason "$_key")"
+            [ -z "$_reason" ] || printf ' reason=%s' "$_reason"
+            printf '\n'
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
+}
+
+igor_module_status() { printf '%s\n' "${_IGOR_MODULE_STATUS[${1:-}]:-unknown}"; }
+igor_module_reason() { printf '%s\n' "${_IGOR_MODULE_REASON[${1:-}]:-}"; }
+
+igor_contribution_state() {
+    local _key="${1:-}" _owner="${_IGOR_CONTRIBUTION_OWNER[${1:-}]:-}"
+    [ -n "${_IGOR_CONTRIBUTIONS[$_key]:-}" ] || { printf 'unknown\n'; return 1; }
+    if ! _ml_owner_active "$_owner"; then printf 'inactive\n'
+    elif [ "${_IGOR_CONTRIBUTION_STATE[$_key]:-active}" != active ]; then
+        printf '%s\n' "${_IGOR_CONTRIBUTION_STATE[$_key]}"
+    elif [ -n "$(_ml_contribution_dynamic_failure "$_key")" ]; then
+        printf 'unavailable\n'
+    else printf 'active\n'; fi
+}
+
+_ml_contribution_dynamic_failure() {
+    local _key="$1" _record="${_IGOR_CONTRIBUTIONS[$1]:-}" _requires
+    [[ "$_record" = \{* ]] || return 0
+    _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 0
+    _ml_v2_requirement_failure "$_requires" || true
+}
+
+igor_contribution_reason() {
+    local _key="${1:-}"
+    if [ -n "${_IGOR_CONTRIBUTION_REASON[$_key]:-}" ]; then
+        printf '%s\n' "${_IGOR_CONTRIBUTION_REASON[$_key]}"
+    else
+        _ml_contribution_dynamic_failure "$_key"
+    fi
+}
+
+igor_contribution_list() {
+    local _key
+    for _key in "${!_IGOR_CONTRIBUTIONS[@]}"; do
+        printf '%s\t%s\t%s\t%s\t%s\n' "$_key" \
+            "${_IGOR_CONTRIBUTION_OWNER[$_key]}" "$(igor_contribution_state "$_key")" \
+            "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}" \
+            "$(igor_contribution_reason "$_key")"
     done | sort
+}
+
+_ml_index_contribution() {
+    local _key="$1" _owner="$2" _source="$3" _record="$4"
+    if [ -n "${_IGOR_CONTRIBUTIONS[$_key]:-}" ] && \
+       [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" != "$_owner" ]; then
+        case "$_key" in
+            capability:*) _key="${_key}@${_owner}" ;;
+            *)
+                _ml_log error "duplicate contribution $_key: ${_IGOR_CONTRIBUTION_OWNER[$_key]} and $_owner"
+                return 1
+                ;;
+        esac
+    fi
+    _IGOR_CONTRIBUTIONS["$_key"]="$_record"
+    _IGOR_CONTRIBUTION_OWNER["$_key"]="$_owner"
+    _IGOR_CONTRIBUTION_SOURCE["$_key"]="$_source"
+    _IGOR_CONTRIBUTION_STATE["$_key"]="active"
 }
 
 _ml_owner_active() {
@@ -331,18 +657,27 @@ igor_discover_modules() {
         return 0
     fi
 
-    local _dir _name
+    local _dir _name _api
     for _dir in "${_modules_root}"/*/; do
         [ -d "$_dir" ] || continue
         [ -f "${_dir}module.conf" ] || continue
-        _name="$(_ml_read_conf "$_dir" "name")"
-        if [ -z "$_name" ]; then
-            # Fall back to directory basename
+        _api="$(_ml_probe_api "${_dir%/}")"
+        if [ "$_api" = 1 ]; then
+            _name="$(_ml_read_conf "$_dir" "name")"
+            [ -n "$_name" ] || _name="$(basename "$_dir")"
+        else
+            # Strict v2 identity is checked against the directory by the
+            # validator. Never trust a malformed manifest as an array key.
             _name="$(basename "$_dir")"
         fi
+        _ml_valid_name "$_name" || { _ml_log error "invalid module directory/name: $_name"; continue; }
         _IGOR_MODULE_DIRS["$_name"]="${_dir%/}"
-        if [ "${_IGOR_MODULE_STATE[$_name]:-enabled}" = disabled ]; then
+        _IGOR_MODULE_API["$_name"]="$_api"
+        if ! igor_module_enabled "$_name"; then
             _IGOR_MODULE_STATUS["$_name"]="disabled"
+            if [ "$_api" = 2 ] && [ -z "${_IGOR_MODULE_STATE[$_name]+set}" ]; then
+                _IGOR_MODULE_REASON["$_name"]="explicit enablement required for new v2 module"
+            fi
         else
             _IGOR_MODULE_STATUS["$_name"]="discovered"
         fi
@@ -378,7 +713,19 @@ igor_sort_modules() {
     local _n _dep_str
     for _n in "${_input_names[@]}"; do
         local _dir="${_IGOR_MODULE_DIRS[$_n]:-}"
-        if [ -n "$_dir" ]; then
+        if [ "${_IGOR_MODULE_API[$_n]:-1}" = 2 ] && [ -n "${_IGOR_V2_DATA[$_n]:-}" ]; then
+            _dep_str="$(_ml_v2_query "$_n" manifest.requirements.required_modules 2>/dev/null)"
+            _dep_str="${_dep_str//$'\n'/ }"
+            local _cap _provider _cap_list
+            _cap_list="$(_ml_v2_query "$_n" manifest.requirements.required_capabilities 2>/dev/null)"
+            while IFS= read -r _cap; do
+                [ -n "$_cap" ] || continue
+                _provider="$(_ml_v2_capability_providers "$_cap")"
+                if [ -n "$_provider" ] && [[ "$_provider" != *$'\n'* ]]; then
+                    _dep_str+=" $_provider"
+                fi
+            done <<< "$_cap_list"
+        elif [ -n "$_dir" ]; then
             _dep_str="$(_ml_read_conf "$_dir" "depends_on" 2>/dev/null || echo "")"
             local _required
             _required="$(_ml_read_conf "$_dir" "required_modules" 2>/dev/null || echo "")"
@@ -491,6 +838,11 @@ igor_load_module() {
         return 1
     fi
 
+    if [ "${_IGOR_MODULE_API[$_name]:-1}" != 1 ]; then
+        _ml_load_v2 "$_name"
+        return $?
+    fi
+
     local _module_sh="${_dir}/module.sh"
     if [ ! -f "$_module_sh" ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
@@ -572,6 +924,147 @@ igor_load_module() {
     return 0
 }
 
+_ml_load_v2() {
+    local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source _requires
+    if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
+        return 1
+    fi
+    if [ "${_IGOR_MODULE_API[$_name]:-}" != 2 ]; then
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="unsupported or malformed module_api: ${_IGOR_MODULE_API[$_name]:-missing}"
+        return 1
+    fi
+    if [ -z "${_IGOR_V2_DATA[$_name]:-}" ]; then
+        _ml_v2_validate "$_name" || return 1
+    fi
+    _requires="$(_ml_v2_module_requirements "$_name")" || return 1
+    _reason="$(_ml_v2_requirement_failure "$_requires")" || {
+        _IGOR_MODULE_STATUS["$_name"]="unavailable"
+        _IGOR_MODULE_REASON["$_name"]="$_reason"
+        return 1
+    }
+    # Preflight global contribution identities before executing any code.
+    while IFS= read -r _key; do
+        [ -n "$_key" ] || continue
+        if [ -n "${_IGOR_CONTRIBUTIONS[$_key]:-}" ] && \
+           [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" != "$_name" ]; then
+            case "$_key" in
+                capability:*) ;;
+                *)
+                    _IGOR_MODULE_STATUS["$_name"]="unavailable"
+                    _IGOR_MODULE_REASON["$_name"]="duplicate contribution $_key owned by ${_IGOR_CONTRIBUTION_OWNER[$_key]}"
+                    return 1
+                    ;;
+            esac
+        fi
+    done < <(_ml_v2_rows "$_name")
+
+    if [ "$(_ml_v2_query "$_name" manifest.compat.v1_hooks)" = true ]; then
+        local _entrypoint _register_fn
+        _entrypoint="$(_ml_v2_query "$_name" manifest.entrypoint)"
+        if [ -z "$_entrypoint" ]; then
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            _IGOR_MODULE_REASON["$_name"]="v1_hooks requires a Bash entrypoint"
+            return 1
+        fi
+        _register_fn="${_name}__register"
+        # shellcheck disable=SC1090
+        if ! source "$_dir/$_entrypoint"; then
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            _IGOR_MODULE_REASON["$_name"]="Bash entrypoint source failed"
+            return 1
+        fi
+        if ! declare -f "$_register_fn" >/dev/null 2>&1; then
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            _IGOR_MODULE_REASON["$_name"]="v1 compatibility registration function $_register_fn missing"
+            return 1
+        fi
+        _IGOR_REGISTERING_MODULE="$_name"
+        if ! "$_register_fn"; then
+            _IGOR_REGISTERING_MODULE=""
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            _IGOR_MODULE_REASON["$_name"]="v1 compatibility registration failed"
+            return 1
+        fi
+        _IGOR_REGISTERING_MODULE=""
+    fi
+
+    # Commit static declarations only after validation and compatibility
+    # registration succeed. Local failures affect just their contribution.
+    while IFS= read -r _key; do
+        [ -n "$_key" ] || continue
+        _record="$(_ml_v2_record "$_name" "$_key")" || continue
+        _source="$(_ml_json_field "$_record" source)"
+        _index_key="$_key"
+        if [[ "$_key" = capability:* ]] && \
+           [ -n "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" ] && \
+           [ "${_IGOR_CONTRIBUTION_OWNER[$_key]}" != "$_name" ]; then
+            _index_key="${_key}@${_name}"
+        fi
+        _ml_index_contribution "$_key" "$_name" "$_source" "$_record" || return 1
+        # Requirement availability is derived on inspection and dispatch so
+        # another module loaded later in this startup can satisfy a local edge.
+        case "$_key" in
+            capability:*|check:*|domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
+                _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
+                ;;
+        esac
+    done < <(_ml_v2_rows "$_name")
+    _IGOR_LOADED_MODULES["$_name"]=1
+    _IGOR_MODULE_STATUS["$_name"]="active"
+    unset '_IGOR_MODULE_REASON['"$_name"']'
+    _ml_log ok "Loaded Module API v2: $_name"
+    return 0
+}
+
+igor_v2_contribution_get() {
+    local _key="${1:-}:${2:-}" _owner="${_IGOR_CONTRIBUTION_OWNER[${1:-}:${2:-}]:-}"
+    [ -n "$_owner" ] && _ml_owner_active "$_owner" || return 1
+    [ "${_IGOR_CONTRIBUTION_STATE[$_key]:-}" = active ] || return 1
+    local _record="${_IGOR_CONTRIBUTIONS[$_key]}" _requires
+    _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 1
+    _ml_v2_requirement_failure "$_requires" >/dev/null || return 1
+    printf '%s\n' "$_record"
+}
+
+igor_v2_invoke() {
+    local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _record _owner _handler _timeout _entrypoint
+    [ -n "$_input" ] || _input='{}'
+    case "$_kind" in observer|knowledge) ;; *) return 1 ;; esac
+    _record="$(igor_v2_contribution_get "$_kind" "$_id")" || return 1
+    _owner="${_IGOR_CONTRIBUTION_OWNER[${_kind}:${_id}]}"
+    _handler="$(_ml_json_field "$_record" handler)"
+    [ -n "$_handler" ] || return 1
+    _timeout="$(_ml_json_field "$_record" timeout_seconds)"
+    [ -n "$_timeout" ] || _timeout=30
+    _entrypoint="$(_ml_v2_query "$_owner" manifest.entrypoint)"
+    # shellcheck source=core/lib/module_handler.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
+    V2_HANDLER_ENTRYPOINT="$_entrypoint" _ml_bash_handler_invoke \
+        "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
+}
+
+igor_v2_knowledge() {
+    local _id="${1:-}" _record _owner _relative _base _file
+    _record="$(igor_v2_contribution_get knowledge "$_id")" || return 1
+    _owner="${_IGOR_CONTRIBUTION_OWNER[knowledge:${_id}]}"
+    _relative="$(_ml_json_field "$_record" path)"
+    [ -n "$_relative" ] || return 1
+    _base="$(realpath -e -- "${_IGOR_MODULE_DIRS[$_owner]}")" || return 1
+    _file="$(realpath -e -- "$_base/$_relative")" || return 1
+    case "$_file" in "$_base"/*) cat -- "$_file" ;; *) return 1 ;; esac
+}
+
+igor_v2_collect_knowledge() {
+    local _key
+    while IFS= read -r _key; do
+        case "$_key" in knowledge:*) igor_v2_knowledge "${_key#knowledge:}" || true ;; esac
+    done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+}
+
 # ---------------------------------------------------------------------------
 # igor_load_all_modules
 #
@@ -583,18 +1076,35 @@ igor_load_all_modules() {
     # _IGOR_MODULE_DIRS is populated in the current shell context.
     # Discard stdout — we'll read from _IGOR_MODULE_DIRS directly.
     igor_discover_modules > /dev/null
+    _ml_v2_prepare_all
 
     local _names=("${!_IGOR_MODULE_DIRS[@]}")
     [ ${#_names[@]} -eq 0 ] && return 0
+    mapfile -t _names < <(printf '%s\n' "${_names[@]}" | sort)
 
     local _sorted_list
     _sorted_list="$(igor_sort_modules "${_names[@]}")"
 
-    local _name
+    local _name _seen=" " _edges
     while IFS= read -r _name; do
         [ -n "$_name" ] || continue
+        _seen+="$_name "
         igor_load_module "$_name" || true
     done <<< "$_sorted_list"
+
+    for _name in "${_names[@]}"; do
+        if [[ "$_seen" != *" $_name "* ]] && [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
+            _IGOR_MODULE_STATUS["$_name"]="unavailable"
+            if [ "${_IGOR_MODULE_API[$_name]:-1}" = 2 ]; then
+                _edges="$(_ml_v2_query "$_name" manifest.requirements.required_modules 2>/dev/null)"
+                _edges="${_edges//$'\n'/, }"
+                [ -n "$_edges" ] || _edges="$(_ml_v2_query "$_name" manifest.requirements.required_capabilities 2>/dev/null)"
+            else
+                _edges="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" depends_on 2>/dev/null)"
+            fi
+            _IGOR_MODULE_REASON["$_name"]="dependency ordering cycle blocks $_name (declared edges: ${_edges:-unknown})"
+        fi
+    done
 
     return 0
 }
@@ -723,6 +1233,11 @@ igor_register_hook() {
 
     _IGOR_HOOKS["$_hook"]="${_existing:+$_existing }${_fn}"
     _IGOR_HOOK_OWNERS["${_hook}:${_fn}"]="${_IGOR_REGISTERING_MODULE:-}"
+    if [ -n "${_IGOR_REGISTERING_MODULE:-}" ]; then
+        local _canonical_fn="${_fn//__/.}"
+        _ml_index_contribution "legacy_hook:legacy.${_IGOR_REGISTERING_MODULE}.${_hook}.${_canonical_fn}" \
+            "$_IGOR_REGISTERING_MODULE" "module.sh" "$_hook:$_fn" || return 1
+    fi
     return 0
 }
 
@@ -754,6 +1269,10 @@ igor_register_menu_item() {
     fi
     _IGOR_MENU_REGISTRY["$_key"]="${_label}|${_type}|${_arg}|${_func}"
     _IGOR_MENU_OWNERS["$_key"]="${_IGOR_REGISTERING_MODULE:-}"
+    if [ -n "${_IGOR_REGISTERING_MODULE:-}" ]; then
+        _ml_index_contribution "legacy_menu:legacy.${_IGOR_REGISTERING_MODULE}.${_key}" \
+            "$_IGOR_REGISTERING_MODULE" "module.sh" "$_func" || return 1
+    fi
     return 0
 }
 
@@ -797,9 +1316,18 @@ igor_dispatch_menu_item() {
 igor_get_hooks() {
     local _hook="$1"
     [ -n "$_hook" ] || return 0
-    local _entry
+    local _entry _owner _replacement
     for _entry in ${_IGOR_HOOKS[$_hook]:-}; do
-        _ml_owner_active "${_IGOR_HOOK_OWNERS[${_hook}:${_entry}]:-}" && printf '%s\n' "$_entry"
+        # A v2 knowledge record with the legacy canonical identity replaces
+        # this one consumer's old view. Other v1 hooks stay operational.
+        _owner="${_IGOR_HOOK_OWNERS[${_hook}:${_entry}]:-}"
+        _replacement="knowledge:legacy.${_owner}.${_hook}.${_entry//__/.}"
+        if [ "$_hook" = ai_knowledge ] && \
+           [ -n "${_IGOR_CONTRIBUTIONS[$_replacement]:-}" ] && \
+           [ "$(igor_contribution_state "$_replacement")" = active ]; then
+            continue
+        fi
+        _ml_owner_active "$_owner" && printf '%s\n' "$_entry"
     done
 }
 
@@ -877,6 +1405,18 @@ igor_run_all_hooks() {
 igor_load_capabilities() {
     _IGOR_CAPABILITIES=()   # clear before repopulating
     _IGOR_CAPABILITY_OWNERS=()
+    local _indexed
+    for _indexed in "${!_IGOR_CONTRIBUTIONS[@]}"; do
+        case "$_indexed" in
+            legacy_action:*)
+                unset '_IGOR_CONTRIBUTIONS['"$_indexed"']'
+                unset '_IGOR_CONTRIBUTION_OWNER['"$_indexed"']'
+                unset '_IGOR_CONTRIBUTION_SOURCE['"$_indexed"']'
+                unset '_IGOR_CONTRIBUTION_STATE['"$_indexed"']'
+                unset '_IGOR_CONTRIBUTION_REASON['"$_indexed"']'
+                ;;
+        esac
+    done
 
     local _fns="${_IGOR_HOOKS[ai_capabilities]:-}"
     [ -z "$_fns" ] && return 0
@@ -906,6 +1446,10 @@ igor_load_capabilities() {
                             # capability so disabled parents cannot bypass the
                             # lifecycle boundary through a child file.
                             _IGOR_CAPABILITY_OWNERS["$_name"]="${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}"
+                            if [ -n "${_IGOR_CAPABILITY_OWNERS[$_name]}" ]; then
+                                _ml_index_contribution "legacy_action:legacy.${_IGOR_CAPABILITY_OWNERS[$_name]}.${_name}" \
+                                    "${_IGOR_CAPABILITY_OWNERS[$_name]}" "ai_capabilities hook" "$_func" || true
+                            fi
                         fi
                     fi
                     _name="${_line#ACTION }"; _name="${_name## }"; _name="${_name%% }"
@@ -929,6 +1473,10 @@ igor_load_capabilities() {
                 _desc="${_desc//|//}"; _probs="${_probs//|/,}"; _mpath="${_mpath//|/／}"
                 _IGOR_CAPABILITIES["$_name"]="${_desc}|${_func}|${_mod}|${_tier}|${_probs}|${_mpath}"
                 _IGOR_CAPABILITY_OWNERS["$_name"]="${_IGOR_HOOK_OWNERS[ai_capabilities:${_fn}]:-}"
+                if [ -n "${_IGOR_CAPABILITY_OWNERS[$_name]}" ]; then
+                    _ml_index_contribution "legacy_action:legacy.${_IGOR_CAPABILITY_OWNERS[$_name]}.${_name}" \
+                        "${_IGOR_CAPABILITY_OWNERS[$_name]}" "ai_capabilities hook" "$_func" || true
+                fi
             fi
         fi
     done

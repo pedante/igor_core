@@ -121,7 +121,7 @@ Formalize the general contract:
 
 Extend only where current behavior does not cover general capabilities/interfaces.
 
-## Step 5 — Module Runtime v2 — CURRENT / FORMALIZE
+## Step 5 — Module Runtime v2 — COMPLETE FOR WAVE C
 
 Current code already has:
 
@@ -134,7 +134,11 @@ Current code already has:
 
 Do not introduce a parallel loader or rename states without value.
 
-Complete the target semantics by auditing every runtime contribution path and ensuring inactive modules contribute nothing. Clarify dependency/lifecycle semantics and compatibility boundaries for Module API v2.
+The Wave C implementation extends the existing loader in place. It preserves
+the lifecycle vocabulary and restart semantics while adding strict v2
+preflight, staged owner-aware contributions, typed requirement failures and
+inspection queries. Contract, regression, inspection and policy migration
+evidence is recorded in `STATUS.md`.
 
 Restart-based activation is acceptable; hot unload is not a requirement.
 
@@ -151,7 +155,7 @@ Wave C completion must prove at minimum:
 - current Wave B interaction/approval/privilege regressions remain green;
 - module state, API version, ownership and unavailable reasons are inspectable.
 
-## Step 6 — Module API v2 — FUTURE
+## Step 6 — Module API v2 — INITIAL CONTRACT COMPLETE FOR WAVE C
 
 Define and validate a versioned contract based on durable concepts rather than an expanding hook list:
 
@@ -166,8 +170,10 @@ Define and validate a versioned contract based on durable concepts rather than a
 - configuration;
 - lifecycle.
 
-The Wave C design gate has selected the contract in `MODULE_API.md` and
-D017–D022. Runtime implementation and migration are still future work.
+The Wave C design gate selected the contract in `MODULE_API.md` and D017–D022.
+The initial Bash adapter, strict validator and JSON contribution path are now
+implemented. The `system` slice proves knowledge and observer declarations;
+kind-specific consumers and broader migration remain future work.
 
 Contracts are optional. Keep API v1 working through an explicit migration/compatibility path until real v2 modules prove the contract.
 

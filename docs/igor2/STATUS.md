@@ -4,25 +4,28 @@ Last updated: 2026-09-27
 
 ## Baseline and stage
 
-**Wave C design gate complete; Steps 5–6 implementation not started.**
+**Wave C Steps 5–6 are complete.** The first Module API v2 path is active,
+inspectable and covered by contract, regression, vertical-slice and policy
+migration proof. Wave D host-intelligence work can proceed within its scope.
 Decisions D017–D022 select a language-neutral data contract with a Bash-first
 handler adapter, a small strict v2 `module.conf` plus explicit JSON contract
 files, typed dependency semantics, a core/platform versus `system` rule, one
 loader with temporary v1 compatibility, and an initial reviewed-local-code
-trust boundary. The current module runtime and green Wave B behavioral
-baseline are unchanged by this documentation-only pass.
+trust boundary. The green Wave B behavioral baseline was preserved during
+the Wave C implementation.
 
 The roadmap now also makes the ServerMind/Steward-derived design lessons and
 execution discipline explicit in `INFLUENCES.md` and `EXECUTION.md`.
-This is architecture/documentation alignment only: no runtime contract from
-D017-D022 was reopened. Wave C implementation remains the next code task.
+The accepted D017–D022 runtime contract was not reopened. The implementation
+extends the existing loader with strict v2 validation, staged owner-aware
+contributions, a Bash handler adapter and module inspection.
 
 A cross-cutting Ownership Foundation is now a hard gate before broad Module v2
 migration: canonical paths, configuration, secrets, persistent state, machine
 memory, knowledge, local learning, investigations, history and runtime need
-explicit ownership/lifecycle contracts. Early non-conflicting Wave C loader
-work may proceed, but the public v2 contract must not freeze the current mixed
-storage assumptions.
+explicit ownership/lifecycle contracts. Wave C established the loader and
+contribution boundary without making today's mixed storage layout a permanent
+v2 public contract.
 
 Wave B / Steps 3–4 completed the interaction and privilege work. Its backend
 session, deterministic approval dispatcher, frontend event stream, TUI
@@ -47,8 +50,8 @@ claim about a newer un-fetched remote branch.
 | 2 Architecture Rules | Implemented for accepted current invariants: focused ownership, trust, platform and safety guards now run in existing test suites. Later contracts get their own tests when implemented. |
 | 3 Interaction Runtime | Implemented for current chat/TUI use. Backend command routing, pending choice/approval state, mode policy, provider continuation and ordered frontend events are guarded. Future interfaces can consume the same backend authority; no new interface was built. |
 | 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows approval of the exact command. General capability privilege metadata remains Step 11 work. |
-| 5 Module Runtime v2 | Implemented in substantial form: policy, discovered/active/unavailable state and owner-aware registrations exist. The completion design is settled; formal state/reason queries, v2 validation, staged registration and consistent ownership still require implementation. |
-| 6 Module API v2 | Target design settled in `MODULE_API.md` and D017–D022; implementation is missing. V1 hooks remain live compatibility, and `system` is the first incremental reference case. |
+| 5 Module Runtime v2 | Complete for Wave C in `core/lib/module_loader.sh`: v1/v2 dispatch, strict preflight, staged declarations, owner-aware contribution index, typed module/contribution state and inspection queries. |
+| 6 Module API v2 | Initial Bash-first contract complete for Wave C in `core/lib/module_contract.py` and `core/lib/module_handler.sh`. `system` is a mixed v1/v2 reference; `nextcloud_docker` remains v1. Later kind-specific consumers remain deferred. |
 | 7 Platform Abstraction | Partial: distro/family detection, Debian/Arch-aware package mappings/install and Python resolution exist. Other normalized operations and broad test proof are missing. |
 | 8 System Model; 9 Observation Framework | Missing as coherent shared contracts; current direct probes are inputs, not a System Model. |
 | 10 Unified Health | Partial: module check conventions and activation filtering exist, but Diagnose and Healing have separate discovery/execution/result paths. |
@@ -220,8 +223,38 @@ rerun or alter the green Wave B behavioral suite.
   unchanged as v1. D022 settles the initial local-code trust boundary and
   explicit enablement for new v2 packages.
 
-The next task can implement Steps 5–6 in the sequence in `MODULE_API.md`.
-Q004 remains open only for a future third-party distribution policy; Q003 and
-Q007–Q011 remain at their planned later steps. None blocks Wave C
-implementation. The behavioral baseline remains the Wave B result above;
-documentation checks for this pass are recorded with the final diff.
+The implementation now follows the accepted Steps 5–6 sequence in
+`MODULE_API.md`. The strict validator rejects malformed v2 manifests and
+contracts before executable module code is sourced. The loader records API
+version, lifecycle state and failure reason, stages owner-stamped
+contributions, applies module-wide versus contribution-local requirements, and
+exposes `igor_module_list`, `igor_module_status`, `igor_module_reason` and
+`igor_contribution_list` for inspection. The Bash adapter validates syntax,
+invokes one JSON request, and accepts only a valid response envelope.
+
+`system` declares `host.basics` knowledge and the `host.memory` observer under
+v2 while retaining its v1 hooks. The observer is exercised through the loader
+invocation path and v2 knowledge is included in the active AI reference
+context. The bundled system policy migration records an explicit enabled entry
+for an installation that previously omitted it, preserves explicit disablement
+and keeps a one-time pre-migration copy when an existing policy file is present.
+Newly discovered v2 modules require
+explicit enablement. `nextcloud_docker` remains on v1.
+
+### Wave C completion evidence
+
+| Proof | Result |
+|---|---|
+| Contract | 12/12 validator unit tests, 6/6 Bash adapter BATS, and 24/24 v2 runtime BATS. Invalid metadata and Bash syntax fail before source; unsupported API/runtime, duplicate/unknown declarations, path escapes, hard cycles, missing/disabled/ambiguous requirements and contribution-local failures have named reasons. |
+| Regression | `bash tests/run_all.sh`: 5 suite groups passed, 0 failed, 0 skipped groups. Core BATS 288/288, module BATS 103/103, integration BATS 40/40. Two existing core BATS cases skipped within the passing group because GPG agent and `hostname -I` were unavailable. Full Python suite: 216 passed and 93 subtests passed. |
+| Vertical slice | `system` validates `contracts/host.json`, activates, indexes `host.basics` and `host.memory`, returns structured memory data through `igor_v2_invoke`, and appears in `igor_module_list`. The host knowledge is tested inside the existing `IGOR_REFERENCE_V1` AI reference envelope. V1 `system` hooks still run once. A focused live-loader check confirmed `nextcloud_docker` remains active on v1 with owned menu, diagnose, AI, config, backup, restore and notification registrations; full startup retained eight executable catalog actions, including owned `scan_files`. |
+| Inspection | `bash igor.sh --modules` and loader queries expose identity, API version, lifecycle state, owner, kind, source and precise module/contribution reasons. Active ownership is checked again at dispatch. |
+| Migration/recovery | V1 omitted entries retain implicit enablement; new v2 entries require explicit enablement. The bundled `system` omitted policy is recorded once as `system=enabled`; explicit disablement is preserved. Existing policy is backed up once, updates use a private temporary file and atomic replacement, symlinks are refused, and write failure is reported as unavailable before source. No other persistent layout changed. |
+| Lint and syntax | Bash syntax and `git diff --check` pass. Ruff 0.16.9 passes on new Python files; full `ruff check .` retains 135 pre-existing findings, matching the earlier baseline. CI-configured ShellCheck on changed shell/BATS files reports only five pre-existing SC2155 warnings in `core/ai/context.sh` and `igor.sh`; no new warning remains. |
+
+No accepted Wave C decision was reopened and no new blocking question arose.
+Q004 remains a future third-party distribution policy; Q003 and Q007–Q011
+remain at their assigned later steps. System Model, observer scheduling,
+domain events, general Capability System v2, broad Ownership Foundation
+migration, non-Bash adapters and composable Nextcloud modules remain deferred.
+The Ownership Foundation remains a hard gate before broad module migration.

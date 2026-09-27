@@ -1,9 +1,9 @@
 # Module Platform v2 — selected design
 
-Status: **accepted design for Wave C; not implemented yet**. The current API
-and lifecycle are still [Module API v1](../module_creation.md) and
-[module lifecycle](../module_lifecycle.md). The current loader remains the
-activation authority.
+Status: **accepted Wave C contract with the first implementation complete**. V1
+remains the compatibility API for modules that have not migrated. The existing
+loader remains the single activation authority; the strict validator,
+owner-aware contribution index and Bash adapter implement the initial v2 path.
 
 ## Choice and boundary
 
@@ -78,8 +78,8 @@ required_bins=systemctl
 v1_hooks=true
 ```
 
-This is the proposed first `system` migration manifest, **not** its current
-file. `runtime` and `entrypoint` are omitted for a metadata-only module.
+This is the current `system` v2 manifest shape. `runtime` and `entrypoint` are
+omitted for a metadata-only module; handler-bearing packages declare both.
 `contracts` is an explicit comma-separated list; a small module can use one
 file. The loader never scans a directory to infer v2 contributions. Contract
 paths and handler entrypoints must remain inside the package. Module identity
@@ -138,9 +138,11 @@ rules apply only to that contribution. `platform_families` is an allowed-family
 set; other requirement arrays are all-of. Wave C validates
 `platform_families` and `bins` against current helpers; `platform_features`
 is reserved until Step 7 defines normalized feature names. An unsupported
-feature requirement is unavailable, never assumed satisfied. IDs are
-globally unique within a contract kind. The registry records source file, API version
-and owner separately. Duplicate IDs, path escapes, unknown required fields,
+feature requirement is unavailable, never assumed satisfied. IDs are unique
+within each module and kind. A duplicate non-capability ID across modules
+cannot activate twice; duplicate capability IDs remain visible as ambiguous
+providers and cannot satisfy a requirement. The registry records source file,
+API version and owner separately. Duplicate IDs within a package, path escapes, unknown required fields,
 duplicate JSON keys, unsupported kinds/versions and missing handlers fail
 validation. The same canonical contribution is never dispatched through both
 v1 and v2 for one consumer. Static metadata is registered without running
@@ -316,21 +318,21 @@ handler protocol failures and both Debian/Arch platform gates. Assert that
 inactive owners contribute nothing through knowledge, checks, capabilities,
 configuration, menus, backup/restore or notifications.
 
-## Minimum Wave C implementation sequence
+## Wave C implementation sequence and current boundary
 
-1. Extend `core/lib/module_loader.sh` in place with formal state/reason queries,
-   v2 version dispatch, staging and owner filtering; preserve the v1 branch.
-2. Add one strict manifest/contract validator and a typed contribution index
-   (likely a small Python helper under `core/lib/`), plus the Bash JSON handler
-   adapter. Do not create another loader or a separate action catalog.
-3. Adapt v1 hook/menu/action registrations into the index while retaining the
-   current dispatcher views; test that mixed modules cannot double dispatch.
-4. Add validator and runtime BATS/Python fixtures, then migrate `system` as
-   described above. Verify existing `nextcloud_docker` activation, menus,
-   diagnostics, recovery and AI actions remain unchanged.
-5. Run focused module/core/platform tests, the full behavioral suite,
-   Python tests, Bash syntax and diff checks. Update current module docs only
-   when the implementation actually changes.
+1. `core/lib/module_loader.sh` now performs v1/v2 dispatch, formal state and
+   reason queries, staged v2 activation and owner filtering while preserving
+   the v1 branch.
+2. `core/lib/module_contract.py` validates the strict manifest and JSON
+   contracts; `core/lib/module_handler.sh` supplies the Bash JSON adapter.
+3. V2 declarations and required v1 compatibility registrations use the same
+   owner-aware contribution index while existing dispatcher views remain for
+   current consumers.
+4. `system` now proves a mixed v1/v2 slice with static host knowledge and a
+   host memory observer. `nextcloud_docker` remains the v1 compatibility
+   module.
+5. Focused and full regression evidence passed. This document records the
+   implemented contract; `STATUS.md` records the completion evidence.
 
 Likely touch points are `core/lib/module_loader.sh`, a validator/adapter under
 `core/lib/`, `core/ai/context.sh` for active v2 static knowledge,

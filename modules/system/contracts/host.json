@@ -1,0 +1,17 @@
+{
+  "contract_version": 1,
+  "contributions": [
+    {
+      "kind": "knowledge",
+      "id": "host.basics",
+      "path": "knowledge/host.md"
+    },
+    {
+      "kind": "observer",
+      "id": "host.memory",
+      "handler": "system__observe_memory",
+      "output_type": "host.memory",
+      "timeout_seconds": 10
+    }
+  ]
+}

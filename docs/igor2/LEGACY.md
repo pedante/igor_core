@@ -1,5 +1,8 @@
 # Igor 2 legacy and preservation map
 
+Wave C implementation is now present on `igor2`. This map records the v1
+compatibility surfaces that remain live alongside the first v2 path.
+
 Wave A / Step 1 audit of the `igor2` tree at `6675ece` (2026-09-26). Local
 `master` (`76f04e3`) is an ancestor. Code and tests establish current behavior;
 the [architecture](ARCHITECTURE.md) sets the target. `KEEP/ADAPT` means preserve
@@ -8,10 +11,10 @@ give a removal condition.
 
 | Area | Current evidence and assessment | Classification | Migration target / removal condition |
 |---|---|---|---|
-| Module activation and ownership | `core/lib/module_loader.sh:68-98,324-353,470-573` separates policy, discovery and successful activation. Hooks, menus and actions have owners and filter inactive owners (`:710-803,877-932`). `tests/modules/test_module_state.bats` covers key transitions. | KEEP/ADAPT | Step 5 extends this loader with strict v2 validation, precise failure provenance and staged registrations. Keep its state vocabulary and restart semantics; no second loader or hot unload. |
+| Module activation and ownership | `core/lib/module_loader.sh` now separates v1/v2 discovery, policy, validation, staged activation and owner-aware contribution inspection. Hooks, menus and actions retain inactive-owner filtering; v2 state/reason and contribution queries are exposed alongside the existing views. | KEEP/ADAPT | Keep the single loader, state vocabulary and restart semantics. Retire v1 views only after their consumers migrate and equivalent behavior is proven; no hot unload. |
 | Healing check activation | `core/healing/core.sh:43-65` now uses `igor_has_module` for module identity. `tests/modules/test_healing_activation.bats` guards active, disabled, unavailable and installed-only discovery against Diagnose's active set. | KEEP/ADAPT | Step 10 can unify result/discovery contracts without regressing active-owner filtering. |
 | Diagnose and healing checks | `core/lib/diagnose_runner.sh:39-104` dispatches hooks and active module check files; `core/healing/core.sh:43-147` discovers and caches checks separately. Diagnose accepts `CHECK:` and `CHECK_RESULT`; healing consumes `CHECK_RESULT`. | ADAPT | Steps 5/10 share structured results/discovery while keeping distinct user workflows. |
-| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the current permissive manifest, hook and isolated check contracts. Bundled `nextcloud_docker` remains v1 during Wave C; `system` can retain explicit v1 hooks while adding disjoint v2 contributions. | TEMPORARY COMPATIBILITY | Adapt registrations into the v2 owner-aware index and keep old hook views only for current consumers. Remove in Step 23 after bundled/external migration, equivalent tests, consumer retirement and a deprecation period. |
+| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the permissive manifest, hook and isolated check contracts. `nextcloud_docker` remains v1; `system` retains explicit v1 hooks while adding disjoint v2 contributions. | TEMPORARY COMPATIBILITY | V2 declarations and necessary v1 registrations feed the owner-aware model while old hook views remain for current consumers. Remove v1 in Step 23 after bundled/external migration, equivalent tests, consumer retirement and a deprecation period. |
 | Legacy menu loader | `core/lib/module_loader.sh:766-789` has owner-aware dispatch plus `_igor_load_module` fallback for old menu-file arguments. | TEMPORARY COMPATIBILITY | Remove after menus use the active registry/shared backend (Steps 5/20/23); meanwhile test disabled owners cannot be loaded. |
 | Combined Nextcloud deployment | `modules/nextcloud_docker/` owns a working combined deployment, context and actions. | KEEP / TEMPORARY COMPATIBILITY | Preserve until v2 contracts and relationships prove a replacement in Step 18; do not split in Step 1. |
 | AI request trust boundary | `core/ai/request_boundary.py:12-19,50-106` separates policy from `IGOR_REFERENCE_V1`; `core/ai/privacy.py:9-58` redacts before transport. | KEEP | Step 12 composes better reference material into this boundary. Reference material never authorizes. |
@@ -82,7 +85,7 @@ verification belongs with its later contract. D020 now sets the core versus
   interrupted mid-call. Keep that boundary explicit in the UI until a tested
   cancellation contract exists; do not imply preemptive cancellation.
 
-## Wave C design gate — compatibility conditions
+## Wave C implementation — compatibility conditions
 
 - Keep `_ml_read_conf` and its section-blind first-key behavior for v1 only.
   A strict section-aware v2 manifest parser replaces it for v2 metadata;
@@ -99,6 +102,22 @@ verification belongs with its later contract. D020 now sets the core versus
   and diagnose functions. Make that test version-aware when `system` migrates;
   v2 permits a package with only knowledge and observers. Do not restore empty
   hooks merely to satisfy the old test.
+
+The implementation now applies these conditions. `core/lib/module_contract.py`
+is the single strict v2 manifest/contract validator and
+`core/lib/module_handler.sh` is the Bash adapter. Invalid metadata is rejected
+before entrypoint sourcing; disabled v2 packages are not sourced. The loader's
+single contribution index records owner, source, kind and availability, and
+`igor_module_list` exposes module API/state/reason plus contribution ownership
+and provenance. Local requirement failures withhold only the affected
+contribution; module-wide dependency failures make the owner unavailable.
+
+The `system` slice provides static `host.basics` knowledge and the structured
+`host.memory` observer while retaining v1 hooks. Its explicit policy migration
+preserves omitted-entry compatibility and explicit disablement. This is a
+contract migration proof, not a broad storage or application-module migration.
+`nextcloud_docker` remains the v1 compatibility proof and is intentionally
+unchanged by the v2 package contract.
 
 
 ## Cross-cutting execution implications

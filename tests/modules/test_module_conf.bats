@@ -24,6 +24,8 @@ _conf_get() {
         | sed "s/^${key}[[:space:]]*=[[:space:]]*//"
 }
 
+_conf_is_v2() { [ "$(_conf_get "$1" module_api)" = 2 ]; }
+
 setup() {
     # No tmpdir needed — reading repo files directly
     :
@@ -71,9 +73,10 @@ teardown() {
     done < <(_all_module_confs)
 }
 
-@test "each module.conf has a requires_core= field" {
+@test "v1 module.conf retains requires_core metadata" {
     local conf
     while IFS= read -r conf; do
+        _conf_is_v2 "$conf" && continue
         grep -q "^requires_core[[:space:]]*=" "$conf" \
             || fail "missing requires_core= in $conf"
     done < <(_all_module_confs)
@@ -87,9 +90,10 @@ teardown() {
     done < <(_all_module_confs)
 }
 
-@test "each module.conf has a [dependencies] section" {
+@test "v1 module.conf retains its dependencies section" {
     local conf
     while IFS= read -r conf; do
+        _conf_is_v2 "$conf" && continue
         grep -q "^\[dependencies\]" "$conf" \
             || fail "missing [dependencies] section in $conf"
     done < <(_all_module_confs)

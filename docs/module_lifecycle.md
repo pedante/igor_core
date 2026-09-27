@@ -35,7 +35,15 @@ bash igor.sh --disable nextcloud_docker
 bash igor.sh --enable nextcloud_docker
 ```
 
-Unspecified modules remain enabled for compatibility with existing installations.
+The loader also exposes the v2 inspection surface through `igor_module_list`,
+`igor_module_status NAME`, `igor_module_reason NAME` and
+`igor_contribution_list`. The list includes API version, lifecycle state,
+contribution owner, source contract and contribution availability/reason. A
+v2 package is validated as data before its entrypoint can be sourced, so
+inspection of a disabled or malformed package does not execute module code.
+
+Unspecified v1 modules remain enabled for compatibility with existing installations.
+New v2 packages require an explicit `name=enabled` entry.
 Use explicit disabled entries for installed modules you do not manage. Policy
 changes apply to subsequent Igor processes; restart existing sessions and workers.
 Disabling does not stop containers, delete data, uninstall packages, or reverse
@@ -49,6 +57,20 @@ a separate, explicit application operation.
 | Disabled | Configuration prevents sourcing and activation. Dependencies never silently enable it. |
 | Unavailable | Enabled, but required dependencies, syntax, sourcing, or registration prevent activation. |
 | Active | Enabled and successfully loaded and registered in this Igor process. |
+
+For Module API v2, `module_api=2` selects strict section-aware manifest parsing
+and explicit JSON contract validation. An enabled package with invalid or
+unsupported metadata is `Unavailable` with a precise reason. A contribution
+can be unavailable while its owner remains active when only that contribution
+has an unmet requirement. New v2 packages require an explicit enabled policy
+entry; the bundled `system` migration records one for installations that used
+the v1 omitted-entry default and preserves an explicit disabled entry.
+The policy change is idempotent. If `config/modules.conf` already existed, its
+pre-migration contents are saved once as `config/modules.conf.pre-wave-c.bak`
+before the explicit `system=enabled` entry is written. Verify the policy with
+`bash igor.sh --modules`; use `bash igor.sh --disable system` to opt out under
+v2. To revert a package upgrade to v1, restore the saved policy file (or
+remove the generated entry if no file existed) together with the v1 package.
 
 Availability is derived, not another persistent registry to maintain. Runtime
 service health is separate: an active module can manage an application that is
@@ -78,6 +100,11 @@ No second plugin framework, general dependency solver, or automatic enabling of
 dependencies is introduced. Required host binaries express current hard
 requirements; optional binaries support bootstrap and optional features. Add
 conflicts or capability requirements only when an actual module needs them.
+
+The v2 Bash handler adapter accepts one JSON request and requires one valid JSON
+response envelope. Syntax, timeout, nonzero exit and protocol failures are
+reported as unavailable invocation results; handler output cannot set module
+ownership, approval, privilege or active state.
 
 The existing hook names and output formats remain valid. Isolated hook execution
 still uses a fresh Bash process with a timeout; modules must export or source

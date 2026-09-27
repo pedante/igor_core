@@ -5,6 +5,37 @@
 #  Architecture-agnostic — uses /proc, /sys, and optional vcgencmd/lsblk.
 # =============================================================================
 
+# Module API v2 observer handler. The loader invokes this function in an
+# isolated Bash process with one JSON request on stdin. Keep the response to
+# one JSON document on stdout; diagnostics belong on stderr.
+system__observe_memory() {
+    local request available_kb
+    IFS= read -r request || {
+        printf '%s\n' '{"status":"error","error":{"code":"invalid_request","message":"request is required"}}'
+        return 0
+    }
+
+    # The adapter validates the complete envelope. This check prevents
+    # accidental execution when the handler is called directly with another
+    # payload while keeping the Bash adapter independent of jq.
+    case "$request" in
+        *'"api_version":2'*'"contribution_id":"host.memory"'*) ;;
+        *)
+            printf '%s\n' '{"status":"error","error":{"code":"invalid_request","message":"expected host.memory v2 request"}}'
+            return 0
+            ;;
+    esac
+
+    available_kb=$(awk '/^MemAvailable:[[:space:]]+[0-9]+[[:space:]]+kB$/ { print $2; exit }' /proc/meminfo 2>/dev/null)
+    if [[ ! "$available_kb" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' '{"status":"error","error":{"code":"unavailable","message":"MemAvailable is not available"}}'
+        return 0
+    fi
+
+    printf '{"status":"ok","result":{"available_bytes":%s}}\n' "$((available_kb * 1024))"
+    return 0
+}
+
 # REQUIRED — called at igor startup
 system__register() {
     igor_register_hook "health"      "system__health"

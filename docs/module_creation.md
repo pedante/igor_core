@@ -1,6 +1,6 @@
 # Igor Module Development Guide
 
-> **Current contract (Module API v1).** This guide documents the implementation that exists today. Igor 2's target module contract is documented separately in [igor2/MODULE_API.md](igor2/MODULE_API.md). Do not treat the v2 document as already implemented, and do not extend v1 with speculative hooks merely to imitate the target design.
+> **Current contract (Module API v1).** This guide documents the v1 compatibility implementation. Igor 2's v2 contract and the first migrated `system` slice are documented separately in [igor2/MODULE_API.md](igor2/MODULE_API.md). New v2 packages use strict `module.conf` metadata and explicit JSON contract files; do not extend v1 with speculative hooks to imitate v2.
 
 ## Table of Contents
 
@@ -45,17 +45,21 @@
 
 ## Overview
 
-Igor modules are self-contained Bash packages that extend the core platform with domain-specific functionality. The module loader (`core/lib/module_loader.sh`) discovers, validates, and loads modules at startup.
+Igor v1 modules are self-contained Bash packages that extend the core platform
+with domain-specific functionality. The module loader
+(`core/lib/module_loader.sh`) discovers, validates, and loads modules at
+startup. Module API v2 packages use the same loader with strict metadata and
+explicit contribution files; see the v2 contract for that package shape.
 
 Discovery means installed, not active. `config/modules.conf` contains data-only
-`name=enabled` or `name=disabled` entries; omitted modules remain enabled for
+`name=enabled` or `name=disabled` entries; omitted v1 modules remain enabled for
 compatibility. `bash igor.sh --enable NAME` and `--disable NAME` write this policy
 for subsequent Igor processes. Restart existing sessions after changing policy.
 An enabled module becomes active only after dependencies and registration succeed.
 See [module lifecycle](module_lifecycle.md) for ownership, AI trust, and removal
 semantics.
 
-**Load sequence:**
+**V1 load sequence:**
 
 1. `igor_discover_modules` — scan `modules/*/module.conf`, populate `_IGOR_MODULE_DIRS`
 2. `igor_sort_modules` — topological sort by `depends_on` and `required_modules`
@@ -66,6 +70,12 @@ semantics.
    - Call `<name>__register()`
    - Set `_IGOR_LOADED_MODULES[name]=1`
    - Export `<NAME>_STACK_DIR` if `stack_dir` is declared
+
+For v2, discovery probes `module_api=2`, validates the strict manifest and
+listed JSON contracts before sourcing the declared Bash entrypoint. Disabled
+or invalid v2 packages are not sourced. Successful declarations are staged in
+the owner-aware contribution index; inspect them with the module inspection
+commands described in [module lifecycle](module_lifecycle.md).
 
 **Hook execution model:**
 

@@ -68,6 +68,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
                 source "${IGOR_DIR}/core/lib/config_loader.sh"
                 igor_load_config >/dev/null
                 igor_load_all_modules >/dev/null
+                igor_load_capabilities >/dev/null
                 igor_module_list
                 exit $?
             fi
