@@ -12,6 +12,18 @@ loader with temporary v1 compatibility, and an initial reviewed-local-code
 trust boundary. The current module runtime and green Wave B behavioral
 baseline are unchanged by this documentation-only pass.
 
+The roadmap now also makes the ServerMind/Steward-derived design lessons and
+execution discipline explicit in `INFLUENCES.md` and `EXECUTION.md`.
+This is architecture/documentation alignment only: no runtime contract from
+D017-D022 was reopened. Wave C implementation remains the next code task.
+
+A cross-cutting Ownership Foundation is now a hard gate before broad Module v2
+migration: canonical paths, configuration, secrets, persistent state, machine
+memory, knowledge, local learning, investigations, history and runtime need
+explicit ownership/lifecycle contracts. Early non-conflicting Wave C loader
+work may proceed, but the public v2 contract must not freeze the current mixed
+storage assumptions.
+
 Wave B / Steps 3–4 completed the interaction and privilege work. Its backend
 session, deterministic approval dispatcher, frontend event stream, TUI
 projection and native sudo-through-PTY path remain authoritative.
