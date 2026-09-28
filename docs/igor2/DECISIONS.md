@@ -302,6 +302,21 @@ values are excluded before composition and redacted again at transport.
 Provider adapters render the same Igor semantics without becoming policy.
 See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+### D040 — Context semantics live in modules/metadata, not Core routing tables
+
+Core's Context Engine remains domain-neutral. It may select and rank generic
+registered structures by object/capability identity, owner, source kind,
+provenance, freshness and module-provided concepts/tags, but it must not grow
+application-specific natural-language keyword/synonym branches. Modules and
+knowledge contributions own domain vocabulary/semantic metadata. The reasoning
+layer may translate user language and conversational references into
+non-authoritative topic/object/intent hints; Igor deterministically resolves
+those hints against registered active sources. Such hints cannot create facts,
+capabilities or owners, assert freshness, activate modules, satisfy
+preconditions or affect authorization. Adding a new coherent domain module
+should not require Core routing changes. See
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
 ### D041 — Domain events are validated signals with Core-stamped provenance (Step 13)
 
 Core declares built-in types; active v2 modules may declare owner-namespaced
@@ -327,20 +342,44 @@ verification and final outcome fields retain their distinct result meanings;
 `completed` does not mean successful. The current frontend event stream, v1
 actions and raw shell are not silently reinterpreted as domain events. See
 [EVENT_BUS.md](EVENT_BUS.md).
-### D040 — Context semantics live in modules/metadata, not Core routing tables
 
-Core's Context Engine remains domain-neutral. It may select and rank generic
-registered structures by object/capability identity, owner, source kind,
-provenance, freshness and module-provided concepts/tags, but it must not grow
-application-specific natural-language keyword/synonym branches. Modules and
-knowledge contributions own domain vocabulary/semantic metadata. The reasoning
-layer may translate user language and conversational references into
-non-authoritative topic/object/intent hints; Igor deterministically resolves
-those hints against registered active sources. Such hints cannot create facts,
-capabilities or owners, assert freshness, activate modules, satisfy
-preconditions or affect authorization. Adding a new coherent domain module
-should not require Core routing changes. See
-[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+### D044 — Module automation declarations are proposals; policy activates (Q008, Step 14)
+
+Modules cannot activate an automation by installation, enablement, manifest
+or handler. Igor's validated registry creates disabled instances from active
+module proposals or explicit operator configuration. An authenticated
+operator or explicitly configured trusted Core administrator policy enables,
+edits, disables or deletes them; AI/reference text and domain events cannot.
+Disabled/removed proposal owners make dependent instances unavailable without
+deleting user intent. See [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md).
+
+### D045 — Step 14 unattended execution is unprivileged READ only
+
+Enablement grants eligibility for an exact configured READ, not blanket
+approval for future operations. Guide does not auto-run; Assist/Executive
+use the normal READ policy at each run. CHANGE/DESTROY and privileged targets
+cannot be enabled in Step 14. Existing interactive Executive CHANGE policy
+and DESTROY exact-`YES` do not become durable scheduler permissions. A later
+unattended CHANGE policy needs its own explicit contract and the existing
+privilege broker. See [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md).
+
+### D046 — Automation owns versioned intent and at-most-once slot claims
+
+Core stores configured instances and minimal schedule/last-attempt state in
+its private versioned persistent-state store. It atomically claims a due slot
+before dispatch; a crash leaves an inspectable unknown attempt rather than
+silently repeating it. Event/condition signals and run locks are transient.
+This store is neither the System Model persistence decision Q003 nor Step 15
+Operational History. See [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md).
+
+### D047 — Triggers make canonical READ invocations eligible
+
+Step 14 adds one-time, periodic, exact-filtered Step 13 event and typed
+deterministic condition triggers in bounded slices. A trigger never changes
+the configured target or invokes a provider itself. The automation adapter
+enters the Wave E `run_capability` dispatcher for each run. No event replay,
+cron expressions, shell predicates or general workflow engine are implied.
+See [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md).
 
 ---
 
@@ -368,14 +407,6 @@ Decision target: before a third-party distribution or marketplace contract.
 How are relationships created/reconciled among discovery, configuration, installers, users and AI proposals?
 
 Decision target: Step 17.
-
-### Q008 — Automation activation policy
-
-Can a module activate an automation automatically, or only propose defaults that administrator/runtime policy enables?
-
-Current preference: modules propose; policy activates.
-
-Decision target: Step 14.
 
 ### Q009 — Integration-rule packaging
 

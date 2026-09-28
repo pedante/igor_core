@@ -2,10 +2,29 @@
 
 Last updated: 2026-09-28
 
+## Step 14 Automation Engine design gate
+
+**Step 14 has an accepted design, no runtime implementation. 14A is unblocked.**
+The authoritative [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md) contract and
+D044–D047 resolve Q008: active module declarations are proposals; only
+explicit Igor administrator/runtime policy enables configured instances.
+The versioned Core-owned private store will retain configured intent, due
+claims and bounded last-attempt metadata across restart. It is separate from
+Step 13's transient events, Q003 System Model persistence and Step 15 history.
+
+The safe Step 14 execution boundary is unprivileged unattended READ in
+Assist/Executive through the existing `run_capability` dispatcher. Guide
+does not auto-run; CHANGE, DESTROY and privileged unattended runs remain
+disabled pending a separate policy contract. Implementation is split into
+14A registry/inspection, 14B one-time scheduled memory READ, 14C periodic,
+14D event and 14E typed condition slices. This design gate ran no runtime
+tests or regression suite; the five Step 14 proof classes remain required
+before completion. Q003, Q007, Q009 and Q011 retain their later owners.
+
 ## Step 13 Domain Event Bus implementation
 
 **Step 13 is complete at the accepted [EVENT_BUS.md](EVENT_BUS.md) boundary;
-Step 14 is unblocked, not implemented.** `core/lib/domain_event.py` validates
+Step 14 runtime is not implemented.** `core/lib/domain_event.py` validates
 the version-1 envelope and closed payload schemas. The owner-aware v2 index
 admits active `<owner>.<domain>.<occurrence>` declarations. The module handler
 API validates explicit requests and rechecks active ownership at publication.
@@ -37,8 +56,9 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 14 automation, Step 15 durable history and later baselines/healing remain
-deferred. Q003, Q007, Q008, Q009 and Q011 retain their assigned decisions.
+Step 14 automation runtime, Step 15 durable history and later
+baselines/healing remain deferred. Q008 is resolved by D044; Q003, Q007,
+Q009 and Q011 retain their assigned decisions.
 
 ## Wave E Agent Architecture implementation
 

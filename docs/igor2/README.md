@@ -16,6 +16,7 @@ For most Igor 2 work:
    - `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
    - `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
    - `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.
+   - `AUTOMATION_ENGINE.md` — accepted Step 14 Automation Engine contract and bounded implementation slices; runtime pending.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
    - `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.

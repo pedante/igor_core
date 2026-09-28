@@ -359,13 +359,22 @@ Later structured operational event types may include:
 Events include Core-stamped source/owner, related objects, times, bounded
 evidence references and correlation. They cannot authorize execution.
 
-## Step 14 — Automation Engine — FUTURE
+## Step 14 — Automation Engine — ACCEPTED DESIGN; IMPLEMENTATION PENDING
 
-Igor owns scheduled, periodic, conditional and event-triggered actions.
+The bounded implementation contract is
+[AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md), accepted in D044–D047. Q008 is
+resolved: modules propose; Igor's explicit administrator/runtime policy
+activates. Step 14 owns durable configured intent, scheduling and bounded
+run state. Every run enters the canonical capability dispatcher; only
+unprivileged READ may run unattended in this step. Inspection precedes TUI
+presentation. Step 13 events are transient signals, never approval or replay.
 
-Modules may declare/propose automations; they do not create unmanaged cron behavior as the normal contract.
-
-Track enablement, trigger, capability, policy, privilege, previous/next run, retries and result. Expose automations in the TUI.
+Implement in separate bounded sessions: **14A** registry, activation and
+inspection without execution; **14B** one-time scheduled READ through
+`system.host.memory.refresh`; **14C** periodic READ; **14D** event-triggered
+READ; **14E** typed conditional READ. Each slice has its own focused proof
+and full regression gate. Retries beyond one attempt and unattended CHANGE
+require later explicit contracts; Step 15 still owns durable history.
 
 ## Step 15 — Operational History — PARTIAL
 
