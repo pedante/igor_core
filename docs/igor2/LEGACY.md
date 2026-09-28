@@ -1,10 +1,9 @@
 # Igor 2 legacy and preservation map
 
-Wave D implementation and the Wave E design gate are now present on `igor2`.
+Wave D and the bounded Wave E implementation are now present on `igor2`.
 This map records the v1 compatibility surfaces that remain live alongside the
-typed host model path. The Wave E contract is in
-[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md); no Wave E runtime cutover has
-occurred yet.
+typed host model and canonical capability path. The Wave E contract is in
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 Wave A / Step 1 audit of the `igor2` tree at `6675ece` (2026-09-26). Local
 `master` (`76f04e3`) is an ancestor. Code and tests establish current behavior;
@@ -23,12 +22,12 @@ give a removal condition.
 | Combined Nextcloud deployment | `modules/nextcloud_docker/` owns a working combined deployment, context and actions. | KEEP / TEMPORARY COMPATIBILITY | Preserve until v2 contracts and relationships prove a replacement in Step 18; do not split in Step 1. |
 | AI request trust boundary | `core/ai/request_boundary.py:12-19,50-106` separates policy from `IGOR_REFERENCE_V1`; `core/ai/privacy.py:9-58` redacts before transport. | KEEP | Step 12 composes better reference material into this boundary. Reference material never authorizes. |
 | Knowledge/context hooks | `core/ai/context.sh` gathers owner-filtered knowledge, context, tiers, patterns and catalog; `core/ai/knowledge.sh` reads saved files. These lack item-level relevance/provenance. | ADAPT; old text blocks TEMPORARY COMPATIBILITY | Step 12 selects typed, bounded reference items inside the existing pipeline. Retire an equivalent text source per consumer when its typed item is proven; preserve active-owner filtering and the `IGOR_REFERENCE_V1` boundary. Local learned artifacts remain separate from shipped knowledge. |
-| Direct context probes | Core AI context now reads `host.memory` for available RAM; `system__ai_context` no longer supplies a parallel RAM value. Other host/network/file and Nextcloud context probes remain. | ADAPT | Migrate each remaining domain only after its observer/fact contract is authoritative; preserve the reference envelope. |
+| Direct context probes | The memory request uses bounded typed System Model fact, health, active knowledge and capability items with provenance. `system__ai_context` no longer supplies a parallel RAM value. Other host/network/file and Nextcloud context probes remain labeled legacy reference data. | ADAPT | Migrate each remaining domain only after its observer/fact contract and selection mapping are authoritative; preserve `IGOR_REFERENCE_V1` and avoid duplicate facts. |
 | System Model and observer bridge | `core/lib/system_model.py`, `model_bridge.py` and `observation.sh` now validate and commit typed active v2 observations into a private runtime snapshot, with failure/staleness and inspection. Direct `igor_v2_invoke` remains a raw compatibility/debug path, not a fact mutation path. | KEEP/ADAPT | Add further object kinds only with real observers and contract tests; Q003 remains open for durable observed history. |
-| Action catalog | `igor_load_capabilities`, `core/ai/control.sh` and `catalog.py` provide owned, tiered v1 `ai_capabilities` and `run_igor_action`. V2 capability declarations are indexed but nonexecutable. General inputs, privilege, preconditions, verification and affected objects are absent; legacy functions can call sudo internally. | KEEP/ADAPT; v1 actions TEMPORARY COMPATIBILITY | Step 11 extends this registry/dispatcher. Project v1 actions as `legacy.<owner>.<action>`; map each canonical replacement explicitly, preserve or raise safety, suppress duplicate execution for its consumer and retire the v1 action only after behavior/approval/privilege/verification proof. No broad Nextcloud migration in Wave E. |
+| Action catalog | The Wave C contribution index now supplies executable complete v2 descriptors to `run_capability` through the existing dispatcher and projects v1 `ai_capabilities` as `legacy.<owner>.<action>`. V1 `run_igor_action` still dispatches its own functions; those functions may use internal sudo and have no v2 verification guarantee. Bare Wave C declarations stay `contract_incomplete`. | KEEP/ADAPT; v1 actions TEMPORARY COMPATIBILITY | Map a v1 name to a canonical replacement only through a reviewed one-to-one cutover that preserves tier/behavior and suppresses duplicate execution. No v1 action was removed in Wave E; Nextcloud stays v1. |
 | Legacy `ai_tools` text | V1 hook remains registered/documented but is not an executable catalog source (`README.md` hook table; `modules/*/module.sh`). | TEMPORARY COMPATIBILITY | Remove after v1 consumers migrate (Steps 6/11/23); test prose cannot add executable tools. |
 | Interaction runtime and frontend events | `core/ai/core.sh` owns session command routing, approval state and an explicit ephemeral assistant-owned conversational choice; `core/ai/tui.py` projects ordered `core/ai/events.sh` activity events. Wave B guards short replies, local choice cancellation and malformed event sequence rejection. | KEEP/ADAPT | Reuse this backend in Step 20 and future interfaces. Frontend JSONL events stay distinct from future domain events; choice extraction remains limited to explicit alternatives in the latest reply. |
-| Safety and privilege | `core/ai/safety.sh` owns tiers, approval and native sudo authentication for the exact approved command. Wave B guards that a declined action never authenticates; existing PTY tests cover password isolation and failure. `executive_mode` setting translation remains (`:35-54`). | KEEP/ADAPT; TEMPORARY COMPATIBILITY for old setting | Step 11 can declare privilege requirements in capability metadata and feed the same backend execution gate; do not add a second sudo broker. Remove the old setting only after persisted callers migrate. Autonomy never grants root. |
+| Safety and privilege | `core/ai/safety.sh` owns the single READ/CHANGE/DESTROY gate and native PTY sudo authentication. Complete v2 descriptors declare privilege, and a reviewed Core adapter freezes exact argv before approval. D038 makes raw CHANGE explicit approval even in Executive. `executive_mode` setting translation remains (`:35-54`). | KEEP/ADAPT; TEMPORARY COMPATIBILITY for old setting | Additional privileged capabilities need reviewed exact-argv adapters before availability. Remove the old setting only after persisted callers migrate. Autonomy never grants root. |
 | Classic menu, line chat and `--extra` | `igor.sh:471-485,1097-1120`, `core/lib/ui.sh:224-362`, `core/ai/core.sh` retain older interfaces. `core/extras/extra.sh:229-303` directly probes applications. | TEMPORARY COMPATIBILITY | Retain until shared TUI/backend covers their workflows (Step 20), then consolidate/remove in Step 23. |
 | Unused hybrid AI path | `core/lib/ai_hybrid.sh:27-243` has a separate context/provider loop and Nextcloud fallback; no repository caller was found in Step 1. | REMOVE, pending external-use check | Remove after external use is checked (Steps 20/23); do not make it a second active backend. |
 | Core application leakage | `core/diagnose/phases.sh:450-453,644-648,923-927,1040-1044`, `core/lib/config.sh:13-45,145-200`, `core/lib/security_config.sh:20-60`, `core/lib/helpers.sh:35-61`, `core/extras/extra.sh:264-309` and recovery files embed Nextcloud/Docker/Cloudflare/Redis logic. Some paths gate on active capability, but core still owns deployment behavior. | ADAPT/REMOVE | Move domain behavior behind modules/integrations as Steps 5–12/18 make them authoritative. Preserve working gated workflows until then. |
@@ -157,6 +156,31 @@ unchanged by the v2 package contract.
 - Observed facts and health results live only in a private runtime snapshot
   unique to each Igor process. New processes start `not_observed`; no fact
   database, scheduler, domain event bus or new intent editor was introduced.
+
+## Wave E cutover disposition
+
+- Keep v1 `ai_capabilities` and `run_igor_action` for existing actions,
+  especially Nextcloud v1. Their synthetic `legacy.<owner>.<action>` records
+  are inspection/advertising compatibility, not a second v2 executor. No v1
+  action was removed because none has a proven canonical replacement.
+- Complete v2 capabilities dispatch through the existing `safety.sh` approval
+  and PTY path. A declaration lacking the Step 11 fields, a reviewed secret
+  consumer, or a required privileged argv adapter remains unavailable with
+  an inspectable reason. The `system` memory capability is the first live
+  canonical path; the service CHANGE operation is an isolated fixture proof.
+- Keep raw `host`/`execute` shell for unstructured fallback under D038. Exact
+  recognized canonical forms are rejected; other raw CHANGE requests require
+  explicit approval even in Executive and have no claimed postcondition.
+  Retire a raw form only when its canonical replacement is registered and
+  usable under the maintained equivalence map.
+- Keep broad legacy AI context for domains without an authoritative model
+  source. The memory domain now has one bounded Context Engine selection and
+  does not repeat the old RAM probe. Legacy `ai_context`, knowledge and saved
+  text remain reference data; no new operational state is inferred from them.
+- The new secret-reference adapter has no live value consumer. It uses opaque
+  references and value-free authorized-access metadata; today's private file
+  registration is internal and does not set the future Ownership Foundation
+  public layout. No persistent migration or generic rollback was added.
 
 ## Cross-cutting execution implications
 

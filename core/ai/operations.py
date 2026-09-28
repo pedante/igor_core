@@ -66,7 +66,7 @@ def main():
         approval = {
             "guide": "READ proposed, CHANGE confirm, DESTROY explicit YES",
             "assist": "READ automatic, CHANGE confirm, DESTROY explicit YES",
-            "executive": "READ automatic, CHANGE automatic where policy allows, DESTROY explicit YES",
+            "executive": "READ automatic, structured CHANGE automatic where policy allows, raw CHANGE confirm, DESTROY explicit YES",
         }[interaction_mode]
         print(json.dumps(scrub_data({
             "enabled": os.environ.get("IGOR_AI_ENABLED", "true") == "true",
@@ -95,6 +95,19 @@ def main():
                 event["action"] = requested.get("cmd", "")
             except (ValueError, AttributeError):
                 pass
+        if event["tool"] == "run_capability" and event["event"] == "RESULT":
+            event["capability_operation_id"] = os.environ.get("IGOR_AI_CAPABILITY_OPERATION_ID", "")
+            event["capability_outcome"] = os.environ.get("IGOR_AI_CAPABILITY_OUTCOME", "")
+            event["verification_status"] = os.environ.get("IGOR_AI_CAPABILITY_VERIFICATION", "")
+        if event["tool"] in {"host", "execute"}:
+            event["execution_form"] = "unstructured"
+            event["fallback_reason"] = "raw_shell_request"
+            event["verification_status"] = "unavailable"
+            try:
+                command = json.loads(event["arguments"]).get("cmd", "")
+                event["privilege_requirement"] = "explicit_sudo" if command.lstrip().startswith("sudo ") else "unknown"
+            except (ValueError, AttributeError):
+                event["privilege_requirement"] = "unknown"
         append(event)
     elif mode == "last":
         path = audit_path()

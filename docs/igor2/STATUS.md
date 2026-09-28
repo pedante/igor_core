@@ -1,8 +1,86 @@
 # Igor 2 migration status
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
-## Wave E Agent Architecture design gate
+## Wave E Agent Architecture implementation
+
+**Steps 11–12 are implemented for the bounded Wave E slice.** The accepted
+D037–D039 contract remains [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+The owner-stamped Wave C index now backs read-only capability list/inspection
+and one structured invocation path through the existing AI dispatcher.
+Canonical dotted IDs resolve one active provider automatically; absent and
+ambiguous providers cannot execute, and an ambiguous call requires an explicit
+provider. Complete v2 declarations expose version, schema, safety, privilege,
+preconditions, verifier, recovery, affected objects and source. Bare Wave C
+declarations, secret consumers without a reviewed adapter and privileged
+operations without reviewed Core argv remain inspectable but unavailable.
+The v1 action catalog is projected into `legacy.<owner>.<action>` and
+`run_igor_action` remains its compatibility dispatcher.
+
+`system.host.memory.refresh` is a real READ capability: its active `system`
+provider calls the existing observer refresh, validates the Wave D
+observation, updates the process-local System Model, runs the memory health
+check and returns fresh fact/attempt evidence. The disposable
+`system.service.restart` fixture proves structured unit input, CHANGE
+approval, existing PTY sudo authentication, a frozen Core argv, live service
+query verification, and `unverified_change` when the command succeeds but the
+postcondition fails. No production service was restarted for proof.
+
+The minimal plan value resolves ordered steps, typed object references and an
+optional verifiable READ final check, keeps a digest, then sends each operation
+through that same capability dispatcher. It records completed steps and stops
+on failure. D038 leaves raw shell as a visibly
+unstructured fallback: recognized canonical forms are rejected, raw CHANGE
+requires explicit approval even in Executive, DESTROY requires exact `YES`,
+and raw execution has no claimed deterministic verifier. Secret references
+are validated as opaque values; a small authorized-consumer adapter provides
+private FD access with value-free audit. No current v2 capability uses a
+secret value, so secret-using declarations remain unavailable until a reviewed
+consumer is installed. The future Ownership Foundation still owns durable
+secret/configuration layout.
+
+The Context Engine selects bounded typed items with source kind, owner,
+object/capability, freshness and selection reason for the memory domain. It
+composes current Wave D fact/health, active `system` knowledge, the available
+memory capability and Core guidance into the existing `IGOR_REFERENCE_V1`
+boundary. Inspection reads that selection without refreshing observations.
+Other domains continue through labeled legacy context until they gain
+authoritative facts and a relevance cutover; no second AI pipeline or prompt
+authority was added. Disabled owners contribute no active capability or
+knowledge. Context does not expand secret references, and existing outbound
+privacy/redaction remains the last boundary.
+
+### Wave E proof
+
+- **Contract and inspection:** focused Python/BATS tests exercise provider
+  resolution, inputs, preconditions, safety, approval, privilege, verification,
+  recovery, raw fallback, plans, source selection and secret references. CLI
+  `--capabilities list|inspect|plan` and `--context inspect` are read-only;
+  `igor_capability_result(operation_id)` exposes running-session outcomes.
+- **Vertical slices:** the live memory capability produced a verified result
+  tied to a fresh `host:local` fact and health/context item. The file-backed
+  service fixture recorded approval before sudo and exact `systemctl` argv;
+  its forced inactive postcondition produced `execution_status=succeeded`,
+  `verification_status=failed`, `outcome=unverified_change`.
+- **Migration/recovery:** v1 actions and Nextcloud v1 retain their dispatch;
+  the new memory capability has one observer/model update path. Observed facts
+  remain process-local and rebuildable; no persistent layout migration or
+  automatic rollback was introduced. Recovery classes are metadata; a
+  recovery action, if registered, must use normal capability authority.
+- **Regression and lint:** `bash tests/run_all.sh` passed all five suite
+  groups (305 core, 126 module and 40 integration BATS cases); two core cases
+  skipped because this runner lacks a GPG agent and `hostname -I`. The full
+  Python suite passed 248 tests and 94 subtests. The focused capability and
+  observation BATS run passed 23 cases. Bash syntax, Python compilation and
+  `git diff --check` passed. Ruff passed on new Python files; full-repository
+  Ruff reported the same 135 findings as the untouched `HEAD` baseline, with
+  no new finding by file/code/message comparison. CI-configured ShellCheck on
+  changed shell/BATS files reported 11 pre-existing warnings and no new
+  warnings. These existing lint findings remain outside Wave E.
+
+## Wave E Agent Architecture design gate (historical baseline)
+
+The following paragraphs describe the accepted gate before implementation.
 
 **Steps 11–12 have an accepted implementation contract, not a runtime
 implementation.** The contract and falsifiable exit checks are in
@@ -182,14 +260,14 @@ claim about a newer un-fetched remote branch.
 | 1 Legacy Audit | Implemented by this evidence ledger and baseline. |
 | 2 Architecture Rules | Implemented for accepted current invariants: focused ownership, trust, platform and safety guards now run in existing test suites. Later contracts get their own tests when implemented. |
 | 3 Interaction Runtime | Implemented for current chat/TUI use. Backend command routing, pending choice/approval state, mode policy, provider continuation and ordered frontend events are guarded. Future interfaces can consume the same backend authority; no new interface was built. |
-| 4 Privilege Boundary | Implemented differently but acceptably for current AI actions: native backend PTY sudo authentication follows approval of the exact command. General capability privilege metadata remains Step 11 work. |
+| 4 Privilege Boundary | Native backend PTY sudo authentication follows approval. Wave E v2 capabilities now declare privilege and bind reviewed exact argv before this existing gate; legacy actions retain their internal privilege behavior. |
 | 5 Module Runtime v2 | Complete for Wave C in `core/lib/module_loader.sh`: v1/v2 dispatch, strict preflight, staged declarations, owner-aware contribution index, typed module/contribution state and inspection queries. |
 | 6 Module API v2 | Initial Bash-first contract complete for Wave C in `core/lib/module_contract.py` and `core/lib/module_handler.sh`. `system` is a mixed v1/v2 reference; `nextcloud_docker` remains v1. Later kind-specific consumers remain deferred. |
 | 7 Platform Abstraction | Wave D boundary complete: normalized Debian/Arch package query and install/remove/update argv, systemd state query and operation argv, strict names, timeout/error behavior and unknown-family failure. Legacy `pkg_install` remains compatible. |
 | 8 System Model; 9 Observation Framework | Initial Wave D contract complete: typed keyed facts, independent intent/responsibility records, active v2 observation validation, freshness/failure state and read-only inspection. Broader domain inventory and persistence remain later work. |
 | 10 Unified Health | Initial Wave D contract complete: one active-owner runner, structured v2 memory result, v1 line adapters and Diagnose/Healing projections. |
-| 11 Capability System v2 | Partial; D037–D038 and `AGENT_ARCHITECTURE.md` settle the design gate. Current owned, tiered AI action catalog and `run_igor_action` are the seed. Structured metadata, verification and shared interface use remain implementation work. |
-| 12 Knowledge & Context Engine | Partial; D039 and `AGENT_ARCHITECTURE.md` settle the design gate. Request/reference trust boundary and active module hooks work; relevance selection and provenance remain implementation work. |
+| 11 Capability System v2 | Bounded Wave E implementation: canonical owner-aware registry/invocation, typed inputs, deterministic preconditions, existing approval/PTY route, structured result/verification, recovery metadata, D038 fallback, inspection and small plans. V1 actions remain compatible; broader providers wait for reviewed adapters. |
+| 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
 | 13 Domain Event Bus; 14 Automation Engine | Missing. `core/ai/events.sh` is a frontend activity stream, not the domain bus. Existing schedules are not an Igor-owned automation contract. |
 | 15 Operational History | Partial: private bounded AI audit, recovery journal and backup records exist; structured incidents/outcomes are missing. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
@@ -236,8 +314,8 @@ claim about a newer un-fetched remote branch.
 4. Platform BATS pins Debian/Arch detection, current package and service
    mappings, mocked apt/pacman calls and unknown-family behavior.
 
-Generalized capability verification, System Model, observers and domain events
-receive tests when those later contracts are implemented.
+Wave D added System Model and observer tests; Wave E added capability
+verification tests. Domain events remain a later contract.
 
 ## Wave B runtime and privilege assessment
 

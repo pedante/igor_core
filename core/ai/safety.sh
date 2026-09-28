@@ -491,6 +491,23 @@ _ai_require_active_capability() {
     return 0
 }
 
+# D038 keeps raw shell as an unstructured fallback. These exact, maintained
+# forms have canonical v2 operations and therefore must not be used as an AI
+# workaround when the structured provider is unavailable or inactive.
+_ai_reject_equivalent_raw_command() {
+    local command="${1:-}" unit
+    if [[ "$command" =~ ^[[:space:]]*(sudo[[:space:]]+)?(systemctl|/usr/bin/systemctl)[[:space:]]+restart[[:space:]]+([A-Za-z0-9][A-Za-z0-9_.@:+-]*)[[:space:]]*$ ]]; then
+        unit="${BASH_REMATCH[3]}"
+        echo "[BLOCKED: '${command}' is the structured capability system.service.restart; invoke run_capability with unit '${unit}']"
+        return 0
+    fi
+    if [[ "$command" =~ ^[[:space:]]*(free|/usr/bin/free)([[:space:]]+(-b|--bytes))?[[:space:]]*$ ]]; then
+        echo "[BLOCKED: '${command}' is covered by system.host.memory.refresh; invoke run_capability]"
+        return 0
+    fi
+    return 1
+}
+
 # ── Tier 3: destructive commands ──────────────────────────────────────────────
 ai_cmd_is_destroy() {
     local cmd="$1"
@@ -525,6 +542,8 @@ ai_execute_tool() {
     local tool_json="$1"
     local explain_text="${2:-}"
     local output=""
+    unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
+    IGOR_CAPABILITY_LAST_RESULT=""
     local _operation_id AI_EVENT_NATIVE_ID
     _operation_id="ai_$(date +%s%N 2>/dev/null || date +%s)_$$"
     AI_EVENT_NATIVE_ID=$(printf '%s' "$tool_json" | python3 -c \
@@ -538,7 +557,7 @@ ai_execute_tool() {
     while IFS= read -r -d '' _field; do
         _fields+=("$_field")
     done < <(printf '%s' "$tool_json" | python3 "$_AI_INPUT_PARSER" fields)
-    if [ "${#_fields[@]}" -ne 17 ] || [ "${_fields[16]:-}" != "IGOR_INPUT_OK" ]; then
+    if [ "${#_fields[@]}" -ne 20 ] || [ "${_fields[19]:-}" != "IGOR_INPUT_OK" ]; then
         _ai_audit_dispatch BLOCKED "unknown" "unknown" "none" "invalid-input" "1" \
             "" "" "" "$_operation_id"
         echo "[BLOCKED: Invalid tool input]"
@@ -550,6 +569,7 @@ ai_execute_tool() {
     local T_FILENAME="${_fields[9]}" T_TITLE="${_fields[10]}" T_DESCRIPTION="${_fields[11]}"
     local T_COMMAND="${_fields[12]}" T_TYPE="${_fields[13]}" T_TIER="${_fields[14]}"
     local T_MESSAGE="${_fields[15]}"
+    local T_CAPABILITY_ID="${_fields[16]:-}" T_INPUTS="${_fields[17]:-}" T_PROVIDER="${_fields[18]:-}"
     local -a _ai_words=() run_argv=()
     if declare -f ai_policy_tool_allowed >/dev/null 2>&1 &&
        ! ai_policy_tool_allowed "$T_TOOL"; then
@@ -603,6 +623,12 @@ ai_execute_tool() {
     local run_cmd=""
     local display_cmd=""
     local _requires_admin=false
+    local _cap_approved_digest=""
+    # Raw host/legacy execute requests are deliberately stricter than
+    # structured capabilities.  D038 keeps them available as an unstructured
+    # fallback, but a mutating raw request always needs an explicit approval,
+    # including in Executive mode.
+    local _raw_shell=false
     # For run_igor_action: populated in case block, used in execution block
     local _ria_fn="" _ria_mod=""
 
@@ -627,6 +653,7 @@ ai_execute_tool() {
             fi
             ;;
         host)
+            _raw_shell=true
             T_CMD=$(ai_unscrub_inbound "$T_CMD")
             if ! _ai_reject_unrestored_tokens "$T_CMD"; then
                 _ai_audit_rejected "$T_TOOL" CHANGE unresolved-token "$tool_json" "$_operation_id"; return 1
@@ -636,6 +663,15 @@ ai_execute_tool() {
                 echo -e "\n  ${RED}${BOLD}⛔ BLOCKED:${NC} Command is on the hard denylist." >&2
                 echo -e "  ${RED}Matched:${NC} $T_CMD" >&2
                 echo "[BLOCKED BY DENYLIST: ${T_CMD}]"
+                return 1
+            fi
+            if [[ "$T_CMD" == *'<<'* ]]; then
+                _ai_audit_rejected "$T_TOOL" CHANGE heredoc "$tool_json" "$_operation_id"
+                echo "[BLOCKED: heredoc syntax is not allowed in AI raw shell]"
+                return 1
+            fi
+            if _ai_reject_equivalent_raw_command "$T_CMD"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE equivalent-capability "$tool_json" "$_operation_id"
                 return 1
             fi
             
@@ -682,6 +718,7 @@ ai_execute_tool() {
             ;;
         execute)
             # Legacy fallback — raw bash from <execute> tag
+            _raw_shell=true
             local _cmd; _cmd=$(ai_unscrub_inbound "$T_CMD")
             if ! _ai_reject_unrestored_tokens "$_cmd"; then
                 _ai_audit_rejected "$T_TOOL" CHANGE unresolved-token "$tool_json" "$_operation_id"; return 1
@@ -690,6 +727,10 @@ ai_execute_tool() {
                 _ai_audit_rejected "$T_TOOL" DESTROY denylist "$tool_json" "$_operation_id"
                 echo -e "\n  ${RED}${BOLD}⛔ BLOCKED:${NC} Command is on the hard denylist." >&2
                 echo "[BLOCKED BY DENYLIST: ${_cmd}]"
+                return 1
+            fi
+            if _ai_reject_equivalent_raw_command "$_cmd"; then
+                _ai_audit_rejected "$T_TOOL" CHANGE equivalent-capability "$tool_json" "$_operation_id"
                 return 1
             fi
             if echo "$_cmd" | grep -q '<<'; then
@@ -783,6 +824,37 @@ ai_execute_tool() {
             tier="${_ria_tier:-CHANGE}"
             display_cmd="Igor action: ${_ria_name} → ${_ria_fn}()  [${_ria_mpath:-module: ${_ria_mod}}]"
             ;;
+        run_capability)
+            if ! declare -f igor_capability_prepare >/dev/null 2>&1; then
+                _ai_audit_rejected "$T_TOOL" CHANGE capability-runtime-unavailable "$tool_json" "$_operation_id"
+                echo "[ERROR: Capability runtime is unavailable]"
+                return 1
+            fi
+            local _cap_prepared
+            _cap_prepared=$(igor_capability_prepare "$T_CAPABILITY_ID" "$T_INPUTS" "$T_PROVIDER") || {
+                _ai_audit_rejected "$T_TOOL" CHANGE capability-unavailable "$tool_json" "$_operation_id"
+                echo "[ERROR: Capability '${T_CAPABILITY_ID}' is unavailable or its inputs are invalid]"
+                return 1
+            }
+            if [ "$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("precondition_status","failed"))')" != satisfied ]; then
+                output="$(_igor_capability_nonexecution_result "$_cap_prepared" precondition_failed)"
+                IGOR_CAPABILITY_LAST_RESULT="$output"
+                _ai_audit_rejected "$T_TOOL" CHANGE precondition_failed "$tool_json" "$_operation_id"
+                printf '%s\n' "$output"
+                return 1
+            fi
+            local _cap_tier _cap_privilege _cap_display
+            _cap_tier=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("safety",{}).get("tier", ""))') || _cap_tier=""
+            case "$_cap_tier" in
+                READ|CHANGE|DESTROY) tier="$_cap_tier" ;;
+                *) echo "[ERROR: Capability has invalid safety tier]"; return 1 ;;
+            esac
+            _cap_privilege=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("privilege", "none"))') || _cap_privilege="none"
+            [ "$_cap_privilege" = required ] && _requires_admin=true
+            _cap_display=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("description") or d.get("capability_id") or "capability")') || _cap_display="$T_CAPABILITY_ID"
+            display_cmd="capability: ${T_CAPABILITY_ID}${T_PROVIDER:+ [provider ${T_PROVIDER}]} — ${_cap_display}"
+            run_cmd="capability:${T_CAPABILITY_ID}"
+            ;;
         error|*)
             echo "[ERROR: Unknown or malformed tool — ${T_TOOL:-?}${T_ERROR:+ ($T_ERROR)}]"
             return 1
@@ -868,7 +940,7 @@ ai_execute_tool() {
                 fi
                 ;;
             CHANGE)
-                if [ "$_mode" = executive ]; then
+                if [ "$_mode" = executive ] && [ "$_raw_shell" = false ]; then
                     echo -e "  ${YEL}── AUTO-RUNNING (policy-approved change) ─────────────────────${NC}" >&2
                 else
                     echo -e "  ${YEL}── NEEDS APPROVAL (modifies system) ──────────────────────────${NC}" >&2
@@ -906,14 +978,17 @@ ai_execute_tool() {
             fi
             ;;
         CHANGE)
-            if [ "$_mode" = executive ]; then
+            if [ "$_mode" = executive ] && [ "$_raw_shell" = false ]; then
                 approval_mode="executive"
                 echo -e "  ${YEL}Executive mode — auto-running.${NC}" >&2
                 run=true
             else
                 approval_mode="confirm"
+                if [ "$_raw_shell" = true ] && [ "$_mode" = executive ]; then
+                    echo -e "  ${YEL}Raw shell fallback — explicit approval is required in Executive mode.${NC}" >&2
+                fi
                 _ai_build_pending_approval "$tool_json" "$tier" "$display_cmd" \
-                    "This action may modify system state." "$_operation_id" "${T_CMD:-}" || {
+                    "$([ "$_raw_shell" = true ] && echo 'Raw shell fallback requires explicit approval; no deterministic verifier is implied.' || echo 'This action may modify system state.')" "$_operation_id" "${T_CMD:-}" || {
                     echo "[BLOCKED: Could not create approval record]"
                     _ai_write_tool_meta "$tier" denied action_denied "" approval_record
                     return 1
@@ -1019,7 +1094,10 @@ ai_execute_tool() {
             _undo_prev_occ=$(python3 "${IGOR_DIR}/core/lib/undo_stack.py" get-prev-occ "$_undo_occ_arg" 2>/dev/null || echo "UNSET")
         fi
         if [ "$_admin_auth_failed" = true ]; then
-            :
+            if [ "$T_TOOL" = run_capability ]; then
+                output="$(_igor_capability_nonexecution_result "$_cap_prepared" privilege_failed "$_meta_approval" failed)"
+                IGOR_CAPABILITY_LAST_RESULT="$output"
+            fi
         elif [ "$T_TOOL" = "edit_file" ]; then
             output=$(_safe_file_edit "$T_PATH" "$T_FIND" "$T_REPLACE" 2>&1)
             local exit_code=$?
@@ -1038,6 +1116,37 @@ ai_execute_tool() {
             else
                 output=$("$_ria_fn" </dev/null 2>&1)
                 local exit_code=$?
+            fi
+        elif [ "$T_TOOL" = "run_capability" ]; then
+            if ! declare -f igor_capability_execute >/dev/null 2>&1; then
+                output="[ERROR: Capability runtime is unavailable]"
+                local exit_code=1
+            else
+                _cap_approved_digest=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("digest", ""))')
+                [ -n "$_cap_approved_digest" ] || {
+                    output="[ERROR: Capability proposal has no approval digest]"
+                    local exit_code=1
+                    _cap_approved_digest=""
+                }
+                if [ -n "$_cap_approved_digest" ]; then
+                    IGOR_CAPABILITY_APPROVED_DIGEST="$_cap_approved_digest"
+                    IGOR_CAPABILITY_APPROVAL_STATUS="$_meta_approval"
+                    export IGOR_CAPABILITY_APPROVED_DIGEST
+                    export IGOR_CAPABILITY_APPROVAL_STATUS
+                    output=$(igor_capability_execute "$_cap_prepared" 2>&1)
+                    local exit_code=$?
+                    IGOR_CAPABILITY_LAST_RESULT="$output"
+                    if [ "$exit_code" -eq 0 ]; then
+                        local _cap_outcome _cap_metadata
+                        _cap_metadata=$(printf '%s' "$output" | python3 -c 'import json,sys; r=json.load(sys.stdin); print("|".join(str(r.get(k,"")) for k in ("operation_id","outcome","verification_status")))' 2>/dev/null) || _cap_metadata='|failed|'
+                        IFS='|' read -r IGOR_AI_CAPABILITY_OPERATION_ID _cap_outcome IGOR_AI_CAPABILITY_VERIFICATION <<< "$_cap_metadata"
+                        IGOR_AI_CAPABILITY_OUTCOME="$_cap_outcome"
+                        export IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
+                        [ "$_cap_outcome" = success ] || exit_code=1
+                    fi
+                    unset IGOR_CAPABILITY_APPROVED_DIGEST
+                    unset IGOR_CAPABILITY_APPROVAL_STATUS
+                fi
             fi
         else
             # Semantic tools execute argv directly; only approved raw tools use Bash.
@@ -1071,6 +1180,12 @@ ai_execute_tool() {
         fi
 
         # Truncate long output
+        if [ "$_raw_shell" = true ]; then
+            # Raw shell has no capability-level verifier or recovery contract.
+            # Keep this status visible to callers and in the transcript; a
+            # later named verification operation may establish its own result.
+            output=$'[UNSTRUCTURED RAW SHELL; VERIFICATION UNAVAILABLE]\n'"${output}"
+        fi
         local line_count; line_count=$(echo "$output" | wc -l)
         if [ "$line_count" -gt 35 ]; then
             local head_out tail_out
@@ -1102,6 +1217,7 @@ ${tail_out}"
         _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
+        unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
         _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code" "$_requires_admin")"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
             [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
@@ -1149,7 +1265,10 @@ ${tail_out}"
         fi
     else
         # The structured tool result carries denial to the parent session.
-        if [ "$tier" = "DESTROY" ]; then
+        if [ "$T_TOOL" = run_capability ]; then
+            output="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_denied denied not_requested)"
+            IGOR_CAPABILITY_LAST_RESULT="$output"
+        elif [ "$tier" = "DESTROY" ]; then
             output="[USER DECLINED] Destructive command not confirmed: ${display_cmd}"
         else
             output="[USER DECLINED] Command skipped: ${display_cmd}"

@@ -1,10 +1,12 @@
-# Wave E agent architecture — Steps 11–12 design gate
+# Wave E agent architecture — Steps 11–12 contract
 
-Status: **accepted design, not implemented**. Wave D Steps 7–10 are the green
-baseline. This contract extends the single Wave C contribution index, the
+Status: **accepted contract with bounded Wave E implementation**. Wave D Steps
+7–10 remain the baseline. This contract extends the single Wave C contribution index, the
 current action catalog and dispatcher, Wave D System Model/health interfaces,
-and the existing AI request/reference boundary. Runtime completion still
-requires the five proof classes in [EXECUTION.md](EXECUTION.md).
+and the existing AI request/reference boundary. Current proof and remaining
+compatibility paths are recorded in [STATUS.md](STATUS.md) and
+[LEGACY.md](LEGACY.md); the five proof classes remain in
+[EXECUTION.md](EXECUTION.md).
 
 ```text
 User / AI / TUI / later automation -> intent -> canonical capability lookup
@@ -16,7 +18,9 @@ Igor state + active knowledge + available capabilities + selected context
   -> Context Engine -> IGOR_REFERENCE_V1 reference envelope -> AI reasoning
 ```
 
-## Baseline and ownership of the change
+## Design-gate baseline and ownership of the change
+
+This section records the preimplementation state inspected at the design gate.
 
 At `a07de42` on `igor2`, `master` is an ancestor and the worktree was clean
 before this design edit. Wave D's `system` memory observer/check, typed model,

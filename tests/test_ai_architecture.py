@@ -109,6 +109,24 @@ class AiArchitectureTests(unittest.TestCase):
             operations.append({"event": "RESULT", "result": "x"})
         self.assertEqual(target.read_text(), "keep\n")
 
+    def test_capability_audit_records_value_free_verification_metadata(self):
+        fields = ["RESULT", "run_capability", "CHANGE", "confirm", "failed", "1",
+                  "system", '{"id":"system.service.restart","secret":"private-value"}',
+                  "private-value", "ai-request-1"]
+        with patch.dict(os.environ, {
+            "IGOR_AI_CAPABILITY_OPERATION_ID": "op-fixture",
+            "IGOR_AI_CAPABILITY_OUTCOME": "unverified_change",
+            "IGOR_AI_CAPABILITY_VERIFICATION": "failed",
+        }), patch.object(sys, "argv", ["operations.py", "tool"]), patch.object(
+            sys, "stdin", io.StringIO("\0".join(fields) + "\0")
+        ):
+            operations.main()
+        record = json.loads(operations.audit_path().read_text().splitlines()[-1])
+        self.assertEqual(record["capability_operation_id"], "op-fixture")
+        self.assertEqual(record["capability_outcome"], "unverified_change")
+        self.assertEqual(record["verification_status"], "failed")
+        self.assertNotIn("private-value", json.dumps(record))
+
     def test_all_xml_examples_round_trip_to_dispatcher(self):
         for name, example in catalog.XML_EXAMPLES.items():
             with self.subTest(tool=name):
@@ -116,6 +134,14 @@ class AiArchitectureTests(unittest.TestCase):
                 self.assertEqual(remainder, "")
                 self.assertEqual(len(parsed), 1)
                 self.assertEqual(tool_fields(json.dumps(parsed[0]))[0], name)
+
+    def test_xml_capability_request_can_select_an_explicit_provider(self):
+        request = '<run_capability id="system.service.restart" provider="fixture_service">{"unit":"demo.service"}</run_capability>'
+        parsed, remainder = ai_engine._extract_xml_tools(request)
+        self.assertEqual(remainder, "")
+        self.assertEqual(parsed[0]["provider"], "fixture_service")
+        self.assertEqual(parsed[0]["inputs"], {"unit": "demo.service"})
+        self.assertEqual(tool_fields(json.dumps(parsed[0]))[0], "run_capability")
 
     def test_native_normalization_preserves_invalid_fields_for_rejection(self):
         bad = ai_engine._normalize_native_tool(

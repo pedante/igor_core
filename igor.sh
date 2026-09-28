@@ -85,6 +85,36 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --capabilities)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            case "${2:-list}" in
+                list) igor_capability_list ;;
+                inspect)
+                    [ "$#" -ge 3 ] || { printf 'Usage: bash igor.sh --capabilities inspect ID [PROVIDER]\n' >&2; exit 2; }
+                    igor_capability_inspect "$3" "${4:-}" ;;
+                plan)
+                    [ "$#" -eq 3 ] || { printf 'Usage: bash igor.sh --capabilities plan PLAN_JSON\n' >&2; exit 2; }
+                    igor_capability_plan_resolve "$3" ;;
+                *) printf 'Usage: bash igor.sh --capabilities [list|inspect ID [PROVIDER]|plan PLAN_JSON]\n' >&2; exit 2 ;;
+            esac
+            exit $?
+            ;;
+        --context)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            source "${IGOR_DIR}/core/ai/context.sh"
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            case "${2:-}" in
+                inspect) ai_context_inspect ;;
+                *) printf 'Usage: bash igor.sh --context inspect\n' >&2; exit 2 ;;
+            esac
+            exit $?
+            ;;
         --enable|--disable|--modules)
             source "${IGOR_DIR}/core/lib/module_loader.sh"
             if [[ "$1" == --modules ]]; then

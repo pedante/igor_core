@@ -36,6 +36,23 @@ system__observe_memory() {
     return 0
 }
 
+# The capability handler names the declared observer. Igor validates this
+# response and performs the refresh in the parent process, where the Wave D
+# System Model lives. The handler cannot publish a fact or choose another
+# observer by returning arbitrary data.
+system__refresh_memory() {
+    local request
+    IFS= read -r request || return 1
+    case "$request" in
+        *'"api_version":2'*'"contribution_id":"system.host.memory.refresh"'*'"input":{}'*)
+            printf '%s\n' '{"status":"ok","result":{"observer_id":"host.memory"}}'
+            ;;
+        *)
+            printf '%s\n' '{"status":"error","error":{"code":"invalid_request","message":"expected memory refresh request"}}'
+            ;;
+    esac
+}
+
 # A v2 check receives only Igor's fact snapshot. It does not probe /proc or
 # choose its own check identity, owner, time, approval or execution policy.
 system__check_memory() {

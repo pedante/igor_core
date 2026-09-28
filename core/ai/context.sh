@@ -31,24 +31,109 @@ _ai_lan_ip() {
     fi
 }
 
+_ai_context_engine_fact() {
+    local _fact="${1:-}" _health="${2:-}" _capabilities="${3:-}" _knowledge="${4:-}"
+    local _engine="${IGOR_DIR:-.}/core/ai/context_engine.py"
+    [ -n "$_fact" ] && [ -f "$_engine" ] || return 0
+    IGOR_CONTEXT_FACT="$_fact" IGOR_CONTEXT_HEALTH="$_health" \
+    IGOR_CONTEXT_CAPABILITIES="$_capabilities" IGOR_CONTEXT_KNOWLEDGE="$_knowledge" \
+    "${IGOR_PYTHON:-python3}" - "$_engine" <<'PY'
+import json, os, subprocess, sys
+def decode(name, default):
+    try:
+        value = json.loads(os.environ.get(name, default))
+        return value if isinstance(value, (dict, list)) else json.loads(default)
+    except (TypeError, ValueError):
+        return json.loads(default)
+
+fact = json.loads(os.environ["IGOR_CONTEXT_FACT"])
+sources = [{"id": "system.fact.memory.available_bytes", "kind": "system_fact",
+            "owner": fact.get("owner", "system"), "source_id": fact.get("source", "host.memory"),
+            "object_id": fact.get("object_id", "host:local"), "recorded_at": fact.get("recorded_at"),
+            "freshness": fact.get("availability"), "availability": fact.get("availability", "unknown"),
+            "tags": ["memory"],
+            "content": {"property": fact.get("property"), "value": fact.get("value"),
+                        "value_type": fact.get("value_type"), "evidence": fact.get("evidence", [])}}]
+for health in decode("IGOR_CONTEXT_HEALTH", "[]"):
+    if isinstance(health, dict):
+        sources.append({"id": health.get("check_id", "health"), "kind": "health_result",
+                        "owner": health.get("owner", "system"), "source_id": health.get("source", "host.memory.health"),
+                        "object_id": health.get("object_id", "host:local"), "recorded_at": health.get("evaluated_at"),
+                        "freshness": health.get("status"), "tags": [], "content": health})
+for capability in decode("IGOR_CONTEXT_CAPABILITIES", "[]"):
+    if isinstance(capability, dict):
+        descriptor = capability.get("descriptor", capability)
+        sources.append({"id": capability.get("id", descriptor.get("id", "capability")),
+                        "kind": "capability_metadata", "owner": capability.get("owner", "system"),
+                        "source_id": capability.get("source", "capability"),
+                        "capability_id": capability.get("id", descriptor.get("id")), "tags": [],
+                        "content": descriptor})
+knowledge = os.environ.get("IGOR_CONTEXT_KNOWLEDGE", "")
+if knowledge:
+    sources.append({"id": "system.host.basics", "kind": "module_knowledge", "owner": "system",
+                    "source_id": "host.basics", "tags": ["memory"], "content": knowledge})
+payload = {"request": {"object_id": fact.get("object_id", "host:local"), "domain": "memory",
+                        "capability_id": "system.host.memory.refresh"},
+           "active_owners": [fact.get("owner", "system")],
+           "sources": [{"id": "core.memory.guidance", "kind": "core_guidance", "owner": "core",
+                        "source_id": "core.agent", "tags": ["memory"],
+                        "content": "System Model memory is observed reference data; refresh is explicit."}] + sources,
+           "inspect": os.environ.get("IGOR_CONTEXT_INSPECT") == "true"}
+result = subprocess.run([sys.executable, sys.argv[1]], input=json.dumps(payload), text=True, capture_output=True)
+if result.returncode:
+    raise SystemExit(result.returncode)
+print(result.stdout, end="")
+PY
+}
+
+_ai_memory_context_selection() {
+    local _fact _health_json='[]' _capability_json='[]' _knowledge_text=''
+    declare -f igor_model_read >/dev/null 2>&1 || return 1
+    igor_v2_contribution_get observer host.memory >/dev/null 2>&1 || return 1
+    _fact="$(igor_model_read host:local memory.available_bytes observed 2>/dev/null)" || return 1
+    if declare -f igor_model_list >/dev/null 2>&1; then
+        _health_json="$(igor_model_list 2>/dev/null | "${IGOR_PYTHON:-python3}" -c \
+            'import json,sys; print(json.dumps(list(json.load(sys.stdin).get("health",{}).values())))' 2>/dev/null || printf '[]')"
+    fi
+    if declare -f igor_capability_list >/dev/null 2>&1; then
+        _capability_json="$(igor_capability_list 2>/dev/null || printf '[]')"
+    fi
+    if declare -f igor_v2_knowledge >/dev/null 2>&1 &&
+       igor_v2_contribution_get knowledge host.basics >/dev/null 2>&1; then
+        _knowledge_text="$(igor_v2_knowledge host.basics 2>/dev/null || true)"
+    fi
+    _ai_context_engine_fact "$_fact" "$_health_json" "$_capability_json" "$_knowledge_text"
+}
+
+# Read-only provenance inspection. It queries current memory/check state and
+# active declarations, but never refreshes an observer or runs a check.
+ai_context_inspect() {
+    IGOR_CONTEXT_INSPECT=true _ai_memory_context_selection
+}
+
 ai_gather_context() {
     [ "${IGOR_AI_CONTEXT:-standard}" = minimal ] && return 0
-    local ctx=""
+    local ctx="" _context_intent="${IGOR_AI_CONTEXT_INTENT:-}" _memory_fact=""
     ctx+="=== IGOR — SYSTEM CONTEXT (auto-gathered) ===\n"
     ctx+="Timestamp: $(date)\n"
     ctx+="Hostname: $(hostname 2>/dev/null)  LAN IP: $(_ai_lan_ip)\n"
     ctx+="OS: $(cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '"')\n"
     # Memory is an Igor-owned observation, including its freshness label.
     # This context remains reference data under IGOR_REFERENCE_V1.
-    if declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+    if [ "$_context_intent" = memory ] && declare -f igor_model_read >/dev/null 2>&1 &&
        igor_v2_contribution_get observer host.memory >/dev/null 2>&1; then
-        igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
-        local _memory_fact
         _memory_fact="$(igor_model_read host:local memory.available_bytes observed 2>/dev/null || true)"
         if [ -n "$_memory_fact" ]; then
-            ctx+="$(printf '%s' "$_memory_fact" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; x=json.load(sys.stdin); print("RAM available: {} bytes ({})\\n".format(x.get("value", "unknown"), x["availability"]))')"
+            local _memory_selection
+            _memory_selection="$(_ai_memory_context_selection)"
+            # Keep provenance and selection reasons in the existing reference
+            # envelope, with the System Model fact represented once.
+            ctx+="CONTEXT_ENGINE_V1: ${_memory_selection}\n"
+            printf '%s' "$ctx"
+            return 0
         fi
     fi
+    ctx+="Source kind: legacy_context (unverified reference data).\n"
     ctx+="Swap: $(free -h | awk '/^Swap:/{print $2}')\n"
     ctx+="Load: $(cat /proc/loadavg | cut -d' ' -f1-3)\n"
 

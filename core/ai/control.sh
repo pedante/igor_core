@@ -79,6 +79,10 @@ ai_catalog_json() {
     {
         while IFS= read -r name; do
             ai_tool_available "$name" || continue
+            # The canonical capability tool is emitted below from the active
+            # executable v2 contribution index. Do not advertise an empty
+            # generic tool when no provider is available.
+            [ "$name" = run_capability ] && continue
             owner=$(ai_tool_owner "$name"); tier=READ
             case "$name" in
                 host|occ) tier=classified ;;
@@ -87,6 +91,31 @@ ai_catalog_json() {
             esac
             printf '%s\0' tool "$name" "$owner" "$tier" ""
         done < <(python3 "${_AI_CONTROL_DIR}/catalog.py" names)
+        if ai_tool_available run_capability &&
+           declare -f igor_capability_list >/dev/null 2>&1; then
+            # Keep owner, provider, descriptor and safety sourced from the
+            # loader's active contribution index; model text never supplies
+            # capability metadata.
+            igor_capability_list 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+for row in rows:
+    descriptor = row.get("descriptor") or {}
+    if (descriptor.get("kind") != "capability" or
+            row.get("availability") != "active" or
+            not descriptor.get("handler") or
+            descriptor.get("safety", {}).get("tier") not in {"READ", "CHANGE", "DESTROY"}):
+        continue
+    sys.stdout.write("capability\0%s\0%s\0%s\0%s\0" % (
+        descriptor.get("id", row.get("id", "")), row.get("provider", row.get("owner", "")),
+        descriptor.get("safety", {}).get("tier", ""), json.dumps({
+            "provider": row.get("provider", row.get("owner", "")),
+            "owner": row.get("owner", ""),
+            "description": descriptor.get("description", ""),
+            "descriptor": descriptor,
+        }, sort_keys=True, separators=(",", ":"))))
+'
+        fi
         if declare -p _IGOR_CAPABILITIES >/dev/null 2>&1; then
             for name in "${!_IGOR_CAPABILITIES[@]}"; do
                 ai_policy_action_allowed "$name" || continue

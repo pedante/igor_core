@@ -417,7 +417,7 @@ assert "# Host basics" in reference["module_knowledge"]
     _load
     [ "$(igor_module_status cap_provider)" = active ]
     [ "$(igor_module_status cap_consumer)" = unavailable ]
-    [[ "$(igor_module_reason cap_consumer)" == *'not executable by the Wave C capability consumer'* ]]
+    [[ "$(igor_module_reason cap_consumer)" == *'contract_incomplete'* ]]
 }
 
 @test "metadata-only v2 modules can activate without executable code" {

@@ -430,8 +430,6 @@ _ai_scrub_context_for_display() {
 # Heuristic warnings do not replace the final provider request redaction gate.
 _ai_refresh_context() {
     local _new_context _new_scrubbed _new_prompt _scrub_status=0
-    declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
-        igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
     _new_context=$(ai_gather_context) || return 1
     ai_scrub_build_table || return 1
     _new_scrubbed=$(_ai_scrub_context_for_display "$_new_context") || _scrub_status=$?
@@ -3531,6 +3529,15 @@ Do NOT repeat these failed approaches. Try a different method."
         # ── Intent detection ──────────────────────────────────────────────────
         local _intent_handled=false
         local _lower; _lower=$(echo "$user_input" | tr '[:upper:]' '[:lower:]')
+        # The first Context Engine slice is selected from the current request.
+        # Selection reads existing facts only; an observation requires the
+        # explicit system.host.memory.refresh capability.
+        if [[ "$_lower" =~ (memory|ram|memavailable) ]]; then
+            IGOR_AI_CONTEXT_INTENT=memory
+            _ai_refresh_context || warn "Context selection failed."
+        else
+            IGOR_AI_CONTEXT_INTENT=""
+        fi
 
         $_intent_handled && continue
 

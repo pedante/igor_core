@@ -96,7 +96,8 @@ EOF
     chmod +x "$IGOR_DIR/bin/sudo"
     config_backup_auto() { : > "$IGOR_DIR/backup-called"; }
     ai_mode=executive
-    run ai_execute_tool '{"tool":"host","cmd":"sudo touch should-not-run"}'
+    _approve_host_change() { printf 'y\n' | ai_execute_tool '{"tool":"host","cmd":"sudo touch should-not-run"}'; }
+    run _approve_host_change
     [ "$status" -eq 0 ]
     [ ! -e "$IGOR_DIR/should-not-run" ]
     [ ! -e "$IGOR_DIR/backup-called" ]

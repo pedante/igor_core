@@ -41,7 +41,9 @@ _KINDS = {
     "automation", "relationship", "configuration", "lifecycle",
 }
 _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
-                "object_kind", "properties", "freshness_seconds", "privilege", "required_facts"}
+                "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
+                "capability_version", "description", "inputs", "safety", "preconditions",
+                "verification", "recovery", "affects"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -236,6 +238,140 @@ def _json_load(path: Path, source: str) -> Any:
         raise _error(f"{source} contains invalid JSON at line {exc.lineno} column {exc.colno}") from exc
 
 
+def _closed_object(value: Any, allowed: set[str], where: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise _error(f"{where} must be an object")
+    unknown = set(value) - allowed
+    if unknown:
+        raise _error(f"{where} has unknown field {min(unknown)}")
+    return value
+
+
+def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str, Any]:
+    fields = {"capability_version", "description", "inputs", "safety", "privilege",
+              "preconditions", "verification", "recovery", "affects"}
+    present = fields & set(item)
+    if not present:
+        # Bare Wave C declarations remain inspectable, but unavailable.
+        return {}
+    missing = fields - set(item)
+    if missing:
+        raise _error(f"{where} missing capability field {min(missing)}")
+    if item["capability_version"] != 1 or type(item["capability_version"]) is not int:
+        raise _error(f"{where}.capability_version must be 1")
+    if not isinstance(item["description"], str) or not item["description"].strip() or len(item["description"]) > 500:
+        raise _error(f"{where}.description must be bounded non-empty text")
+    if item["privilege"] not in {"none", "required"}:
+        raise _error(f"{where}.privilege must be none or required")
+    safety = _closed_object(item["safety"], {"tier"}, f"{where}.safety")
+    if set(safety) != {"tier"} or safety["tier"] not in {"READ", "CHANGE", "DESTROY"}:
+        raise _error(f"{where}.safety.tier must be READ, CHANGE or DESTROY")
+    inputs = _closed_object(item["inputs"], {"properties", "required", "additionalProperties"}, f"{where}.inputs")
+    if set(inputs) != {"properties", "required", "additionalProperties"} or inputs["additionalProperties"] is not False:
+        raise _error(f"{where}.inputs requires properties, required and additionalProperties=false")
+    props = inputs["properties"]
+    required = inputs["required"]
+    if not isinstance(props, dict) or not isinstance(required, list) or any(type(n) is not str for n in required):
+        raise _error(f"{where}.inputs has invalid properties or required")
+    if len(props) > 32 or len(required) != len(set(required)) or set(required) - set(props):
+        raise _error(f"{where}.inputs has invalid required fields")
+    input_types = {"string", "integer", "number", "boolean", "enum", "object_id", "path", "secret_ref"}
+    for name, raw in props.items():
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            raise _error(f"{where}.inputs has invalid property name")
+        spec = _closed_object(raw, {"type", "validator", "enum", "minimum", "maximum",
+                                    "minLength", "maxLength", "root", "namespace", "purpose"},
+                              f"{where}.inputs.{name}")
+        kind = spec.get("type")
+        if kind not in input_types:
+            raise _error(f"{where}.inputs.{name} has invalid type")
+        if "validator" in spec:
+            valid_validators = {
+                "string": {"systemd_unit", "package_name"},
+                "object_id": {"object_id"},
+                "path": {"confined_path"},
+            }
+            if spec["validator"] not in valid_validators.get(kind, set()):
+                raise _error(f"{where}.inputs.{name} has invalid validator for its type")
+        if kind == "enum":
+            choices = spec.get("enum")
+            if not isinstance(choices, list) or not choices or len(choices) != len(set(map(str, choices))) or not all(type(c) in (str, int, bool) for c in choices):
+                raise _error(f"{where}.inputs.{name} has invalid enum")
+        elif "enum" in spec:
+            raise _error(f"{where}.inputs.{name}.enum requires enum type")
+        for bound in ("minimum", "maximum"):
+            if bound in spec and (kind not in {"integer", "number"} or type(spec[bound]) not in (int, float)):
+                raise _error(f"{where}.inputs.{name}.{bound} is invalid")
+        for bound in ("minLength", "maxLength"):
+            if bound in spec and (kind not in {"string", "path", "secret_ref", "object_id"} or type(spec[bound]) is not int or spec[bound] < 0):
+                raise _error(f"{where}.inputs.{name}.{bound} is invalid")
+        if kind == "path" and (not isinstance(spec.get("root"), str) or not spec["root"]):
+            raise _error(f"{where}.inputs.{name}.root is required")
+        if kind == "secret_ref" and (not isinstance(spec.get("namespace"), str) or not spec["namespace"] or not isinstance(spec.get("purpose"), str) or not spec["purpose"]):
+            raise _error(f"{where}.inputs.{name} requires namespace and purpose")
+        if kind != "path" and "root" in spec or kind != "secret_ref" and set(spec) & {"namespace", "purpose"}:
+            raise _error(f"{where}.inputs.{name} has type-incompatible fields")
+    preconditions = item["preconditions"]
+    if not isinstance(preconditions, list) or len(preconditions) > 16:
+        raise _error(f"{where}.preconditions must be a bounded array")
+    precondition_fields = {"kind", "input", "path", "capability_id", "object_id", "property", "state_class", "equals", "feature", "validator"}
+    for index, raw in enumerate(preconditions):
+        pre = _closed_object(raw, precondition_fields, f"{where}.preconditions[{index}]")
+        kind = pre.get("kind")
+        allowed_by_kind = {
+            "owner_active": {"kind"},
+            "capability_available": {"kind", "capability_id"},
+            "platform_feature": {"kind", "feature"},
+            "path_exists": {"kind", "input"},
+            "package_installed": {"kind", "input"},
+            "service_exists": {"kind", "input"},
+            "model_fact": {"kind", "object_id", "property", "state_class", "equals"},
+            "trusted_validator": {"kind", "validator"},
+        }
+        if kind not in allowed_by_kind:
+            raise _error(f"{where}.preconditions[{index}] has invalid kind")
+        if set(pre) - allowed_by_kind[kind]:
+            raise _error(f"{where}.preconditions[{index}] has incompatible fields")
+        if kind in {"path_exists", "package_installed", "service_exists"} and pre.get("input") not in props:
+            raise _error(f"{where}.preconditions[{index}] references unknown input")
+        if kind == "path_exists" and props[pre["input"]].get("type") != "path":
+            raise _error(f"{where}.preconditions[{index}] requires a path input")
+        if kind == "capability_available":
+            _validate_id(pre.get("capability_id"), f"{where}.preconditions[{index}].capability_id")
+        if kind == "model_fact" and (not isinstance(pre.get("object_id"), str) or
+                                     not isinstance(pre.get("property"), str) or
+                                     pre.get("state_class", "observed") != "observed" or "equals" not in pre):
+            raise _error(f"{where}.preconditions[{index}] has invalid model fact selector")
+        if kind in {"platform_feature", "trusted_validator"} and not isinstance(
+            pre.get("feature" if kind == "platform_feature" else "validator"), str
+        ):
+            raise _error(f"{where}.preconditions[{index}] requires a named check")
+    verification = _closed_object(item["verification"], {"kind", "required", "observer", "object_id", "property", "input", "equals", "check_id", "timeout_seconds"}, f"{where}.verification")
+    if verification.get("kind") not in {"none", "observer_fact", "service_state", "trusted_query"} or type(verification.get("required")) is not bool:
+        raise _error(f"{where}.verification has invalid kind or required flag")
+    if verification["kind"] == "none" and verification["required"]:
+        raise _error(f"{where}.verification none cannot be required")
+    if "input" in verification and verification["input"] not in props:
+        raise _error(f"{where}.verification references unknown input")
+    recovery = _closed_object(item["recovery"], {"class", "capability_id", "description"}, f"{where}.recovery")
+    if recovery.get("class") not in {"not_applicable", "reversible", "best_effort", "compensating_action", "snapshot_required", "irreversible"}:
+        raise _error(f"{where}.recovery has invalid class")
+    if "capability_id" in recovery:
+        _validate_id(recovery["capability_id"], f"{where}.recovery.capability_id")
+    affects = item["affects"]
+    if not isinstance(affects, list) or len(affects) > 16:
+        raise _error(f"{where}.affects must be a bounded array")
+    for index, raw in enumerate(affects):
+        affect = _closed_object(raw, {"object", "id", "input"}, f"{where}.affects[{index}]")
+        if affect.get("object") not in {"host", "service", "package"} or ("id" in affect) == ("input" in affect):
+            raise _error(f"{where}.affects[{index}] has invalid object selector")
+        if "input" in affect and affect["input"] not in props:
+            raise _error(f"{where}.affects[{index}] references unknown input")
+    if safety["tier"] != "READ" and not verification["required"] and verification["kind"] != "none":
+        raise _error(f"{where}.verification must be required for a state change")
+    return {field: item[field] for field in fields}
+
+
 def _validate_contribution(package: Path, item: Any, index: int, source: str) -> dict[str, Any]:
     where = f"{source} contribution {index}"
     if not isinstance(item, dict):
@@ -249,6 +385,14 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
     if kind not in _KINDS:
         raise _error(f"{where} has unsupported kind {kind!r}")
     result: dict[str, Any] = {"kind": kind, "id": _validate_id(item["id"], f"{where}.id")}
+    capability_fields = {"capability_version", "description", "inputs", "safety",
+                         "preconditions", "verification", "recovery", "affects"}
+    if kind == "capability":
+        if result["id"].count(".") < 1:
+            raise _error(f"{where}.id requires at least two dotted segments")
+        result.update(_validate_capability_metadata(item, where))
+    elif set(item) & capability_fields:
+        raise _error(f"{where} has capability-only metadata")
     if "requires" in item:
         result["requires"] = _validate_requirement_map(item["requires"], where)
     if "path" in item:
@@ -327,7 +471,9 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
         result.update(object_kind="host", required_facts=required)
     elif kind == "check" and "object_kind" in item:
         raise _error(f"{where}.required_facts required with object_kind")
-    if kind != "observer" and set(item) & {"properties", "freshness_seconds", "privilege"}:
+    if kind not in {"observer", "capability"} and set(item) & {"properties", "freshness_seconds", "privilege"}:
+        raise _error(f"{where} has observer-only metadata")
+    if kind == "capability" and set(item) & {"properties", "freshness_seconds"}:
         raise _error(f"{where} has observer-only metadata")
     if kind not in {"observer", "check"} and "object_kind" in item:
         raise _error(f"{where}.object_kind is unsupported")
@@ -339,7 +485,7 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
         raise _error(f"{where}.handler is not supported for kind {kind}")
     if "output_type" in result and kind not in {"observer", "check"}:
         raise _error(f"{where}.output_type is not supported for kind {kind}")
-    if "timeout_seconds" in result and kind not in {"observer", "check"}:
+    if "timeout_seconds" in result and kind not in {"observer", "check", "capability"}:
         raise _error(f"{where}.timeout_seconds is not supported for kind {kind}")
     if "path" in result and "handler" in result and kind not in {"knowledge"}:
         raise _error(f"{where} cannot declare both path and handler")

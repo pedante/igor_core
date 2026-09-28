@@ -89,7 +89,7 @@ PY
     ai_mode=executive
     ai_scrub_outbound() { printf '%s' "$1"; }
     local rendered
-    rendered=$(ai_execute_tool '{"tool":"host","cmd":"printf x >> executed"}' 2>&1 >/dev/null)
+    rendered=$(printf 'y\n' | ai_execute_tool '{"tool":"host","cmd":"printf x >> executed"}' 2>&1 >/dev/null)
     [ "$(wc -c < executed)" -eq 1 ]
     [[ "$rendered" == *"CHANGE action:"* ]]
     [[ "$rendered" != *"NEEDS APPROVAL"* ]]

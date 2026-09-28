@@ -132,13 +132,12 @@ EOF
     [[ "$output" == *"USER DECLINED"* ]]
 }
 
-@test "Executive CHANGE auto-runs under the existing administrator policy" {
+@test "Executive structured CHANGE auto-runs while raw shell CHANGE requires approval" {
     ai_mode=executive IGOR_QUIET_LOOP=false
-    run ai_execute_tool '{"tool":"host","cmd":"printf changed>MARKER"}'
+    run run_input_tool y '{"tool":"host","cmd":"printf changed>MARKER"}'
     [ "$status" -eq 0 ]
     [ "$(cat MARKER)" = changed ]
-    [[ "$output" == *"AUTO-RUNNING (policy-approved change)"* ]]
-    [[ "$output" != *"NEEDS APPROVAL"* ]]
+    [[ "$output" == *"explicit approval is required"* ]]
 }
 
 @test "DESTROY still requires exact YES in every mode" {

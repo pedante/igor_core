@@ -16,12 +16,14 @@ DESCRIPTIONS = {
     "propose_menu_item": "Propose a pending menu item. Saving it requires approval; it does not execute the item.",
     "reply": "Return a public answer or operational summary, without private reasoning.",
     "run_igor_action": "Request a registered module action; Igor enforces its owner and declared tier.",
+    "run_capability": "Invoke a canonical Igor capability with structured inputs; Igor enforces availability, safety, privilege and verification.",
 }
 
 XML_EXAMPLES = {
     "host": '<host>command</host>',
     "occ": '<occ>status</occ>',
     "run_igor_action": '<run_igor_action>registered_action_name</run_igor_action>',
+    "run_capability": '<run_capability id="system.host.memory.refresh">{"inputs":{}}</run_capability>',
     "container": '<container action="restart">service_name</container>',
     "read_log": '<read_log target="terminal" lines="20">search text</read_log>',
     "read_file": '<read_file lines="50">config/example.conf</read_file>',
@@ -34,10 +36,17 @@ XML_EXAMPLES = {
 
 
 def build_catalog(records):
-    tools, actions = [], []
+    tools, actions, capabilities = [], [], []
     for kind, name, owner, tier, description in records:
         if kind == "action":
             actions.append({"name": name, "owner": owner, "tier": tier, "description": description})
+            continue
+        if kind == "capability":
+            try:
+                metadata = json.loads(description)
+            except (TypeError, ValueError):
+                continue
+            capabilities.append(metadata)
             continue
         if name not in DESCRIPTIONS:
             continue
@@ -53,6 +62,10 @@ def build_catalog(records):
         if name == "propose_menu_item":
             props["tier"]["enum"] = ["READ", "CHANGE", "DESTROY"]
             props["type"]["enum"] = ["ONE_TIME", "REPEATING"]
+        if name == "run_capability":
+            props["id"] = {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"}
+            props["inputs"] = {"type": "object", "additionalProperties": True}
+            props["provider"] = {"type": "string"}
         tools.append({"name": name, "owner": owner, "tier": tier,
                       "description": DESCRIPTIONS[name], "openai_params": props,
                       "required": sorted(required), "xml_tag": name,
@@ -62,6 +75,21 @@ def build_catalog(records):
     for tool in tools:
         if tool["name"] == "run_igor_action":
             tool["openai_params"]["cmd"]["enum"] = [a["name"] for a in actions]
+    if capabilities:
+        ids = sorted({item.get("descriptor", {}).get("id", "") for item in capabilities} - {""})
+        providers = sorted({item.get("provider", "") for item in capabilities} - {""})
+        props = {
+            "id": {"type": "string", "enum": ids},
+            "inputs": {"type": "object", "additionalProperties": True},
+        }
+        if providers:
+            props["provider"] = {"type": "string", "enum": providers}
+        tools.append({"name": "run_capability", "owner": "core", "tier": "varies",
+                      "description": "Invoke an active canonical Igor capability with structured inputs.",
+                      "openai_params": props, "required": ["id", "inputs"],
+                      "xml_tag": "run_capability",
+                      "xml_example": XML_EXAMPLES["run_capability"],
+                      "xml_content": "inputs"})
     tools = [t for t in tools if t["name"] != "run_igor_action" or actions]
     return {"tools": tools, "actions": actions}
 

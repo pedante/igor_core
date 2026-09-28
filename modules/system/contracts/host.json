@@ -25,6 +25,20 @@
       "timeout_seconds": 10,
       "object_kind": "host",
       "required_facts": [{"property": "memory.available_bytes", "state_class": "observed", "observer": "host.memory"}]
+    },
+    {
+      "kind": "capability",
+      "id": "system.host.memory.refresh",
+      "handler": "system__refresh_memory",
+      "capability_version": 1,
+      "description": "Refresh the local host memory observation.",
+      "inputs": {"properties": {}, "required": [], "additionalProperties": false},
+      "safety": {"tier": "READ"},
+      "privilege": "none",
+      "preconditions": [{"kind": "owner_active"}],
+      "verification": {"kind": "observer_fact", "observer": "host.memory", "object_id": "host:local", "property": "memory.available_bytes", "required": true},
+      "recovery": {"class": "not_applicable"},
+      "affects": [{"object": "host", "id": "local"}]
     }
   ]
 }

@@ -156,7 +156,7 @@ module code.
 | Identity | Manifest name, display/version, requirements and API version. | None. |
 | Knowledge | Explicit file/reference ID; treated as untrusted AI reference data. | None for static files; generated knowledge may name a handler later. |
 | Observer | ID, output type, timeout, cost/freshness and requirements as supported. | A handler returns observed data; Step 9 defines richer fact fields and System Model ingestion. |
-| Capability | ID, input shape, safety tier, privilege need and requirements. | Execute/verify/rollback handlers where available; Step 11 connects the mature policy, invocation and verification contract to the existing action catalog. Merely declaring a capability does not make it executable now. |
+| Capability | ID, input shape, safety tier, privilege need and requirements. | Wave E dispatches complete declarations through the shared approval, privilege and verification path. Bare Wave C declarations remain inspectable as `contract_incomplete`; privileged or secret-using declarations require a reviewed Core adapter before becoming executable. Recovery is metadata or a separate normally authorized capability, not automatic rollback. |
 | Check | ID, input/result type and requirements. | A handler evaluates evidence; Step 10 defines the shared result consumed by Diagnose and Healing. |
 | Domain event | Event type and payload identity. | Emission uses Igor's later domain event API, not `core/ai/events.sh`; no arbitrary event handler is activated in Wave C. |
 | Automation | Proposed trigger and canonical capability reference. | Igor schedules and invokes the capability in Step 14; modules do not schedule directly. |

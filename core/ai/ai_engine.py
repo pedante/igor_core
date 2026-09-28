@@ -117,6 +117,11 @@ def validate_tool_call(tool):
         if not ok:
             return False, True, reason, []
 
+    elif tool_type == "run_capability":
+        if not isinstance(tool.get("id"), str) or not tool["id"].strip():
+            return False, True, "Capability id is required", []
+        if not isinstance(tool.get("inputs"), dict):
+            return False, True, "Capability inputs must be an object", []
     elif tool_type in ("read_log", "propose_menu_item", "reply", "run_igor_action"):
         pass  # always valid — run_igor_action tier is determined by the capability catalog
 
@@ -468,6 +473,18 @@ def _extract_xml_tools(reply_text):
     """Extract XML tool tags from reply_text. Returns (tools_list, cleaned_text)."""
     tools = []
 
+    def _capability_xml_tool(groups):
+        try:
+            inputs = json.loads(groups[2].strip())
+        except (TypeError, ValueError):
+            return {"tool": "run_capability", "id": groups[0].strip(), "inputs": None}
+        if isinstance(inputs, dict) and "inputs" in inputs and len(inputs) == 1:
+            inputs = inputs["inputs"]
+        tool = {"tool": "run_capability", "id": groups[0].strip(), "inputs": inputs}
+        if groups[1]:
+            tool["provider"] = groups[1].strip()
+        return tool
+
     def _extract(pattern, builder, text):
         found = re.findall(pattern, text, re.DOTALL)
         clean = re.sub(pattern, '', text, flags=re.DOTALL)
@@ -497,6 +514,8 @@ def _extract_xml_tools(reply_text):
         lambda g: {"tool": "execute", "cmd": g.strip()}, reply_text)
     reply_text = _extract(r'<run_igor_action>\s*(.*?)\s*</run_igor_action>',
         lambda g: {"tool": "run_igor_action", "cmd": g.strip()}, reply_text)
+    reply_text = _extract(r'<run_capability\s+id="([^"]+)"(?:\s+provider="([^"]+)")?>\s*(.*?)\s*</run_capability>',
+        lambda g: _capability_xml_tool(g), reply_text)
     reply_text = _extract(r'<read_file\s+lines="([0-9]+)">\s*(.*?)\s*</read_file>',
         lambda g: {"tool": "read_file", "lines": g[0], "path": g[1].strip()}, reply_text)
     reply_text = _extract(r'<read_report>\s*(.*?)\s*</read_report>',

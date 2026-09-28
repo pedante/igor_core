@@ -20,6 +20,25 @@ setup() {
     [[ "$output" == *'"value_type":"integer"'* ]]
 }
 
+@test "Wave E memory capability crosses observer model result and context boundaries" {
+    run bash -c '
+        source "$IGOR_DIR/core/lib/module_loader.sh"
+        source "$IGOR_DIR/core/ai/safety.sh"
+        source "$IGOR_DIR/core/ai/context.sh"
+        igor_load_all_modules >/dev/null
+        ai_mode=assist
+        ai_execute_tool '\''{"tool":"run_capability","id":"system.host.memory.refresh","inputs":{}}'\''
+        igor_model_read host:local memory.available_bytes observed
+        ai_context_inspect
+    '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"capability_id":"system.host.memory.refresh"'* ]]
+    [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"availability":"known"'* ]]
+    [[ "$output" == *'"kind":"system_fact"'* ]]
+    [[ "$output" == *'"kind":"capability_metadata"'* ]]
+}
+
 @test "inactive owner cannot refresh and its last fact is not current" {
     run bash -c '
         source "$IGOR_DIR/core/lib/module_loader.sh"
@@ -120,19 +139,22 @@ setup() {
     [[ "$output" != *'ACTION_EXECUTED'* ]]
 }
 
-@test "AI context uses the model memory fact instead of a free memory probe" {
+@test "AI memory context selects the model fact without probing free" {
     run bash -c '
         source "$IGOR_DIR/core/lib/helpers.sh"
         source "$IGOR_DIR/core/lib/module_loader.sh"
         source "$IGOR_DIR/core/ai/context.sh"
         igor_load_all_modules >/dev/null
+        igor_observer_refresh host.memory
+        IGOR_AI_CONTEXT_INTENT=memory
         free() { printf "Mem: 999999 0 0 0 0 999999\nSwap: 0 0 0\n"; }
         ping() { return 1; }
         ai_gather_context
     '
     [ "$status" -eq 0 ]
-    [[ "$output" == *'RAM available: '* ]]
-    [[ "$output" == *'bytes (known)'* ]]
+    [[ "$output" == *'CONTEXT_ENGINE_V1:'* ]]
+    [[ "$output" == *'memory.available_bytes'* ]]
+    [[ "$output" == *'"availability":"known"'* ]]
     [[ "$output" != *'RAM: 999999'* ]]
 }
 

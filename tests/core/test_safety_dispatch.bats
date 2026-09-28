@@ -240,6 +240,27 @@ teardown() {
     [ "$(cat MARKER)" = proof ]
 }
 
+@test "Executive raw CHANGE fallback still requires explicit approval" {
+    ai_mode=executive
+    run ai_execute_tool '{"tool":"host","cmd":"printf proof>MARKER"}'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"explicit approval is required"* ]]
+    [ ! -e MARKER ]
+
+    run run_approved_tool '{"tool":"execute","cmd":"printf proof>MARKER"}'
+    [ "$status" -eq 0 ]
+    [ "$(cat MARKER)" = proof ]
+    [[ "$output" == *"UNSTRUCTURED RAW SHELL"* ]]
+}
+
+@test "recognized canonical operations cannot fall back to raw shell" {
+    for cmd in 'systemctl restart igor-wave-e-fixture.service' 'sudo systemctl restart igor-wave-e-fixture.service' 'free -b'; do
+        run ai_execute_tool "{\"tool\":\"host\",\"cmd\":\"$cmd\"}"
+        [ "$status" -ne 0 ]
+        [[ "$output" == *"structured capability"* || "$output" == *"system.host.memory.refresh"* ]]
+    done
+}
+
 @test "ordinary read-only host commands run without confirmation" {
     run ai_execute_tool '{"tool":"host","cmd":"docker ps"}'
     [ "$status" -eq 0 ]

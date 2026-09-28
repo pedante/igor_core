@@ -267,21 +267,22 @@ v1 line adapters. Keep the distinct workflows, suppress a legacy check when
 its canonical v2 result becomes authoritative, and prove one execution per
 pass. See [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
 
-## Step 11 — Capability System v2 — PARTIAL
+## Step 11 — Capability System v2 — BOUNDED WAVE E IMPLEMENTED
 
 The current action catalog, `run_igor_action`, ownership and safety metadata are the seed.
 
-**Wave E design accepted; runtime work remains.** D037–D038 and
+**The bounded Wave E runtime is implemented.** D037–D038 and
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define identity/provider
 resolution, typed inputs, deterministic policy/privilege/preconditions,
 postcondition verification, recovery, affected objects, secret references,
 Q010 shell fallback, inspection and the minimal resolved-plan contract.
-Implementation must extend the current owner-aware catalog and dispatcher,
-not introduce a parallel action system. The selected real READ slice is
-`system.host.memory.refresh`, with an isolated `system.service.restart`
-CHANGE/privilege/verification fixture.
+The implementation extends the owner-aware catalog and existing dispatcher.
+The real READ slice is `system.host.memory.refresh`; an isolated
+`system.service.restart` fixture proves CHANGE/privilege/verification,
+including the `unverified_change` result. V1 actions remain compatible;
+additional privileged and secret-using providers need reviewed adapters.
 
-Generalize them into Igor's canonical operational API with structured:
+The bounded runtime now exposes Igor's canonical operational API with structured:
 
 - inputs;
 - owner;
@@ -295,27 +296,28 @@ Generalize them into Igor's canonical operational API with structured:
 - platform requirements;
 - secret-reference/access requirements where applicable.
 
-Add a structured plan model for multi-step installation, configuration, repair
-and migration work. A plan composes capabilities, exposes preconditions,
+The minimal structured plan model supports ordered capability steps for
+installation, configuration, repair and migration proposals. A plan composes capabilities, exposes preconditions,
 approval/privilege points, recovery semantics and verification before
 execution. AI may propose/explain a plan; Igor resolves providers, authorizes,
 executes and verifies it.
 
 TUI, CLI, automation, healing and future external interfaces should invoke the same capabilities.
 
-## Step 12 — Knowledge & Context Engine — PARTIAL
+## Step 12 — Knowledge & Context Engine — BOUNDED WAVE E IMPLEMENTED
 
 The current request boundary/reference envelope is a strong trust foundation. Preserve it.
 
-**Wave E design accepted; runtime work remains.** D039 and
+**The bounded memory-domain Context Engine is implemented.** D039 and
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define bounded deterministic
 selection, source kinds/provenance, active-owner filtering, sensitive-field
 exclusion and inspection inside the current `IGOR_REFERENCE_V1` pipeline.
-The memory slice must prove relevant fact/health/capability context without
-dumping unrelated machine/module data. Broad direct probes cut over only
-when their corresponding authoritative source is available.
+The memory slice selects current fact/health/capability/knowledge items without
+dumping unrelated machine/module data. Other domains retain labeled legacy
+context until their corresponding authoritative source and relevance mapping
+are available.
 
-Replace broad ad-hoc context gathering over time with composition of relevant:
+Extend the memory-domain cutover over time with composition of relevant:
 
 - core operating guidance;
 - System Model facts;

@@ -8,7 +8,7 @@ import sys
 FIELDS = (
     "tool", "cmd", "action", "target", "lines", "search", "path", "find",
     "replace", "filename", "title", "description", "command", "type", "tier",
-    "message",
+    "message", "capability_id", "inputs", "provider",
 )
 SCHEMAS = {
     "host": ({"cmd"}, {"cmd"}),
@@ -25,6 +25,7 @@ SCHEMAS = {
     ),
     "reply": ({"message", "status"}, {"message"}),
     "run_igor_action": ({"cmd"}, {"cmd"}),
+    "run_capability": ({"id", "inputs", "provider"}, {"id", "inputs"}),
 }
 ALIASES = {"host_command": "host", "occ_command": "occ", "container_action": "container"}
 
@@ -40,6 +41,11 @@ def tool_fields(text):
     if data.keys() - (allowed | {"tool", "__native_id"}) or required - data.keys():
         raise ValueError("unknown or missing tool fields")
     for key, value in data.items():
+        if name == "run_capability" and key == "inputs":
+            if not isinstance(value, dict):
+                raise ValueError("capability inputs must be an object")
+            value = json.dumps(value, ensure_ascii=False, sort_keys=True,
+                               separators=(",", ":"))
         if key == "lines" and type(value) is int:
             value = str(value)
         if not isinstance(value, str) or "\0" in value:
@@ -48,6 +54,12 @@ def tool_fields(text):
     data["tool"] = name
     if name in {"host", "execute", "occ", "run_igor_action"} and not data["cmd"].strip():
         raise ValueError("empty command")
+    if name == "run_capability":
+        if not data["id"].strip():
+            raise ValueError("empty capability id")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", data["id"]):
+            raise ValueError("invalid capability id")
+        data["capability_id"] = data.pop("id")
     if name in {"read_log", "read_file"}:
         lines = data.get("lines", "20" if name == "read_log" else "50")
         if not re.fullmatch(r"[0-9]{1,9}", lines) or int(lines) < 1:

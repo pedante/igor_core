@@ -115,6 +115,19 @@ the provider handles the new topic.
 not call arbitrary shell commands — only functions the module explicitly declared in
 its capability catalog.
 
+**Canonical capabilities** — complete Module API v2 capability declarations
+are resolved by dotted ID and active provider. `run_capability` validates
+structured inputs and deterministic preconditions before the same approval
+gate, then reports execution and verification separately. The first real
+capability is `system.host.memory.refresh`; v1 actions remain available through
+`run_igor_action`. Use `bash igor.sh --capabilities list`,
+`--capabilities inspect <id>`, or `--capabilities plan '<JSON>'` for read-only
+inspection and plan resolution. `bash igor.sh --context inspect` shows the
+current memory-domain context selection without refreshing an observer.
+Raw AI shell requests are identified as unstructured; raw CHANGE requires
+explicit approval even in Executive mode and has no automatic postcondition
+verification.
+
 Inspect AI policy and capabilities with `bash igor.sh --ai status` or `--ai tools`.
 Use `--ai last` for the latest structured operational trace. The catalog comes
 from Igor's supported tool grammar and active module actions; legacy `ai_tools`

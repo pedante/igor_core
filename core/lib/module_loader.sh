@@ -57,6 +57,8 @@ declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
 # shellcheck source=core/lib/observation.sh
 source "${_IGOR_LOADER_DIR}/core/lib/observation.sh"
+# shellcheck source=core/lib/capability.sh
+source "${_IGOR_LOADER_DIR}/core/lib/capability.sh"
 
 # ---------------------------------------------------------------------------
 # _ml_log <level> <message>
@@ -164,18 +166,31 @@ print(json.dumps({"modules":r["required_modules"],"capabilities":r["required_cap
 }
 
 _ml_v2_capability_reason() {
-    local _cap="$1" _providers=()
+    local _cap="$1" _providers=() _active=() _candidate
     mapfile -t _providers < <(_ml_v2_capability_providers "$_cap")
+    for _candidate in "${_providers[@]}"; do
+        _ml_owner_active "$_candidate" && _active+=("$_candidate")
+    done
     if [ "${#_providers[@]}" -eq 0 ]; then
         printf 'required capability %s has no declared provider' "$_cap"
-    elif [ "${#_providers[@]}" -gt 1 ]; then
-        printf 'required capability %s has ambiguous providers: %s' "$_cap" "${_providers[*]}"
-    elif ! _ml_owner_active "${_providers[0]}"; then
-        printf 'required capability %s provider %s is %s' "$_cap" "${_providers[0]}" \
-            "${_IGOR_MODULE_STATUS[${_providers[0]}]:-discovered}"
+    elif [ "${#_active[@]}" -gt 1 ]; then
+        printf 'required capability %s has ambiguous providers: %s' "$_cap" "${_active[*]}"
+    elif [ "${#_active[@]}" -eq 0 ]; then
+        if [ "${#_providers[@]}" -gt 1 ]; then
+            printf 'required capability %s has ambiguous providers: %s' "$_cap" "${_providers[*]}"
+        else
+            printf 'required capability %s provider %s is %s' "$_cap" "${_providers[0]}" \
+                "${_IGOR_MODULE_STATUS[${_providers[0]}]:-discovered}"
+        fi
     else
-        printf 'required capability %s provider %s is not executable by the Wave C capability consumer' \
-            "$_cap" "${_providers[0]}"
+        local _key="capability:$_cap"
+        [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "${_active[0]}" ] ||
+            _key="${_key}@${_active[0]}"
+        if [ "${_IGOR_CONTRIBUTION_STATE[$_key]:-}" = active ]; then
+            return 0
+        fi
+        printf 'required capability %s provider %s is %s' "$_cap" "${_active[0]}" \
+            "${_IGOR_CONTRIBUTION_REASON[$_key]:-unavailable}"
     fi
     return 1
 }
@@ -206,8 +221,7 @@ _ml_v2_requirement_failure() {
     _list="$(_ml_json_field "$_json" capabilities)"
     while IFS= read -r _item; do
         [ -n "$_item" ] || continue
-        _ml_v2_capability_reason "$_item"
-        return 1
+        _ml_v2_capability_reason "$_item" || return 1
     done <<< "$_list"
     _list="$(_ml_json_field "$_json" platform_features)"
     if [ -n "$_list" ]; then
@@ -1009,7 +1023,50 @@ _ml_load_v2() {
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
         case "$_key" in
-            capability:*|domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
+            capability:*)
+                if ! printf '%s' "$_record" | "$(_ml_python)" -c '
+import json, sys
+record = json.load(sys.stdin)
+needed = {"capability_version", "description", "inputs", "safety", "privilege",
+          "preconditions", "verification", "recovery", "affects"}
+raise SystemExit(0 if needed <= record.keys() else 1)
+'; then
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="contract_incomplete"
+                elif printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+props=record.get("inputs",{}).get("properties",{})
+raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.values()) else 1)
+'; then
+                    # No reviewed Wave E consumer currently needs a value.
+                    # References remain valid contract data but cannot become
+                    # an implicit module file-read channel.
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="secret_consumer_unavailable"
+                elif [ "$(_ml_json_field "$_record" privilege)" = required ] &&
+                     [ "${_key#capability:}" != system.service.restart ]; then
+                    # A required privilege declaration is executable only
+                    # after Core has reviewed the exact argv adapter.
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="privileged_adapter_unavailable"
+                elif printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+preconditions=record.get("preconditions",[])
+verification=record.get("verification",{})
+unsupported=any(p.get("kind") in {"platform_feature","trusted_validator"} for p in preconditions)
+unsupported=unsupported or verification.get("kind") == "trusted_query"
+raise SystemExit(0 if unsupported else 1)
+'; then
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="trusted_adapter_unavailable"
+                elif [ "$(_ml_json_field "$_record" recovery.class)" = snapshot_required ]; then
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="snapshot_precondition_unavailable"
+                fi
+                ;;
+            domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
                 _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                 _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
                 ;;
@@ -1030,6 +1087,74 @@ igor_v2_contribution_get() {
     _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 1
     _ml_v2_requirement_failure "$_requires" >/dev/null || return 1
     printf '%s\n' "$_record"
+}
+
+# The same owner-stamped contribution index backs active dispatch and
+# read-only inspection. Duplicate providers retain their @owner index keys;
+# selection is deliberately left to the capability resolver.
+igor_capability_list() {
+    local _key _owner _record _state _reason
+    {
+        while IFS= read -r _key; do
+            case "$_key" in capability:*|legacy_action:*) ;; *) continue ;; esac
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+            if [[ "$_key" = legacy_action:* ]]; then
+                local _entry="${_IGOR_CAPABILITIES[${_key##*.}]:-}"
+                _record="$("$(_ml_python)" - "${_key#legacy_action:}" "$_owner" "$_record" "$_entry" <<'PY'
+import json, sys
+ident, owner, handler, entry = sys.argv[1:]
+parts = entry.split("|")
+tier = parts[3] if len(parts) > 3 and parts[3] in {"READ", "CHANGE", "DESTROY"} else "CHANGE"
+print(json.dumps({"kind": "legacy_action", "id": ident, "owner": owner,
+                  "handler": handler, "description": parts[0] if parts else "",
+                  "capability_version": 1,
+                  "inputs": {"properties": {}, "required": [], "additionalProperties": False},
+                  "safety": {"tier": tier}, "privilege": "legacy_internal",
+                  "preconditions": [], "verification": {"kind": "none", "required": False},
+                  "recovery": {"class": "not_applicable"}, "affects": []},
+                 separators=(",", ":")))
+PY
+)" || return 1
+            fi
+            _state="$(igor_contribution_state "$_key" 2>/dev/null || true)"
+            _reason="$(igor_contribution_reason "$_key" 2>/dev/null || true)"
+            if [ "$_state" = inactive ]; then
+                _reason="${_IGOR_MODULE_STATUS[$_owner]:-inactive}${_IGOR_MODULE_REASON[$_owner]:+ (${_IGOR_MODULE_REASON[$_owner]})}"
+            fi
+            printf '%s\0' "$_key" "$_owner" "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}" "$_state" "$_reason" "$_record"
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | "$(_ml_python)" -c '
+import json, sys
+raw = sys.stdin.buffer.read().split(b"\0")
+if raw[-1:] == [b""]:
+    raw.pop()
+if len(raw) % 6:
+    raise SystemExit("invalid contribution records")
+result = []
+for index in range(0, len(raw), 6):
+    key, owner, source, state, reason, record = (item.decode() for item in raw[index:index + 6])
+    record = json.loads(record)
+    result.append({"index_key": key, "id": record["id"], "owner": owner,
+                   "provider": owner, "source": source, "availability": state,
+                   "unavailable_reason": reason or None, "descriptor": record})
+print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+'
+}
+
+igor_capability_inspect() {
+    local _id="${1:-}" _provider="${2:-}"
+    igor_capability_list | "$(_ml_python)" -c '
+import json, sys
+capability_id, provider = sys.argv[1:]
+rows = [r for r in json.load(sys.stdin) if r["id"] == capability_id]
+active = [r for r in rows if r["availability"] == "active"]
+selected = [r for r in active if r["provider"] == provider] if provider else active
+resolution = ("unavailable" if not selected else "ambiguous" if len(selected) > 1 else "resolved")
+print(json.dumps({"capability_id": capability_id, "resolution": resolution,
+                  "selected_provider": selected[0]["provider"] if len(selected) == 1 else None,
+                  "providers": rows}, sort_keys=True, separators=(",", ":")))
+' "$_id" "$_provider"
 }
 
 igor_v2_invoke() {

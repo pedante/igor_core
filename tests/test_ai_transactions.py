@@ -45,7 +45,7 @@ class TransactionTests(unittest.TestCase):
     def setUp(self):
         self.base = [{"role": "user", "content": "Check the logs"}]
 
-    def _dispatch_fixture(self, call, executive="false"):
+    def _dispatch_fixture(self, call, executive="false", approval=""):
         shell = '''
 source "$REPO/core/ai/core.sh"
 journalctl(){ printf 'fixture warning\\n'; }
@@ -66,6 +66,7 @@ rm -f -- "$IGOR_AI_TOOL_META_FILE"
         with tempfile.TemporaryDirectory() as runtime:
             result = subprocess.run(
                 ["bash", "-c", shell], capture_output=True, text=True, check=True,
+                input=f"{approval}\n" if approval else "",
                 timeout=10, env={**os.environ, "REPO": str(ROOT),
                                  "IGOR_DIR": str(ROOT), "IGOR_RUNTIME_DIR": runtime,
                                  "IGOR_AI_AUDIT": "off", "EXECUTIVE": executive,
@@ -205,17 +206,20 @@ rm -f -- "$IGOR_AI_TOOL_META_FILE"
                 self.assertIn("fixture warning", record["combined_output"])
 
     def test_change_approval_accepted_and_denied_without_real_systemctl(self):
-        call = native_call("host", "change-A", cmd="systemctl restart fixture")
+        # A deliberately unstructured mutation with no registered equivalent
+        # keeps this transaction test focused on explicit D038 approval.
+        call = native_call("host", "change-A", cmd="printf approved >> /dev/null")
         denied = self._dispatch_fixture(call)
         self.assertEqual(denied["classification"], "CHANGE")
         self.assertEqual(denied["approval_status"], "denied")
         self.assertEqual(denied["execution_status"], "action_denied")
         self.assertIsNone(denied["exit_code"])
-        accepted = self._dispatch_fixture(call, executive="true")
+        accepted = self._dispatch_fixture(call, executive="true", approval="y")
         self.assertEqual(accepted["classification"], "CHANGE")
-        self.assertEqual(accepted["approval_status"], "auto_approved")
+        # D038 keeps raw CHANGE as an explicit approval even in Executive.
+        self.assertEqual(accepted["approval_status"], "approved")
         self.assertEqual(accepted["execution_status"], "tool_succeeded")
-        self.assertIn("mock systemctl accepted", accepted["combined_output"])
+        self.assertIn("UNSTRUCTURED RAW SHELL", accepted["combined_output"])
 
     def test_audit_adapter_keeps_identity_and_omits_private_output(self):
         with tempfile.TemporaryDirectory() as runtime, patch.dict(os.environ, {
