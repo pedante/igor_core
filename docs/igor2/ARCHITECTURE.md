@@ -32,6 +32,7 @@ A user should be able to inspect, configure, troubleshoot, repair and automate a
 22. **Persistent migrations are explicit.** Storage/contract migrations define source, target, validation, idempotency, cutover, verification and recovery.
 23. **Multi-step work uses structured plans.** AI may propose or explain a plan, but deterministic runtime resolves capabilities, policy, privilege, execution and verification.
 24. **Machine memory separates reality, intent and responsibility.** Observed state, configured/user-declared state, desired state, responsibilities and investigation findings remain distinguishable and provenance-bearing.
+25. **Context routing is domain-neutral.** Core's Context Engine selects from generic registered metadata, object/capability identities, source kinds and provenance; it must not accumulate application/domain-specific natural-language routing rules. Modules and knowledge contributions own domain vocabulary/semantic metadata. The LLM may interpret user language into non-authoritative intent/topic/object hints, but those hints cannot create facts, capabilities, owners or authority.
 
 ## Ownership classes
 
