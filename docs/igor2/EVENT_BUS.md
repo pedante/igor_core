@@ -1,7 +1,7 @@
 # Step 13 — Domain Event Bus implementation contract
 
 Status: **accepted design; Step 13 implemented**. This is the bounded Step
-13 contract, subordinate to [ARCHITECTURE.md](ARCHITECTURE.md) and D040–D042 in
+13 contract, subordinate to [ARCHITECTURE.md](ARCHITECTURE.md) and D041–D043 in
 [DECISIONS.md](DECISIONS.md). The existing Wave E capability result and Wave C
 owner-aware contribution index are its inputs. Completion still requires all
 five proof classes in [EXECUTION.md](EXECUTION.md).
