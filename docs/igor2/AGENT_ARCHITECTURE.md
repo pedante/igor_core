@@ -385,6 +385,42 @@ cannot create a fact, capability or owner.
 Tie-breaking is stable by source kind, ID and time; per-source and total item/
 byte limits make selection inspectable. No embeddings or vector database.
 
+### Domain-neutral semantic routing
+
+Core must not grow a hard-coded natural-language table such as `"memory" ->
+memory.available_bytes`, nor application-specific equivalents for every
+module. That would make Core scale with every domain and violate the
+application-agnostic boundary.
+
+Natural-language interpretation and deterministic retrieval are separate:
+
+1. The reasoning layer may interpret the user's wording, conversational
+   referents and likely topics/objects (for example, infer that "the previous
+   one" still refers to the kernel discussed in the preceding turn).
+2. Those interpretations are non-authoritative selection hints, never facts or
+   permissions.
+3. The Context Engine resolves hints only against registered Igor structures:
+   active owners, object IDs, capability IDs, source kinds, module-provided
+   concepts/tags and provenance-bearing knowledge/facts.
+4. Modules own their domain vocabulary and semantic metadata. Installing a new
+   PostgreSQL, Nextcloud or other module can add concepts and retrievable
+   knowledge without adding PostgreSQL/Nextcloud-specific routing code to
+   Core. Disabling that owner removes its active semantic contributions.
+5. Session/task context may preserve conversational topic/referent hints, but
+   it remains separate from System Model truth and from authorization.
+
+The LLM is therefore allowed to do what it is good at—understanding fuzzy
+human language—while Igor remains responsible for deterministic lookup,
+source filtering, provenance, freshness and authority. A model suggestion
+such as `topics=[memory,processes]` may broaden which registered items are
+considered; it cannot invent `memory.available_bytes`, mark an observation
+fresh, create a capability, activate a module or change safety policy.
+
+The scalability test for this contract is explicit: adding a coherent domain
+module and its semantic metadata must not require editing Core natural-language
+routing rules. If Core starts accumulating per-domain keyword/synonym branches,
+the Context Engine architecture has regressed.
+
 Each item has `id`, `kind`, `owner`, `source_id`, `source_version` where known,
 `object_id`/capability ID where relevant, `recorded_at`, freshness or
 availability, sensitivity label, selection reason and bounded content/value.
