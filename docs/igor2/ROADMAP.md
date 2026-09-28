@@ -316,6 +316,7 @@ The memory slice selects current fact/health/capability/knowledge items without
 dumping unrelated machine/module data. Other domains retain labeled legacy
 context until their corresponding authoritative source and relevance mapping
 are available.
+Core context routing stays domain-neutral: modules/knowledge own domain vocabulary and semantic metadata, while model-derived topic/object hints remain non-authoritative inputs to deterministic retrieval. Adding a new domain must not require a new Core keyword/synonym routing branch (D040).
 
 Extend the memory-domain cutover over time with composition of relevant:
 
