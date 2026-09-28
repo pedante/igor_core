@@ -338,7 +338,7 @@ merely because the AI produced or used them.
 
 Do not confuse this with the existing AI frontend event stream.
 
-The bounded contract is [EVENT_BUS.md](EVENT_BUS.md), accepted in D040–D042.
+The bounded contract is [EVENT_BUS.md](EVENT_BUS.md), accepted in D041–D043.
 Core now validates a session-local domain bus and projects one
 `capability.completed` signal from each committed canonical Wave E result.
 Active v2 modules can declare owned event types and request publication
