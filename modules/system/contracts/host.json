@@ -27,6 +27,12 @@
       "required_facts": [{"property": "memory.available_bytes", "state_class": "observed", "observer": "host.memory"}]
     },
     {
+      "kind": "automation",
+      "id": "system.host.memory.once",
+      "trigger": {"kind": "once_at", "schema_version": 1},
+      "target": {"capability_id": "system.host.memory.refresh", "provider": "system", "inputs": {}}
+    },
+    {
       "kind": "capability",
       "id": "system.host.memory.refresh",
       "handler": "system__refresh_memory",

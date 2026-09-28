@@ -44,7 +44,7 @@ _KINDS = {
 _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
-                "verification", "recovery", "affects", "payload_schema"}
+                "verification", "recovery", "affects", "payload_schema", "trigger", "target"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -389,6 +389,24 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
     if kind not in _KINDS:
         raise _error(f"{where} has unsupported kind {kind!r}")
     result: dict[str, Any] = {"kind": kind, "id": _validate_id(item["id"], f"{where}.id")}
+    if kind == "automation":
+        trigger = _closed_object(item.get("trigger"), {"kind", "schema_version", "once_at"}, f"{where}.trigger")
+        if (trigger.get("kind") != "once_at" or type(trigger.get("schema_version")) is not int or
+                trigger["schema_version"] != 1 or "once_at" in trigger):
+            raise _error(f"{where}.trigger must propose version-1 once_at without an operator time")
+        target = _closed_object(item.get("target"), {"capability_id", "provider", "inputs"}, f"{where}.target")
+        if "capability_id" not in target or "inputs" not in target:
+            raise _error(f"{where}.target requires capability_id and inputs")
+        _validate_id(target["capability_id"], f"{where}.target.capability_id")
+        if "." not in target["capability_id"]:
+            raise _error(f"{where}.target.capability_id must be dotted")
+        if not isinstance(target["inputs"], dict):
+            raise _error(f"{where}.target.inputs must be an object")
+        if "provider" in target:
+            _validate_id(target["provider"], f"{where}.target.provider")
+        result.update(trigger=trigger, target=target)
+    elif "trigger" in item or "target" in item:
+        raise _error(f"{where}.trigger/target are automation-only")
     if kind == "domain_event":
         if not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", result["id"]):
             raise _error(f"{where}.id must be owner.domain.occurrence")
@@ -639,6 +657,8 @@ def validate_module(module_dir: str | os.PathLike[str]) -> dict[str, Any]:
             value = _validate_contribution(package, item, index, contract)
             if value["kind"] == "domain_event" and not value["id"].startswith(name + "."):
                 raise _error(f"domain event {value['id']} must belong to {name}")
+            if value["kind"] == "automation" and not value["id"].startswith(name + "."):
+                raise _error(f"automation proposal {value['id']} must belong to {name}")
             if value["kind"] == "domain_event" and value["id"] == "capability.completed":
                 raise _error("capability.completed is Core-reserved")
             identity = (value["kind"], value["id"])

@@ -1,6 +1,6 @@
 # Step 14 — Automation Engine implementation contract
 
-Status: **accepted design; implementation pending**. This contract is subordinate
+Status: **accepted design; 14A implemented, 14B–14E pending**. This contract is subordinate
 to [ARCHITECTURE.md](ARCHITECTURE.md) and D044–D047 in
 [DECISIONS.md](DECISIONS.md). Step 13's [EVENT_BUS.md](EVENT_BUS.md), the Wave E
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) capability path and the

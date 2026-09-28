@@ -359,7 +359,7 @@ Later structured operational event types may include:
 Events include Core-stamped source/owner, related objects, times, bounded
 evidence references and correlation. They cannot authorize execution.
 
-## Step 14 — Automation Engine — ACCEPTED DESIGN; IMPLEMENTATION PENDING
+## Step 14 — Automation Engine — 14A COMPLETE; STEP 14 INCOMPLETE
 
 The bounded implementation contract is
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md), accepted in D044–D047. Q008 is
@@ -369,8 +369,10 @@ run state. Every run enters the canonical capability dispatcher; only
 unprivileged READ may run unattended in this step. Inspection precedes TUI
 presentation. Step 13 events are transient signals, never approval or replay.
 
-Implement in separate bounded sessions: **14A** registry, activation and
-inspection without execution; **14B** one-time scheduled READ through
+**14A is complete:** the private version-1 registry, explicit operator
+activation, module proposal boundary, persistence and read-only CLI inspection
+passed focused, vertical-slice, regression and recovery proofs. **14B is next
+and unblocked:** one-time scheduled READ through
 `system.host.memory.refresh`; **14C** periodic READ; **14D** event-triggered
 READ; **14E** typed conditional READ. Each slice has its own focused proof
 and full regression gate. Retries beyond one attempt and unattended CHANGE

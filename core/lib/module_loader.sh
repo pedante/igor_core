@@ -1068,7 +1068,10 @@ raise SystemExit(0 if unsupported else 1)
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="snapshot_precondition_unavailable"
                 fi
                 ;;
-            automation:*|relationship:*|configuration:*|lifecycle:*)
+            automation:*)
+                # Step 14A consumes data-only proposals; this never schedules or enables them.
+                ;;
+            relationship:*|configuration:*|lifecycle:*)
                 _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                 _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
                 ;;

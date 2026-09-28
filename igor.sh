@@ -115,6 +115,26 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --automations)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            source "${IGOR_DIR}/core/lib/automation.sh"
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            case "${2:-list}" in
+                proposals|list) [ "$#" -eq 2 ] || [ "$#" -eq 1 ] || exit 2
+                    igor_automation_cli "${2:-list}" ;;
+                inspect|create|enable|disable|delete|reset)
+                    [ "$#" -eq 3 ] || { printf 'Usage: bash igor.sh --automations %s ARGUMENT\n' "$2" >&2; exit 2; }
+                    igor_automation_cli "$2" "$3" ;;
+                edit)
+                    [ "$#" -eq 4 ] || { printf 'Usage: bash igor.sh --automations edit ID CONFIG_JSON\n' >&2; exit 2; }
+                    igor_automation_cli edit "$3" "$4" ;;
+                *) printf 'Usage: bash igor.sh --automations [proposals|list|inspect ID|create CONFIG_JSON|enable ID|disable ID|edit ID CONFIG_JSON|delete ID|reset ID]\n' >&2; exit 2 ;;
+            esac
+            exit $?
+            ;;
         --context)
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
@@ -656,6 +676,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--modules"           "List module policy and activation status"
     printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
     printf "  ${Y}%-30s${N} %s\n" "--events [types|recent]" "Inspect current-session domain event types or recent events"
+    printf "  ${Y}%-30s${N} %s\n" "--automations [list|proposals]" "Inspect configured automations or active proposals"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
     printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"
     printf "  ${Y}%-30s${N} %s\n" "--disable <module>"  "Disable module for the next Igor process"
