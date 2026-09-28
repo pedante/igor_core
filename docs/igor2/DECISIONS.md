@@ -302,6 +302,21 @@ values are excluded before composition and redacted again at transport.
 Provider adapters render the same Igor semantics without becoming policy.
 See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+### D040 — Context semantics live in modules/metadata, not Core routing tables
+
+Core's Context Engine remains domain-neutral. It may select and rank generic
+registered structures by object/capability identity, owner, source kind,
+provenance, freshness and module-provided concepts/tags, but it must not grow
+application-specific natural-language keyword/synonym branches. Modules and
+knowledge contributions own domain vocabulary/semantic metadata. The reasoning
+layer may translate user language and conversational references into
+non-authoritative topic/object/intent hints; Igor deterministically resolves
+those hints against registered active sources. Such hints cannot create facts,
+capabilities or owners, assert freshness, activate modules, satisfy
+preconditions or affect authorization. Adding a new coherent domain module
+should not require Core routing changes. See
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+
 ---
 
 ## Open decisions
