@@ -302,7 +302,7 @@ values are excluded before composition and redacted again at transport.
 Provider adapters render the same Igor semantics without becoming policy.
 See [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
-### D040 — Domain events are validated signals with Core-stamped provenance (Step 13)
+### D041 — Domain events are validated signals with Core-stamped provenance (Step 13)
 
 Core declares built-in types; active v2 modules may declare owner-namespaced
 types through the existing contribution index. Core stamps event identity,
@@ -311,7 +311,7 @@ unknown/inactive/malformed events before delivery. Events, including module
 events, are reference signals and cannot authorize operations, approval,
 privilege, verification or activation. See [EVENT_BUS.md](EVENT_BUS.md).
 
-### D041 — Step 13 delivery is session-local and best effort
+### D042 — Step 13 delivery is session-local and best effort
 
 The initial bus validates and publishes synchronously to trusted Core
 subscribers, with a bounded session-local inspection buffer. Subscriber
@@ -319,7 +319,7 @@ failure cannot change a canonical capability result. There is no retry,
 replay or restart guarantee; disposable runtime scratch is not operational
 history. Step 15 owns durability. See [EVENT_BUS.md](EVENT_BUS.md).
 
-### D042 — Capability completion is the first domain-event projection
+### D043 — Capability completion is the first domain-event projection
 
 After a canonical Wave E capability result is committed, Core emits one
 `capability.completed` event for any terminal outcome. Its execution,
