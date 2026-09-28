@@ -103,6 +103,18 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --events)
+            source "${IGOR_DIR}/core/lib/config_loader.sh"
+            source "${IGOR_DIR}/core/lib/module_loader.sh"
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            case "${2:-types}" in
+                types) igor_domain_event_types ;;
+                recent) igor_domain_event_recent "${3-}" ;;
+                *) printf 'Usage: bash igor.sh --events [types|recent [FILTERS_JSON]]\n' >&2; exit 2 ;;
+            esac
+            exit $?
+            ;;
         --context)
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
@@ -643,6 +655,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--backup [config|full]" "Run scheduled backup (used by crontab)"
     printf "  ${Y}%-30s${N} %s\n" "--modules"           "List module policy and activation status"
     printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
+    printf "  ${Y}%-30s${N} %s\n" "--events [types|recent]" "Inspect current-session domain event types or recent events"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
     printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"
     printf "  ${Y}%-30s${N} %s\n" "--disable <module>"  "Disable module for the next Igor process"

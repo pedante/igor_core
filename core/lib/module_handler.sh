@@ -86,10 +86,32 @@ else:
 ' || return 1
 }
 
+_ml_bash_handler_run_process() {
+    local _request="$1" _py="$2" _timeout="$3" _entrypoint="$4" _handler="$5"
+    local _event_dir="$6" _event_schemas="$7"
+    printf '%s\n' "$_request" | IGOR_PYTHON="$_py" timeout --signal=TERM "${_timeout}s" \
+        bash --noprofile --norc -c '
+            set -e
+            entrypoint=$1
+            handler=$2
+            _IGOR_DOMAIN_REQUEST_DIR=$3
+            _IGOR_DOMAIN_SCHEMAS_FILE=$4
+            _IGOR_LOADER_DIR=$5
+            if [ -n "$_IGOR_DOMAIN_REQUEST_DIR" ]; then source -- "$6"; fi
+            source -- "$entrypoint"
+            declare -F "$handler" >/dev/null 2>&1 || {
+                printf "handler function is not defined: %s\n" "$handler" >&2
+                exit 127
+            }
+            "$handler"
+        ' _ "$_entrypoint" "$_handler" "$_event_dir" "$_event_schemas" "${_IGOR_LOADER_DIR:-}" "${_IGOR_LOADER_DIR:-}/core/lib/domain_event_client.sh"
+}
+
 _ml_bash_handler_invoke() {
     local _module_dir="${1:-}" _owner="${2:-}" _handler="${3:-}"
     local _contribution_id="${4:-}" _timeout="${5:-}" _input="${6:-}"
-    local _entrypoint _py _request _response _rc
+    local _entrypoint _py _request _response _rc _event_dir="" _event_schemas="" _event_key _event_id _event_data
+    local _event_index=1 _event_pid _event_error
 
     [ -d "$_module_dir" ] || { _ml_bash_handler_error "module directory is missing"; return 1; }
     [[ "$_owner" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || {
@@ -132,19 +154,61 @@ print(json.dumps({"api_version": 2, "contribution_id": sys.argv[1], "input": val
         _ml_bash_handler_error "timeout command is unavailable"
         return 1
     fi
-    _response="$(printf '%s\n' "$_request" | IGOR_PYTHON="$_py" timeout --signal=TERM "${_timeout}s" \
-        bash --noprofile --norc -c '
-            set -e
-            entrypoint=$1
-            handler=$2
-            source -- "$entrypoint"
-            declare -F "$handler" >/dev/null 2>&1 || {
-                printf "handler function is not defined: %s\\n" "$handler" >&2
-                exit 127
-            }
-            "$handler"
-        ' _ "$_entrypoint" "$_handler")"
-    _rc=$?
+    if declare -F igor_v2_contribution_get >/dev/null 2>&1 &&
+       [ -n "${_IGOR_LOADER_DIR:-}" ] && [ -n "${IGOR_DOMAIN_EVENT_FILE:-}" ]; then
+        _event_dir="$(mktemp -d "${TMPDIR:-/tmp}/igor-domain-handler.XXXXXXXX")" || return 1
+        chmod 700 -- "$_event_dir"
+        _event_schemas="$_event_dir/schemas"
+        : > "$_event_schemas"
+        chmod 600 -- "$_event_schemas"
+        for _event_key in "${!_IGOR_CONTRIBUTIONS[@]}"; do
+            [[ "$_event_key" = domain_event:* ]] || continue
+            [ "${_IGOR_CONTRIBUTION_OWNER[$_event_key]:-}" = "$_owner" ] || continue
+            igor_v2_contribution_get domain_event "${_event_key#domain_event:}" >> "$_event_schemas" || true
+        done
+    fi
+    if [ -n "$_event_dir" ]; then
+        (
+            _ml_bash_handler_run_process "$_request" "$_py" "$_timeout" "$_entrypoint" "$_handler" "$_event_dir" "$_event_schemas" \
+                > "$_event_dir/output" 2> "$_event_dir/error"
+            printf '%s\n' "$?" > "$_event_dir/done"
+        ) &
+        _event_pid=$!
+        while [ ! -f "$_event_dir/done" ] || [ -f "$_event_dir/$_event_index.request" ]; do
+            if [ -f "$_event_dir/$_event_index.request" ]; then
+                IFS= read -r -d '' _event_id < "$_event_dir/$_event_index.request"
+                _event_data="$("$_py" - "$_event_dir/$_event_index.request" <<'PY'
+import sys
+with open(sys.argv[1], 'rb') as stream:
+    parts = stream.read().split(b'\0')
+if len(parts) != 3 or parts[2]:
+    raise SystemExit(2)
+print(parts[1].decode())
+PY
+)" || _event_data=''
+                _IGOR_DOMAIN_HANDLER_OWNER="$_owner"
+                if igor_domain_event_publish "$_event_id" "$_event_data" > /dev/null 2> "$_event_dir/$_event_index.error"; then
+                    printf 'ok\n' > "$_event_dir/$_event_index.response.tmp"
+                else
+                    printf 'error\n' > "$_event_dir/$_event_index.response.tmp"
+                fi
+                _IGOR_DOMAIN_HANDLER_OWNER=""
+                mv -- "$_event_dir/$_event_index.response.tmp" "$_event_dir/$_event_index.response"
+                _event_index=$((_event_index + 1))
+            else
+                sleep 0.01
+            fi
+        done
+        wait "$_event_pid" || true
+        _rc="$(cat "$_event_dir/done")"
+        _response="$(cat "$_event_dir/output")"
+        _event_error="$(cat "$_event_dir/error")"
+        [ -z "$_event_error" ] || printf '%s\n' "$_event_error" >&2
+        rm -rf -- "$_event_dir"
+    else
+        _response="$(_ml_bash_handler_run_process "$_request" "$_py" "$_timeout" "$_entrypoint" "$_handler" "" "")"
+        _rc=$?
+    fi
     [ "$_rc" -eq 0 ] || {
         [ "$_rc" -eq 124 ] && _ml_bash_handler_error "handler timed out after ${_timeout}s" ||
             _ml_bash_handler_error "handler exited with status ${_rc}"

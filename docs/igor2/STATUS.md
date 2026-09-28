@@ -2,6 +2,44 @@
 
 Last updated: 2026-09-28
 
+## Step 13 Domain Event Bus implementation
+
+**Step 13 is complete at the accepted [EVENT_BUS.md](EVENT_BUS.md) boundary;
+Step 14 is unblocked, not implemented.** `core/lib/domain_event.py` validates
+the version-1 envelope and closed payload schemas. The owner-aware v2 index
+admits active `<owner>.<domain>.<occurrence>` declarations. The module handler
+API validates explicit requests and rechecks active ownership at publication.
+The session-local bus stamps identity/source, retains 128 events, delivers to
+Core subscribers best effort, and exposes read-only `igor_domain_event_types`,
+`igor_domain_event_recent` and `--events types|recent` queries. It remains
+separate from `core/ai/events.sh`; events grant no operational authority.
+
+**Contract and vertical slice:** focused tests reject malformed, oversized,
+unknown-version, secret-bearing and spoofed fields before delivery; inactive
+owners cannot publish. Each committed canonical Wave E result uses one
+publication path. Real `system.host.memory.refresh` produced one correlated
+`succeeded`/`passed`/`success` event for `host:local`. The disposable
+`system.service.restart` fixture produced one `succeeded`/`failed`/
+`unverified_change` event. A failing subscriber did not change the committed
+result or prevent later delivery. No event is emitted before a result exists.
+
+**Inspection and recovery:** type/event queries and exact filters are read-only;
+focused guards show no observer, check, capability or privilege invocation.
+The owner-only scratch is a bounded, disposable session buffer. A fresh
+process begins empty and cannot replay old callbacks or reconstruct lost IDs
+or ordering. No persistent layout migration occurred. Existing AI audits and
+recovery journals remain separate pending Step 15.
+
+**Regression:** `bash tests/run_all.sh` passed all five groups (46 Bash core,
+46 Python render, 305 core BATS, 130 module BATS, 40 integration BATS). The
+full Python suite passed 254 tests and 94 subtests. Focused Step 13 tests,
+Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
+passed. CI-configured ShellCheck passed on changed event, capability, loader,
+handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
+
+Step 14 automation, Step 15 durable history and later baselines/healing remain
+deferred. Q003, Q007, Q008, Q009 and Q011 retain their assigned decisions.
+
 ## Wave E Agent Architecture implementation
 
 **Steps 11–12 are implemented for the bounded Wave E slice.** The accepted
@@ -268,7 +306,8 @@ claim about a newer un-fetched remote branch.
 | 10 Unified Health | Initial Wave D contract complete: one active-owner runner, structured v2 memory result, v1 line adapters and Diagnose/Healing projections. |
 | 11 Capability System v2 | Bounded Wave E implementation: canonical owner-aware registry/invocation, typed inputs, deterministic preconditions, existing approval/PTY route, structured result/verification, recovery metadata, D038 fallback, inspection and small plans. V1 actions remain compatible; broader providers wait for reviewed adapters. |
 | 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
-| 13 Domain Event Bus; 14 Automation Engine | Missing. `core/ai/events.sh` is a frontend activity stream, not the domain bus. Existing schedules are not an Igor-owned automation contract. |
+| 13 Domain Event Bus | Complete at the bounded Step 13 contract: validated session-local signals, owner-aware producers, read-only inspection and one `capability.completed` projection per committed result. `core/ai/events.sh` remains frontend activity. |
+| 14 Automation Engine | Future. Existing schedules are not an Igor-owned automation contract; Step 13 events do not trigger execution. |
 | 15 Operational History | Partial: private bounded AI audit, recovery journal and backup records exist; structured incidents/outcomes are missing. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
 | 20 Igor TUI as Default | Partial: full-screen TUI works via `--ai-tui`; classic menu/line UI and `--extra` remain, and default launch is unchanged. |

@@ -219,6 +219,7 @@ print(json.dumps({"operation_id": "op-" + uuid.uuid4().hex,
 PY
     )" || return 1
     printf '%s\n' "$_result" >> "$IGOR_CAPABILITY_RESULT_FILE" || return 1
+    _igor_domain_result_published "$_result" || printf 'domain event: capability result publication failed\n' >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
     printf '%s\n' "$_result"
 }
 
@@ -418,5 +419,6 @@ print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1
     printf '%s\n' "$_result" >> "$IGOR_CAPABILITY_RESULT_FILE" || return 1
+    _igor_domain_result_published "$_result" || printf 'domain event: capability result publication failed\n' >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
     printf '%s\n' "$_result"
 }

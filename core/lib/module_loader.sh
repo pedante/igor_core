@@ -55,6 +55,8 @@ declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
 
 # Root of the Igor installation — resolved relative to this file's location
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
+# shellcheck source=core/lib/domain_event.sh
+source "${_IGOR_LOADER_DIR}/core/lib/domain_event.sh"
 # shellcheck source=core/lib/observation.sh
 source "${_IGOR_LOADER_DIR}/core/lib/observation.sh"
 # shellcheck source=core/lib/capability.sh
@@ -1066,7 +1068,7 @@ raise SystemExit(0 if unsupported else 1)
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="snapshot_precondition_unavailable"
                 fi
                 ;;
-            domain_event:*|automation:*|relationship:*|configuration:*|lifecycle:*)
+            automation:*|relationship:*|configuration:*|lifecycle:*)
                 _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                 _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
                 ;;

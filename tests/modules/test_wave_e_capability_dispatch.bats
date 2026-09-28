@@ -161,6 +161,30 @@ teardown() { teardown_igor_tmpdir; }
     [[ "$result" == *'"execution_status":"succeeded"'* ]]
     [[ "$result" == *'"verification_status":"failed"'* ]]
     [[ "$result" == *'"outcome":"unverified_change"'* ]]
+    events="$(igor_domain_event_recent)"
+    [ "$(printf '%s' "$events" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" -eq 1 ]
+    [[ "$events" == *'"execution_status":"succeeded"'* ]]
+    [[ "$events" == *'"verification_status":"failed"'* ]]
+    [[ "$events" == *'"outcome":"unverified_change"'* ]]
+}
+
+@test "subscriber failure leaves committed result and later delivery intact" {
+    export FIXTURE_FAIL_VERIFY=1
+    failed_subscriber() { printf 'subscriber noise\n'; return 1; }
+    later_subscriber() { printf '%s\n' "$1" > "$IGOR_DIR/runtime/later-event"; }
+    igor_domain_event_subscribe failed_subscriber
+    igor_domain_event_subscribe later_subscriber
+    proposal="$(igor_capability_prepare system.service.restart '{"unit":"igor-wave-e-fixture.service"}' fixture_service)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(printf '%s' "$proposal" | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+    export IGOR_CAPABILITY_APPROVED_DIGEST
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"outcome":"unverified_change"'* ]]
+    printf '%s' "$output" | python3 -c 'import json,sys; json.load(sys.stdin)' || return 1
+    [[ "$(cat "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE")" == *'subscriber failed'* ]]
+    [ -s "$IGOR_DIR/runtime/later-event" ]
+    [ "$(wc -l < "$IGOR_CAPABILITY_RESULT_FILE")" -eq 1 ]
+    [ "$(wc -l < "$IGOR_DOMAIN_EVENT_FILE")" -eq 1 ]
 }
 
 @test "AI dispatcher treats failed postcondition as unsuccessful tool outcome" {
@@ -189,6 +213,7 @@ teardown() { teardown_igor_tmpdir; }
     run igor_capability_execute "$tampered"
     [ "$status" -ne 0 ]
     [ ! -s "$FIXTURE_TRACE" ]
+    [ "$(igor_domain_event_recent)" = '[]' ]
 }
 
 @test "precondition is rechecked immediately before execution" {

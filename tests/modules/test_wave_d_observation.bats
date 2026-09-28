@@ -28,12 +28,27 @@ setup() {
         igor_load_all_modules >/dev/null
         ai_mode=assist
         ai_execute_tool '\''{"tool":"run_capability","id":"system.host.memory.refresh","inputs":{}}'\''
+        IGOR_PROOF_RESULT="$IGOR_CAPABILITY_LAST_RESULT" IGOR_PROOF_EVENTS="$(igor_domain_event_recent)" \
+            python3 -c '\''import json,os
+r=json.loads(os.environ["IGOR_PROOF_RESULT"])
+events=json.loads(os.environ["IGOR_PROOF_EVENTS"])
+assert len(events)==1
+e=events[0]
+assert e["operation_id"]==r["operation_id"]==e["correlation_id"]
+assert e["owner"]==r["owner"]=="system"
+assert e["related_objects"]==r["affected_objects"]==["host:local"]
+assert e["payload"]=={"execution_status":"succeeded","verification_status":"passed","outcome":"success"}'\'' || exit 3
+        igor_domain_event_recent
+        igor_domain_event_types
         igor_model_read host:local memory.available_bytes observed
         ai_context_inspect
     '
     [ "$status" -eq 0 ]
     [[ "$output" == *'"capability_id":"system.host.memory.refresh"'* ]]
     [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"event_type":"capability.completed"'* ]]
+    [[ "$output" == *'"source":"core:capability_runtime"'* ]]
+    [[ "$output" == *'"related_objects":["host:local"]'* ]]
     [[ "$output" == *'"availability":"known"'* ]]
     [[ "$output" == *'"kind":"system_fact"'* ]]
     [[ "$output" == *'"kind":"capability_metadata"'* ]]

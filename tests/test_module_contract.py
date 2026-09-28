@@ -84,7 +84,8 @@ class ModuleContractTests(unittest.TestCase):
 
     def test_kind_shapes_and_requirement_types_are_strict(self):
         contract = {"contract_version": 1, "contributions": [
-            {"kind": "domain_event", "id": "host.changed", "path": "knowledge.md"}
+            {"kind": "domain_event", "id": "fixture.host.changed", "path": "knowledge.md",
+             "payload_schema": {"properties": {}, "required": [], "additionalProperties": False}}
         ]}
         root = self.package(self.valid_manifest(), contract)
         (root / "module.sh").write_text(":\n")
@@ -97,6 +98,29 @@ class ModuleContractTests(unittest.TestCase):
         }
         (root / "contracts/host.json").write_text(json.dumps(contract), encoding="utf-8")
         with self.assertRaisesRegex(module_contract.ValidationError, "positive integer"):
+            module_contract.validate_module(root)
+
+    def test_domain_event_requires_owned_flat_closed_payload(self):
+        item = {"kind": "domain_event", "id": "fixture.host.changed",
+                "payload_schema": {"properties": {"value": {"type": "integer", "minimum": 0}},
+                                   "required": ["value"], "additionalProperties": False}}
+        root = self.package(self.valid_manifest(), {"contract_version": 1, "contributions": [item]})
+        (root / "module.sh").write_text(":\n")
+        result = module_contract.validate_module(root)
+        self.assertEqual(result["contributions"][0]["owner"], "fixture")
+        item["id"] = "other.host.changed"
+        (root / "contracts/host.json").write_text(json.dumps({"contract_version": 1, "contributions": [item]}))
+        with self.assertRaisesRegex(module_contract.ValidationError, "must belong"):
+            module_contract.validate_module(root)
+        item["id"] = "fixture.host.changed"
+        item["payload_schema"]["properties"]["value"] = {"type": "secret_ref"}
+        (root / "contracts/host.json").write_text(json.dumps({"contract_version": 1, "contributions": [item]}))
+        with self.assertRaisesRegex(module_contract.ValidationError, "invalid type"):
+            module_contract.validate_module(root)
+        item["payload_schema"]["properties"] = {"owner": {"type": "string"}}
+        item["payload_schema"]["required"] = ["owner"]
+        (root / "contracts/host.json").write_text(json.dumps({"contract_version": 1, "contributions": [item]}))
+        with self.assertRaisesRegex(module_contract.ValidationError, "Core field"):
             module_contract.validate_module(root)
 
     def test_requirement_lists_reject_duplicate_or_unknown_platform_values(self):

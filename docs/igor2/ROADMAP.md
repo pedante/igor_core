@@ -333,20 +333,30 @@ backed runbooks, patterns and successful investigation procedures may become
 local learning with provenance, but they do not become executable authority
 merely because the AI produced or used them.
 
-## Step 13 — Domain Event Bus — FUTURE
+## Step 13 — Domain Event Bus — COMPLETE
 
 Do not confuse this with the existing AI frontend event stream.
 
-Introduce structured operational events such as:
+The bounded contract is [EVENT_BUS.md](EVENT_BUS.md), accepted in D040–D042.
+Core now validates a session-local domain bus and projects one
+`capability.completed` signal from each committed canonical Wave E result.
+Active v2 modules can declare owned event types and request publication
+through the handler boundary. Read-only type and recent-event inspection is
+available through `--events`. The real memory refresh and disposable service
+failure fixture prove the first slice; [STATUS.md](STATUS.md) records the five
+proof classes. Step 14 and Wave F remain incomplete.
+
+Later structured operational event types may include:
 
 - service.failed;
 - container.stopped;
 - disk.threshold_exceeded;
 - backup.failed;
-- capability.completed/failed;
+- capability.completed (including failed and unverified outcomes);
 - module.enabled/disabled.
 
-Events include source, related object, timestamp, severity/evidence and correlation where useful.
+Events include Core-stamped source/owner, related objects, times, bounded
+evidence references and correlation. They cannot authorize execution.
 
 ## Step 14 — Automation Engine — FUTURE
 

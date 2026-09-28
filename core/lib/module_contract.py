@@ -14,6 +14,7 @@ the loader's staging/registration boundary.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -43,10 +44,13 @@ _KINDS = {
 _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
-                "verification", "recovery", "affects"}
+                "verification", "recovery", "affects", "payload_schema"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
+_EVENT_ENVELOPE_KEYS = {"schema_version", "event_id", "event_type", "source", "owner",
+                        "related_objects", "occurred_at", "recorded_at", "severity", "evidence",
+                        "correlation_id", "causation_id", "operation_id", "capability_id"}
 
 
 class ValidationError(ValueError):
@@ -385,6 +389,46 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
     if kind not in _KINDS:
         raise _error(f"{where} has unsupported kind {kind!r}")
     result: dict[str, Any] = {"kind": kind, "id": _validate_id(item["id"], f"{where}.id")}
+    if kind == "domain_event":
+        if not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", result["id"]):
+            raise _error(f"{where}.id must be owner.domain.occurrence")
+        schema = _closed_object(item.get("payload_schema"),
+                                {"properties", "required", "additionalProperties"},
+                                f"{where}.payload_schema")
+        if set(schema) != {"properties", "required", "additionalProperties"} or schema["additionalProperties"] is not False:
+            raise _error(f"{where}.payload_schema must be closed")
+        props, required = schema["properties"], schema["required"]
+        if (not isinstance(props, dict) or len(props) > 32 or not isinstance(required, list) or
+                any(type(field) is not str for field in required) or
+                len(required) != len(set(required)) or set(required) - set(props)):
+            raise _error(f"{where}.payload_schema has invalid fields")
+        for name, raw in props.items():
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+                raise _error(f"{where}.payload_schema has invalid property name")
+            if name in _EVENT_ENVELOPE_KEYS:
+                raise _error(f"{where}.payload_schema cannot redeclare Core field {name}")
+            spec = _closed_object(raw, {"type", "enum", "minimum", "maximum", "minLength", "maxLength"}, f"{where}.payload_schema.{name}")
+            typ = spec.get("type")
+            if typ not in {"string", "boolean", "integer", "number", "enum", "object_id"}:
+                raise _error(f"{where}.payload_schema.{name} has invalid type")
+            if typ == "enum":
+                choices = spec.get("enum")
+                if not isinstance(choices, list) or not choices or len(choices) > 32 or any(type(c) not in (str, int, bool) for c in choices):
+                    raise _error(f"{where}.payload_schema.{name} has invalid enum")
+            elif "enum" in spec:
+                raise _error(f"{where}.payload_schema.{name} has unexpected enum")
+            for bound in ("minimum", "maximum"):
+                if bound in spec and (typ not in {"integer", "number"} or type(spec[bound]) not in (int, float) or
+                                      not math.isfinite(spec[bound])):
+                    raise _error(f"{where}.payload_schema.{name} has invalid bound")
+            if "minimum" in spec and "maximum" in spec and spec["minimum"] > spec["maximum"]:
+                raise _error(f"{where}.payload_schema.{name} has reversed bounds")
+            for bound in ("minLength", "maxLength"):
+                if bound in spec and (typ not in {"string", "object_id"} or type(spec[bound]) is not int or not 0 <= spec[bound] <= 256):
+                    raise _error(f"{where}.payload_schema.{name} has invalid length")
+        result["payload_schema"] = schema
+    elif "payload_schema" in item:
+        raise _error(f"{where}.payload_schema is domain_event-only")
     capability_fields = {"capability_version", "description", "inputs", "safety",
                          "preconditions", "verification", "recovery", "affects"}
     if kind == "capability":
@@ -593,6 +637,10 @@ def validate_module(module_dir: str | os.PathLike[str]) -> dict[str, Any]:
             raise _error(f"{contract}.contributions must be an array")
         for index, item in enumerate(declared, 1):
             value = _validate_contribution(package, item, index, contract)
+            if value["kind"] == "domain_event" and not value["id"].startswith(name + "."):
+                raise _error(f"domain event {value['id']} must belong to {name}")
+            if value["kind"] == "domain_event" and value["id"] == "capability.completed":
+                raise _error("capability.completed is Core-reserved")
             identity = (value["kind"], value["id"])
             if identity in seen:
                 raise _error(f"duplicate contribution {value['kind']}:{value['id']}")
