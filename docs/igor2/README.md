@@ -16,6 +16,7 @@ For most Igor 2 work:
    - `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
    - `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
+   - `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
    - `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.
    - `INFLUENCES.md` — ServerMind/Steward lessons intentionally adopted by Igor.
