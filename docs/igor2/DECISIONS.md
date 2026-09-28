@@ -327,6 +327,20 @@ verification and final outcome fields retain their distinct result meanings;
 `completed` does not mean successful. The current frontend event stream, v1
 actions and raw shell are not silently reinterpreted as domain events. See
 [EVENT_BUS.md](EVENT_BUS.md).
+### D040 — Context semantics live in modules/metadata, not Core routing tables
+
+Core's Context Engine remains domain-neutral. It may select and rank generic
+registered structures by object/capability identity, owner, source kind,
+provenance, freshness and module-provided concepts/tags, but it must not grow
+application-specific natural-language keyword/synonym branches. Modules and
+knowledge contributions own domain vocabulary/semantic metadata. The reasoning
+layer may translate user language and conversational references into
+non-authoritative topic/object/intent hints; Igor deterministically resolves
+those hints against registered active sources. Such hints cannot create facts,
+capabilities or owners, assert freshness, activate modules, satisfy
+preconditions or affect authorization. Adding a new coherent domain module
+should not require Core routing changes. See
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 ---
 
