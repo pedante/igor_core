@@ -1,6 +1,6 @@
 # Step 14 — Automation Engine implementation contract
 
-Status: **accepted design; 14A–14C implemented, 14D–14E pending**. This contract is subordinate
+Status: **accepted design; 14A–14D implemented, 14E pending**. This contract is subordinate
 to [ARCHITECTURE.md](ARCHITECTURE.md) and D044–D047 in
 [DECISIONS.md](DECISIONS.md). Step 13's [EVENT_BUS.md](EVENT_BUS.md), the Wave E
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) capability path and the
@@ -128,8 +128,8 @@ because it requires no recurring slot arithmetic; memory refresh has an
 existing real provider and deterministic verification. During 14A, enabled
 `once_at` intent reported `execution_not_installed`; with 14B installed,
 inspection reports the actual due and claim state. Other trigger
-proposals remain inspectable but cannot be enabled until their slices
-implement validation, admission and recovery.
+condition proposals remain inspectable but cannot be enabled until 14E
+implements validation, admission and recovery.
 
 For event triggers, filter fields are fixed at activation and match only the
 Core-validated Step 13 envelope (`event_type`, stamped `owner`, membership

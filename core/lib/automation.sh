@@ -1,5 +1,18 @@
 #!/bin/bash
-# Index bridge, explicit operator CLI, and due READ tick.
+# Index bridge, operator CLI, and deferred READ ticks.
+
+_igor_automation_context() {
+    local _capabilities _proposals _events
+    _capabilities="$(igor_capability_list)" || return 1
+    _proposals="$(igor_automation_proposals)" || return 1
+    if declare -F igor_domain_event_types >/dev/null 2>&1; then
+        _events="$(igor_domain_event_types)" || return 1
+    else
+        _events='[]'
+    fi
+    python3 -c 'import json,sys; print(json.dumps({"data_dir":sys.argv[1],"capabilities":json.loads(sys.argv[2]),"proposals":[json.loads(line) for line in sys.argv[3].splitlines() if line],"event_types":json.loads(sys.argv[4])},separators=(",", ":")))' \
+        "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$_capabilities" "$_proposals" "$_events"
+}
 
 igor_automation_proposals() {
     local _key _owner _record _version
@@ -15,11 +28,8 @@ igor_automation_proposals() {
 }
 
 igor_automation_cli() {
-    local _action="$1" _argument="${2:-}" _config="${3:-}" _capabilities _proposals _context
-    _capabilities="$(igor_capability_list)" || return 1
-    _proposals="$(igor_automation_proposals)" || return 1
-    _context="$(python3 -c 'import json,sys; print(json.dumps({"data_dir":sys.argv[1],"capabilities":json.loads(sys.argv[2]),"proposals":[json.loads(line) for line in sys.argv[3].splitlines() if line]},separators=(",", ":")))' \
-        "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$_capabilities" "$_proposals")" || return 1
+    local _action="$1" _argument="${2:-}" _config="${3:-}" _context
+    _context="$(_igor_automation_context)" || return 1
     case "$_action" in
         proposals|list) printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" "$_action" --mode "${IGOR_AI_MODE:-Assist}" ;;
         inspect|create|enable|disable|delete|reset)
@@ -63,8 +73,7 @@ _igor_automation_run_due_locked() {
         return 2
     fi
     [ "$_mode" != Guide ] || { printf '{"admitted":0}\n'; return 0; }
-    _context="$(python3 -c 'import json,sys; print(json.dumps({"data_dir":sys.argv[1],"capabilities":json.loads(sys.argv[2]),"proposals":[json.loads(line) for line in sys.argv[3].splitlines() if line]},separators=(",", ":")))' \
-        "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$(igor_capability_list)" "$(igor_automation_proposals)")" || return 1
+    _context="$(_igor_automation_context)" || return 1
     _tick="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" || return 1
     # Keep the normal policy and capability runtime in the same process so
     # the canonical result and Step 13 publication remain authoritative.
@@ -73,15 +82,107 @@ _igor_automation_run_due_locked() {
     while :; do
         _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode" --now "$_tick")" || return 1
         [ "$_claim" != null ] || break
-        _request="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); t=c["target"]; r={"tool":"run_capability","id":t["capability_id"],"inputs":t["inputs"]}; r.update({"provider":t["provider"]} if "provider" in t else {}); print(json.dumps(r,separators=(",", ":")))' "$_claim")" || return 1
-        IGOR_CAPABILITY_LAST_RESULT=""
-        ai_execute_tool "$_request" >/dev/null || _rc=1
-        _result="${IGOR_CAPABILITY_LAST_RESULT:-null}"
-        _completion="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); print(json.dumps({"claim_id":c["claim_id"],"result":json.loads(sys.argv[2])},separators=(",", ":")))' "$_claim" "$_result")" || return 1
-        printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" finish \
-            "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$_claim")" "$_completion" >/dev/null || return 1
+        _igor_automation_dispatch_claim "$_context" "$_claim" || _rc=1
         ((_count+=1))
     done
     printf '{"admitted":%d}\n' "$_count"
     return "$_rc"
 }
+
+_igor_automation_dispatch_claim() {
+    local _context="$1" _claim="$2" _request _result _completion _id _rc=0
+    local _prior_draining="${_IGOR_AUTOMATION_DRAINING:-0}"
+    _request="$(python3 -c 'import json,sys; t=json.loads(sys.argv[1])["target"]; r={"tool":"run_capability","id":t["capability_id"],"inputs":t["inputs"]}; r.update({"provider":t["provider"]} if "provider" in t else {}); print(json.dumps(r,separators=(",", ":")))' "$_claim")" || return 1
+    _id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$_claim")" || return 1
+    IGOR_CAPABILITY_LAST_RESULT=""
+    _IGOR_AUTOMATION_DRAINING=1
+    ai_execute_tool "$_request" >/dev/null || _rc=1
+    _IGOR_AUTOMATION_DRAINING="$_prior_draining"
+    _result="${IGOR_CAPABILITY_LAST_RESULT:-null}"
+    _completion="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); print(json.dumps({"claim_id":c["claim_id"],"result":json.loads(sys.argv[2])},separators=(",", ":")))' "$_claim" "$_result")" || return 1
+    printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" finish "$_id" "$_completion" >/dev/null || return 1
+    return "$_rc"
+}
+
+igor_automation_subscribe() {
+    [ -n "${IGOR_AUTOMATION_EVENT_QUEUE:-}" ] && [ "${IGOR_AUTOMATION_QUEUE_OWNER:-}" = "$$" ] && return 0
+    IGOR_AUTOMATION_EVENT_QUEUE="$(mktemp "${TMPDIR:-/tmp}/igor-automation-events.XXXXXXXX")" || return 1
+    chmod 600 "$IGOR_AUTOMATION_EVENT_QUEUE" || return 1
+    IGOR_AUTOMATION_QUEUE_OWNER="$$"
+    igor_domain_event_subscribe _igor_automation_event_callback
+}
+
+_igor_automation_event_callback() {
+    [ "${_IGOR_AUTOMATION_DRAINING:-0}" = 0 ] || return 0
+    local _context _ids _line _fd
+    _context="$(_igor_automation_context)" || return 1
+    _ids="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" match-event "$1" --mode "$(ai_get_mode)")" || return 1
+    [ "$_ids" != '[]' ] || return 0
+    _line="$(python3 -c 'import json,sys; print(json.dumps({"event":json.loads(sys.argv[1]),"ids":json.loads(sys.argv[2])},separators=(",", ":")))' "$1" "$_ids")" || return 1
+    exec {_fd}>>"$IGOR_AUTOMATION_EVENT_QUEUE" || return 1
+    flock -x "$_fd" || { exec {_fd}>&-; return 1; }
+    if [ "$(wc -l < "$IGOR_AUTOMATION_EVENT_QUEUE")" -lt 128 ]; then
+        printf '%s\n' "$_line" >&"$_fd"
+    fi
+    exec {_fd}>&-
+}
+
+igor_automation_drain_events() {
+    local _mode="${1:-$(ai_get_mode)}" _context _pending _signal _id _event _claim _fd _run_fd _count=0 _rc=0
+    local _run_dir="${IGOR_DATA_DIR:-${IGOR_DIR}/data}/automation"
+    [ -n "${IGOR_AUTOMATION_EVENT_QUEUE:-}" ] || { printf '{"admitted":0}\n'; return 0; }
+    [ "${_IGOR_AUTOMATION_DRAINING:-0}" = 0 ] || { printf '{"admitted":0,"reason":"overlap_skipped"}\n'; return 0; }
+    case "$_mode" in
+        assist|Assist) _mode=Assist ;;
+        executive|Executive) _mode=Executive ;;
+        guide|Guide) printf '{"admitted":0}\n'; return 0 ;;
+        *) return 2 ;;
+    esac
+    [ "$(ai_get_mode)" != guide ] || { printf '{"admitted":0}\n'; return 0; }
+    _context="$(_igor_automation_context)" || return 1
+    [ ! -L "$_run_dir" ] || return 1
+    mkdir -p "$_run_dir" || return 1
+    chmod 700 "$_run_dir" || return 1
+    exec {_run_fd}<"$_run_dir" || return 1
+    if ! flock -n "$_run_fd"; then
+        exec {_run_fd}<&-
+        printf '{"admitted":0,"reason":"overlap_skipped"}\n'
+        return 0
+    fi
+    exec {_fd}<>"$IGOR_AUTOMATION_EVENT_QUEUE" || { exec {_run_fd}<&-; return 1; }
+    if ! flock -n -x "$_fd"; then
+        exec {_fd}>&-
+        exec {_run_fd}<&-
+        printf '{"admitted":0,"reason":"overlap_skipped"}\n'
+        return 0
+    fi
+    _pending="$(cat "$IGOR_AUTOMATION_EVENT_QUEUE")" || { exec {_fd}>&-; exec {_run_fd}<&-; return 1; }
+    : > "$IGOR_AUTOMATION_EVENT_QUEUE" || { exec {_fd}>&-; exec {_run_fd}<&-; return 1; }
+    declare -f ai_execute_tool >/dev/null 2>&1 || source "${IGOR_DIR}/core/ai/safety.sh" || {
+        exec {_fd}>&-
+        exec {_run_fd}<&-
+        return 1
+    }
+    ai_mode="${_mode,,}"
+    _IGOR_AUTOMATION_DRAINING=1
+    while IFS= read -r _signal; do
+        [ -n "$_signal" ] || continue
+        _event="$(python3 -c 'import json,sys; print(json.dumps(json.loads(sys.argv[1])["event"],separators=(",", ":")))' "$_signal")" || { _rc=1; continue; }
+        while IFS= read -r _id; do
+            [ -n "$_id" ] || continue
+            _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim-event "$_id" "$_event" --mode "$_mode")" || { _rc=1; continue; }
+            [ "$_claim" != null ] || continue
+            _igor_automation_dispatch_claim "$_context" "$_claim" || _rc=1
+            ((_count+=1))
+        done < <(python3 -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])["ids"]))' "$_signal")
+    done <<< "$_pending"
+    _IGOR_AUTOMATION_DRAINING=0
+    exec {_fd}>&-
+    exec {_run_fd}<&-
+    printf '{"admitted":%d}\n' "$_count"
+    return "$_rc"
+}
+
+if declare -F igor_domain_event_subscribe >/dev/null 2>&1; then
+    igor_automation_subscribe
+fi

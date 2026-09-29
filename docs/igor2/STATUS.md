@@ -1,10 +1,10 @@
 # Igor 2 migration status
 
-Last updated: 2026-09-29
+Last updated: 2026-09-30
 
-## Step 14 Automation Engine — 14A–14C complete
+## Step 14 Automation Engine — 14A–14D complete
 
-**14A, 14B and 14C are complete; 14D event READ is next. Step 14 overall
+**14A–14D are complete; 14E conditional READ is next. Step 14 overall
 remains incomplete.** The authoritative
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md) contract and D044–D047 govern the
 implementation. Active v2 module declarations are data-only proposals. The
@@ -13,6 +13,31 @@ bundled `system.host.memory.once` proposal targets
 `--automations create` and `enable` path creates and enables Igor-owned intent.
 AI text, events and module activation cannot call this authority. CHANGE,
 DESTROY, privileged and secret-reference targets cannot be enabled.
+
+**14D event READ and recovery:** Version-1 event triggers fix an exact active
+domain event type, optional exact owner/object filters and a bounded minimum
+interval at configuration time. The Core subscriber receives only validated
+Step 13 envelopes and queues matching signals in bounded, owner-only session
+scratch. It does not execute inside publication. A separate in-process drain
+rechecks active event type, source proposal, target provider, runtime mode and
+READ policy, atomically records a bounded attempt summary, then uses the
+existing `run_capability` request through `ai_execute_tool`. Event payloads
+cannot supply target inputs. The existing automation run lock prevents overlapping
+drains; duplicate event IDs do not launch a second attempt. Completion events
+from automation dispatch are dropped by this adapter during the drain.
+Pending signals and Step 13 events disappear on restart; no durable event
+queue or replay was added. A new event can remain eligible after an
+interrupted attempt, subject to the configured minimum interval.
+
+**14D proof:** Focused automation/domain-event tests passed 30 tests and 25
+subtests, covering exact and nonmatching filters, Guide, inactive owners,
+deferred dispatch, duplicate prevention, minimum interval and restart. A
+validated `capability.completed` event from a real memory refresh admitted
+one later canonical memory READ, whose result was `success`/`passed`; its own
+completion event caused no further admission. The full Bash suite passed all
+five groups with no group failures or skips. Full Python pytest passed 279
+tests and 119 subtests. Changed-file Ruff, CI-configured ShellCheck, Bash
+syntax, Python compile and `git diff --check` passed.
 
 **14C periodic READ and recovery:** version-1 `periodic` triggers use a UTC
 anchor and a positive interval of at most 31,536,000 seconds. Each explicit
@@ -128,7 +153,7 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 14D–14E automation execution, Step 15 durable history and later
+Step 14E conditional automation execution, Step 15 durable history and later
 baselines/healing remain deferred. Q008 is resolved by D044; Q003, Q007,
 Q009 and Q011 retain their assigned decisions.
 

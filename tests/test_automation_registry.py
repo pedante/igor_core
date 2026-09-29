@@ -20,6 +20,8 @@ from module_contract import validate_module
 TRIGGER = {"kind": "once_at", "schema_version": 1, "once_at": "2030-01-01T00:00:00Z"}
 PERIODIC = {"kind": "periodic", "schema_version": 1,
             "anchor": "2030-01-01T00:00:00Z", "interval_seconds": 60}
+EVENT = {"kind": "event", "schema_version": 1, "event_type": "capability.completed",
+         "owner": "system", "object_id": "host:local", "min_interval_seconds": 0}
 
 
 class AutomationRegistryTests(unittest.TestCase):
@@ -32,8 +34,9 @@ class AutomationRegistryTests(unittest.TestCase):
         self.capabilities = [{"id": desc["id"], "provider": "system", "availability": "active", "descriptor": desc}]
         self.proposals = [{"id": proposal["id"], "owner": "system", "module_version": "2.0.0",
                            "source": proposal["source"], "availability": "active", "descriptor": proposal}]
+        self.event_types = [{"event_type": "capability.completed", "availability": "active"}]
         self.root = Path(self.temp.name)
-        self.registry = Registry(self.root, self.capabilities, self.proposals)
+        self.registry = Registry(self.root, self.capabilities, self.proposals, self.event_types)
 
     def config(self):
         return {"owner": "user", "proposal_id": "system.host.memory.once", "trigger": copy.deepcopy(TRIGGER)}
@@ -45,6 +48,160 @@ class AutomationRegistryTests(unittest.TestCase):
         return self.registry.create({"owner": "user", "trigger": trigger or PERIODIC,
                                      "target": {"capability_id": "system.host.memory.refresh",
                                                 "provider": "system", "inputs": {}}}, "operator")
+
+    def create_event(self, trigger=None):
+        return self.registry.create({"owner": "user", "trigger": trigger or copy.deepcopy(EVENT),
+                                     "target": {"capability_id": "system.host.memory.refresh",
+                                                "provider": "system", "inputs": {}}}, "operator")
+
+    @staticmethod
+    def event(**fields):
+        value = {"event_id": "00000000-0000-4000-8000-000000000001",
+                 "event_type": "capability.completed", "owner": "system",
+                 "related_objects": ["host:local"], "payload": {}}
+        value.update(fields)
+        return value
+
+    def test_event_filters_are_exact_and_payload_cannot_match(self):
+        row = self.create_event()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        self.assertEqual(self.registry.match_event(self.event(), "Assist", now), [row["id"]])
+        for event in (
+            self.event(event_type="capability.failed"),
+            self.event(owner="other"),
+            self.event(related_objects=["host:other"]),
+            self.event(owner="other", payload={"event_type": "capability.completed",
+                                                "owner": "system", "related_objects": ["host:local"]}),
+        ):
+            with self.subTest(event=event):
+                self.assertEqual(self.registry.match_event(event, "Assist", now), [])
+        self.assertEqual(self.registry.match_event(self.event(), "Guide", now), [])
+
+    def test_event_match_rejects_inactive_module_owner_without_deleting_intent(self):
+        # Copy the active module proposal, then specialize its trigger to the
+        # event slice. The owner provenance remains module-owned.
+        proposal = self.registry.create({"owner": "user", "proposal_id": "system.host.memory.once",
+                                         "trigger": copy.deepcopy(TRIGGER)}, "operator")
+        data = json.loads(self.registry.path.read_text())
+        data["instances"][0]["trigger"] = copy.deepcopy(EVENT)
+        self.registry.path.write_text(json.dumps(data))
+        self.registry.mutate("enable", proposal["id"], "operator")
+        inactive = Registry(self.root, self.capabilities, [], self.event_types)
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        self.assertEqual(inactive.match_event(self.event(), "Assist", now), [])
+        self.assertTrue(inactive.inspect(proposal["id"])["instances"][0]["enabled"])
+        self.assertEqual(inactive.inspect(proposal["id"])["instances"][0]["availability_reason"],
+                         "source_proposal_inactive")
+
+    def test_event_claim_is_deferred_and_duplicate_event_ids_are_at_most_once(self):
+        row = self.create_event()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        event = self.event()
+        self.assertEqual(self.registry.match_event(event, "Assist", now), [row["id"]])
+        claim = self.registry.claim_event(row["id"], event, "Assist", now)
+        self.assertEqual(claim["id"], row["id"])
+        self.assertEqual(claim["target"]["capability_id"], "system.host.memory.refresh")
+        self.assertEqual(self.registry.match_event(event, "Assist", now), [])
+        self.assertIsNone(self.registry.claim_event(row["id"], event, "Assist", now))
+        # Event signals are transient. A fresh Registry sees the durable claim,
+        # but it does not reconstruct or replay the signal after restart.
+        fresh = Registry(self.root, self.capabilities, self.proposals, self.event_types)
+        self.assertEqual(fresh.match_event(event, "Assist", now), [])
+        next_event = self.event(event_id="00000000-0000-4000-8000-000000000002")
+        self.assertEqual(fresh.match_event(next_event, "Assist", now), [row["id"]])
+
+    def test_event_minimum_interval_blocks_second_admission(self):
+        trigger = {**EVENT, "min_interval_seconds": 60}
+        row = self.create_event(trigger)
+        self.registry.mutate("enable", row["id"], "operator")
+        first = self.event(event_id="00000000-0000-4000-8000-000000000001")
+        second = self.event(event_id="00000000-0000-4000-8000-000000000002")
+        at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        claim = self.registry.claim_event(row["id"], first, "Assist", at)
+        self.assertIsNotNone(claim)
+        self.registry.finish(row["id"], claim["claim_id"],
+                             {"operation_id": "op-event", "capability_id": "system.host.memory.refresh",
+                              "provider": "system", "execution_status": "succeeded",
+                              "verification_status": "passed", "outcome": "success"})
+        self.assertEqual(self.registry.match_event(second, "Assist", at + timedelta(seconds=59)), [])
+        self.assertEqual(self.registry.match_event(second, "Assist", at + timedelta(seconds=60)), [row["id"]])
+
+    def test_event_delivery_only_queues_and_drain_uses_canonical_read_dispatch(self):
+        row = self.create_event()
+        self.registry.mutate("enable", row["id"], "operator")
+        capabilities = self.root / "capabilities.json"
+        capabilities.write_text(json.dumps(self.capabilities))
+        marker = self.root / "dispatch.count"
+        event = json.dumps(self.event(), separators=(",", ":"))
+        script = r'''
+            export IGOR_DIR="$PWD"
+            _subscriber=''
+            igor_domain_event_subscribe() { _subscriber="$1"; }
+            igor_domain_event_types() { printf '%s\n' '[{"event_type":"capability.completed","availability":"active"}]'; }
+            igor_capability_list() { cat "$CAPABILITIES_FILE"; }
+            igor_automation_proposals() { :; }
+            ai_get_mode() { printf 'assist\n'; }
+            ai_execute_tool() {
+                printf '%s\n' "${1}" >> "$DISPATCH_MARKER"
+                IGOR_CAPABILITY_LAST_RESULT='{"operation_id":"op-event","capability_id":"system.host.memory.refresh","provider":"system","execution_status":"succeeded","verification_status":"passed","outcome":"success"}'
+            }
+            source core/lib/automation.sh
+            [ -n "$_subscriber" ]
+            "$_subscriber" "$EVENT_JSON"
+            [ ! -s "$DISPATCH_MARKER" ]
+            exec {held}<"$IGOR_DATA_DIR/automation"
+            flock -n "$held"
+            igor_automation_drain_events Assist
+            [ ! -s "$DISPATCH_MARKER" ]
+            exec {held}<&-
+            igor_automation_drain_events Assist
+        '''
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPABILITIES_FILE": str(capabilities),
+               "DISPATCH_MARKER": str(marker), "EVENT_JSON": event}
+        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                             capture_output=True, text=True, check=True)
+        overlap, admitted = map(json.loads, run.stdout.strip().splitlines())
+        self.assertEqual(overlap, {"admitted": 0, "reason": "overlap_skipped"})
+        self.assertEqual(admitted, {"admitted": 1})
+        self.assertEqual(len(marker.read_text().splitlines()), 1)
+        self.assertEqual(json.loads(marker.read_text()),
+                         {"tool": "run_capability", "id": "system.host.memory.refresh",
+                          "provider": "system", "inputs": {}})
+        self.assertEqual(self.registry.inspect(row["id"])["instances"][0]["last_attempt"]["outcome"], "success")
+
+    def test_validated_capability_event_drains_once_and_restart_does_not_replay(self):
+        row = self.create_event()
+        self.registry.mutate("enable", row["id"], "operator")
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/config_loader.sh
+            source core/lib/module_loader.sh
+            source core/lib/automation.sh
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            source core/ai/safety.sh
+            ai_mode=assist
+            ai_execute_tool '{"tool":"run_capability","id":"system.host.memory.refresh","provider":"system","inputs":{}}' >/dev/null
+            igor_automation_drain_events Assist
+            igor_domain_event_recent '{"event_type":"capability.completed"}'
+        '''
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        first = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                               capture_output=True, text=True, check=True)
+        admitted, events = map(json.loads, first.stdout.strip().splitlines())
+        self.assertEqual(admitted, {"admitted": 1})
+        self.assertEqual(len(events), 2)
+        state = self.registry.inspect(row["id"])["instances"][0]
+        self.assertEqual(state["last_attempt"]["outcome"], "success")
+        self.assertEqual(state["last_attempt"]["verification_status"], "passed")
+        self.assertEqual(state["last_attempt"]["slot"], events[0]["event_id"])
+        restart = subprocess.run(["bash", "-c", script.split("            ai_execute_tool")[0]
+                                  + "igor_automation_drain_events Assist"], cwd=ROOT, env=env,
+                                 capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(restart.stdout), {"admitted": 0})
 
     def test_periodic_trigger_schema_and_cursor_fail_closed(self):
         for trigger in (

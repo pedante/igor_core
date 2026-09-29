@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from capability_runtime import CapabilityError, validate_inputs
+from domain_event import OBJECT
 
 VERSION = 1
 MAX_INTERVAL_SECONDS = 365 * 24 * 60 * 60
@@ -61,6 +62,20 @@ def _trigger(value: Any) -> dict[str, Any]:
         if (type(obj["interval_seconds"]) is not int or
                 not 1 <= obj["interval_seconds"] <= MAX_INTERVAL_SECONDS):
             raise AutomationError("periodic interval must be 1 to 31536000 seconds")
+    elif value.get("kind") == "event":
+        obj = _closed(value, {"kind", "schema_version", "event_type", "owner", "object_id", "min_interval_seconds"},
+                      {"kind", "schema_version", "event_type", "min_interval_seconds"}, "trigger")
+        if (type(obj["event_type"]) is not str or not IDENT.fullmatch(obj["event_type"]) or
+                "." not in obj["event_type"]):
+            raise AutomationError("event type is invalid")
+        if "owner" in obj and (type(obj["owner"]) is not str or not IDENT.fullmatch(obj["owner"])):
+            raise AutomationError("event owner is invalid")
+        if "object_id" in obj and (type(obj["object_id"]) is not str or
+                                  len(obj["object_id"]) > 160 or not OBJECT.fullmatch(obj["object_id"])):
+            raise AutomationError("event object_id is invalid")
+        if (type(obj["min_interval_seconds"]) is not int or
+                not 0 <= obj["min_interval_seconds"] <= MAX_INTERVAL_SECONDS):
+            raise AutomationError("event minimum interval is invalid")
     else:
         raise AutomationError("trigger kind is unsupported")
     return obj
@@ -75,6 +90,8 @@ def _periodic_slot(trigger: dict[str, Any], now: datetime) -> datetime | None:
 
 
 def _slot_time(trigger: dict[str, Any], now: datetime) -> datetime | None:
+    if trigger["kind"] == "event":
+        return None
     if trigger["kind"] == "periodic":
         return _periodic_slot(trigger, now)
     due = datetime.fromisoformat(trigger["once_at"].replace("Z", "+00:00"))
@@ -152,23 +169,29 @@ def _record(value: Any) -> dict[str, Any]:
         raise AutomationError("retry policy is unsupported")
     cursor = obj["schedule_cursor"]
     attempt = obj["last_attempt"]
-    if (cursor is None) != (attempt is None):
+    if obj["trigger"]["kind"] != "event" and (cursor is None) != (attempt is None):
         raise AutomationError("automation claim state is incomplete")
+    if obj["trigger"]["kind"] == "event" and cursor is not None:
+        raise AutomationError("event cursor must be transient")
     if cursor is not None:
         _timestamp(cursor)
         trigger = obj["trigger"]
         if trigger["kind"] == "once_at":
             valid_cursor = cursor == trigger["once_at"]
-        else:
+        elif trigger["kind"] == "periodic":
             slot = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
             valid_cursor = _periodic_slot(trigger, slot) == slot
         if not valid_cursor:
             raise AutomationError("automation cursor is invalid")
+    if attempt is not None:
         fields = {"attempted_at", "slot", "claim_id", "operation_id", "execution_status",
                   "verification_status", "outcome", "reason"}
         _closed(attempt, fields, fields, "last attempt")
         _timestamp(attempt["attempted_at"])
-        if (attempt["slot"] != cursor or type(attempt["claim_id"]) is not str or
+        if ((cursor is not None and attempt["slot"] != cursor) or
+                (cursor is None and (type(attempt["slot"]) is not str or
+                 not re.fullmatch(r"[0-9a-f-]{36}", attempt["slot"]))) or
+                type(attempt["claim_id"]) is not str or
                 not re.fullmatch(r"[0-9a-f]{32}", attempt["claim_id"]) or
                 type(attempt["outcome"]) is not str or not attempt["outcome"] or
                 len(attempt["outcome"]) > 128):
@@ -198,12 +221,14 @@ def _json_file(path: Path) -> Any:
 
 
 class Registry:
-    def __init__(self, data_dir: Path, capabilities: list[dict[str, Any]], proposals: list[dict[str, Any]]):
+    def __init__(self, data_dir: Path, capabilities: list[dict[str, Any]], proposals: list[dict[str, Any]],
+                 event_types: list[dict[str, Any]] | None = None):
         self.directory = data_dir / "automation"
         self.path = self.directory / "registry.v1.json"
         self.lock_path = self.directory / "registry.v1.lock"
         self.capabilities = capabilities
         self.proposals = {_proposal(row)["id"]: row for row in proposals if row["availability"] == "active"}
+        self.event_types = event_types or []
 
     def _path_check(self) -> None:
         for path in (self.directory, self.path, self.lock_path):
@@ -327,6 +352,10 @@ class Registry:
                 _, reason = self._target(row["target"], enable=True)
                 if reason or self._source_reason(row):
                     raise AutomationError(reason or self._source_reason(row))
+                if row["trigger"]["kind"] == "event" and not any(
+                        event["event_type"] == row["trigger"]["event_type"] and
+                        event["availability"] == "active" for event in self.event_types):
+                    raise AutomationError("event_type_inactive")
                 row["enabled"] = True
             elif action == "disable":
                 row["enabled"] = False
@@ -412,6 +441,11 @@ class Registry:
             return "target_policy_incompatible"
         if mode not in {"Assist", "Executive"}:
             return "guide_mode" if mode == "Guide" else "mode_unsupported"
+        if row["trigger"]["kind"] == "event":
+            if not any(event["event_type"] == row["trigger"]["event_type"] and
+                       event["availability"] == "active" for event in self.event_types):
+                return "event_type_inactive"
+            return "awaiting_event"
         slot = _slot_time(row["trigger"], now)
         if slot is None:
             return "not_due"
@@ -444,6 +478,46 @@ class Registry:
                 }
                 return {"id": row["id"], "claim_id": claim_id, "target": row["target"]}
         return None
+
+    def _event_matches(self, row: dict[str, Any], event: dict[str, Any], mode: str,
+                       now: datetime) -> bool:
+        trigger = row["trigger"]
+        if trigger["kind"] != "event" or self._eligibility_reason(row, mode, now) != "awaiting_event":
+            return False
+        if (event.get("event_type") != trigger["event_type"] or
+                ("owner" in trigger and event.get("owner") != trigger["owner"]) or
+                ("object_id" in trigger and trigger["object_id"] not in event.get("related_objects", []))):
+            return False
+        attempt = row["last_attempt"]
+        if attempt is not None:
+            if attempt["slot"] == event.get("event_id"):
+                return False
+            previous = datetime.fromisoformat(attempt["attempted_at"].replace("Z", "+00:00"))
+            if now < previous + timedelta(seconds=trigger["min_interval_seconds"]):
+                return False
+        return True
+
+    def match_event(self, event: dict[str, Any], mode: str, now: datetime) -> list[str]:
+        if type(event) is not dict or type(event.get("event_id")) is not str:
+            raise AutomationError("event signal is invalid")
+        return [row["id"] for row in self._load()["instances"] if self._event_matches(row, event, mode, now)]
+
+    def claim_event(self, ident: str, event: dict[str, Any], mode: str,
+                    now: datetime) -> dict[str, Any] | None:
+        if type(event) is not dict or type(event.get("event_id")) is not str or not re.fullmatch(
+                r"[0-9a-f-]{36}", event["event_id"]):
+            raise AutomationError("event signal is invalid")
+        with self._mutating() as data:
+            row = next((r for r in data["instances"] if r["id"] == ident), None)
+            if row is None or not self._event_matches(row, event, mode, now):
+                return None
+            claim_id = uuid.uuid4().hex
+            row["last_attempt"] = {
+                "attempted_at": _utc_text(now), "slot": event["event_id"], "claim_id": claim_id,
+                "operation_id": None, "execution_status": None, "verification_status": None,
+                "outcome": "interrupted_unknown", "reason": "claimed_before_dispatch",
+            }
+            return {"id": row["id"], "claim_id": claim_id, "target": row["target"]}
 
     def finish(self, ident: str, claim_id: str, result: Any) -> dict[str, Any]:
         """Keep only canonical status fields; an absent result remains unknown."""
@@ -480,7 +554,7 @@ class Registry:
             trigger = row["trigger"]
             if trigger["kind"] == "once_at":
                 next_due = trigger["once_at"] if row["schedule_cursor"] is None else None
-            else:
+            elif trigger["kind"] == "periodic":
                 current = _periodic_slot(trigger, now)
                 if current is None:
                     next_due = trigger["anchor"]
@@ -490,10 +564,12 @@ class Registry:
                     next_due = _utc_text(cursor + timedelta(seconds=trigger["interval_seconds"]))
                 else:
                     next_due = _utc_text(current)
+            else:
+                next_due = None
             state = ("disabled" if reason == "disabled" else
                      ("claimed" if row["last_attempt"]["outcome"] == "interrupted_unknown" else "completed")
                      if reason == "already_claimed" else
-                     "available" if reason is None or reason == "not_due" else "unavailable")
+                     "available" if reason is None or reason in {"not_due", "awaiting_event"} else "unavailable")
             items.append({**row, "state": state, "availability_reason": reason,
                           "due": reason is None, "claim_state": (
                               "unclaimed" if row["last_attempt"] is None else
@@ -511,7 +587,7 @@ class Registry:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset", "claim", "finish"])
+    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset", "claim", "finish", "match-event", "claim-event"])
     parser.add_argument("argument", nargs="?")
     parser.add_argument("configuration", nargs="?")
     parser.add_argument("--mode", default="Assist")
@@ -519,7 +595,8 @@ def main() -> int:
     args = parser.parse_args()
     try:
         context = json.load(sys.stdin)
-        registry = Registry(Path(context["data_dir"]), context["capabilities"], context["proposals"])
+        registry = Registry(Path(context["data_dir"]), context["capabilities"], context["proposals"],
+                            context.get("event_types", []))
         if args.action == "proposals":
             result = registry.list_proposals()
         elif args.action in {"list", "inspect"}:
@@ -530,6 +607,11 @@ def main() -> int:
         elif args.action == "claim":
             result = registry.claim_due(args.mode, datetime.fromisoformat(args.now.replace("Z", "+00:00"))
                                         if args.now else datetime.now(timezone.utc))
+        elif args.action == "match-event":
+            result = registry.match_event(json.loads(args.argument or "{}"), args.mode, datetime.now(timezone.utc))
+        elif args.action == "claim-event":
+            result = registry.claim_event(args.argument or "", json.loads(args.configuration or "{}"), args.mode,
+                                          datetime.now(timezone.utc))
         elif args.action == "finish":
             completion = json.loads(args.configuration or "{}")
             result = registry.finish(args.argument or "", completion["claim_id"], completion.get("result"))
