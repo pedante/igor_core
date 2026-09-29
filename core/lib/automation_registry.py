@@ -1,4 +1,4 @@
-"""Configured automation intent and one-time READ admission state."""
+"""Configured automation intent and due READ admission state."""
 
 from __future__ import annotations
 
@@ -13,13 +13,14 @@ import shutil
 import sys
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from capability_runtime import CapabilityError, validate_inputs
 
 VERSION = 1
+MAX_INTERVAL_SECONDS = 365 * 24 * 60 * 60
 IDENT = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 SECRET_NAME = re.compile(r"(?:secret|password|token|credential|private_key)", re.IGNORECASE)
 
@@ -47,11 +48,41 @@ def _timestamp(value: Any) -> str:
 
 
 def _trigger(value: Any) -> dict[str, Any]:
-    obj = _closed(value, {"kind", "schema_version", "once_at"}, {"kind", "schema_version", "once_at"}, "trigger")
-    if obj["kind"] != "once_at" or type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
-        raise AutomationError("trigger is unsupported in 14A")
-    _timestamp(obj["once_at"])
+    if type(value) is not dict or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
+        raise AutomationError("trigger version is unsupported")
+    if value.get("kind") == "once_at":
+        obj = _closed(value, {"kind", "schema_version", "once_at"},
+                      {"kind", "schema_version", "once_at"}, "trigger")
+        _timestamp(obj["once_at"])
+    elif value.get("kind") == "periodic":
+        obj = _closed(value, {"kind", "schema_version", "anchor", "interval_seconds"},
+                      {"kind", "schema_version", "anchor", "interval_seconds"}, "trigger")
+        _timestamp(obj["anchor"])
+        if (type(obj["interval_seconds"]) is not int or
+                not 1 <= obj["interval_seconds"] <= MAX_INTERVAL_SECONDS):
+            raise AutomationError("periodic interval must be 1 to 31536000 seconds")
+    else:
+        raise AutomationError("trigger kind is unsupported")
     return obj
+
+
+def _periodic_slot(trigger: dict[str, Any], now: datetime) -> datetime | None:
+    anchor = datetime.fromisoformat(trigger["anchor"].replace("Z", "+00:00"))
+    if now < anchor:
+        return None
+    seconds = trigger["interval_seconds"]
+    return anchor + timedelta(seconds=((now - anchor) // timedelta(seconds=seconds)) * seconds)
+
+
+def _slot_time(trigger: dict[str, Any], now: datetime) -> datetime | None:
+    if trigger["kind"] == "periodic":
+        return _periodic_slot(trigger, now)
+    due = datetime.fromisoformat(trigger["once_at"].replace("Z", "+00:00"))
+    return due if due <= now else None
+
+
+def _utc_text(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def _proposal(value: Any) -> dict[str, Any]:
@@ -124,7 +155,14 @@ def _record(value: Any) -> dict[str, Any]:
     if (cursor is None) != (attempt is None):
         raise AutomationError("automation claim state is incomplete")
     if cursor is not None:
-        if cursor != obj["trigger"]["once_at"]:
+        _timestamp(cursor)
+        trigger = obj["trigger"]
+        if trigger["kind"] == "once_at":
+            valid_cursor = cursor == trigger["once_at"]
+        else:
+            slot = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+            valid_cursor = _periodic_slot(trigger, slot) == slot
+        if not valid_cursor:
             raise AutomationError("automation cursor is invalid")
         fields = {"attempted_at", "slot", "claim_id", "operation_id", "execution_status",
                   "verification_status", "outcome", "reason"}
@@ -355,7 +393,7 @@ class Registry:
         mode = mode.capitalize()
         if not row["enabled"]:
             return "disabled"
-        if row["schedule_cursor"] is not None:
+        if row["trigger"]["kind"] == "once_at" and row["schedule_cursor"] is not None:
             return "already_claimed"
         source_reason = self._source_reason(row)
         if source_reason:
@@ -374,8 +412,13 @@ class Registry:
             return "target_policy_incompatible"
         if mode not in {"Assist", "Executive"}:
             return "guide_mode" if mode == "Guide" else "mode_unsupported"
-        if datetime.fromisoformat(row["trigger"]["once_at"].replace("Z", "+00:00")) > now:
+        slot = _slot_time(row["trigger"], now)
+        if slot is None:
             return "not_due"
+        if row["trigger"]["kind"] == "periodic" and row["schedule_cursor"] is not None:
+            cursor = datetime.fromisoformat(row["schedule_cursor"].replace("Z", "+00:00"))
+            if slot <= cursor:
+                return "already_claimed"
         return None
 
     def claim_due(self, mode: str, now: datetime) -> dict[str, Any] | None:
@@ -389,7 +432,8 @@ class Registry:
             for row in data["instances"]:
                 if self._eligibility_reason(row, mode, now) is not None:
                     continue
-                slot = row["trigger"]["once_at"]
+                slot = (row["trigger"]["once_at"] if row["trigger"]["kind"] == "once_at" else
+                        _utc_text(_slot_time(row["trigger"], now)))
                 claim_id = uuid.uuid4().hex
                 row["schedule_cursor"] = slot
                 row["last_attempt"] = {
@@ -433,6 +477,19 @@ class Registry:
             if ident and row["id"] != ident:
                 continue
             reason = self._eligibility_reason(row, mode, now)
+            trigger = row["trigger"]
+            if trigger["kind"] == "once_at":
+                next_due = trigger["once_at"] if row["schedule_cursor"] is None else None
+            else:
+                current = _periodic_slot(trigger, now)
+                if current is None:
+                    next_due = trigger["anchor"]
+                elif (row["schedule_cursor"] is not None and
+                      current <= datetime.fromisoformat(row["schedule_cursor"].replace("Z", "+00:00"))):
+                    cursor = datetime.fromisoformat(row["schedule_cursor"].replace("Z", "+00:00"))
+                    next_due = _utc_text(cursor + timedelta(seconds=trigger["interval_seconds"]))
+                else:
+                    next_due = _utc_text(current)
             state = ("disabled" if reason == "disabled" else
                      ("claimed" if row["last_attempt"]["outcome"] == "interrupted_unknown" else "completed")
                      if reason == "already_claimed" else
@@ -442,7 +499,7 @@ class Registry:
                               "unclaimed" if row["last_attempt"] is None else
                               "interrupted_unknown" if row["last_attempt"]["outcome"] == "interrupted_unknown" else
                               "terminal"),
-                          "next_due_at": row["trigger"]["once_at"] if row["schedule_cursor"] is None else None,
+                          "next_due_at": next_due,
                           "in_flight": False})
         if ident and not items:
             raise AutomationError("automation not found")

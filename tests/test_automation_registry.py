@@ -1,4 +1,4 @@
-"""Focused Step 14A contract and restart proofs, using disposable state."""
+"""Focused Step 14 registry and execution proofs, using disposable state."""
 
 import concurrent.futures
 import copy
@@ -7,8 +7,9 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,8 @@ from automation_registry import AutomationError, Registry
 from module_contract import validate_module
 
 TRIGGER = {"kind": "once_at", "schema_version": 1, "once_at": "2030-01-01T00:00:00Z"}
+PERIODIC = {"kind": "periodic", "schema_version": 1,
+            "anchor": "2030-01-01T00:00:00Z", "interval_seconds": 60}
 
 
 class AutomationRegistryTests(unittest.TestCase):
@@ -37,6 +40,131 @@ class AutomationRegistryTests(unittest.TestCase):
 
     def create(self):
         return self.registry.create(self.config(), "operator")
+
+    def create_periodic(self, trigger=None):
+        return self.registry.create({"owner": "user", "trigger": trigger or PERIODIC,
+                                     "target": {"capability_id": "system.host.memory.refresh",
+                                                "provider": "system", "inputs": {}}}, "operator")
+
+    def test_periodic_trigger_schema_and_cursor_fail_closed(self):
+        for trigger in (
+            {**PERIODIC, "interval_seconds": 0},
+            {**PERIODIC, "interval_seconds": 31536001},
+            {**PERIODIC, "interval_seconds": True},
+            {**PERIODIC, "interval_seconds": 1.5},
+            {**PERIODIC, "anchor": "2030-01-01T00:00:00+01:00"},
+            {**PERIODIC, "schema_version": 2},
+            {**PERIODIC, "extra": 1},
+        ):
+            with self.subTest(trigger=trigger), self.assertRaises(AutomationError):
+                self.create_periodic(trigger)
+        self.assertFalse(self.registry.path.exists())
+        row = self.create_periodic()
+        self.registry.mutate("enable", row["id"], "operator")
+        self.registry.claim_due("Assist", datetime(2030, 1, 1, 0, 2, 5, tzinfo=timezone.utc))
+        original = self.registry.path.read_bytes()
+        data = json.loads(original)
+        data["instances"][0]["schedule_cursor"] = "2030-01-01T00:02:01Z"
+        data["instances"][0]["last_attempt"]["slot"] = data["instances"][0]["schedule_cursor"]
+        self.registry.path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(AutomationError, "cursor is invalid"):
+            self.registry.inspect()
+        self.registry.path.write_bytes(original)
+
+    def test_periodic_slots_skip_missed_and_restart_without_duplicate(self):
+        row = self.create_periodic()
+        self.registry.mutate("enable", row["id"], "operator")
+        before = datetime(2029, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+        now = datetime(2030, 1, 1, 0, 2, 5, tzinfo=timezone.utc)
+        self.assertIsNone(self.registry.claim_due("Assist", before))
+        self.assertEqual(self.registry.inspect(row["id"], now=before)["instances"][0]["next_due_at"],
+                         PERIODIC["anchor"])
+        self.assertIsNone(self.registry.claim_due("Guide", now))
+        before_read = self.registry.path.read_bytes()
+        self.assertEqual(self.registry.inspect(row["id"], now=now)["instances"][0]["next_due_at"],
+                         "2030-01-01T00:02:00Z")
+        self.assertEqual(self.registry.path.read_bytes(), before_read)
+
+        def claim():
+            return Registry(self.root, self.capabilities, self.proposals).claim_due("Assist", now)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            claims = list(pool.map(lambda _: claim(), range(4)))
+        self.assertEqual(len([claim for claim in claims if claim]), 1)
+        fresh = Registry(self.root, self.capabilities, self.proposals)
+        state = fresh.inspect(row["id"], now=now)["instances"][0]
+        self.assertEqual(state["schedule_cursor"], "2030-01-01T00:02:00Z")
+        self.assertEqual(state["last_attempt"]["outcome"], "interrupted_unknown")
+        self.assertEqual(state["next_due_at"], "2030-01-01T00:03:00Z")
+        self.assertIsNone(fresh.claim_due("Assist", now))
+        earlier = datetime(2030, 1, 1, 0, 1, 30, tzinfo=timezone.utc)
+        self.assertIsNone(fresh.claim_due("Assist", earlier))
+        self.assertEqual(fresh.inspect(row["id"], now=earlier)["instances"][0]["next_due_at"],
+                         "2030-01-01T00:03:00Z")
+        later = datetime(2030, 1, 1, 0, 5, 17, tzinfo=timezone.utc)
+        next_claim = fresh.claim_due("Assist", later)
+        self.assertIsNotNone(next_claim)
+        state = fresh.inspect(row["id"], now=later)["instances"][0]
+        self.assertEqual(state["schedule_cursor"], "2030-01-01T00:05:00Z")
+        self.assertEqual(state["last_attempt"]["slot"], "2030-01-01T00:05:00Z")
+        self.assertIsNone(fresh.claim_due("Assist", later))
+
+    def test_periodic_edit_disables_and_resets_cursor(self):
+        row = self.create_periodic()
+        self.registry.mutate("enable", row["id"], "operator")
+        self.registry.claim_due("Assist", datetime(2030, 1, 1, tzinfo=timezone.utc))
+        edited = self.registry.mutate("edit", row["id"], "operator",
+                                      {"trigger": {**PERIODIC, "interval_seconds": 120}})
+        self.assertFalse(edited["enabled"])
+        self.assertIsNone(edited["schedule_cursor"])
+        self.assertIsNone(edited["last_attempt"])
+
+    def test_periodic_overlapping_ticks_do_not_dispatch_concurrently(self):
+        row = self.create_periodic()
+        self.registry.mutate("enable", row["id"], "operator")
+        capabilities = self.root / "capabilities.json"
+        capabilities.write_text(json.dumps(self.capabilities))
+        marker = self.root / "dispatch.started"
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/automation.sh
+            igor_capability_list() { cat "$CAPABILITIES_FILE"; }
+            igor_automation_proposals() { :; }
+            ai_get_mode() { printf 'assist\\n'; }
+            date() { printf '%s\\n' "$AUTOMATION_TICK"; }
+            ai_execute_tool() {
+                printf 'started' > "$DISPATCH_MARKER"
+                sleep 1
+                IGOR_CAPABILITY_LAST_RESULT='{"operation_id":"op-overlap","capability_id":"system.host.memory.refresh","provider":"system","execution_status":"succeeded","verification_status":"passed","outcome":"success"}'
+            }
+            igor_automation_run_due Assist
+        '''
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPABILITIES_FILE": str(capabilities),
+               "DISPATCH_MARKER": str(marker)}
+        first = subprocess.Popen(["bash", "-c", script], cwd=ROOT,
+                                 env={**env, "AUTOMATION_TICK": "2030-01-01T00:00:00Z"},
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 5
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(marker.exists(), "first dispatch did not start")
+            second = subprocess.run(["bash", "-c", script], cwd=ROOT,
+                                    env={**env, "AUTOMATION_TICK": "2030-01-01T00:01:00Z"},
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(second.stdout), {"admitted": 0, "reason": "overlap_skipped"})
+            output, errors = first.communicate(timeout=10)
+            self.assertEqual(first.returncode, 0, errors)
+            self.assertEqual(json.loads(output)["admitted"], 1)
+        finally:
+            if first.poll() is None:
+                first.kill()
+                first.communicate()
+        self.assertEqual(self.registry.inspect(row["id"])["instances"][0]["schedule_cursor"],
+                         "2030-01-01T00:00:00Z")
+        third = subprocess.run(["bash", "-c", script], cwd=ROOT,
+                               env={**env, "AUTOMATION_TICK": "2030-01-01T00:01:00Z"},
+                               capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(third.stdout)["admitted"], 1)
 
     def test_proposal_is_inactive_and_untrusted_data_cannot_activate(self):
         self.assertEqual(len(self.registry.list_proposals()), 1)
@@ -289,6 +417,42 @@ class AutomationRegistryTests(unittest.TestCase):
         cli("enable", second["id"])
         self.assertEqual(json.loads(cli("run-due", "Executive").stdout)["admitted"], 1)
         self.assertEqual(self.registry.inspect(second["id"])["instances"][0]["last_attempt"]["outcome"], "success")
+
+    def test_real_periodic_memory_refresh_uses_canonical_dispatch(self):
+        trigger = {"kind": "periodic", "schema_version": 1,
+                   "anchor": "2020-01-01T00:00:00Z", "interval_seconds": 86400}
+        row = self.create_periodic(trigger)
+        self.registry.mutate("enable", row["id"], "operator")
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/config_loader.sh
+            source core/lib/module_loader.sh
+            source core/lib/automation.sh
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            source core/ai/safety.sh
+            igor_automation_run_due Assist
+            igor_domain_event_recent '{"event_type":"capability.completed"}'
+        '''
+        first = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                               capture_output=True, text=True, check=True)
+        admitted, events = map(json.loads, first.stdout.strip().splitlines())
+        self.assertEqual(admitted["admitted"], 1)
+        self.assertEqual(len(events), 1)
+        state = self.registry.inspect(row["id"])["instances"][0]
+        self.assertEqual(state["last_attempt"]["outcome"], "success")
+        self.assertEqual(state["last_attempt"]["verification_status"], "passed")
+        self.assertEqual(events[0]["correlation_id"], state["last_attempt"]["operation_id"])
+        self.assertEqual(state["next_due_at"],
+                         (datetime.fromisoformat(state["schedule_cursor"].replace("Z", "+00:00"))
+                          + timedelta(days=1)).isoformat().replace("+00:00", "Z"))
+        second = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                                capture_output=True, text=True, check=True)
+        admitted, events = map(json.loads, second.stdout.strip().splitlines())
+        self.assertEqual(admitted["admitted"], 0)
+        self.assertEqual(events, [])
 
     def test_fixed_inputs_reach_dispatch_request_unchanged(self):
         capability = copy.deepcopy(self.capabilities[0])

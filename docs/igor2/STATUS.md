@@ -2,10 +2,10 @@
 
 Last updated: 2026-09-29
 
-## Step 14 Automation Engine — 14A registry and 14B one-time READ complete
+## Step 14 Automation Engine — 14A–14C complete
 
-**14A and 14B are complete; 14C periodic READ is next and unblocked. Step 14
-overall remains incomplete.** The authoritative
+**14A, 14B and 14C are complete; 14D event READ is next. Step 14 overall
+remains incomplete.** The authoritative
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md) contract and D044–D047 govern the
 implementation. Active v2 module declarations are data-only proposals. The
 bundled `system.host.memory.once` proposal targets
@@ -13,6 +13,31 @@ bundled `system.host.memory.once` proposal targets
 `--automations create` and `enable` path creates and enables Igor-owned intent.
 AI text, events and module activation cannot call this authority. CHANGE,
 DESTROY, privileged and secret-reference targets cannot be enabled.
+
+**14C periodic READ and recovery:** version-1 `periodic` triggers use a UTC
+anchor and a positive interval of at most 31,536,000 seconds. Each explicit
+`run-due` tick uses one fixed UTC time, computes the current interval slot,
+skips missed slots and atomically claims only that slot before the existing
+canonical READ dispatcher runs. A process lock skips overlapping ticks while
+one tick dispatches; the existing cursor prevents a restarted tick from
+claiming the same slot, including after a backward clock change. Inspection
+is read-only and shows the next due slot. A crash after claim remains
+`interrupted_unknown`; a later slot can be claimed without
+replaying the old one. Editing the trigger disables intent and clears its
+cursor. No cron service, event or condition trigger was added.
+
+**14C proof:** focused tests covered invalid versions/intervals/cursors,
+Guide, missed slots, concurrent claims, overlapping dispatch ticks, restart
+after an unfinished claim, backward time, edit reset and read-only inspection.
+A real periodic
+`system.host.memory.refresh` run yielded a canonical `success`/`passed`
+result and correlated `capability.completed` event; a second process admitted
+zero runs for the same slot. All 19 focused automation tests passed. The
+full `bash tests/run_all.sh` passed all five groups with no group failures;
+the core BATS run skipped two environment-dependent cases (GPG agent and
+`hostname -I`). Full Python pytest passed 273 tests and 115 subtests.
+Changed-file Ruff, CI-configured ShellCheck, Bash syntax, Python compile
+and `git diff --check` passed.
 
 **14B execution and recovery:** `--automations run-due` evaluates one-time UTC
 triggers in Guide, Assist or Executive mode. Guide admits none. An exclusive
@@ -36,7 +61,7 @@ Full `bash tests/run_all.sh` passed all five groups with no failures/skips;
 full Python pytest passed 268 tests and 108 subtests. Changed-file Ruff,
 syntax/compile and `git diff --check` passed. ShellCheck reported only two
 pre-existing warnings on untouched `igor.sh` lines. No scheduler service,
-periodic, event or condition execution exists in 14B.
+periodic, event or condition execution existed in 14B.
 
 **14A contract and vertical slice at acceptance:** `core/lib/automation_registry.py` strictly
 validates closed version-1 records, UTC `once_at`, fixed capability inputs and
@@ -103,7 +128,7 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 14C–14E automation execution, Step 15 durable history and later
+Step 14D–14E automation execution, Step 15 durable history and later
 baselines/healing remain deferred. Q008 is resolved by D044; Q003, Q007,
 Q009 and Q011 retain their assigned decisions.
 

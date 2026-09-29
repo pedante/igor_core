@@ -1,5 +1,5 @@
 #!/bin/bash
-# Index bridge, explicit operator CLI, and one-time READ tick.
+# Index bridge, explicit operator CLI, and due READ tick.
 
 igor_automation_proposals() {
     local _key _owner _record _version
@@ -31,7 +31,27 @@ igor_automation_cli() {
 }
 
 igor_automation_run_due() {
-    local _mode _context _claim _request _completion _result _count=0 _rc=0
+    local _run_dir="${IGOR_DATA_DIR:-${IGOR_DIR}/data}/automation" _run_fd _status
+    [ ! -L "$_run_dir" ] || { printf 'automation: store path is a symlink\n' >&2; return 1; }
+    mkdir -p "$_run_dir" || return 1
+    chmod 700 "$_run_dir" || return 1
+    exec {_run_fd}<"$_run_dir" || return 1
+    flock -n "$_run_fd"
+    _status=$?
+    if [ "$_status" -ne 0 ]; then
+        exec {_run_fd}<&-
+        [ "$_status" -eq 1 ] || return "$_status"
+        printf '{"admitted":0,"reason":"overlap_skipped"}\n'
+        return 0
+    fi
+    _igor_automation_run_due_locked "$@"
+    _status=$?
+    exec {_run_fd}<&-
+    return "$_status"
+}
+
+_igor_automation_run_due_locked() {
+    local _mode _context _claim _request _completion _result _tick _count=0 _rc=0
     case "${1:-$(ai_get_mode)}" in
         assist|Assist) _mode=Assist ;;
         executive|Executive) _mode=Executive ;;
@@ -45,12 +65,13 @@ igor_automation_run_due() {
     [ "$_mode" != Guide ] || { printf '{"admitted":0}\n'; return 0; }
     _context="$(python3 -c 'import json,sys; print(json.dumps({"data_dir":sys.argv[1],"capabilities":json.loads(sys.argv[2]),"proposals":[json.loads(line) for line in sys.argv[3].splitlines() if line]},separators=(",", ":")))' \
         "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$(igor_capability_list)" "$(igor_automation_proposals)")" || return 1
+    _tick="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" || return 1
     # Keep the normal policy and capability runtime in the same process so
     # the canonical result and Step 13 publication remain authoritative.
     declare -f ai_execute_tool >/dev/null 2>&1 || source "${IGOR_DIR}/core/ai/safety.sh" || return 1
     ai_mode="${_mode,,}"
     while :; do
-        _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode")" || return 1
+        _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode" --now "$_tick")" || return 1
         [ "$_claim" != null ] || break
         _request="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); t=c["target"]; r={"tool":"run_capability","id":t["capability_id"],"inputs":t["inputs"]}; r.update({"provider":t["provider"]} if "provider" in t else {}); print(json.dumps(r,separators=(",", ":")))' "$_claim")" || return 1
         IGOR_CAPABILITY_LAST_RESULT=""
