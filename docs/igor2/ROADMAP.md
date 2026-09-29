@@ -55,6 +55,12 @@ ownership model for:
 Every important persistent value should have an owner, source, scope,
 lifecycle, migration/reset behavior and appropriate inspection surface.
 
+The configuration direction in [CONFIGURATION.md](CONFIGURATION.md) keeps
+canonical setting identity and semantics independent from current env-file or
+future database storage. Modules describe configuration; Igor owns mutable
+values, secret references, validation and migration. The document is a design
+proposal, not an implemented Configuration Service.
+
 This is a hard architectural gate, not a new wave name. Early non-conflicting
 Wave C loader/contract implementation may proceed, but Wave C must not freeze
 the current mixed config/secret/state layout into the public Module v2
@@ -423,7 +429,11 @@ Define provenance for discovered, configured, installer-created, user-declared a
 
 Installation/configuration workflows use structured plans and leave an
 inspectable deployment/relationship record plus verification outcome, rather
-than only a command transcript.
+than only a command transcript. [CONFIGURATION.md](CONFIGURATION.md) proposes
+how canonical settings and deployment/instance scopes attach to this model.
+[RESUMABLE_WORK.md](RESUMABLE_WORK.md) proposes durable waiting/resumption when
+a workflow depends on OAuth, DNS propagation, reboot, user action or another
+external condition. Neither proposal is runtime implementation yet.
 
 ## Step 18 — Composable Modules — FUTURE
 
@@ -453,6 +463,9 @@ Once normal system/module workflows use the shared backend foundations, make `./
 The TUI consolidates inspection surfaces already introduced with modules,
 configuration, facts, capabilities, plans, investigations, events and history;
 Wave G is not the first point at which those systems become observable.
+The proposed configuration-surface contract can let the TUI temporarily enter
+a bounded setup workflow and return to the originating session, while resumable
+work lets long external waits survive without keeping that UI open.
 
 Keep CLI/headless paths for scripting, recovery, tests and automation. Preserve `--ai-tui` as a migration alias until removal is clearly safe.
 
@@ -470,10 +483,20 @@ After Module API v2 is proven:
 - generate v2 module skeletons;
 - remove duplicate/experimental validators;
 - make notification transports consume shared domain events;
-- if authenticated mail control is reintroduced, implement it as an interface over shared capabilities/policy/history;
-- future API/webhook interfaces use the same engine.
+- evolve notification/report delivery and authenticated email into the shared
+  Admin Communications direction in [COMMUNICATIONS.md](COMMUNICATIONS.md): one
+  transport/configuration foundation, replay-resistant authenticated inbound
+  requests, and no parallel shell dispatcher;
+- route future remote conversation and administration through shared
+  capabilities, configuration, policy, privilege, verification and history;
+- future API/webhook interfaces use the same engine and may also provide
+  authenticated readiness callbacks for resumable work.
 
-The current repository does not contain the old `core/mailcmd/` implementation; do not plan a migration of code that is not present.
+The current repository does not contain the old `core/mailcmd/` implementation;
+do not plan a migration of code that is not present. Preserve the product intent
+while replacing the old verb/command architecture with the shared external
+interface. Remote privileged CHANGE and remote approval remain explicit Q011 /
+Step 22 design work.
 
 ## Step 23 — Igor 2 Consolidation — FUTURE
 
@@ -481,7 +504,8 @@ Before declaring Igor 2 complete:
 
 - remove obsolete v1 compatibility paths;
 - remove dead hooks/helpers and duplicate validators;
-- remove deprecated configuration paths where migration is complete;
+- remove deprecated configuration paths only after the Configuration Service
+  migration has an explicit source/target cutover and recovery proof;
 - remove duplicate state/execution paths;
 - update primary documentation to the final architecture;
 - verify core is application-agnostic;
