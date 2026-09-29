@@ -1,11 +1,21 @@
 # Step 14 — Automation Engine implementation contract
 
-Status: **accepted design; 14A implemented, 14B–14E pending**. This contract is subordinate
+Status: **accepted design; 14A and 14B implemented, 14C–14E pending**. This contract is subordinate
 to [ARCHITECTURE.md](ARCHITECTURE.md) and D044–D047 in
 [DECISIONS.md](DECISIONS.md). Step 13's [EVENT_BUS.md](EVENT_BUS.md), the Wave E
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) capability path and the
 [EXECUTION.md](EXECUTION.md) ownership and proof rules remain authoritative.
 This design does not mark Step 14 complete.
+
+14B provides an explicit `--automations run-due [Guide|Assist|Executive]`
+tick. It atomically claims each eligible due `once_at` slot in the version-1
+store, then enters `ai_execute_tool` with the frozen target. A pre-dispatch
+claim survives restart as `interrupted_unknown` if dispatch never reaches a
+canonical result. Terminal summaries retain canonical execution, verification
+and outcome statuses without retaining capability output. Guide admits no
+runs. Inspection reports due state, claim state, last attempt and the reason
+for ineligibility without mutation. No periodic or background scheduling is
+installed.
 
 ## Authority and identities
 
@@ -115,9 +125,9 @@ The first real execution slice is `once_at` invoking the unprivileged READ
 normal capability dispatch, the existing observer and verifier, and a
 canonical terminal result. A one-time trigger is smaller than periodic
 because it requires no recurring slot arithmetic; memory refresh has an
-existing real provider and deterministic verification. 14A may enable
-`once_at` intent while reporting `execution_not_installed`; the operator
-sees that a due instance can run after 14B is installed. Other trigger
+existing real provider and deterministic verification. During 14A, enabled
+`once_at` intent reported `execution_not_installed`; with 14B installed,
+inspection reports the actual due and claim state. Other trigger
 proposals remain inspectable but cannot be enabled until their slices
 implement validation, admission and recovery.
 

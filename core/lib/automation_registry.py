@@ -1,4 +1,4 @@
-"""Step 14A configured intent. This module has no execution path."""
+"""Configured automation intent and one-time READ admission state."""
 
 from __future__ import annotations
 
@@ -119,8 +119,32 @@ def _record(value: Any) -> dict[str, Any]:
     retry = _closed(obj["retry_policy"], {"max_attempts"}, {"max_attempts"}, "retry policy")
     if type(retry["max_attempts"]) is not int or retry != {"max_attempts": 1}:
         raise AutomationError("retry policy is unsupported")
-    if obj["schedule_cursor"] is not None or obj["last_attempt"] is not None:
-        raise AutomationError("14A does not accept run state")
+    cursor = obj["schedule_cursor"]
+    attempt = obj["last_attempt"]
+    if (cursor is None) != (attempt is None):
+        raise AutomationError("automation claim state is incomplete")
+    if cursor is not None:
+        if cursor != obj["trigger"]["once_at"]:
+            raise AutomationError("automation cursor is invalid")
+        fields = {"attempted_at", "slot", "claim_id", "operation_id", "execution_status",
+                  "verification_status", "outcome", "reason"}
+        _closed(attempt, fields, fields, "last attempt")
+        _timestamp(attempt["attempted_at"])
+        if (attempt["slot"] != cursor or type(attempt["claim_id"]) is not str or
+                not re.fullmatch(r"[0-9a-f]{32}", attempt["claim_id"]) or
+                type(attempt["outcome"]) is not str or not attempt["outcome"] or
+                len(attempt["outcome"]) > 128):
+            raise AutomationError("last attempt is invalid")
+        if attempt["operation_id"] is not None and (
+                type(attempt["operation_id"]) is not str or len(attempt["operation_id"]) > 128):
+            raise AutomationError("last attempt operation ID is invalid")
+        for key in ("execution_status", "verification_status", "reason"):
+            if attempt[key] is not None and (type(attempt[key]) is not str or len(attempt[key]) > 128):
+                raise AutomationError(f"last attempt {key} is invalid")
+        if attempt["outcome"] == "interrupted_unknown" and (
+                attempt["operation_id"] is not None or attempt["execution_status"] is not None or
+                attempt["verification_status"] is not None):
+            raise AutomationError("unfinished claim has terminal data")
     return obj
 
 
@@ -273,7 +297,11 @@ class Registry:
                 if not cfg:
                     raise AutomationError("edit requires trigger or target")
                 if "trigger" in cfg:
-                    row["trigger"] = _trigger(cfg["trigger"])
+                    trigger = _trigger(cfg["trigger"])
+                    if trigger != row["trigger"]:
+                        row["schedule_cursor"] = None
+                        row["last_attempt"] = None
+                    row["trigger"] = trigger
                 if "target" in cfg:
                     if row["source"]["kind"] == "module":
                         raise AutomationError("copied proposal target cannot be edited")
@@ -323,38 +351,102 @@ class Registry:
             return "source_proposal_changed"
         return None
 
-    def inspect(self, ident: str | None = None, *, mode: str = "Assist") -> dict[str, Any]:
+    def _eligibility_reason(self, row: dict[str, Any], mode: str, now: datetime) -> str | None:
+        mode = mode.capitalize()
+        if not row["enabled"]:
+            return "disabled"
+        if row["schedule_cursor"] is not None:
+            return "already_claimed"
+        source_reason = self._source_reason(row)
+        if source_reason:
+            return source_reason
+        try:
+            _, target_reason = self._target(row["target"])
+        except AutomationError:
+            return "target_inputs_invalid"
+        if target_reason:
+            return target_reason
+        selected = [r for r in self.capabilities if r["id"] == row["target"]["capability_id"] and
+                    r["availability"] == "active" and
+                    ("provider" not in row["target"] or r["provider"] == row["target"]["provider"])]
+        descriptor = selected[0]["descriptor"]
+        if descriptor["safety"]["tier"] != "READ" or descriptor["privilege"] != "none":
+            return "target_policy_incompatible"
+        if mode not in {"Assist", "Executive"}:
+            return "guide_mode" if mode == "Guide" else "mode_unsupported"
+        if datetime.fromisoformat(row["trigger"]["once_at"].replace("Z", "+00:00")) > now:
+            return "not_due"
+        return None
+
+    def claim_due(self, mode: str, now: datetime) -> dict[str, Any] | None:
+        """Atomically consume one due slot before its canonical invocation."""
+        if now.tzinfo != timezone.utc:
+            raise AutomationError("claim time must be UTC")
+        mode = mode.capitalize()
+        if mode not in {"Assist", "Executive"}:
+            return None
+        with self._mutating() as data:
+            for row in data["instances"]:
+                if self._eligibility_reason(row, mode, now) is not None:
+                    continue
+                slot = row["trigger"]["once_at"]
+                claim_id = uuid.uuid4().hex
+                row["schedule_cursor"] = slot
+                row["last_attempt"] = {
+                    "attempted_at": now.isoformat().replace("+00:00", "Z"),
+                    "slot": slot, "claim_id": claim_id, "operation_id": None,
+                    "execution_status": None, "verification_status": None,
+                    "outcome": "interrupted_unknown", "reason": "claimed_before_dispatch",
+                }
+                return {"id": row["id"], "claim_id": claim_id, "target": row["target"]}
+        return None
+
+    def finish(self, ident: str, claim_id: str, result: Any) -> dict[str, Any]:
+        """Keep only canonical status fields; an absent result remains unknown."""
+        with self._mutating() as data:
+            row = next((r for r in data["instances"] if r["id"] == ident), None)
+            if row is None or row["last_attempt"] is None or row["last_attempt"]["claim_id"] != claim_id:
+                raise AutomationError("claim is unavailable")
+            attempt = row["last_attempt"]
+            if attempt["outcome"] != "interrupted_unknown":
+                raise AutomationError("claim already finished")
+            if type(result) is dict and all(type(result.get(key)) is str for key in (
+                    "operation_id", "execution_status", "verification_status", "outcome")):
+                if (result.get("capability_id") != row["target"]["capability_id"] or
+                        ("provider" in row["target"] and result.get("provider") != row["target"]["provider"])):
+                    raise AutomationError("capability result does not match claim")
+                attempt.update(operation_id=result["operation_id"][:128],
+                               execution_status=result["execution_status"][:128],
+                               verification_status=result["verification_status"][:128],
+                               outcome=result["outcome"][:128], reason=result["outcome"][:128])
+            else:
+                attempt["reason"] = "canonical_result_unavailable"
+            _record(row)
+            return attempt
+
+    def inspect(self, ident: str | None = None, *, mode: str = "Assist",
+                now: datetime | None = None) -> dict[str, Any]:
         data = self._load()
+        now = now or datetime.now(timezone.utc)
         items = []
         for row in data["instances"]:
             if ident and row["id"] != ident:
                 continue
-            source_reason = self._source_reason(row)
-            try:
-                _, target_reason = self._target(row["target"])
-            except AutomationError:
-                target_reason = "target_inputs_invalid"
-            if target_reason is None and row["enabled"]:
-                selected = [r for r in self.capabilities if r["id"] == row["target"]["capability_id"] and
-                            r["availability"] == "active" and
-                            ("provider" not in row["target"] or r["provider"] == row["target"]["provider"])]
-                if len(selected) == 1 and (selected[0]["descriptor"]["safety"]["tier"] != "READ" or
-                                           selected[0]["descriptor"]["privilege"] != "none"):
-                    target_reason = "target_policy_incompatible"
-            if not row["enabled"]:
-                state, reason = "disabled", "disabled"
-            elif source_reason or target_reason:
-                state, reason = "unavailable", source_reason or target_reason
-            elif mode == "Guide":
-                state, reason = "unavailable", "guide_mode"
-            else:
-                state, reason = "unavailable", "execution_not_installed"
+            reason = self._eligibility_reason(row, mode, now)
+            state = ("disabled" if reason == "disabled" else
+                     ("claimed" if row["last_attempt"]["outcome"] == "interrupted_unknown" else "completed")
+                     if reason == "already_claimed" else
+                     "available" if reason is None or reason == "not_due" else "unavailable")
             items.append({**row, "state": state, "availability_reason": reason,
-                          "next_due_at": row["trigger"]["once_at"], "in_flight": False})
+                          "due": reason is None, "claim_state": (
+                              "unclaimed" if row["last_attempt"] is None else
+                              "interrupted_unknown" if row["last_attempt"]["outcome"] == "interrupted_unknown" else
+                              "terminal"),
+                          "next_due_at": row["trigger"]["once_at"] if row["schedule_cursor"] is None else None,
+                          "in_flight": False})
         if ident and not items:
             raise AutomationError("automation not found")
-        return {"schema_version": VERSION, "store": str(self.path), "instances": items,
-                "diagnostic": "14B may admit due enabled instances after installation"}
+        return {"schema_version": VERSION, "store": str(self.path), "instances": items}
 
     def list_proposals(self) -> list[dict[str, Any]]:
         return [{**p, "proposal_digest": _digest(p)} for p in self.proposals.values()]
@@ -362,10 +454,11 @@ class Registry:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset"])
+    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset", "claim", "finish"])
     parser.add_argument("argument", nargs="?")
     parser.add_argument("configuration", nargs="?")
     parser.add_argument("--mode", default="Assist")
+    parser.add_argument("--now")
     args = parser.parse_args()
     try:
         context = json.load(sys.stdin)
@@ -373,9 +466,16 @@ def main() -> int:
         if args.action == "proposals":
             result = registry.list_proposals()
         elif args.action in {"list", "inspect"}:
-            result = registry.inspect(args.argument if args.action == "inspect" else None, mode=args.mode)
+            result = registry.inspect(args.argument if args.action == "inspect" else None, mode=args.mode,
+                                      now=datetime.fromisoformat(args.now.replace("Z", "+00:00")) if args.now else None)
         elif args.action == "create":
             result = registry.create(json.loads(args.argument or "{}"), "operator")
+        elif args.action == "claim":
+            result = registry.claim_due(args.mode, datetime.fromisoformat(args.now.replace("Z", "+00:00"))
+                                        if args.now else datetime.now(timezone.utc))
+        elif args.action == "finish":
+            completion = json.loads(args.configuration or "{}")
+            result = registry.finish(args.argument or "", completion["claim_id"], completion.get("result"))
         else:
             result = registry.mutate(args.action, args.argument or "", "operator",
                                      json.loads(args.configuration or "{}") if args.action == "edit" else None)

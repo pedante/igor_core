@@ -1,5 +1,6 @@
 """Focused Step 14A contract and restart proofs, using disposable state."""
 
+import concurrent.futures
 import copy
 import json
 import os
@@ -7,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +60,7 @@ class AutomationRegistryTests(unittest.TestCase):
         fresh = Registry(self.root, self.capabilities, self.proposals)
         inspected = fresh.inspect(row["id"])["instances"][0]
         self.assertTrue(inspected["enabled"])
-        self.assertEqual(inspected["availability_reason"], "execution_not_installed")
+        self.assertEqual(inspected["availability_reason"], "not_due")
         self.assertIsNone(inspected["last_attempt"])
         self.assertIsNone(inspected["schedule_cursor"])
         before = path.read_bytes()
@@ -76,7 +78,7 @@ class AutomationRegistryTests(unittest.TestCase):
         self.assertEqual(state["availability_reason"], "source_proposal_inactive")
         with self.assertRaises(AutomationError):
             disabled.mutate("enable", row["id"], "operator")
-        self.assertEqual(Registry(self.root, self.capabilities, self.proposals).inspect(row["id"])["instances"][0]["availability_reason"], "execution_not_installed")
+        self.assertEqual(Registry(self.root, self.capabilities, self.proposals).inspect(row["id"])["instances"][0]["availability_reason"], "not_due")
         changed = copy.deepcopy(self.proposals)
         changed[0]["module_version"] = "3.0.0"
         self.assertEqual(Registry(self.root, self.capabilities, changed).inspect(row["id"])["instances"][0]["availability_reason"], "source_proposal_changed")
@@ -168,13 +170,190 @@ class AutomationRegistryTests(unittest.TestCase):
         ident = created["id"]
         self.assertEqual(cli("inspect", ident)["instances"][0]["availability_reason"], "disabled")
         cli("enable", ident)
-        self.assertEqual(cli("inspect", ident)["instances"][0]["availability_reason"], "execution_not_installed")
+        self.assertTrue(cli("inspect", ident)["instances"][0]["enabled"])
         cli("disable", ident)
         self.assertEqual(cli("inspect", ident)["instances"][0]["state"], "disabled")
         self.assertFalse((self.root / "runtime").exists())
         self.assertEqual(json.loads(self.registry.path.read_text())["instances"][0]["last_attempt"], None)
         cli("delete", ident)
         self.assertEqual(cli("list")["instances"], [])
+
+    def test_once_due_mode_source_and_read_only_inspection(self):
+        row = self.create()
+        now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        self.assertIsNone(self.registry.claim_due("Assist", now))
+        self.registry.mutate("enable", row["id"], "operator")
+        self.assertIsNone(self.registry.claim_due("Guide", now))
+        self.assertIsNone(self.registry.claim_due("Assist", datetime(2029, 12, 31, tzinfo=timezone.utc)))
+        before = self.registry.path.read_bytes()
+        inspected = self.registry.inspect(row["id"], mode="Assist", now=now)["instances"][0]
+        self.assertTrue(inspected["due"])
+        self.assertEqual(self.registry.path.read_bytes(), before)
+        self.assertEqual(self.registry.inspect(row["id"], mode="Guide", now=now)["instances"][0]["availability_reason"], "guide_mode")
+        self.assertIsNone(Registry(self.root, self.capabilities, []).claim_due("Assist", now))
+        changed = copy.deepcopy(self.proposals)
+        changed[0]["module_version"] = "3.0.0"
+        self.assertIsNone(Registry(self.root, self.capabilities, changed).claim_due("Assist", now))
+        self.assertEqual(self.registry.path.read_bytes(), before)
+
+    def test_atomic_claim_crash_restart_terminal_and_result_status(self):
+        row = self.create()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 2, tzinfo=timezone.utc)
+        def claim():
+            return Registry(self.root, self.capabilities, self.proposals).claim_due("Executive", now)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            claims = list(pool.map(lambda _: claim(), range(4)))
+        claimed = [item for item in claims if item is not None]
+        self.assertEqual(len(claimed), 1)
+        fresh = Registry(self.root, self.capabilities, self.proposals)
+        state = fresh.inspect(row["id"], now=now)["instances"][0]
+        self.assertEqual(state["claim_state"], "interrupted_unknown")
+        self.assertEqual(state["last_attempt"]["outcome"], "interrupted_unknown")
+        self.assertIsNone(fresh.claim_due("Assist", now))
+        result = {"operation_id": "op-test", "capability_id": "system.host.memory.refresh",
+                  "provider": "system", "execution_status": "succeeded", "verification_status": "failed",
+                  "outcome": "unverified_result"}
+        attempt = fresh.finish(row["id"], claimed[0]["claim_id"], result)
+        self.assertEqual((attempt["execution_status"], attempt["verification_status"], attempt["outcome"]),
+                         ("succeeded", "failed", "unverified_result"))
+        with self.assertRaisesRegex(AutomationError, "already finished"):
+            fresh.finish(row["id"], claimed[0]["claim_id"], result)
+        self.assertEqual(fresh.inspect(row["id"], now=now)["instances"][0]["claim_state"], "terminal")
+        self.assertIsNone(fresh.claim_due("Assist", now))
+
+    def test_target_policy_and_resolution_rechecked_at_admission(self):
+        row = self.create()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 2, tzinfo=timezone.utc)
+        for tier, privilege in (("CHANGE", "none"), ("DESTROY", "none"), ("READ", "required")):
+            changed = copy.deepcopy(self.capabilities)
+            changed[0]["descriptor"]["safety"]["tier"] = tier
+            changed[0]["descriptor"]["privilege"] = privilege
+            registry = Registry(self.root, changed, self.proposals)
+            self.assertEqual(registry.inspect(row["id"], now=now)["instances"][0]["availability_reason"],
+                             "target_policy_incompatible")
+            self.assertIsNone(registry.claim_due("Assist", now))
+        unavailable = Registry(self.root, [], self.proposals)
+        self.assertEqual(unavailable.inspect(row["id"], now=now)["instances"][0]["availability_reason"],
+                         "target_unavailable")
+        self.assertIsNone(unavailable.claim_due("Assist", now))
+        ambiguous = Registry(self.root, self.capabilities * 2, self.proposals)
+        self.assertEqual(ambiguous.inspect(row["id"], now=now)["instances"][0]["availability_reason"],
+                         "target_ambiguous")
+        self.assertIsNone(ambiguous.claim_due("Assist", now))
+        self.assertIsNone(self.registry.inspect(row["id"], now=now)["instances"][0]["last_attempt"])
+
+    def test_real_one_time_memory_dispatch_modes_and_restart(self):
+        due = {**TRIGGER, "once_at": "2020-01-01T00:00:00Z"}
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        def cli(*args):
+            return subprocess.run(["bash", "igor.sh", "--automations", *args], cwd=ROOT,
+                                  env=env, capture_output=True, text=True, check=True)
+        created = json.loads(cli("create", json.dumps({"owner": "user", "proposal_id": "system.host.memory.once",
+                                                     "trigger": due})).stdout)
+        ident = created["id"]
+        cli("enable", ident)
+        self.assertEqual(json.loads(cli("run-due", "Guide").stdout)["admitted"], 0)
+        self.assertIsNone(self.registry.inspect(ident)["instances"][0]["last_attempt"])
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/config_loader.sh
+            source core/lib/module_loader.sh
+            source core/lib/automation.sh
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            source core/ai/safety.sh
+            igor_automation_run_due Assist
+            igor_domain_event_recent '{"event_type":"capability.completed"}'
+        '''
+        dispatched = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                                    capture_output=True, text=True, check=True)
+        lines = dispatched.stdout.strip().splitlines()
+        self.assertEqual(json.loads(lines[0])["admitted"], 1)
+        events = json.loads(lines[1])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["event_type"], "capability.completed")
+        state = self.registry.inspect(ident)["instances"][0]
+        self.assertEqual((state["last_attempt"]["execution_status"],
+                          state["last_attempt"]["verification_status"], state["last_attempt"]["outcome"]),
+                         ("succeeded", "passed", "success"))
+        self.assertTrue(state["last_attempt"]["operation_id"].startswith("op-"))
+        self.assertEqual(events[0]["correlation_id"], state["last_attempt"]["operation_id"])
+        self.assertEqual(json.loads(cli("run-due", "Assist").stdout)["admitted"], 0)
+        self.assertEqual(json.loads(cli("run-due", "Executive").stdout)["admitted"], 0)
+        # A separate Executive instance proves its automatic READ policy.
+        second = json.loads(cli("create", json.dumps({"owner": "user", "proposal_id": "system.host.memory.once",
+                                                    "trigger": due})).stdout)
+        cli("enable", second["id"])
+        self.assertEqual(json.loads(cli("run-due", "Executive").stdout)["admitted"], 1)
+        self.assertEqual(self.registry.inspect(second["id"])["instances"][0]["last_attempt"]["outcome"], "success")
+
+    def test_fixed_inputs_reach_dispatch_request_unchanged(self):
+        capability = copy.deepcopy(self.capabilities[0])
+        capability["descriptor"]["inputs"] = {
+            "properties": {"sample": {"type": "string", "minLength": 1, "maxLength": 80}},
+            "required": ["sample"], "additionalProperties": False,
+        }
+        inputs = {"sample": "literal input"}
+        registry = Registry(self.root, [capability], [])
+        row = registry.create({"owner": "user", "trigger": {**TRIGGER, "once_at": "2020-01-01T00:00:00Z"},
+                               "target": {"capability_id": "system.host.memory.refresh", "provider": "system",
+                                          "inputs": inputs}}, "operator")
+        registry.mutate("enable", row["id"], "operator")
+        capture = self.root / "request.json"
+        # An already loaded dispatcher is the normal in-session integration
+        # boundary; this stub observes only the request handed to it.
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/automation.sh
+            igor_capability_list() { cat "$CAPABILITIES_FILE"; }
+            igor_automation_proposals() { :; }
+            ai_execute_tool() {
+                printf '%s' "$1" > "$CAPTURE_FILE"
+                IGOR_CAPABILITY_LAST_RESULT='{"operation_id":"op-input","capability_id":"system.host.memory.refresh","provider":"system","execution_status":"succeeded","verification_status":"passed","outcome":"success"}'
+            }
+            ai_get_mode() { printf 'assist\\n'; }
+            igor_automation_run_due Assist
+        '''
+        capability_file = self.root / "capability.json"
+        capability_file.write_text(json.dumps([capability]))
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPTURE_FILE": str(capture),
+               "CAPABILITIES_FILE": str(capability_file)}
+        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                             capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(run.stdout)["admitted"], 1)
+        request = json.loads(capture.read_text())
+        self.assertEqual(request, {"tool": "run_capability", "id": "system.host.memory.refresh",
+                                   "provider": "system", "inputs": inputs})
+        self.assertEqual(registry.inspect(row["id"])["instances"][0]["last_attempt"]["outcome"], "success")
+
+    def test_canonical_precondition_failure_is_recorded_without_execution(self):
+        row = self.registry.create({"owner": "user", "trigger": {**TRIGGER, "once_at": "2020-01-01T00:00:00Z"},
+                                    "target": {"capability_id": "system.host.memory.refresh", "provider": "system",
+                                               "inputs": {}}}, "operator")
+        self.registry.mutate("enable", row["id"], "operator")
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/config_loader.sh
+            source core/lib/module_loader.sh
+            source core/lib/automation.sh
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            source core/ai/safety.sh
+            _igor_capability_preconditions() { return 1; }
+            igor_automation_run_due Assist
+        '''
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                       capture_output=True, text=True, check=False)
+        attempt = self.registry.inspect(row["id"])["instances"][0]["last_attempt"]
+        self.assertEqual(attempt["outcome"], "precondition_failed")
+        self.assertEqual(attempt["execution_status"], "not_executed")
+        self.assertEqual(attempt["verification_status"], "not_applicable")
+        self.assertIsNone(self.registry.claim_due("Assist", datetime.now(timezone.utc)))
 
 
 if __name__ == "__main__":

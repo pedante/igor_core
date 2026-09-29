@@ -1,10 +1,10 @@
 # Igor 2 migration status
 
-Last updated: 2026-09-28
+Last updated: 2026-09-29
 
-## Step 14 Automation Engine — 14A registry complete
+## Step 14 Automation Engine — 14A registry and 14B one-time READ complete
 
-**14A is complete; 14B one-time READ execution is next and unblocked. Step 14
+**14A and 14B are complete; 14C periodic READ is next and unblocked. Step 14
 overall remains incomplete.** The authoritative
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md) contract and D044–D047 govern the
 implementation. Active v2 module declarations are data-only proposals. The
@@ -14,7 +14,31 @@ bundled `system.host.memory.once` proposal targets
 AI text, events and module activation cannot call this authority. CHANGE,
 DESTROY, privileged and secret-reference targets cannot be enabled.
 
-**Contract and vertical slice:** `core/lib/automation_registry.py` strictly
+**14B execution and recovery:** `--automations run-due` evaluates one-time UTC
+triggers in Guide, Assist or Executive mode. Guide admits none. An exclusive
+store lock and durable cursor claim precede each canonical `ai_execute_tool`
+READ invocation. Assist and Executive use the existing provider, input,
+precondition, approval, observer and verification path. The private store
+retains only the slot, claim, operation ID and bounded status summary. A
+crash after claim remains `interrupted_unknown` across restart; a terminal
+claim cannot run again on another tick. Inspection shows due, claim and
+terminal state without execution or mutation.
+
+**14B proof:** an isolated enabled `system.host.memory.refresh` instance was
+claimed and dispatched once in Assist, producing canonical `succeeded` /
+`passed` / `success` and the existing `capability.completed` event with the
+same operation ID. A second tick admitted zero runs; Executive independently
+verified the same READ path, while Guide admitted none. Focused tests cover
+future/disabled/inactive intent, CHANGE/DESTROY/privileged and ambiguous targets,
+atomic concurrency, crash/restart, fixed inputs, canonical precondition failure,
+unverified outcome and read-only inspection. Fourteen focused tests passed.
+Full `bash tests/run_all.sh` passed all five groups with no failures/skips;
+full Python pytest passed 268 tests and 108 subtests. Changed-file Ruff,
+syntax/compile and `git diff --check` passed. ShellCheck reported only two
+pre-existing warnings on untouched `igor.sh` lines. No scheduler service,
+periodic, event or condition execution exists in 14B.
+
+**14A contract and vertical slice at acceptance:** `core/lib/automation_registry.py` strictly
 validates closed version-1 records, UTC `once_at`, fixed capability inputs and
 the `read_unattended`/one-attempt policies. The CLI created the system proposal
 disabled, explicitly enabled it, inspected it from a fresh Igor process,
@@ -23,7 +47,7 @@ invoked; enabled intent reports `execution_not_installed` and no attempt or
 cursor exists. The loader's owner-aware contribution index supplies proposals;
 the existing capability index supplies target metadata.
 
-**Inspection and recovery:** `--automations proposals|list|inspect ID` returns
+**14A inspection and recovery:** `--automations proposals|list|inspect ID` returns
 source/provenance, enabled state, exact availability reason, trigger, target,
 policy, next due time and empty run state without side effects. Disabling a
 source module retains enabled user intent but reports
@@ -35,7 +59,7 @@ intact. Explicit `reset all` retains a recovery copy before creating a new
 empty version-1 store; selected reset/delete removes only that instance.
 There is no prior automation-store version to migrate and no dual source.
 
-**Regression:** eight focused automation tests pass. `bash tests/run_all.sh`
+**14A regression at its acceptance:** eight focused automation tests passed. `bash tests/run_all.sh`
 passed all five groups (46 Bash core, 46 Python render, 305 core BATS, 130
 module BATS, 40 integration BATS); full Python pytest passed 260 tests and
 100 subtests. Changed-file Bash syntax, Python compilation, Ruff,
@@ -46,7 +70,8 @@ in 14A. Q003, Q007, Q009 and Q011 retain their later owners.
 ## Step 13 Domain Event Bus implementation
 
 **Step 13 is complete at the accepted [EVENT_BUS.md](EVENT_BUS.md) boundary;
-Step 14 execution is not implemented.** `core/lib/domain_event.py` validates
+Step 14B canonical execution emits its existing `capability.completed` event.**
+`core/lib/domain_event.py` validates
 the version-1 envelope and closed payload schemas. The owner-aware v2 index
 admits active `<owner>.<domain>.<occurrence>` declarations. The module handler
 API validates explicit requests and rechecks active ownership at publication.
@@ -78,7 +103,7 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 14 automation execution, Step 15 durable history and later
+Step 14C–14E automation execution, Step 15 durable history and later
 baselines/healing remain deferred. Q008 is resolved by D044; Q003, Q007,
 Q009 and Q011 retain their assigned decisions.
 

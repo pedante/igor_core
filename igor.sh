@@ -123,6 +123,10 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             igor_load_all_modules >/dev/null
             igor_load_capabilities >/dev/null
             case "${2:-list}" in
+                run-due)
+                    [ "$#" -le 3 ] || exit 2
+                    source "${IGOR_DIR}/core/ai/safety.sh"
+                    igor_automation_run_due "${3:-}" ;;
                 proposals|list) [ "$#" -eq 2 ] || [ "$#" -eq 1 ] || exit 2
                     igor_automation_cli "${2:-list}" ;;
                 inspect|create|enable|disable|delete|reset)
@@ -131,7 +135,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
                 edit)
                     [ "$#" -eq 4 ] || { printf 'Usage: bash igor.sh --automations edit ID CONFIG_JSON\n' >&2; exit 2; }
                     igor_automation_cli edit "$3" "$4" ;;
-                *) printf 'Usage: bash igor.sh --automations [proposals|list|inspect ID|create CONFIG_JSON|enable ID|disable ID|edit ID CONFIG_JSON|delete ID|reset ID]\n' >&2; exit 2 ;;
+                *) printf 'Usage: bash igor.sh --automations [proposals|list|inspect ID|create CONFIG_JSON|enable ID|disable ID|edit ID CONFIG_JSON|delete ID|reset ID|run-due [Guide|Assist|Executive]]\n' >&2; exit 2 ;;
             esac
             exit $?
             ;;

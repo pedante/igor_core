@@ -1,5 +1,5 @@
 #!/bin/bash
-# Read-only index bridge and explicit operator CLI for Step 14A.
+# Index bridge, explicit operator CLI, and one-time READ tick.
 
 igor_automation_proposals() {
     local _key _owner _record _version
@@ -28,4 +28,39 @@ igor_automation_cli() {
             printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" edit "$_argument" "$_config" --mode "${IGOR_AI_MODE:-Assist}" ;;
         *) return 2 ;;
     esac
+}
+
+igor_automation_run_due() {
+    local _mode _context _claim _request _completion _result _count=0 _rc=0
+    case "${1:-$(ai_get_mode)}" in
+        assist|Assist) _mode=Assist ;;
+        executive|Executive) _mode=Executive ;;
+        guide|Guide) _mode=Guide ;;
+        *) printf 'automation: unsupported mode\n' >&2; return 2 ;;
+    esac
+    if [ "${ai_mode+x}" = x ] && [ "$(ai_get_mode)" = guide ] && [ "$_mode" != Guide ]; then
+        printf 'automation: Guide session cannot auto-run\n' >&2
+        return 2
+    fi
+    [ "$_mode" != Guide ] || { printf '{"admitted":0}\n'; return 0; }
+    _context="$(python3 -c 'import json,sys; print(json.dumps({"data_dir":sys.argv[1],"capabilities":json.loads(sys.argv[2]),"proposals":[json.loads(line) for line in sys.argv[3].splitlines() if line]},separators=(",", ":")))' \
+        "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$(igor_capability_list)" "$(igor_automation_proposals)")" || return 1
+    # Keep the normal policy and capability runtime in the same process so
+    # the canonical result and Step 13 publication remain authoritative.
+    declare -f ai_execute_tool >/dev/null 2>&1 || source "${IGOR_DIR}/core/ai/safety.sh" || return 1
+    ai_mode="${_mode,,}"
+    while :; do
+        _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode")" || return 1
+        [ "$_claim" != null ] || break
+        _request="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); t=c["target"]; r={"tool":"run_capability","id":t["capability_id"],"inputs":t["inputs"]}; r.update({"provider":t["provider"]} if "provider" in t else {}); print(json.dumps(r,separators=(",", ":")))' "$_claim")" || return 1
+        IGOR_CAPABILITY_LAST_RESULT=""
+        ai_execute_tool "$_request" >/dev/null || _rc=1
+        _result="${IGOR_CAPABILITY_LAST_RESULT:-null}"
+        _completion="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); print(json.dumps({"claim_id":c["claim_id"],"result":json.loads(sys.argv[2])},separators=(",", ":")))' "$_claim" "$_result")" || return 1
+        printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" finish \
+            "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$_claim")" "$_completion" >/dev/null || return 1
+        ((_count+=1))
+    done
+    printf '{"admitted":%d}\n' "$_count"
+    return "$_rc"
 }
