@@ -17,6 +17,9 @@ For most Igor 2 work:
    - `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
    - `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.
    - `AUTOMATION_ENGINE.md` — accepted Step 14 Automation Engine contract and bounded implementation slices; runtime pending.
+   - `CONFIGURATION.md` — design proposal for an Igor-owned configuration model, semantic settings, configuration surfaces, relationships, scopes and backend abstraction.
+   - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
+   - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
    - `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
