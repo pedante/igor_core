@@ -22,6 +22,11 @@ PERIODIC = {"kind": "periodic", "schema_version": 1,
             "anchor": "2030-01-01T00:00:00Z", "interval_seconds": 60}
 EVENT = {"kind": "event", "schema_version": 1, "event_type": "capability.completed",
          "owner": "system", "object_id": "host:local", "min_interval_seconds": 0}
+CONDITION = {"kind": "condition", "schema_version": 1,
+             "anchor": "2030-01-01T00:00:00Z", "interval_seconds": 60,
+             "predicate": {"kind": "fact_equals", "object_id": "host:local",
+                           "property": "memory.available_bytes", "state_class": "observed",
+                           "value_type": "integer", "equals": 100}}
 
 
 class AutomationRegistryTests(unittest.TestCase):
@@ -54,6 +59,18 @@ class AutomationRegistryTests(unittest.TestCase):
                                      "target": {"capability_id": "system.host.memory.refresh",
                                                 "provider": "system", "inputs": {}}}, "operator")
 
+    def create_condition(self, trigger=None):
+        return self.registry.create({"owner": "user", "trigger": trigger or copy.deepcopy(CONDITION),
+                                     "target": {"capability_id": "system.host.memory.refresh",
+                                                "provider": "system", "inputs": {}}}, "operator")
+
+    @staticmethod
+    def fact(value=100, *, availability="known", value_type="integer", owner="system"):
+        return {"object_id": "host:local", "property": "memory.available_bytes",
+                "state_class": "observed", "value": value, "value_type": value_type,
+                "owner": owner, "availability": availability,
+                "expires_at": "2030-01-01T00:10:00Z"}
+
     @staticmethod
     def event(**fields):
         value = {"event_id": "00000000-0000-4000-8000-000000000001",
@@ -77,6 +94,170 @@ class AutomationRegistryTests(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertEqual(self.registry.match_event(event, "Assist", now), [])
         self.assertEqual(self.registry.match_event(self.event(), "Guide", now), [])
+
+    def test_condition_fact_equals_requires_exact_fresh_typed_known_fact(self):
+        row = self.create_condition()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 1, 0, 1, tzinfo=timezone.utc)
+        self.assertIsNotNone(self.registry.claim_due("Assist", now, facts=[self.fact()]))
+
+        for fact in (self.fact(101), self.fact(availability="unknown"),
+                     self.fact(availability="stale"), self.fact(availability="error"),
+                     {**self.fact(), "expires_at": "2030-01-01T00:01:00Z"},
+                     self.fact(value="100", value_type="string")):
+            with self.subTest(fact=fact):
+                negative = self.create_condition()
+                self.registry.mutate("enable", negative["id"], "operator")
+                self.assertIsNone(self.registry.claim_due("Assist", now, facts=[fact]))
+
+    def test_condition_schema_rejects_arbitrary_predicates_and_wrong_types(self):
+        for predicate in (
+            {"kind": "equals", "object_id": "host:local", "property": "memory.available_bytes",
+             "state_class": "observed", "value_type": "integer", "equals": 100},
+            {**CONDITION["predicate"], "equals": "100"},
+            {**CONDITION["predicate"], "value_type": "number", "equals": "100"},
+            {**CONDITION["predicate"], "extra": True},
+        ):
+            trigger = {**CONDITION, "predicate": predicate}
+            with self.subTest(predicate=predicate), self.assertRaises(AutomationError):
+                self.create_condition(trigger)
+
+    def test_condition_unknown_without_facts_does_not_refresh_or_dispatch(self):
+        row = self.create_condition()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 1, 0, 1, tzinfo=timezone.utc)
+        self.assertIsNone(self.registry.claim_due("Assist", now))
+        state = self.registry.inspect(row["id"], now=now)["instances"][0]
+        self.assertIsNone(state["last_attempt"])
+        capabilities = self.root / "capabilities.json"
+        capabilities.write_text(json.dumps(self.capabilities))
+        marker = self.root / "observer_or_dispatch_called"
+        script = r'''
+            export IGOR_DIR="$PWD"
+            igor_capability_list() { cat "$CAPABILITIES_FILE"; }
+            igor_automation_proposals() { :; }
+            igor_model_list() { printf '{"facts":[]}\n'; }
+            igor_observer_refresh() { touch "$MARKER"; }
+            ai_execute_tool() { touch "$MARKER"; }
+            ai_get_mode() { printf 'assist\n'; }
+            date() { printf '2030-01-01T00:01:00Z\n'; }
+            source core/lib/automation.sh
+            igor_automation_run_due Assist
+        '''
+        run = subprocess.run(["bash", "-c", script], cwd=ROOT,
+                             env={**os.environ, "IGOR_DATA_DIR": str(self.root),
+                                  "CAPABILITIES_FILE": str(capabilities), "MARKER": str(marker)},
+                             capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(run.stdout), {"admitted": 0})
+        self.assertFalse(marker.exists())
+
+    def test_condition_from_inactive_module_owner_cannot_be_admitted(self):
+        row = self.registry.create({"owner": "user", "proposal_id": "system.host.memory.once",
+                                    "trigger": copy.deepcopy(TRIGGER)}, "operator")
+        data = json.loads(self.registry.path.read_text())
+        data["instances"][0]["trigger"] = copy.deepcopy(CONDITION)
+        self.registry.path.write_text(json.dumps(data))
+        self.registry.mutate("enable", row["id"], "operator")
+        inactive = Registry(self.root, self.capabilities, [])
+        now = datetime(2030, 1, 1, 0, 1, tzinfo=timezone.utc)
+        self.assertIsNone(inactive.claim_due("Assist", now, facts=[self.fact()]))
+        state = inactive.inspect(row["id"], now=now)["instances"][0]
+        self.assertEqual(state["availability_reason"], "source_proposal_inactive")
+
+    def test_condition_claim_is_at_most_once_across_restart_and_overlap(self):
+        row = self.create_condition()
+        self.registry.mutate("enable", row["id"], "operator")
+        now = datetime(2030, 1, 1, 0, 1, tzinfo=timezone.utc)
+
+        def claim():
+            return Registry(self.root, self.capabilities, self.proposals).claim_due(
+                "Assist", now, facts=[self.fact()])
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            claims = list(pool.map(lambda _: claim(), range(4)))
+        claimed = [item for item in claims if item]
+        self.assertEqual(len(claimed), 1)
+        fresh = Registry(self.root, self.capabilities, self.proposals)
+        self.assertIsNone(fresh.claim_due("Assist", now, facts=[self.fact()]))
+        self.assertEqual(fresh.inspect(row["id"], now=now)["instances"][0]["claim_state"],
+                         "interrupted_unknown")
+
+    def test_condition_match_enters_canonical_read_dispatch(self):
+        row = self.create_condition()
+        self.registry.mutate("enable", row["id"], "operator")
+        capabilities = self.root / "capabilities.json"
+        capabilities.write_text(json.dumps(self.capabilities))
+        marker = self.root / "dispatch.json"
+        facts = json.dumps({"facts": [self.fact()]}, separators=(",", ":"))
+        script = r'''
+            export IGOR_DIR="$PWD"
+            igor_capability_list() { cat "$CAPABILITIES_FILE"; }
+            igor_automation_proposals() { :; }
+            igor_model_list() { printf '%s\n' "$MODEL_FACTS"; }
+            ai_get_mode() { printf 'assist\n'; }
+            date() { printf '2030-01-01T00:01:00Z\n'; }
+            ai_execute_tool() {
+                printf '%s\n' "${1}" > "$DISPATCH_MARKER"
+                IGOR_CAPABILITY_LAST_RESULT='{"operation_id":"op-condition","capability_id":"system.host.memory.refresh","provider":"system","execution_status":"succeeded","verification_status":"passed","outcome":"success"}'
+            }
+            source core/lib/automation.sh
+            igor_automation_run_due Assist
+        '''
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root),
+               "CAPABILITIES_FILE": str(capabilities), "DISPATCH_MARKER": str(marker),
+               "MODEL_FACTS": facts}
+        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                             capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(run.stdout), {"admitted": 1})
+        self.assertEqual(json.loads(marker.read_text()),
+                         {"tool": "run_capability", "id": "system.host.memory.refresh",
+                          "provider": "system", "inputs": {}})
+        self.assertEqual(self.registry.inspect(row["id"])["instances"][0]["last_attempt"]["outcome"],
+                         "success")
+
+    def test_real_condition_memory_read_uses_existing_observation_and_dispatch(self):
+        trigger = {**CONDITION, "anchor": "2020-01-01T00:00:00Z"}
+        row = self.create_condition(trigger)
+        self.registry.mutate("enable", row["id"], "operator")
+        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        script = '''
+            export IGOR_DIR="$PWD"
+            source core/lib/config_loader.sh
+            source core/lib/module_loader.sh
+            source core/lib/automation.sh
+            igor_load_config >/dev/null
+            igor_load_all_modules >/dev/null
+            igor_load_capabilities >/dev/null
+            source core/ai/safety.sh
+            igor_observer_refresh host.memory host:local >/dev/null
+            _facts="$(igor_model_list)"
+            python3 - "$IGOR_DATA_DIR/automation/registry.v1.json" "$_facts" <<'PY'
+import json
+import sys
+path, payload = sys.argv[1:]
+data = json.load(open(path))
+fact = next(item for item in json.loads(payload)["facts"]
+            if item["property"] == "memory.available_bytes")
+predicate = data["instances"][0]["trigger"]["predicate"]
+predicate["value_type"] = fact["value_type"]
+predicate["equals"] = fact["value"]
+with open(path, "w") as stream:
+    json.dump(data, stream)
+PY
+            igor_automation_run_due Assist
+            igor_domain_event_recent '{"event_type":"capability.completed"}'
+        '''
+        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+                             capture_output=True, text=True, check=True)
+        admitted, events = map(json.loads, run.stdout.strip().splitlines())
+        self.assertEqual(admitted, {"admitted": 1})
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["event_type"], "capability.completed")
+        state = self.registry.inspect(row["id"])["instances"][0]
+        self.assertEqual((state["last_attempt"]["execution_status"],
+                          state["last_attempt"]["verification_status"],
+                          state["last_attempt"]["outcome"]),
+                         ("succeeded", "passed", "success"))
 
     def test_event_match_rejects_inactive_module_owner_without_deleting_intent(self):
         # Copy the active module proposal, then specialize its trigger to the

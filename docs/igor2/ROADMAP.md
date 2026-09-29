@@ -351,7 +351,7 @@ Active v2 modules can declare owned event types and request publication
 through the handler boundary. Read-only type and recent-event inspection is
 available through `--events`. The real memory refresh and disposable service
 failure fixture prove the first slice; [STATUS.md](STATUS.md) records the five
-proof classes. Step 14 and Wave F remain incomplete.
+proof classes. Wave F remains incomplete.
 
 Later structured operational event types may include:
 
@@ -365,7 +365,7 @@ Later structured operational event types may include:
 Events include Core-stamped source/owner, related objects, times, bounded
 evidence references and correlation. They cannot authorize execution.
 
-## Step 14 — Automation Engine — 14A/14B COMPLETE; STEP 14 INCOMPLETE
+## Step 14 — Automation Engine — COMPLETE
 
 The bounded implementation contract is
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md), accepted in D044–D047. Q008 is
@@ -375,15 +375,15 @@ run state. Every run enters the canonical capability dispatcher; only
 unprivileged READ may run unattended in this step. Inspection precedes TUI
 presentation. Step 13 events are transient signals, never approval or replay.
 
-**14A is complete:** the private version-1 registry, explicit operator
-activation, module proposal boundary, persistence and read-only CLI inspection
-passed focused, vertical-slice, regression and recovery proofs. **14B is
-complete:** an explicit one-time tick durably claims due READ intent and enters
-the canonical dispatcher; the memory refresh verified once, and restart does
-not repeat a claimed slot. **14C is next and unblocked:** periodic READ; **14D** event-triggered
-READ; **14E** typed conditional READ. Each slice has its own focused proof
-and full regression gate. Retries beyond one attempt and unattended CHANGE
-require later explicit contracts; Step 15 still owns durable history.
+The version-1 registry, explicit operator activation, module proposal
+boundary, persistence and read-only inspection were established in 14A.
+One-time, periodic, event and typed `fact_equals` condition READ triggers
+were added in 14B–14E. A condition tick uses an existing fresh, known System
+Model fact and never refreshes an observer to make a predicate true. Every
+admitted run retains the durable claim and canonical dispatcher boundary.
+The five proof classes and regression results are recorded in
+[STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
+require later explicit contracts; Step 15 owns durable history.
 
 ## Step 15 — Operational History — PARTIAL
 

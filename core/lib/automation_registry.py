@@ -7,6 +7,7 @@ import contextlib
 import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ from typing import Any
 
 from capability_runtime import CapabilityError, validate_inputs
 from domain_event import OBJECT
+from system_model import _typed
 
 VERSION = 1
 MAX_INTERVAL_SECONDS = 365 * 24 * 60 * 60
@@ -76,6 +78,29 @@ def _trigger(value: Any) -> dict[str, Any]:
         if (type(obj["min_interval_seconds"]) is not int or
                 not 0 <= obj["min_interval_seconds"] <= MAX_INTERVAL_SECONDS):
             raise AutomationError("event minimum interval is invalid")
+    elif value.get("kind") == "condition":
+        obj = _closed(value, {"kind", "schema_version", "anchor", "interval_seconds", "predicate"},
+                      {"kind", "schema_version", "anchor", "interval_seconds", "predicate"}, "trigger")
+        _timestamp(obj["anchor"])
+        if (type(obj["interval_seconds"]) is not int or
+                not 1 <= obj["interval_seconds"] <= MAX_INTERVAL_SECONDS):
+            raise AutomationError("condition interval must be 1 to 31536000 seconds")
+        predicate = _closed(obj["predicate"],
+                            {"kind", "object_id", "property", "state_class", "value_type", "equals"},
+                            {"kind", "object_id", "property", "state_class", "value_type", "equals"},
+                            "condition predicate")
+        if predicate["kind"] != "fact_equals" or predicate["state_class"] != "observed":
+            raise AutomationError("condition predicate is unsupported")
+        if (type(predicate["object_id"]) is not str or
+                len(predicate["object_id"]) > 160 or not OBJECT.fullmatch(predicate["object_id"]) or
+                type(predicate["property"]) is not str or
+                not re.fullmatch(r"[a-z][a-z0-9_.]*", predicate["property"])):
+            raise AutomationError("condition fact selector is invalid")
+        if (type(predicate["value_type"]) is not str or
+                predicate["value_type"] not in {"integer", "number", "boolean", "string"} or
+                not _typed(predicate["equals"], predicate["value_type"]) or
+                (predicate["value_type"] == "number" and not math.isfinite(predicate["equals"]))):
+            raise AutomationError("condition comparison type is invalid")
     else:
         raise AutomationError("trigger kind is unsupported")
     return obj
@@ -92,7 +117,7 @@ def _periodic_slot(trigger: dict[str, Any], now: datetime) -> datetime | None:
 def _slot_time(trigger: dict[str, Any], now: datetime) -> datetime | None:
     if trigger["kind"] == "event":
         return None
-    if trigger["kind"] == "periodic":
+    if trigger["kind"] in {"periodic", "condition"}:
         return _periodic_slot(trigger, now)
     due = datetime.fromisoformat(trigger["once_at"].replace("Z", "+00:00"))
     return due if due <= now else None
@@ -178,7 +203,7 @@ def _record(value: Any) -> dict[str, Any]:
         trigger = obj["trigger"]
         if trigger["kind"] == "once_at":
             valid_cursor = cursor == trigger["once_at"]
-        elif trigger["kind"] == "periodic":
+        elif trigger["kind"] in {"periodic", "condition"}:
             slot = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
             valid_cursor = _periodic_slot(trigger, slot) == slot
         if not valid_cursor:
@@ -449,13 +474,32 @@ class Registry:
         slot = _slot_time(row["trigger"], now)
         if slot is None:
             return "not_due"
-        if row["trigger"]["kind"] == "periodic" and row["schedule_cursor"] is not None:
+        if row["trigger"]["kind"] in {"periodic", "condition"} and row["schedule_cursor"] is not None:
             cursor = datetime.fromisoformat(row["schedule_cursor"].replace("Z", "+00:00"))
             if slot <= cursor:
                 return "already_claimed"
         return None
 
-    def claim_due(self, mode: str, now: datetime) -> dict[str, Any] | None:
+    @staticmethod
+    def _condition_matches(trigger: dict[str, Any], facts: list[dict[str, Any]], now: datetime) -> bool:
+        predicate = trigger["predicate"]
+        for fact in facts:
+            if (type(fact) is not dict or fact.get("object_id") != predicate["object_id"] or
+                    fact.get("property") != predicate["property"] or
+                    fact.get("state_class") != "observed" or fact.get("availability") != "known" or
+                    fact.get("value_type") != predicate["value_type"]):
+                continue
+            expires = fact.get("expires_at")
+            try:
+                if type(expires) is not str or datetime.fromisoformat(expires.replace("Z", "+00:00")) <= now:
+                    continue
+                if _typed(fact.get("value"), predicate["value_type"]) and fact["value"] == predicate["equals"]:
+                    return True
+            except (ValueError, TypeError):
+                continue
+        return False
+
+    def claim_due(self, mode: str, now: datetime, facts: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
         """Atomically consume one due slot before its canonical invocation."""
         if now.tzinfo != timezone.utc:
             raise AutomationError("claim time must be UTC")
@@ -465,6 +509,9 @@ class Registry:
         with self._mutating() as data:
             for row in data["instances"]:
                 if self._eligibility_reason(row, mode, now) is not None:
+                    continue
+                if row["trigger"]["kind"] == "condition" and not self._condition_matches(
+                        row["trigger"], facts or [], now):
                     continue
                 slot = (row["trigger"]["once_at"] if row["trigger"]["kind"] == "once_at" else
                         _utc_text(_slot_time(row["trigger"], now)))
@@ -554,7 +601,7 @@ class Registry:
             trigger = row["trigger"]
             if trigger["kind"] == "once_at":
                 next_due = trigger["once_at"] if row["schedule_cursor"] is None else None
-            elif trigger["kind"] == "periodic":
+            elif trigger["kind"] in {"periodic", "condition"}:
                 current = _periodic_slot(trigger, now)
                 if current is None:
                     next_due = trigger["anchor"]
@@ -606,7 +653,7 @@ def main() -> int:
             result = registry.create(json.loads(args.argument or "{}"), "operator")
         elif args.action == "claim":
             result = registry.claim_due(args.mode, datetime.fromisoformat(args.now.replace("Z", "+00:00"))
-                                        if args.now else datetime.now(timezone.utc))
+                                        if args.now else datetime.now(timezone.utc), context.get("facts", []))
         elif args.action == "match-event":
             result = registry.match_event(json.loads(args.argument or "{}"), args.mode, datetime.now(timezone.utc))
         elif args.action == "claim-event":

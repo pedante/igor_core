@@ -61,7 +61,7 @@ igor_automation_run_due() {
 }
 
 _igor_automation_run_due_locked() {
-    local _mode _context _claim _request _completion _result _tick _count=0 _rc=0
+    local _mode _context _claim_context _facts _claim _request _completion _result _tick _count=0 _rc=0
     case "${1:-$(ai_get_mode)}" in
         assist|Assist) _mode=Assist ;;
         executive|Executive) _mode=Executive ;;
@@ -80,7 +80,14 @@ _igor_automation_run_due_locked() {
     declare -f ai_execute_tool >/dev/null 2>&1 || source "${IGOR_DIR}/core/ai/safety.sh" || return 1
     ai_mode="${_mode,,}"
     while :; do
-        _claim="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode" --now "$_tick")" || return 1
+        # This is an owner-filtered read of the current model. A missing or
+        # failed read supplies no matching facts; it never invokes an observer.
+        _facts='[]'
+        if declare -F igor_model_list >/dev/null 2>&1; then
+            _facts="$(igor_model_list | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["facts"],separators=(",",":")))')" || _facts='[]'
+        fi
+        _claim_context="$(python3 -c 'import json,sys; c=json.loads(sys.argv[1]); c["facts"]=json.loads(sys.argv[2]); print(json.dumps(c,separators=(",",":")))' "$_context" "$_facts")" || return 1
+        _claim="$(printf '%s' "$_claim_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" claim --mode "$_mode" --now "$_tick")" || return 1
         [ "$_claim" != null ] || break
         _igor_automation_dispatch_claim "$_context" "$_claim" || _rc=1
         ((_count+=1))

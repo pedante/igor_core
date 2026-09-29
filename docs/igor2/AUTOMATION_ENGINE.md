@@ -1,11 +1,11 @@
 # Step 14 — Automation Engine implementation contract
 
-Status: **accepted design; 14A–14D implemented, 14E pending**. This contract is subordinate
+Status: **accepted design; 14A–14E implemented**. This contract is subordinate
 to [ARCHITECTURE.md](ARCHITECTURE.md) and D044–D047 in
 [DECISIONS.md](DECISIONS.md). Step 13's [EVENT_BUS.md](EVENT_BUS.md), the Wave E
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) capability path and the
 [EXECUTION.md](EXECUTION.md) ownership and proof rules remain authoritative.
-This design does not mark Step 14 complete.
+Step 14 completion evidence is recorded in [STATUS.md](STATUS.md).
 
 14B provides an explicit `--automations run-due [Guide|Assist|Executive]`
 tick. It atomically claims each eligible due `once_at` slot in the version-1
@@ -127,9 +127,8 @@ canonical terminal result. A one-time trigger is smaller than periodic
 because it requires no recurring slot arithmetic; memory refresh has an
 existing real provider and deterministic verification. During 14A, enabled
 `once_at` intent reported `execution_not_installed`; with 14B installed,
-inspection reports the actual due and claim state. Other trigger
-condition proposals remain inspectable but cannot be enabled until 14E
-implements validation, admission and recovery.
+inspection reports the actual due and claim state. Later slices added periodic,
+event and condition READ admission through that same canonical path.
 
 For event triggers, filter fields are fixed at activation and match only the
 Core-validated Step 13 envelope (`event_type`, stamped `owner`, membership
@@ -146,10 +145,12 @@ chain without changing the bus.
 The event bus remains separate from frontend/TUI events.
 
 The first `condition` predicate is `fact_equals`, with a fixed object ID,
-property, observed state class and typed comparison value. It reads the existing
-owner-aware System Model query; disabled owners, stale facts or unknown
-values do not match. It neither evaluates shell/AI expressions nor refreshes
-observations. A later check predicate needs an explicit validated evaluator.
+property, `observed` state class, `value_type` and typed `equals` value. Its
+trigger also has a UTC `anchor` and an `interval_seconds` value from 1 to
+31,536,000. It reads the existing owner-aware System Model query; disabled
+owners, stale facts or unknown values do not match. It neither evaluates
+shell/AI expressions nor refreshes observations. A later check predicate
+needs an explicit validated evaluator.
 
 ## Canonical execution, retries and failures
 

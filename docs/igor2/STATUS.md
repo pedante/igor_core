@@ -2,10 +2,9 @@
 
 Last updated: 2026-09-30
 
-## Step 14 Automation Engine — 14A–14D complete
+## Step 14 Automation Engine — complete
 
-**14A–14D are complete; 14E conditional READ is next. Step 14 overall
-remains incomplete.** The authoritative
+**14A–14E are complete at the bounded unprivileged READ contract.** The authoritative
 [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md) contract and D044–D047 govern the
 implementation. Active v2 module declarations are data-only proposals. The
 bundled `system.host.memory.once` proposal targets
@@ -13,6 +12,37 @@ bundled `system.host.memory.once` proposal targets
 `--automations create` and `enable` path creates and enables Igor-owned intent.
 AI text, events and module activation cannot call this authority. CHANGE,
 DESTROY, privileged and secret-reference targets cannot be enabled.
+
+**14E conditional READ and recovery:** Version-1 `condition` triggers use a
+UTC anchor, a positive polling interval of at most 31,536,000 seconds and one
+closed `fact_equals` predicate naming an object ID, property, `observed` state
+class, value type and typed comparison value. An explicit due tick reads the
+existing owner-aware System Model facts without invoking an observer. Only a
+matching `known` fact whose expiry remains in the future at claim time admits
+the configured READ. Missing, unequal, stale, inactive, unavailable, invalid
+and error facts leave the slot unclaimed. A match still rechecks source,
+provider, mode and policy, durably claims the current slot before dispatch,
+and enters the existing `run_capability` route through `ai_execute_tool`.
+Inspection remains read-only and does not evaluate or refresh the predicate.
+Restart does not replay a claimed slot; a later interval may be evaluated
+against current facts. No observer scheduler, expression evaluator or durable
+history was added.
+
+**14E focused proof:** Condition and System Model tests passed 16 tests and 10
+subtests. They cover exact typed success, unequal/unknown/stale/error and
+expired facts, wrong-type and malformed predicates, inactive proposal owner,
+non-dispatch on false conditions, absence of implicit observer refresh, concurrent
+claim prevention and restart. An existing `host.memory` observation admitted
+one real `system.host.memory.refresh` through the canonical dispatcher; its
+recorded outcome was `success` with `passed` verification and one
+`capability.completed` event. Changed-file Ruff, CI-configured ShellCheck,
+Bash syntax, Python compile and `git diff --check` passed.
+The full `bash tests/run_all.sh` suite passed all five groups with no group
+failures; two environment-dependent core BATS cases were skipped (GPG agent
+and `hostname -I`). The full Python pytest suite passed 286 tests and 129
+subtests. The private version-1 store needed no layout migration; the focused
+restart and durable claim checks remain green. Earlier slices continue to
+prove Guide mode and active-owner recovery.
 
 **14D event READ and recovery:** Version-1 event triggers fix an exact active
 domain event type, optional exact owner/object filters and a bounded minimum
@@ -153,9 +183,8 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 14E conditional automation execution, Step 15 durable history and later
-baselines/healing remain deferred. Q008 is resolved by D044; Q003, Q007,
-Q009 and Q011 retain their assigned decisions.
+Step 15 durable history and later baselines/healing remain deferred. Q008 is
+resolved by D044; Q003, Q007, Q009 and Q011 retain their assigned decisions.
 
 ## Wave E Agent Architecture implementation
 
