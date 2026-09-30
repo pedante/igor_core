@@ -2,6 +2,36 @@
 
 Last updated: 2026-09-30
 
+## Step 15A Persistent Identity & Memory Foundation — architecture gate
+
+**Step 15A is defined as an architecture-only gate; Step 15 runtime remains
+unimplemented.** The contract is
+[PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md), with D048–D054 in
+[DECISIONS.md](DECISIONS.md). It resolves Q003 without turning the current
+System Model, AI audit, recovery journal or Step 13 event buffer into a general
+memory database.
+
+The selected boundary keeps the System Model as current-state projection.
+Configured/user-declared/desired/responsibility state survives through its
+authoritative source; inferred state is recomputed; old observed snapshots are
+never fresh merely because they were persisted. Historical observations,
+execution, verification and outcomes belong to Operational History.
+
+New durable cross-subsystem records use explicit scope + existing object ID
+references. Capability history names the canonical capability/version and
+selected provider identity/source; handler names, commands, paths and UI labels
+are implementation evidence only. History attaches to the canonical execution
+boundary rather than relying on transient domain-event delivery. Later
+investigations, resumable work, deployments/relationships and learning remain
+separate authorities that share references/provenance.
+
+This gate intentionally selects no public database schema and changes no
+runtime behavior. A future Step 15B implementation may choose a private
+versioned backend from measured requirements, but modules and callers must use
+the service contract. Step 15B must prove restart/interrupted state-changing
+attempt reconciliation, inspection, migration/recovery and preservation of
+the existing green baseline before Operational History becomes authoritative.
+
 ## Step 14 Automation Engine — complete
 
 **14A–14E are complete at the bounded unprivileged READ contract.** The authoritative

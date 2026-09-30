@@ -381,17 +381,88 @@ enters the Wave E `run_capability` dispatcher for each run. No event replay,
 cron expressions, shell predicates or general workflow engine are implied.
 See [AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md).
 
+### D048 — System Model remains current-state projection; durable history is separate (Q003, Step 15A)
+
+Q003 is resolved at the architecture level. The System Model remains Igor's
+current structured view, not the general historical database. Configured,
+user-declared, desired and responsibility state survives restart through its
+authoritative source and is rehydrated through source adapters. Inferred state
+is recomputed from its named inputs/rules. Observed facts may be cached for
+offline explanation, but after restart a cache is reference/stale evidence
+until a trusted observer refreshes it; persistence alone never makes an old
+observation current or known. Historical observations, operation outcomes and
+verification belong to Step 15 Operational History. The System Model service
+contract remains independent of its backing store. See
+[PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md).
+
+### D049 — Durable object references are explicitly scoped
+
+Existing local object IDs such as host:local and service:systemd:sshd.service
+remain valid inside one Igor scope. New durable cross-subsystem records use a
+scoped object reference: stable scope identity plus the existing object ID.
+The scope identity is opaque Igor-owned identity, not hostname, IP, MAC,
+filesystem path or another mutable machine attribute. Restoring the same
+managed installation may preserve its scope identity; cloning or onboarding a
+distinct managed machine must not silently reuse it. This preserves current
+local APIs while leaving room for future remote/external machine scopes.
+
+### D050 — Durable operational references name contracts/providers, not handlers
+
+Operational history records the canonical capability ID and version, selected
+provider identity/owner/source and execution scope. A Bash function, command,
+module path, process ID or UI action name may be diagnostic evidence but is not
+the durable operation/provider identity. Provider selection and execution
+location remain separate concepts so a future local, remote or adapter-backed
+provider can implement the same canonical capability without changing history
+semantics.
+
+### D051 — Operational durability attaches to the canonical execution boundary
+
+Step 15 history must not depend on the transient Step 13 event bus as its sole
+durability path. Domain events remain reactive signals. Durable operation
+records attach to the canonical capability/plan execution boundary. For
+state-changing work, the Step 15 implementation must durably identify the
+attempt before provider invocation and retain enough frozen proposal,
+authority and correlation data to distinguish never-started, running,
+terminal and interrupted-unknown outcomes. A crash after possible external
+effect is reconciled through verification/explicit recovery rather than
+blind retry. History failure never rewrites an already committed capability
+result into success or failure.
+
+### D052 — History, investigations, work, deployments and learning are separate authorities
+
+Operational History answers what happened. Investigations own durable
+problem-solving state. Resumable Work owns current plan/wait/resume state.
+Deployments/relationships own installed topology and reconciliation.
+Learning owns evidence-backed reusable local experience. These systems may
+share a private physical backend later, but they keep separate logical
+contracts, lifecycle/reset semantics and inspection APIs. They cross-reference
+one another through stable IDs/evidence references rather than copying each
+other into one universal memory record.
+
+### D053 — Learning is reference material until explicitly promoted
+
+Baselines, learned patterns, runbooks, symptom/cause/resolution relationships
+and AI-extracted local experience retain provenance/evidence and remain
+reference material. They cannot silently create desired state, responsibility,
+automation enablement, approval, privilege, policy or executable capability.
+Any future promotion into trusted executable behavior is a separate reviewed
+post-2.0 authority transition.
+
+### D054 — Persistent backends are private and replaceable
+
+Public/runtime contracts expose services and versioned records, not database
+tables, JSON filenames or directory layouts. A subsystem may use SQLite,
+versioned JSON or another private backend where implementation requirements
+justify it, and several logical authorities may share one physical database,
+but ownership boundaries remain explicit. Every schema/layout migration follows
+the existing source/target, validation, idempotency, cutover, verification and
+recovery discipline. Cross-store references tolerate an unavailable/pruned
+target and never reuse an old durable ID for a different meaning.
+
 ---
 
 ## Open decisions
-
-### Q003 — System Model persistence
-
-Which state survives restart, and what storage mechanism best fits actual access/history requirements?
-
-Do not block System Model v1 on premature storage selection.
-
-Decision target: before Step 15.
 
 ### Q004 — Later third-party module trust policy
 

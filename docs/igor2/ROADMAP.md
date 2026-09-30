@@ -385,26 +385,36 @@ The five proof classes and regression results are recorded in
 [STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
 require later explicit contracts; Step 15 owns durable history.
 
-## Step 15 — Operational History — PARTIAL
+## Step 15 — Operational History — 15A ARCHITECTURE CONTRACT; RUNTIME FUTURE
 
-Current bounded AI audit and recovery journal are useful inputs.
+Step 15A is the persistence/identity gate in
+[PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md). D048–D054 resolve Q003 and
+establish the rules that later history, investigations, resumable work,
+deployments and learning must share without collapsing into one database or
+authority.
 
-Evolve toward structured incidents/actions containing observations, diagnosis, approvals, privilege use, execution, verification and outcome.
+The implementation sequence is deliberately bounded:
 
-Also support durable investigations that can outlive one model call/session and
-retain, as appropriate:
+- **15A — Persistent Identity & Memory Foundation:** architecture only. Define
+  scoped durable references, System Model persistence semantics, provider and
+  correlation identity, evidence/provenance, ownership/lifecycle/reset and the
+  canonical history hand-off. No broad runtime store is introduced.
+- **15B — Operational History:** persist structured operational episodes from
+  canonical Igor execution/results. Treat the current AI audit and recovery
+  journal as migration inputs, not the permanent schema. State-changing
+  attempts receive interruption/reconciliation semantics.
+- **15C — Durable Investigations:** add a separate investigation lifecycle for
+  problem/question, evidence, hypotheses, decisions, actions, findings,
+  verification and resolution/status, linked to history/System Model by stable
+  references.
+- **15D — Inspection & Context Integration:** make the new authorities
+  inspectable and selectively retrievable by the Context Engine without
+  dumping raw history or turning investigation/learning text into authority.
 
-- problem/question;
-- evidence;
-- hypotheses;
-- decisions/choices;
-- actions;
-- findings;
-- verification;
-- resolution/status.
-
-Chat history is not operational memory. Investigation records are structured
-reference/state and cannot authorize execution.
+Chat history is not operational memory. Step 13 events remain transient
+signals and are not the only durability path. Persistent records refer to
+scoped objects and canonical contracts/providers rather than handlers, paths
+or UI names.
 
 ## Step 16 — Baselines — FUTURE
 
@@ -414,7 +424,7 @@ Also allow evidence-backed local learning such as patterns, runbooks and
 symptom/cause/resolution relationships, stored outside installed module
 packages with provenance and reset semantics.
 
-Begin with explainable statistics and thresholds, not opaque ML.
+Begin with explainable statistics and thresholds, not opaque ML. A learned baseline describes evidence about normal behavior; it is not desired state or responsibility. Learned artifacts remain reference material under D053 until an explicit authoritative transition exists.
 
 ## Step 17 — Relationships & Deployments — FUTURE
 
@@ -425,7 +435,7 @@ Separate:
 - relationships;
 - deployments.
 
-Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships.
+Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships. Relationship storage must preserve source claims/reconciliation instead of relying on unqualified last-write-wins edges. Durable participants use the scoped-reference contract from Step 15A so future local and external machine scopes do not require a new relationship identity model.
 
 Installation/configuration workflows use structured plans and leave an
 inspectable deployment/relationship record plus verification outcome, rather
@@ -452,7 +462,7 @@ observation -> check -> incident -> diagnosis -> capability
             -> policy -> execution -> verification -> history
 ```
 
-Automatic recovery considers safety, confidence, user policy, privilege, retries and prior outcomes.
+Automatic recovery considers safety, confidence, user policy, privilege, retries and prior outcomes. Before Self-Healing may perform unattended CHANGE, Step 19 must accept an explicit unattended-CHANGE authority contract; responsibility, Executive mode, automation eligibility, prior success or learned confidence do not themselves grant that authority.
 
 ## Step 20 — Igor TUI as Default — PARTIAL
 
