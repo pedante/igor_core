@@ -136,10 +136,28 @@ For roadmap completion, also verify the evidence categories in `docs/igor2/EXECU
 
 Do not hide pre-existing baseline failures by restoring unrelated files or changing behavior outside the task.
 
-## Agent delegation
+## Codex agent orchestration
 
-For non-trivial coding tasks, the primary agent should act as lead engineer and reviewer.
+Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. The project config intentionally does not select the root/orchestrator model or reasoning effort; the Project Owner chooses them per task.
 
-Delegate straightforward source edits, tests, repetitive refactors and independent workstreams when useful. The primary agent remains responsible for repository inspection, architecture, difficult debugging, integration decisions, reviewing delegated changes and final validation.
+For non-trivial work, the root agent is the coordinator, scope/alignment owner, integrator and final reviewer. The root must preserve the Igor 2 authority order and task-mode boundaries above; delegation does not transfer responsibility for architecture, roadmap scope or migration decisions.
 
-Do not assume delegated output is correct merely because it completed successfully.
+Use the named `Lead_Eng` role for substantial engineering that benefits from a dedicated technical owner, especially architecture-sensitive implementation, difficult debugging, cross-cutting changes and important integration work. `Lead_Eng` may delegate bounded support work to Luna helpers but remains responsible for the engineering result it owns.
+
+Use default Luna helpers for bounded repository search, call-site discovery, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, mechanical edits and independent checks. Ordinary Luna helpers must not recursively delegate unless explicitly assigned a coordination role.
+
+Do not delegate merely to create parallel activity. Keep small, tightly coupled or sequential work in the current agent. Prefer fresh helpers for new bounded tasks unless accumulated context is genuinely useful.
+
+The root remains responsible for:
+
+- repository and product alignment;
+- applying the Igor 2 authority and execution contracts;
+- task decomposition and scope control;
+- deciding when `Lead_Eng` is warranted;
+- reviewing delegated results and resolving contradictions;
+- integration decisions and final validation;
+- updating Igor 2 status, legacy and evidence documentation when the task requires it.
+
+Prefer the cheapest capable model and reasoning effort. Do not repeat routine work with stronger models without a concrete reason. If the active root model/effort is materially mismatched to a substantial task, flag the cheaper or stronger appropriate tier before doing expensive repository-wide work.
+
+Do not assume delegated output is correct merely because it completed successfully. Validate it against the repository state, the relevant Igor 2 contracts and the evidence requirements in `docs/igor2/EXECUTION.md`.
