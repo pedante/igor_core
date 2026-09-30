@@ -11,6 +11,30 @@ unimplemented.** The contract is
 System Model, AI audit, recovery journal or Step 13 event buffer into a general
 memory database.
 
+## Step 15 implementation order — accepted planning
+
+After the merged 15A architecture gate, the bounded sequence is:
+
+```text
+15B Operational History
+-> provider-neutral Decision/Judgment Contract
+-> 15UI Interaction Surface Foundation
+-> 15C Durable Investigations
+-> 15D Inspection & Context Integration
+```
+
+15UI is defined in [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md). It is a
+frontend/interaction foundation over shared backend contracts: mouse scrolling,
+keyboard navigation and selection, explicit focus, a toggleable control panel,
+generic typed input/property rendering and visibility into backend-reported AI
+role/provider state. It does not implement model routing, named cheap models,
+investigation storage, Nextcloud-specific settings or backend authority.
+
+The small Decision/Judgment Contract before 15UI/15C is provider-neutral and
+must include abstain/unknown, provenance, validation and a provider interface;
+it does not select Jet/Laya. Step 15D remains the owner of context
+relevance/model routing policy.
+
 The selected boundary keeps the System Model as current-state projection.
 Configured/user-declared/desired/responsibility state survives through its
 authoritative source; inferred state is recomputed; old observed snapshots are

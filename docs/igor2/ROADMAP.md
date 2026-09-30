@@ -403,6 +403,16 @@ The implementation sequence is deliberately bounded:
   canonical Igor execution/results. Treat the current AI audit and recovery
   journal as migration inputs, not the permanent schema. State-changing
   attempts receive interruption/reconciliation semantics.
+- **Decision/Judgment Contract gate:** before later AI routing depends on model
+  judgments, establish a small provider-neutral schema/interface with explicit
+  abstain/unknown, provenance, validation and tests. Do not select Jet/Laya or
+  implement a provider solver here.
+- **15UI — Interaction Surface Foundation:** after the judgment contract and
+  before 15C, harden the current TUI with mouse scrolling, keyboard
+  navigation/movable selection, explicit focus, a toggleable control panel and
+  reusable schema-driven input/property rendering. The UI consumes backend
+  inspection/edit contracts; it does not own configuration, history, AI
+  routing, safety or authority. See [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md).
 - **15C — Durable Investigations:** add a separate investigation lifecycle for
   problem/question, evidence, hypotheses, decisions, actions, findings,
   verification and resolution/status, linked to history/System Model by stable
@@ -473,6 +483,9 @@ Once normal system/module workflows use the shared backend foundations, make `./
 The TUI consolidates inspection surfaces already introduced with modules,
 configuration, facts, capabilities, plans, investigations, events and history;
 Wave G is not the first point at which those systems become observable.
+Step 15UI establishes the reusable scrolling, focus, selection, control-panel
+and schema-driven rendering primitives earlier; Step 20 is the later
+default-launch/consolidation cutover, not the first usability work.
 The proposed configuration-surface contract can let the TUI temporarily enter
 a bounded setup workflow and return to the originating session, while resumable
 work lets long external waits survive without keeping that UI open.
