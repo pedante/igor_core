@@ -8,6 +8,7 @@
 | [module_creation.md](module_creation.md) | Current Module API v1 development guide |
 | [module_lifecycle.md](module_lifecycle.md) | Current module activation/runtime semantics |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution and validation workflow |
+| [Codex orchestration](../.codex/README.md) | Engineering task phases, delegation, workspace, validation and stopping rules |
 | [CHANGELOG.md](CHANGELOG.md) | Release/unreleased history |
 
 ## Igor 2 migration

@@ -15,6 +15,17 @@ Current code/docs describe how Igor works today. `docs/igor2/` describes the tar
 
 ## Development workflow
 
+Codex engineering work follows the [orchestration lifecycle](../.codex/README.md):
+DISCOVERY → IMPLEMENTATION → STABILIZATION → RELEASE_FREEZE → COMPLETE.
+State the phase, allowed next action and exit evidence. Obtain owner confirmation
+before implementing new or revised architecture; existing accepted decisions
+within authorized scope do not need repeat approval.
+
+Work directly on the active feature branch by default. Isolated copies are only
+for destructive testing, risky migrations or uncertain experiments. Delegate
+when expertise, separate context or verification helps; stabilization and release
+freeze allow at most one active validation worker across the whole task tree.
+
 - Keep changes scoped and preserve unrelated work.
 - Add or update tests for behavior changes.
 - Prefer existing backend contracts over duplicate implementations.
@@ -22,6 +33,15 @@ Current code/docs describe how Igor works today. `docs/igor2/` describes the tar
 - Preserve deterministic safety, approval, privilege and scrubbing boundaries.
 - Update current docs when current behavior changes.
 - For Igor 2 work, update `docs/igor2/STATUS.md` and `LEGACY.md` when migration state changes.
+
+When implementation, focused tests, required regressions and documentation are
+complete, enter RELEASE_FREEZE and stop development: no new features, speculative
+improvements, unrelated refactoring, new tests unless required by a failing
+regression, or reopening architecture decisions. Only concrete acceptance
+failures justify an explicit return to stabilization for a scoped correction.
+Inspect final status/diff, confirm required validation, commit task files, report
+completion and stop. Follow explicit owner instructions if they say not to commit.
+Do not search for more improvements after final validation.
 
 ## Code style
 
@@ -57,6 +77,10 @@ git diff --check
 For changed shell files also run `bash -n` and ShellCheck with the flags used by `.github/workflows/ci.yml`.
 
 Run focused Python/unit tests for changed Python modules.
+
+For Codex configuration/documentation-only changes, parse TOML, verify policy
+consistency and links/references, and inspect the final diff with
+`git diff --check`. Do not run expensive unrelated runtime regressions.
 
 Report failures and skips clearly. Do not make unrelated changes just to hide a pre-existing baseline failure.
 

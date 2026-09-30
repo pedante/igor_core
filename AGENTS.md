@@ -131,6 +131,8 @@ Common checks:
 - `git diff --check`
 
 For documentation-only edits, verify links/references and inspect the final diff.
+For Codex configuration/documentation-only edits, also parse TOML and check
+policy consistency; do not run expensive unrelated runtime regressions.
 
 For roadmap completion, also verify the evidence categories in `docs/igor2/EXECUTION.md`; a green test suite alone does not prove a missing vertical slice, inspection surface or persistent migration.
 
@@ -140,13 +142,66 @@ Do not hide pre-existing baseline failures by restoring unrelated files or chang
 
 Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. The project config intentionally does not select the root/orchestrator model or reasoning effort; the Project Owner chooses them per task.
 
+Follow the lifecycle in [.codex/README.md](.codex/README.md). At task start,
+phase transitions and handoffs, state the current phase, allowed next action
+and remaining exit evidence; preserve that state through compaction and pass
+it to delegates:
+
+- **DISCOVERY:** inspect evidence, bound scope, define acceptance/validation and
+  obtain confirmation for new or revised architecture; no implementation.
+- **IMPLEMENTATION:** implement authorized scope under confirmed architecture,
+  with relevant tests and documentation.
+- **STABILIZATION:** integrate, fix concrete in-scope failures, run focused and
+  required regression checks and finish docs; no new features/speculative work.
+- **RELEASE_FREEZE:** when implementation, focused tests, required regressions
+  and docs are complete, STOP development. Only final status/diff and validation
+  evidence review, scoped commit and completion report remain. No new features,
+  speculative improvements, unrelated refactoring, new tests unless required
+  by a failing regression, or reopening architecture decisions.
+- **COMPLETE:** required gates satisfied, scoped change committed and completion
+  reported; stop, without automatically starting later roadmap work.
+
+Concrete acceptance failures permit an explicit return to STABILIZATION for
+the smallest in-scope fix and affected validation, then freeze again. This is
+not permission to search for improvements. After final validation, do not add
+optional checks or repeat passing checks without new changes/failures. Missing
+required evidence or a blocked commit prevents COMPLETE; report the blocker.
+
+For major tasks, prepare architecture options, tradeoffs, repository consequences
+and a recommendation for Project Owner confirmation before implementing a new
+or revised architecture. Accepted decisions already covered by task authorization
+need no repeat approval; routine reversible choices within them remain engineering
+judgment. Do not silently create durable public contracts or major workarounds.
+
+Default to the existing checkout on the active feature branch; inspect branch
+and status and preserve unrelated work. Do not automatically create temporary
+clones or worktrees. Isolated copies are only for destructive testing, risky
+migrations or uncertain experiments with a stated reason; integrate and validate
+on the active branch. Permission/tooling failures do not justify a clone workaround.
+
+Before completion: inspect git status and final diff (including staged changes),
+run required scoped validation, commit only task files, verify commit/status,
+report completion and stop. Honor explicit owner instructions such as no commit.
+
 For non-trivial work, the root agent is the coordinator, scope/alignment owner, integrator and final reviewer. The root must preserve the Igor 2 authority order and task-mode boundaries above; delegation does not transfer responsibility for architecture, roadmap scope or migration decisions.
 
-Use the named `Lead_Eng` role for substantial engineering that benefits from a dedicated technical owner, especially architecture-sensitive implementation, difficult debugging, cross-cutting changes and important integration work. `Lead_Eng` may delegate bounded support work to Luna helpers but remains responsible for the engineering result it owns.
+Use the named `Lead_Eng` role for substantial engineering that benefits from a dedicated technical owner, especially architecture-sensitive implementation, difficult debugging, cross-cutting changes and important integration work. During DISCOVERY and IMPLEMENTATION, `Lead_Eng` may delegate bounded support work to Luna helpers but remains responsible for the engineering result it owns.
 
 Use default Luna helpers for bounded repository search, call-site discovery, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, mechanical edits and independent checks. Ordinary Luna helpers must not recursively delegate unless explicitly assigned a coordination role.
 
-Do not delegate merely to create parallel activity. Keep small, tightly coupled or sequential work in the current agent. Prefer fresh helpers for new bounded tasks unless accumulated context is genuinely useful.
+Delegate when independent expertise is useful, separate context improves quality,
+or verification is valuable. Do not create parallel workers merely because they
+are available. Keep small, tightly coupled or sequential work in the current
+agent. Prefer fresh helpers for new bounded tasks unless context is useful.
+
+Each assignment states phase, scope/file ownership, allowed actions, required
+evidence and stopping condition. Communicate phase changes; finish or stop
+discovery/implementation workers before STABILIZATION. During STABILIZATION and
+RELEASE_FREEZE, allow at most one active delegated worker across the entire task
+tree, solely for validation. Root owns integration/fixes; Lead_Eng cannot spawn
+helpers in those phases. Freeze validation confirms agreed final evidence only.
+Workers report results and stop after their assigned checks. Available concurrency
+does not override phase limits.
 
 The root remains responsible for:
 
