@@ -35,30 +35,21 @@ Before completing code changes, run from the repository root:
 
 Report failures and skips; missing BATS can yield an incomplete successful run. For documentation-only edits, check links and the diff. Use descriptive commits and the PR template; explain behavior, validation, and relevant documentation updates.
 
+## Codex Agent Orchestration
 
-## Agent Delegation
+Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. New threads default to GPT-6.1 Sol at Medium reasoning, but that is intentionally only a default: the Project Owner may select a different root/orchestrator model and reasoning effort per task.
 
-For non-trivial coding tasks, the primary agent should act as lead engineer and reviewer.
+For non-trivial work, the root agent is the coordinator, scope/alignment owner, integrator, and final reviewer. Use the named `Lead_Eng` role for substantial architecture-sensitive implementation, difficult debugging, cross-cutting changes, and important integration. Use default Luna helpers for bounded repository search, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, mechanical edits, and independent checks.
 
-Prefer delegating implementation work to subagents, especially for:
+Do not delegate merely to create parallel activity. Keep small, tightly coupled, or sequential work in the current agent. Prefer fresh helpers for new bounded tasks unless accumulated context is genuinely useful.
 
-- source-file edits
-- test creation and updates
-- straightforward bug fixes
-- repetitive refactors
-- running test suites and linters
-- independent workstreams that can run in parallel
+The root remains responsible for:
+- repository and product alignment
+- task decomposition and scope control
+- deciding when `Lead_Eng` is warranted
+- reviewing delegated results and resolving contradictions
+- integration decisions and final validation
 
-The primary agent should retain responsibility for:
+`Lead_Eng` remains responsible for the difficult engineering it owns and may delegate bounded support work to Luna helpers. Ordinary Luna helpers must not recursively delegate unless explicitly assigned a coordination role.
 
-- repository inspection
-- architecture and implementation strategy
-- task decomposition
-- difficult debugging
-- reviewing delegated changes
-- integration decisions
-- final validation
-
-After delegated work finishes, inspect the resulting diff and verify it against the repository guidelines above. Do not assume subagent output is correct simply because the task completed successfully.
-
-For very small or tightly coupled changes, direct implementation by the primary agent is acceptable.
+Prefer the cheapest capable model/effort. Do not repeat routine work with stronger models without a concrete reason. If the active root model/effort is materially mismatched to a substantial task, flag the cheaper or stronger appropriate tier before doing expensive repository-wide work.
