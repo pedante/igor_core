@@ -46,6 +46,9 @@ These become architectural tests for every later change.
 10. Changes should be followed by deterministic verification whenever verification is possible.
 11. Unknown state must remain explicitly unknown rather than inferred as fact.
 12. Modules describe coherent domains rather than arbitrary collections of Bash functions.
+13. Igor may reason probabilistically without making probabilistic judgments authoritative.
+14. Probabilistic judgments may guide interpretation, routing and investigation, but they must not authorize actions, establish machine truth, claim successful execution or bypass deterministic validation.
+15. Decision providers are replaceable; Igor's contracts must not depend on Jet, Laya, System One or any other single model/runtime.
 
 ### Deliverable
 
@@ -228,6 +231,32 @@ Configuration schema, defaults, secrets and validation.
 ## Lifecycle
 
 Install, upgrade, migration and uninstall behavior.
+
+## Decision / Judgment specifications
+
+Optional bounded semantic judgments a module can define for its domain.
+
+Igor Core owns the normalized decision contract. A module may contribute decision specifications, but not provider-specific model code as part of the contract itself.
+
+Initial normalized decision types should include:
+
+- choice;
+- boolean/probability;
+- score;
+- abstain/unresolved.
+
+A decision specification should identify at least:
+
+- stable decision ID;
+- owner/provenance;
+- question or judgment being requested;
+- allowed options or score meaning;
+- applicable context;
+- result schema.
+
+Decision results remain advisory. They may guide interpretation, routing, context selection and investigation, but never replace deterministic authorization, observed machine state, execution results or verification.
+
+Disabled modules contribute no decision specifications.
 
 ### Important improvement
 
@@ -618,6 +647,34 @@ Disabled module:
 
 Module-supplied AI instructions should be treated as structured trusted extension content with clear provenance, rather than concatenating arbitrary text blindly.
 
+### Typed Decision / Judgment Contract
+
+Add a small provider-neutral Igor API for bounded semantic decisions instead of hiding those decisions inside prompts, prose parsing or module scripts.
+
+The first useful consumers are:
+
+- user intent classification;
+- capability/domain selection;
+- context relevance;
+- knowledge/fact classification;
+- other bounded semantic routing where deterministic rules are insufficient.
+
+Normalize results so callers receive Igor-owned types rather than provider-specific output. A result should be able to carry:
+
+- decision/spec ID;
+- answer;
+- probability or score where applicable;
+- abstain/unresolved state;
+- owner;
+- provider/model identity;
+- provenance/timestamp.
+
+Provider dispatch may use deterministic rules, the existing Igor AI layer, or an optional specialized decision runtime. The initial implementation should use existing infrastructure and must not require a second model stack, GPU, Python/PyTorch runtime or new always-on service.
+
+Jet, Laya, System One and similar runtimes are optional future providers only. Benchmark them against Igor's existing AI path on Igor-specific routing, relevance, classification and diagnostic judgments before making any one of them a default or dependency.
+
+The authority boundary is strict: a probabilistic decision may inform reasoning, but it cannot grant permission, satisfy approval, establish machine truth, claim execution success or replace deterministic verification.
+
 ### Deliverable
 
 Prompt construction becomes a consequence of Igor's architecture instead of a collection of ad-hoc hooks.
@@ -874,6 +931,8 @@ incident
 
 Record both successes and failures.
 
+Probabilistic judgments used during diagnosis or investigation should be stored as attributed evidence with their decision ID, result, provider/model and timestamp. They must remain distinguishable from observed facts and deterministic verification.
+
 ### History should answer
 
 - what changed;
@@ -946,6 +1005,8 @@ verification
     ↓
 history
 ```
+
+Probabilistic judgments may rank hypotheses or suggest candidate capabilities, but they cannot satisfy safety policy, approval, privilege or verification requirements.
 
 Automatic recovery policy should consider:
 
@@ -1245,6 +1306,18 @@ We should define when AI may fall back to raw shell and what additional safety r
 
 ---
 
+## Q11 — Specialized decision provider
+
+Should Igor eventually ship or recommend a specialized System One-style decision model/runtime?
+
+Do not decide this by architecture preference alone. The Decision / Judgment Contract must work with the existing AI layer first. Any specialized provider should be evaluated on an Igor-specific benchmark covering routing accuracy, relevance selection, memory/fact classification, diagnostic judgments, abstention/calibration, latency, CPU/RAM use and failure behavior.
+
+If no specialized provider clearly improves Igor, keep the contract and use the existing provider path.
+
+**Evaluate after Phase 10; do not block Phases 3–10 on it.**
+
+---
+
 # Implementation discipline
 
 Across all phases:
@@ -1258,6 +1331,9 @@ Across all phases:
 - test Debian and Arch continuously;
 - test module enable/disable isolation continuously;
 - test AI context isolation continuously;
+- keep the Decision / Judgment Contract provider-neutral and test abstain/unresolved behavior;
+- test that probabilistic judgments cannot cross authorization, machine-truth or verification boundaries;
+- benchmark specialized decision providers before making them defaults or dependencies;
 - treat the existing `nextcloud_docker` deployment as a regression fixture;
 - keep the new TUI working throughout the architectural migration.
 
