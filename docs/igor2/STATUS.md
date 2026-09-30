@@ -54,6 +54,71 @@ Operational History service; runtime and callers use versioned records instead
 of backend tables/paths. The implementation and evidence are recorded below;
 the accepted Step 15A decisions are unchanged.
 
+## Step 15UI Interaction Surface Foundation — complete
+
+The bounded [interaction contract](INTERACTION_SURFACE.md) extends the existing
+`--ai-tui`; default launch and classic/headless interfaces are unchanged.
+Frontend focus, selection, viewport, panel and property drafts are disposable
+presentation state. They cannot change policy, module activation, facts,
+automation, history, approval, privilege or provider routing.
+
+**Primitives/contract:** `core/ai/interaction.py` provides explicit disposable
+focus/panel state, strict text/enum/boolean/integer/number property schemas,
+detached typed proposals and bounded secret-safe structured rendering.
+`core/ai/tui.py` integrates them with mouse-wheel and keyboard output navigation,
+visible LIVE/history status, input/output/panel focus and movable panel selection.
+Tab/Shift+Tab cycles focus, Ctrl+B toggles the panel, Ctrl+F returns to latest;
+output arrows/Home/End scroll without changing the draft. Schema carries no
+command, storage location or default configuration value.
+
+**Vertical slice/inspection:** the existing AI settings owner receives proposed
+non-secret semantic values through its existing commands and returns a snapshot.
+Recent Operational History uses its public read-only CLI; session/provider/model
+and execution provenance use the existing frontend projection. No subprocess
+System Model query is presented as current session truth. Unsupported live
+model-role/judgment feeds and configuration owners remain unavailable.
+
+**Migration/recovery:** no persistent layout change, history store, configuration
+writer or approval state machine is introduced. Panel reopening and terminal
+resize preserve the backend projection and composer. Frontend restart starts
+with presentation state and reprojects ordered events; it cannot replay a draft,
+selection, approval or property write. Existing PTY sudo and conversational
+choice handling retain their owners. LEGACY keeps the existing interfaces until
+Step 20/23; no compatibility path is retired in 15UI.
+
+**Validation evidence (2026-10-01):**
+
+| Check | Result |
+|---|---|
+| Focused interaction/TUI gate | 92 tests and 32 subtests passed across the new interaction fixtures and existing TUI, colors, PTY, privilege, settings and Step 7 suites. |
+| Single final Python regression | `uvx --offline --from pytest pytest -q`: 342 tests and 237 subtests passed; no failures or skips. |
+| Single final Bash regression | `bash tests/run_all.sh`: all five groups passed, zero failed/skipped groups; 46 Bash core checks, 46 render tests, 305 core BATS, 141 module BATS and 40 integration BATS. Two existing core cases skipped: GPG agent and `hostname -I` unavailable. |
+| Lint | New helper/tests pass Ruff. Repository-wide Ruff reports 142 existing findings in 28 files, down from 144; the changed TUI retains three baseline findings (EXE001 and two SIM102). No new lint findings; unrelated debt retained. No shell changes, so additional syntax/ShellCheck coverage is not applicable. |
+| Compile/references/diff | Changed Python files compile; all 53 local documentation references resolve; final diff/whitespace checks pass. |
+
+Focused tests prove all five controls, detached proposals, malformed/unknown
+payload rejection, hidden secrets, visible focus and selection, keyboard/wheel
+navigation, panel reopen/resize and preservation of drafts. Real backend
+fixtures persist a typed temperature setting and consume its snapshot, inspect
+a durable history episode without modifying any stored bytes, and retain
+headless absent-store behavior. Approval/question, PTY and sudo regressions
+remain green; AI role/provider/model display sends no routing commands.
+
+The five EXECUTION proof categories are satisfied for this bounded milestone.
+There is no persistent layout change, so storage migration is not applicable;
+presentation recovery and no stale-intent replay are tested instead. Work used
+the clean active `igor2` checkout at `4f2d4b8`, with local `master` an ancestor.
+No temporary clone or remote-freshness claim was needed.
+
+15C is now unblocked at the dependency level by completed 15B, D055 and 15UI.
+Its own architecture/implementation acceptance gates still apply; no 15C work
+has begun.
+
+**Deferrals/next gate:** 15C owns durable investigations; 15D owns relevance and
+model routing; Step 20 owns default-TUI transition and consolidated mature
+subsystem surfaces. No Nextcloud settings, remote-host UI, unattended CHANGE,
+Self-Healing v2, provider solver or named model policy is added.
+
 ## Decision/Judgment Contract — complete
 
 The Project Owner confirmed D055's bounded interface after discovery.
@@ -642,7 +707,7 @@ claim about a newer un-fetched remote branch.
 | 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
 | 13 Domain Event Bus | Complete at the bounded Step 13 contract: validated session-local signals, owner-aware producers, read-only inspection and one `capability.completed` projection per committed result. `core/ai/events.sh` remains frontend activity. |
 | 14 Automation Engine | Complete at the bounded unprivileged READ contract: Igor-owned intent, explicit enablement, atomic due-slot claims and canonical dispatch for one-time, periodic, event and condition triggers. |
-| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented. Validation gate and evidence are recorded above; investigations and later slices remain deferred. |
+| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented; judgment and 15UI foundations complete. Evidence is recorded above; 15C investigations and 15D routing remain deferred. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
 | 20 Igor TUI as Default | Partial: full-screen TUI works via `--ai-tui`; classic menu/line UI and `--extra` remain, and default launch is unchanged. |
 | 21 Integration Rules | Missing as a shared contract. |

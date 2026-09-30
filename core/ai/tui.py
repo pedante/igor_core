@@ -10,6 +10,7 @@ renderer usable in tests and by a future frontend without importing curses.
 from __future__ import annotations
 
 import codecs
+import copy
 import curses
 import errno
 import fcntl
@@ -24,10 +25,22 @@ import sys
 import termios
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
+from interaction import (
+    FocusModel,
+    Property,
+    display_text,
+    parse_control_input,
+    parse_property,
+    property_text,
+    propose_property,
+    render_properties,
+    render_structured,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BACKEND = ("bash", str(REPO_ROOT / "igor.sh"), "--ai-tui-backend")
@@ -77,16 +90,20 @@ class EventState:
     collapse_output: bool = False
     command_state: str = "ready"
     settings_snapshot: dict[str, Any] | None = None
+    session_id: str = ""
+    role: str = ""
 
     def accept(self, event: dict[str, Any]) -> bool:
         """Apply one event if it is valid and newer than the current stream."""
+        if not isinstance(event, dict):
+            return False
         kind = event.get("event_type")
         sequence = event.get("sequence", 0)
         # The backend stream uses strictly positive integer sequence numbers.
         # Reject malformed values at the projection boundary so a forged or
         # truncated frontend record cannot move the rendered state backwards
         # or make the first event appear authoritative.
-        if (kind not in EVENT_TYPES or not isinstance(sequence, int)
+        if (not isinstance(kind, str) or kind not in EVENT_TYPES or not isinstance(sequence, int)
                 or isinstance(sequence, bool) or sequence <= 0):
             return False
         if sequence <= self.sequence:
@@ -97,6 +114,9 @@ class EventState:
         self.mode = str(event.get("mode") or self.mode)
         self.provider = str(event.get("provider") or self.provider)
         self.model = str(event.get("model") or self.model)
+        for key in ("session_id", "role"):
+            if isinstance(event.get(key), str):
+                setattr(self, key, event[key])
         event_status = str(event.get("status") or "")
         if event_status in {"ready", "running", "stopped_by_user", "continuation_limit",
                             "tool_succeeded", "tool_failed", "provider_failed"}:
@@ -112,7 +132,7 @@ class EventState:
         if kind == "settings_snapshot":
             snapshot = event.get("settings")
             if isinstance(snapshot, dict):
-                self.settings_snapshot = dict(snapshot)
+                self.settings_snapshot = copy.deepcopy(snapshot)
                 self.mode = str(snapshot.get("mode") or self.mode)
                 self.provider = str(snapshot.get("provider") or self.provider)
                 self.model = str(snapshot.get("model") or self.model)
@@ -513,6 +533,51 @@ def settings_change_command(key: str, value: str) -> str:
     raise ValueError("unknown setting")
 
 
+def settings_properties(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Adapt the existing backend snapshot; never supply missing values/defaults."""
+    schemas = []
+    for key, label, kind, options in SETTINGS_FIELDS:
+        schema: dict[str, Any] = {"id": key, "label": label, "editable": True,
+                                  "source": "AI session settings_snapshot"}
+        schema["type"] = {"choice": "enum", "toggle": "boolean"}.get(kind, "text")
+        if options:
+            schema["options"] = list(options)
+        if key == "temperature":
+            schema.update(type="number", minimum=0, maximum=2)
+        elif key == "max_tokens":
+            schema.update(type="integer", minimum=1)
+        if key in snapshot:
+            value = snapshot[key]
+            try:
+                if schema["type"] == "boolean":
+                    if str(value).lower() not in {"true", "false", "on", "off", "1", "0"}:
+                        raise ValueError("invalid boolean snapshot")
+                    value = str(value).lower() in {"true", "on", "1"}
+                elif schema["type"] in {"integer", "number"}:
+                    value = parse_control_input(parse_property(schema), str(value))
+                elif key in {"mode", "provider"} and isinstance(value, str):
+                    value = value.lower()
+                schema["value"] = value
+                parse_property(schema)
+            except (ValueError, TypeError, OverflowError):
+                schema.pop("value", None)
+        schemas.append(schema)
+    return schemas
+
+
+def settings_proposal_command(proposal: dict[str, Any], snapshot: dict[str, Any]) -> str:
+    """The only edit adapter: whitelist existing session commands, revalidate data."""
+    if not isinstance(proposal, dict) or proposal.keys() != {"property_id", "value"}:
+        raise ValueError("invalid property proposal")
+    schema = next((row for row in settings_properties(snapshot)
+                   if row["id"] == proposal["property_id"]), None)
+    if schema is None:
+        raise ValueError("unknown setting")
+    value = propose_property(parse_property(schema), proposal["value"])["value"]
+    text = ("on" if value else "off") if type(value) is bool else str(value)
+    return settings_change_command(schema["id"], text)
+
+
 @dataclass
 class InputBuffer:
     """Multiline input with a small, terminal independent editing surface."""
@@ -674,6 +739,205 @@ class ActivityNavigator:
             self.scroll = min(maximum, self.scroll + max(0, added_lines))
 
 
+class HistoryInspection:
+    """On-demand async read of the existing durable history inspection CLI.
+
+    No module loading, verifier/recovery, config parsing or shell-selected
+    commands. Results remain disposable display data, never a history store.
+    """
+
+    def __init__(self) -> None:
+        self.process: subprocess.Popen | None = None
+        self.data: Any = None
+        self.status = "Enter to load recent Operational History"
+        self.started = 0.0
+        self.output = bytearray()
+
+    def start(self) -> None:
+        if self.process is not None:
+            return
+        self.output.clear()
+        try:
+            self.process = subprocess.Popen(
+                ("bash", str(REPO_ROOT / "igor.sh"), "--history", "recent", "20"),
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                close_fds=True, start_new_session=True)
+            os.set_blocking(self.process.stdout.fileno(), False)
+        except OSError:
+            self.close()
+            self.status = "Operational History unavailable"
+            return
+        self.started = time.monotonic()
+        self.status = "Loading Operational History…"
+
+    def poll(self) -> bool:
+        process = self.process
+        if process is None:
+            return False
+        try:
+            while True:
+                chunk = os.read(process.stdout.fileno(), 65536)
+                if not chunk:
+                    break
+                self.output.extend(chunk)
+                if len(self.output) > 1_048_576:
+                    self.close()
+                    self.status = "Operational History display exceeds bound"
+                    return True
+        except BlockingIOError:
+            pass
+        except OSError:
+            self.close()
+            self.status = "Operational History unavailable"
+            return True
+        if process.poll() is None:
+            if time.monotonic() - self.started <= 5:
+                return False
+            self.close()
+            self.status = "Operational History inspection timed out"
+            return True
+        code = process.returncode
+        self.close()
+        try:
+            result = json.loads(self.output.decode("utf-8"))
+            if code != 0 or not isinstance(result, (list, dict)):
+                raise ValueError("unavailable")
+            self.data = result
+            self.status = "Read-only · Enter refresh"
+        except (ValueError, UnicodeDecodeError):
+            self.status = "Operational History unavailable/invalid response"
+        return True
+
+    def close(self) -> None:
+        if self.process is not None:
+            if self.process.poll() is None:
+                try:
+                    os.killpg(self.process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    self.process.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(self.process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    self.process.wait()
+            if self.process.stdout is not None:
+                self.process.stdout.close()
+            self.process = None
+            if self.status.startswith("Loading"):
+                self.status = "Inspection cancelled · Enter refresh"
+
+
+def panel_sections(state: EventState, inspection: HistoryInspection) -> list[dict[str, Any]]:
+    """Reusable section data, projected from backend-owned interfaces only."""
+    sections = [
+        {"id": "session", "label": "Session", "source": "frontend event stream",
+         "data": {"session_id": state.session_id or "unavailable", "mode": state.mode,
+                  "status": state.session_status, "sequence": state.sequence,
+                  "pending_approval": state.pending_action,
+                  "administrator_authentication": bool(state.privilege_waiting)}},
+        {"id": "ai", "label": "AI (read-only)", "source": "frontend event stream",
+         "data": {"role": state.role or "unavailable (not reported)",
+                  "provider": state.provider or "unavailable",
+                  "model": state.model or "unavailable",
+                  "routing_authority": "backend"}},
+        {"id": "properties", "label": "Settings", "source": "backend settings_snapshot",
+         "properties": settings_properties(state.settings_snapshot or {}),
+         "hint": "Enter opens existing backend settings"},
+        {"id": "history", "label": "Operational History", "source": "--history recent 20",
+         "data": inspection.data, "hint": inspection.status},
+    ]
+    result = next((item.result for item in reversed(state.activity) if item.result), None)
+    if result is not None:
+        sections.append({"id": "result", "label": "Latest result", "data": result,
+                         "source": "frontend action_result"})
+    return sections
+
+
+def panel_rows(section: dict[str, Any]) -> list[str]:
+    if not isinstance(section, dict):
+        return ["Invalid inspection section"]
+    rows = ["Source: " + display_text(section.get("source", "unavailable"))]
+    rows.extend(render_properties(section["properties"]) if "properties" in section
+                else render_structured(section.get("data")))
+    if section.get("hint"):
+        rows.append(display_text(section["hint"]))
+    return rows
+
+
+def _surface_width(width: int, focus: FocusModel | None = None) -> tuple[int, int]:
+    if focus is None or not focus.panel_open or width < 20:
+        return max(1, width - 1), 0
+    panel_width = min(38, max(10, width // 3))
+    return max(1, width - panel_width - 2), panel_width
+
+
+def navigation_key(key: int, focus: FocusModel, navigator: ActivityNavigator,
+                   page: int, maximum: int) -> bool:
+    """Presentation-only key dispatch; never edits the composer or sends input."""
+    if key == 9:
+        focus.cycle()
+    elif key == curses.KEY_BTAB:
+        focus.cycle(reverse=True)
+    elif key == 2:  # Ctrl+B
+        focus.toggle_panel()
+    elif key == 6:  # Ctrl+F: return to latest, regardless of composer contents
+        navigator.latest()
+    elif key == curses.KEY_PPAGE and focus.region != "panel":
+        navigator.page_up(page, maximum)
+    elif key == curses.KEY_NPAGE and focus.region != "panel":
+        navigator.page_down(page)
+    elif key == curses.KEY_SR:
+        navigator.line_up(maximum)
+    elif key == curses.KEY_SF:
+        navigator.line_down()
+    elif focus.region == "output":
+        if key == curses.KEY_UP:
+            navigator.line_up(maximum)
+        elif key == curses.KEY_DOWN:
+            navigator.line_down()
+        elif key == curses.KEY_HOME:
+            navigator.oldest(maximum)
+        elif key == curses.KEY_END:
+            navigator.latest()
+        else:
+            return False
+    else:
+        return False
+    return True
+
+
+def mouse_navigation(position: tuple[int, int, int, int, int], focus: FocusModel,
+                     navigator: ActivityNavigator, height: int, width: int,
+                     page: int, maximum: int) -> bool:
+    """Wheel only scrolls output under the pointer; clicks select a region."""
+    _device, x, y, _z, buttons = position
+    output_width, panel_width = _surface_width(width, focus)
+    in_output = 1 <= y <= page and 0 <= x < output_width
+    wheel_up = getattr(curses, "BUTTON4_PRESSED", 0)
+    wheel_down = getattr(curses, "BUTTON5_PRESSED", 0)
+    if buttons & (wheel_up | wheel_down):
+        if not in_output:
+            return False
+        if buttons & wheel_up:
+            navigator.page_up(3, maximum)
+        else:
+            navigator.page_down(3)
+        return True
+    click = getattr(curses, "BUTTON1_CLICKED", 0) | getattr(curses, "BUTTON1_PRESSED", 0)
+    if buttons & click:
+        if in_output:
+            focus.set_focus("output")
+        elif panel_width and x > output_width and 1 <= y <= page:
+            focus.set_focus("panel")
+        elif height - min(3, max(1, height - 3)) <= y < height:
+            focus.set_focus("input")
+        return True
+    return False
+
+
 def event_path(runtime: str | None = None) -> Path:
     configured = os.environ.get("IGOR_AI_EVENT_STREAM")
     if configured:
@@ -725,27 +989,59 @@ class EventReader:
         return events
 
 
-def _activity_limits(screen: Any, state: EventState) -> tuple[int, int, int]:
+def _activity_limits(screen: Any, state: EventState,
+                     focus: FocusModel | None = None) -> tuple[int, int, int]:
     height, width = screen.getmaxyx()
     input_rows = min(3, max(1, height - 3))
     activity_height = max(0, height - input_rows - 3)
-    line_count = len(_activity_rows(state, max(1, width - 1)))
+    output_width, _ = _surface_width(width, focus)
+    line_count = len(_activity_rows(state, output_width))
     return activity_height, max(0, line_count - activity_height), line_count
 
 
+def _draw_panel(screen: Any, focus: FocusModel, sections: list[dict[str, Any]],
+                output_width: int, panel_width: int, page: int) -> None:
+    left = output_width + 1
+    try:
+        for row in range(1, page + 1):
+            screen.addnstr(row, output_width, "│", 1)
+        screen.addnstr(1, left, "Control · " + focus.region.upper(), panel_width,
+                       curses.A_BOLD)
+        focus.panel_selection = min(focus.panel_selection, max(0, len(sections) - 1))
+        for index, section in enumerate(sections):
+            if index + 2 > page:
+                break
+            selected = index == focus.panel_selection
+            screen.addnstr(index + 2, left, ("> " if selected else "  ") + section["label"],
+                           panel_width, curses.A_REVERSE if selected else curses.A_NORMAL)
+        first_row = len(sections) + 3
+        available = max(0, page - first_row + 1)
+        section = sections[focus.panel_selection]
+        rows = [wrapped for line in panel_rows(section)
+                for wrapped in _wrap_line(line, max(1, panel_width))]
+        focus.panel_scroll = min(focus.panel_scroll, max(0, len(rows) - available))
+        for row, line in enumerate(rows[focus.panel_scroll:focus.panel_scroll + available], first_row):
+            screen.addnstr(row, left, line, panel_width)
+    except curses.error:
+        pass
+
+
 def _draw(screen: Any, state: EventState, buffer: InputBuffer,
-          scroll: int | ActivityNavigator) -> None:
+          scroll: int | ActivityNavigator, focus: FocusModel | None = None,
+          sections: list[dict[str, Any]] | None = None) -> None:
     screen.erase()
     height, width = screen.getmaxyx()
     if height < 1 or width < 1:
         return
     scroll_offset = scroll.scroll if isinstance(scroll, ActivityNavigator) else scroll
-    activity_height, maximum_scroll, _ = _activity_limits(screen, state)
+    activity_height, maximum_scroll, _ = _activity_limits(screen, state, focus)
     scroll_offset = min(max(0, scroll_offset), maximum_scroll)
     if isinstance(scroll, ActivityNavigator):
         scroll.scroll = scroll_offset
     header = f"Igor  {state.mode.upper()}  {state.session_status}"
-    header += f"  ↑{scroll_offset} End=live" if scroll_offset else "  LIVE"
+    header += f"  ↑{scroll_offset} Ctrl+F=live" if scroll_offset else "  LIVE"
+    if focus is not None:
+        header += "  Focus:" + focus.region.upper()
     if state.provider or state.model:
         header += f"  {state.provider}/{state.model}".rstrip("/")
     try:
@@ -764,7 +1060,7 @@ def _draw(screen: Any, state: EventState, buffer: InputBuffer,
         return
     input_rows = min(3, height - 3)
     separator = height - input_rows - 2
-    viewport_width = max(1, width - 1)
+    viewport_width, panel_width = _surface_width(width, focus)
     rows = _activity_rows(state, viewport_width)
     theme = color_theme(screen)
     start = max(0, len(rows) - activity_height - scroll_offset)
@@ -774,9 +1070,11 @@ def _draw(screen: Any, state: EventState, buffer: InputBuffer,
             screen.addnstr(row, 0, line, viewport_width, theme.get(role, curses.A_NORMAL))
         except curses.error:
             pass
+    if panel_width and focus is not None and sections:
+        _draw_panel(screen, focus, sections, viewport_width, panel_width, activity_height)
     try:
         screen.hline(separator, 0, curses.ACS_HLINE, width)
-        hint = "Enter send  Ctrl+O newline  ↑↓ history  :/Ctrl+P palette  F1 keys"
+        hint = "Tab focus  Ctrl+B panel  Ctrl+F live  Enter send  F1 keys"
         if state.privilege_waiting:
             hint = "Administrator authentication required; password goes directly to sudo"
         elif state.pending_action:
@@ -789,6 +1087,10 @@ def _draw(screen: Any, state: EventState, buffer: InputBuffer,
                         "CHANGE pending: type YES / NO / EXPLAIN / STOP, then Enter")
             else:
                 hint = "READ proposed: type RUN / SKIP / EXPLAIN / STOP, then Enter"
+        elif focus is not None and focus.region == "output":
+            hint = "Output: ↑↓/PageUp/PageDown scroll  Home oldest  End latest  Tab focus"
+        elif focus is not None and focus.region == "panel":
+            hint = "Control: ↑↓ select  PageUp/PageDown inspect  Enter open/refresh  Esc back"
         hint_style = curses.A_BOLD if state.pending_action or state.privilege_waiting else curses.A_DIM
         screen.addnstr(separator + 1, 0, hint, max(1, width - 1), hint_style)
         input_start = separator + 2
@@ -808,6 +1110,10 @@ def _draw(screen: Any, state: EventState, buffer: InputBuffer,
             cursor_row = min(input_start + buffer.row - first_input, height - 1)
             cursor_col = min(2 + buffer.column - horizontal, max(0, width - 1))
             screen.move(cursor_row, cursor_col)
+    except curses.error:
+        pass
+    try:
+        curses.curs_set(1 if focus is None or focus.region == "input" else 0)
     except curses.error:
         pass
     try:
@@ -921,7 +1227,11 @@ def _help_overlay(screen: Any) -> None:
         "Enter send  Ctrl+O / Alt+Enter newline  Esc clear draft",
         "← → Home End move cursor  Backspace/Delete edit",
         "↑ ↓ previous/next prompt (or move within multiline input)",
-        "PageUp/PageDown scroll  Home oldest  End latest (empty input)",
+        "Tab / Shift+Tab focus input, output, open control panel",
+        "Ctrl+B toggle panel  Ctrl+F latest output (preserves draft)",
+        "Output focus: arrows scroll, Home oldest, End latest",
+        "PageUp/PageDown scroll output or focused panel; wheel over output",
+        "Control focus: arrows select section, Enter open/refresh, Esc input",
         "Ctrl+P or : on empty input opens command palette",
         "Ctrl+G collapse/expand successful tool output",
         "Ctrl+C or /stop sends the backend stop action",
@@ -1014,9 +1324,30 @@ def _settings_edit(screen: Any, label: str, current: str) -> str | None:
             edit.insert(chr(key))
 
 
+def edit_property(screen: Any, prop: Property) -> dict[str, Any] | None:
+    """Reusable typed editor returns a proposal; it cannot execute or write."""
+    if not prop.editable or prop.secret:
+        raise ValueError("property is read-only")
+    if prop.type == "boolean":
+        value = not prop.value
+    elif prop.type == "enum":
+        text = _settings_choice(screen, prop.label, prop.options, str(prop.value))
+        if text is None:
+            return None
+        value = parse_control_input(prop, text)
+    else:
+        text = _settings_edit(screen, prop.label, str(prop.value))
+        if text is None:
+            return None
+        value = parse_control_input(prop, text)
+    return propose_property(prop, value)
+
+
 def _settings_overlay(screen: Any, master: int, reader: EventReader,
                       state: EventState) -> None:
     """Show backend settings snapshots and send edits through local commands."""
+    if state.pending_action or state.privilege_waiting or state.finished:
+        return
     selected, notice = 0, "Loading settings…"
     requested: tuple[str, str, str] | None = None
     request_failed = False
@@ -1046,7 +1377,7 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
                 elif event.get("event_type") in {"warning", "error"}:
                     notice = str(event.get("display") or "Settings change failed")
                     request_failed = requested is not None
-            if state.pending_action or state.finished:
+            if state.pending_action or state.privilege_waiting or state.finished:
                 return
             # Settings commands may still print a classic summary. The view
             # consumes structured snapshots only, while draining PTY bytes.
@@ -1055,6 +1386,7 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
             except (BlockingIOError, OSError):
                 pass
             snapshot = state.settings_snapshot
+            schemas = settings_properties(snapshot or {})
             if snapshot is not None and notice == "Loading settings…":
                 notice = ""
             height, width = screen.getmaxyx()
@@ -1063,11 +1395,14 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
                 screen.addnstr(0, 0, "Settings", max(1, width - 1), curses.A_BOLD)
                 if snapshot is not None:
                     first = max(0, selected - max(1, height - 5) + 1)
-                    for row, (key, label, _kind, _options) in enumerate(
-                            SETTINGS_FIELDS[first:first + max(1, height - 4)], 2):
+                    for row, schema in enumerate(schemas[first:first + max(1, height - 4)], 2):
                         index = first + row - 2
                         marker = ">" if index == selected else " "
-                        line = f"{marker} {label:<15} {settings_value(snapshot, key)}"
+                        try:
+                            text = property_text(parse_property(schema))
+                        except (ValueError, TypeError):
+                            text = "Invalid/unsupported property"
+                        line = f"{marker} {text}"
                         screen.addnstr(row, 0, line, max(1, width - 1),
                                        curses.A_REVERSE if index == selected else 0)
                 footer = notice or "↑↓ move  Enter edit/toggle  Esc back"
@@ -1086,21 +1421,19 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
             elif key == curses.KEY_DOWN:
                 selected = min(len(SETTINGS_FIELDS) - 1, selected + 1)
             elif key in (10, 13, curses.KEY_ENTER) and snapshot is not None:
-                field_key, label, kind, options = SETTINGS_FIELDS[selected]
-                current = str(snapshot.get(field_key, ""))
-                if kind == "toggle":
-                    value = "off" if settings_value(snapshot, field_key) == "On" else "on"
-                elif kind == "choice":
-                    value = _settings_choice(screen, label, options, current)
-                else:
-                    value = _settings_edit(screen, label, current)
-                if value is None:
-                    continue
                 try:
-                    command = settings_change_command(field_key, value)
+                    prop = parse_property(schemas[selected])
+                    proposal = edit_property(screen, prop)
+                    if proposal is None:
+                        continue
+                    command = settings_proposal_command(proposal, snapshot)
                 except ValueError as error:
                     notice = str(error)
                     continue
+                field_key = prop.id
+                current = str(snapshot.get(field_key, ""))
+                value = (("on" if proposal["value"] else "off") if prop.type == "boolean"
+                         else str(proposal["value"]))
                 requested = (field_key, value, current)
                 request_failed = False
                 notice = "Saving…"
@@ -1185,32 +1518,53 @@ def _child_exit_code(pid: int, block: bool) -> int | None:
 
 def _loop(screen: Any, pid: int, master: int, path: Path,
           state: EventState | None = None) -> int:
+    inspection = HistoryInspection()
+    try:
+        return _interaction_loop(screen, pid, master, path, state, inspection)
+    finally:
+        inspection.close()
+
+
+def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
+                      state: EventState | None, inspection: HistoryInspection) -> int:
     screen.keypad(True)
     screen.timeout(100)
     state, buffer = state or EventState(), InputBuffer()
     navigator, history = ActivityNavigator(), InputHistory()
+    focus = FocusModel()
+    try:
+        curses.mousemask(getattr(curses, "BUTTON4_PRESSED", 0) |
+                         getattr(curses, "BUTTON5_PRESSED", 0) |
+                         getattr(curses, "BUTTON1_CLICKED", 0) |
+                         getattr(curses, "BUTTON1_PRESSED", 0))
+        curses.mouseinterval(0)
+    except curses.error:
+        pass
     commands = registry_commands()
     reader = EventReader(path)
     terminal_decoder = codecs.getincrementaldecoder("utf-8")("replace")
     dirty = True
     while True:
         events = reader.read()
-        before_count = _activity_limits(screen, state)[2] if events and navigator.scroll else 0
+        before_count = _activity_limits(screen, state, focus)[2] if events and navigator.scroll else 0
+        awaiting_approval = bool(state.pending_action)
         for event in events:
             apply_event(state, event)
+        if (state.pending_action and not awaiting_approval) or state.privilege_waiting:
+            focus.set_focus("input")
         if events and navigator.scroll:
-            _, maximum, after_count = _activity_limits(screen, state)
+            _, maximum, after_count = _activity_limits(screen, state, focus)
             navigator.preserve_view(after_count - before_count, maximum)
-        dirty = dirty or bool(events)
+        dirty = inspection.poll() or dirty or bool(events)
         try:
             raw = os.read(master, 4096)
             if not raw:
                 return _child_exit_code(pid, True) or 0
             if state.console_capture:
-                before_count = _activity_limits(screen, state)[2] if navigator.scroll else 0
+                before_count = _activity_limits(screen, state, focus)[2] if navigator.scroll else 0
                 state.add_terminal_output(terminal_decoder.decode(raw))
                 if navigator.scroll:
-                    _, maximum, after_count = _activity_limits(screen, state)
+                    _, maximum, after_count = _activity_limits(screen, state, focus)
                     navigator.preserve_view(after_count - before_count, maximum)
                 dirty = True
             else:
@@ -1222,7 +1576,7 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
                 return _child_exit_code(pid, True) or 0
             raise
         if dirty:
-            _draw(screen, state, buffer, navigator)
+            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection))
             dirty = False
         key = _next_key(screen)
         if key == -1:
@@ -1241,8 +1595,9 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
                     os.write(master, data)
             continue
         if isinstance(key, str):
-            buffer.insert(key)
-            history.leave()
+            if focus.region == "input":
+                buffer.insert(key)
+                history.leave()
             continue
         if key == curses.KEY_RESIZE:
             continue
@@ -1254,6 +1609,53 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
             state.add_user_input("/stop")
             state.end_terminal_capture()
             navigator.latest()
+            continue
+        page, maximum, before_count = _activity_limits(screen, state, focus)
+        if key == curses.KEY_MOUSE:
+            try:
+                mouse_navigation(curses.getmouse(), focus, navigator, *screen.getmaxyx(),
+                                 page, maximum)
+            except curses.error:
+                pass
+            continue
+        if navigation_key(key, focus, navigator, page, maximum):
+            if key == 2:
+                _, maximum, after_count = _activity_limits(screen, state, focus)
+                navigator.preserve_view(after_count - before_count, maximum)
+                if not focus.panel_open:
+                    inspection.close()
+            continue
+        if focus.region == "panel":
+            sections = panel_sections(state, inspection)
+            if key == curses.KEY_UP:
+                focus.select(-1, len(sections))
+            elif key == curses.KEY_DOWN:
+                focus.select(1, len(sections))
+            elif key in (curses.KEY_PPAGE, curses.KEY_NPAGE, curses.KEY_HOME, curses.KEY_END):
+                rows = [wrapped for line in panel_rows(sections[focus.panel_selection])
+                        for wrapped in _wrap_line(line, max(1, _surface_width(screen.getmaxyx()[1], focus)[1]))]
+                visible = max(1, page - len(sections) - 2)
+                maximum_panel = max(0, len(rows) - visible)
+                if key == curses.KEY_HOME:
+                    focus.panel_scroll = 0
+                elif key == curses.KEY_END:
+                    focus.panel_scroll = maximum_panel
+                else:
+                    delta = visible if key == curses.KEY_NPAGE else -visible
+                    focus.panel_scroll = min(maximum_panel, max(0, focus.panel_scroll + delta))
+            elif key in (10, 13, curses.KEY_ENTER):
+                section_id = sections[focus.panel_selection]["id"]
+                if section_id == "history":
+                    inspection.start()
+                elif section_id == "properties" and not state.pending_action:
+                    _settings_overlay(screen, master, reader, state)
+                    focus.set_focus("input")
+            elif key == 27:
+                focus.set_focus("input")
+            continue
+        if focus.region == "output":
+            if key in (27, 10, 13, curses.KEY_ENTER):
+                focus.set_focus("input")
             continue
         if key == 27:
             screen.timeout(80)
@@ -1276,16 +1678,8 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
                 state.begin_terminal_capture()
                 navigator.latest()
             continue
-        page, maximum, _ = _activity_limits(screen, state)
-        if key == curses.KEY_PPAGE:
-            navigator.page_up(page, maximum)
-        elif key == curses.KEY_NPAGE:
-            navigator.page_down(page)
-        elif key == curses.KEY_SR:
-            navigator.line_up(maximum)
-        elif key == curses.KEY_SF:
-            navigator.line_down()
-        elif key == curses.KEY_HOME:
+        page, maximum, _ = _activity_limits(screen, state, focus)
+        if key == curses.KEY_HOME:
             buffer.move_home() if buffer.text() else navigator.oldest(maximum)
         elif key == curses.KEY_END:
             buffer.move_end() if buffer.text() else navigator.latest()
@@ -1342,9 +1736,6 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
             history.leave()
         elif key in (curses.KEY_BACKSPACE, 127, 8):
             buffer.backspace()
-            history.leave()
-        elif key == 9:
-            buffer.insert("\t")
             history.leave()
         elif 0 <= key <= 255:
             buffer.insert(chr(key))

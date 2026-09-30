@@ -58,6 +58,16 @@ limit, mode, verbose output, AI autostart, and the hybrid menu. Up/Down selects
 a setting, Enter toggles or edits it, and Esc returns to the current draft.
 Typing `settings` in the TUI opens the same view; the classic UI still prints
 a summary.
+Tab/Shift+Tab cycles focus between input, output and the open control panel.
+Ctrl+B shows/hides the panel; Ctrl+F returns to latest output while preserving
+the draft. With output focused, arrows and Home/End navigate output; mouse
+wheel scrolling works over output on terminals that support it. The header
+shows focus and LIVE or the distance from newest output. In the panel,
+Up/Down selects a section and Page Up/Down scrolls its content. Enter on History
+loads recent durable Operational History through the read-only backend CLI;
+Enter on Settings opens the existing settings editor. Session/AI and execution
+provenance are informational. See [interaction primitives](docs/interaction_surface.md)
+for the reusable schema/property model and authority boundary.
 Ctrl+G collapses or expands successful tool output, while failures stay visible.
 Esc clears the draft; Ctrl+C or `/stop` uses the backend stop action. Pending
 actions show Run/Skip/Explain or Yes/No/Explain choices; destructive actions

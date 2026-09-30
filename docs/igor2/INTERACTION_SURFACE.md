@@ -1,6 +1,7 @@
 # Step 15UI — Interaction Surface Foundation
 
-Status: **planned bounded implementation slice; architecture contract only in this PR**.
+Status: **implemented bounded interaction foundation**. Validation and closure
+evidence are recorded in [STATUS.md](STATUS.md).
 
 15UI introduces the reusable interaction mechanics needed for Igor's current
 full-screen TUI to become a practical control surface before Step 20 makes it
@@ -19,6 +20,56 @@ model judgments without making presentation code responsible for AI policy.
 15C can then add durable investigation state to an interaction framework that
 already knows how to inspect, select, edit and render structured backend data.
 15D adds context relevance and model-role routing behind the same boundary.
+
+## Implemented boundary
+
+The existing `--ai-tui` frontend remains the interaction surface. Its ordered
+frontend events and bounded session activity projection remain presentation
+state; they are not an Operational History database. The panel reads durable
+history through the existing public `--history recent` CLI, without observer refresh,
+replay, recovery, reset or execution. Session mode, provider/model, approvals
+and execution results come from the current backend event projection.
+
+Schema/property controls collect proposed values. The existing AI settings
+backend is the concrete editable semantic-setting integration; frontend code
+sends its existing commands and waits for a backend snapshot. This is not a
+new Configuration Service, module schema contract or file writer. Future
+configuration owners must supply schema and bind submission to their own
+validated authority boundary. Secret-value editing/display is excluded.
+
+Current backend contracts do not publish a model-role registry, live judgment
+feed or dedicated conversational-question projection. Missing information is
+unavailable rather than inferred. Judgment records remain reference data;
+15D owns routing. Typed conversational replies still reach the existing
+backend choice lifecycle, including cancellation. Approval and exact `YES`
+DESTROY confirmation remain backend-owned; sudo input still goes directly to
+the backend PTY.
+
+## Current primitives
+
+[Current UI documentation](../interaction_surface.md) lists the operator keys.
+`core/ai/interaction.py` owns implementation-private presentation helpers;
+`core/ai/tui.py` integrates them with the existing event projection and PTY.
+
+- Tab/Shift+Tab cycles input, output and the open panel. Ctrl+B toggles the
+  panel; Ctrl+F returns to latest output independently of draft contents.
+- Output focus makes arrows/Home/End navigation explicit. Page Up/Down scrolls
+  output outside panel focus; mouse wheel scrolls only over output. The header
+  identifies focus and LIVE versus historical output.
+- Panel selection uses Up/Down; Page Up/Down navigates selected content.
+  Session, read-only AI, Settings, Operational History and latest result are
+  data-backed sections. Settings and History use their existing backend paths.
+- Property types are text, enum, boolean, integer and number. Properties carry
+  identity, label, value availability, editability, source and presentation
+  constraints. Unsupported types/fields fail closed. A proposal contains only
+  `property_id` and a typed `value`; trusted owning-backend integration binds it
+  to an edit interface. There is no command or storage path in the schema.
+- Structured rendering is bounded and read-only, preserving displayed source
+  and provenance. Secret properties are masked and cannot submit proposals.
+
+Size, duration and richer module schemas are deferred until a concrete owning
+backend requires them; the conceptual Nextcloud example below remains a future
+schema contribution, not an implemented setting.
 
 ## Goals
 

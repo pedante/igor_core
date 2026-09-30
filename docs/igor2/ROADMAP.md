@@ -412,10 +412,10 @@ The implementation sequence is deliberately bounded:
   validation and deterministic fallback. It has no operational authority,
   live transport, persistence, role/model selection or routing policy. See
   [STATUS.md](STATUS.md) for validation evidence.
-- **15UI — Interaction Surface Foundation:** after the judgment contract and
-  before 15C, harden the current TUI with mouse scrolling, keyboard
-  navigation/movable selection, explicit focus, a toggleable control panel and
-  reusable schema-driven input/property rendering. The UI consumes backend
+- **15UI — Interaction Surface Foundation:** implemented after the judgment
+  contract and before 15C: mouse scrolling, keyboard navigation/movable
+  selection, explicit focus, a toggleable control panel and reusable typed
+  schema/property rendering extend the existing TUI. The UI consumes backend
   inspection/edit contracts; it does not own configuration, history, AI
   routing, safety or authority. See [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md).
 - **15C — Durable Investigations:** add a separate investigation lifecycle for

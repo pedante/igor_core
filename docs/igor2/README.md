@@ -18,7 +18,7 @@ For most Igor 2 work:
    - `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.
    - `AUTOMATION_ENGINE.md` — accepted and implemented Step 14 Automation Engine contract.
    - `PERSISTENT_MEMORY.md` — accepted Step 15A persistent identity, System Model persistence, durable-reference and memory-ownership contract; [Operational History](../operational_history.md) documents the Step 15B service.
-   - `INTERACTION_SURFACE.md` — planned Step 15UI interaction foundation: scrolling, selection/focus, toggleable control panel, schema-driven inputs/properties and backend-reported AI role visibility.
+   - `INTERACTION_SURFACE.md` — implemented Step 15UI interaction foundation: scrolling, selection/focus, toggleable control panel, schema-driven inputs/properties and backend-reported AI role visibility.
    - `CONFIGURATION.md` — design proposal for an Igor-owned configuration model, semantic settings, configuration surfaces, relationships, scopes and backend abstraction.
    - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
    - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
