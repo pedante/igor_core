@@ -460,6 +460,24 @@ the existing source/target, validation, idempotency, cutover, verification and
 recovery discipline. Cross-store references tolerate an unavailable/pruned
 target and never reuse an old durable ID for a different meaning.
 
+### D055 — Model judgments are provider-neutral reference records
+
+The Project Owner accepted the bounded
+[Decision/Judgment Contract](JUDGMENT_CONTRACT.md): one versioned, in-memory
+Igor envelope, caller-owned bounded kind/output schema, and an injected
+tool-free adapter. Igor validates output and retains input/reference and
+invocation provenance. Valid, abstain, unknown, invalid output, provider
+failure, unavailable and timeout remain distinct; a caller-chosen validated
+default provides deterministic fallback without another model call.
+
+Judgments have no authority over facts/freshness, activation, registration,
+operational provider selection, safety, approval, privilege, preconditions,
+automation, desired state, responsibility, verification, recovery or secrets.
+No live-provider wiring, persistence, roles, routing/model selection, agents,
+15UI, 15C or 15D implementation is accepted by this decision. MODEL_ROLES and
+AI_SPECIALISTS remain proposals; actual relevance/routing policy belongs to
+15D. Future transports reuse the existing provider/privacy boundary.
+
 ---
 
 ## Open decisions

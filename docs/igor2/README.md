@@ -23,6 +23,7 @@ For most Igor 2 work:
    - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
    - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
+   - `JUDGMENT_CONTRACT.md` — accepted bounded provider-neutral, reference-only model judgment record/interface; no role routing, transport or persistence.
    - `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
    - `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.

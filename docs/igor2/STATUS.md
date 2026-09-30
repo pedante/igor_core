@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
 ## Step 15A Persistent Identity & Memory Foundation — architecture gate
 
@@ -29,10 +29,11 @@ generic typed input/property rendering and visibility into backend-reported AI
 role/provider state. It does not implement model routing, named cheap models,
 investigation storage, Nextcloud-specific settings or backend authority.
 
-The small Decision/Judgment Contract before 15UI/15C is provider-neutral and
-must include abstain/unknown, provenance, validation and a provider interface;
-it does not select Jet/Laya. Step 15D remains the owner of context
-relevance/model routing policy.
+The small Decision/Judgment Contract before 15UI/15C is accepted in D055 and
+implemented in-memory; [JUDGMENT_CONTRACT.md](JUDGMENT_CONTRACT.md) defines its
+provider-neutral record, tool-free adapter, abstain/unknown, provenance,
+validation and deterministic fallback. It does not select Jet/Laya. Step 15D
+remains the owner of context relevance/model routing policy.
 
 The selected boundary keeps the System Model as current-state projection.
 Configured/user-declared/desired/responsibility state survives through its
@@ -53,7 +54,63 @@ Operational History service; runtime and callers use versioned records instead
 of backend tables/paths. The implementation and evidence are recorded below;
 the accepted Step 15A decisions are unchanged.
 
-## Step 15B Operational History — implemented; validation gate
+## Decision/Judgment Contract — complete
+
+The Project Owner confirmed D055's bounded interface after discovery.
+`core/ai/judgment.py` implements one closed version-1 request/record contract,
+caller-supplied kind/version/output schema and an injected tool-free adapter.
+It reads no runtime state and has no operational integration or persistence.
+Igor stamps input digest/references, invocation identity/provider/model and
+timestamps. Valid, abstain, unknown, invalid output, provider failure,
+unavailable and timeout remain separate; a validated deterministic default
+handles every nondecision without another model call.
+
+**Authority proof:** focused fixtures retain a stale System Model fact and
+unchanged capability registration/provider, CHANGE tier, required privilege,
+preconditions, verification and recovery despite hostile schema-valid reference
+output claiming approval/freshness/authority. The real `ai_execute_tool`
+dispatcher rejects a judgment before approval/authentication or execution.
+Judgment records cannot be spliced into the closed tool grammar. The service
+has no activation, automation, secret-access or state-writer interface.
+
+**Contract/vertical-slice proof:** focused tests exercise request -> injected
+adapter -> Igor record -> read-only revalidation -> deterministic fallback,
+including local/remote/future provider identities using the same schema.
+Malformed/unsupported versions, bounded input/output/schema, invented evidence,
+provenance spoofing, abstention, provider failures and timeout are covered.
+Live inference and an operational consumer are deliberately excluded by owner
+approval; the fixture slice proves the complete authorized interface.
+
+**Inspection:** `validate_record(record, request)` retains provenance, timestamps,
+status, validation and reference payload without dereferencing or writes.
+**Migration/recovery:** no persistent layout or existing consumer changes;
+there is no migration, restart replay or second history store. Contract/version
+failures use deterministic fallback. LEGACY dispositions remain unchanged.
+
+**Validation evidence (2026-10-01):**
+
+| Check | Result |
+|---|---|
+| Focused contract | 12 tests and 76 subtests passed: schema/version, bounded payloads, explicit abstain/unknown, invalid output, failures/unavailable/timeout, provenance retention, provider independence, authority separation, real dispatcher rejection and deterministic fallback. |
+| Single final Python regression | `pytest -q`: 320 tests and 221 subtests passed; no failures or skips. |
+| Single final Bash regression | `bash tests/run_all.sh`: all five groups passed, zero failed/skipped groups; 46 Bash core checks, 46 render tests, 305 core BATS, 141 module BATS and 40 integration BATS. Two existing core cases skipped: GPG agent and `hostname -I` unavailable. |
+| Lint | New Python files pass Ruff. Repository-wide `ruff check .` reports 144 existing findings in 28 unchanged files; each affected file was compared byte-for-byte with HEAD. Baseline lint debt is retained, with no new findings or claim of a green repository-wide lint result. No Bash files changed, so new ShellCheck coverage is not applicable. |
+| Compile/references/diff | New Python files compile; all 59 local references across changed documentation resolve; final diff/whitespace checks pass. |
+
+The scoped contract, regression, fixture vertical slice, inspection and
+nonpersistent recovery evidence satisfy this gate. Repository-wide lint debt
+is a recorded baseline failure, not repaired or hidden by this task. Work used
+the clean active `igor2` checkout at `077c5cd`, with local `master` an ancestor;
+no clone, remote-baseline claim or existing runtime contract replacement.
+
+**Deferrals/next gates:** no transport wiring, role registry/requirements,
+Jet/Laya, provider solver, routing, persistence, agent, operational capability,
+15UI, 15C or 15D implementation. D055 supplies the judgment dependency for
+15UI/15C. 15UI is unblocked by this gate; 15C's judgment dependency is satisfied,
+but the accepted order still places 15UI before 15C. 15D owns actual
+relevance/context and model-routing policy. No later step was started.
+
+## Step 15B Operational History — implemented; historical validation evidence
 
 The bounded service is implemented under the accepted D048–D054 contract.
 [Operational History](../operational_history.md) defines the version-1 episode,
@@ -117,10 +174,12 @@ execution authority. [LEGACY.md](LEGACY.md) records each disposition.
 | Syntax/compile/references | Changed Bash syntax, Python compilation across `core`/`tests`, documentation references and `git diff --check` passed. |
 | Tooling gate | Ruff and CI-configured ShellCheck were attempted but are not installed. Network resolution also prevents refreshing GitHub refs or installing missing tools. No lint success or remote freshness is claimed, and unrelated lint debt was not changed. |
 
-The bounded implementation and behavioral proofs are complete. The wave's
-final validation gate remains open for the unavailable lint tools and remote
-baseline refresh; do not start the Decision/Judgment Contract or 15C on the
-strength of prose alone.
+The bounded implementation and behavioral proofs were complete at that
+handoff, with lint tools and remote baseline refresh unavailable then. The
+Project Owner subsequently authorized the Judgment Contract after completed
+15B work. Cached lint/test tools are available for the current task's final
+gate. This supersedes the historical hold on beginning judgments; it does not
+claim a remote baseline refresh or retroactive lint success.
 
 **Repository baseline:** implementation starts from local `igor2` at `141ff36`,
 which contains the intended functional master baseline. Available origin/master

@@ -406,10 +406,12 @@ The implementation sequence is deliberately bounded:
   projection; the recovery journal retains noncanonical legacy callers. See
   [Operational History](../operational_history.md) and the validation gate in
   [STATUS.md](STATUS.md).
-- **Decision/Judgment Contract gate:** before later AI routing depends on model
-  judgments, establish a small provider-neutral schema/interface with explicit
-  abstain/unknown, provenance, validation and tests. Do not select Jet/Laya or
-  implement a provider solver here.
+- **Decision/Judgment Contract gate:** the accepted D055
+  [contract](JUDGMENT_CONTRACT.md) supplies a versioned, provider-neutral
+  in-memory schema/interface with explicit abstain/unknown, provenance,
+  validation and deterministic fallback. It has no operational authority,
+  live transport, persistence, role/model selection or routing policy. See
+  [STATUS.md](STATUS.md) for validation evidence.
 - **15UI — Interaction Surface Foundation:** after the judgment contract and
   before 15C, harden the current TUI with mouse scrolling, keyboard
   navigation/movable selection, explicit focus, a toggleable control panel and
@@ -423,6 +425,8 @@ The implementation sequence is deliberately bounded:
 - **15D — Inspection & Context Integration:** make the new authorities
   inspectable and selectively retrievable by the Context Engine without
   dumping raw history or turning investigation/learning text into authority.
+  This step owns actual relevance/context routing and model-routing policy;
+  the Judgment Contract alone implements none of those policies.
 
 Chat history is not operational memory. Step 13 events remain transient
 signals and are not the only durability path. Persistent records refer to

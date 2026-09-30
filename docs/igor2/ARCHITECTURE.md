@@ -96,6 +96,14 @@ The agent interprets intent, selects relevant investigations/capabilities, propo
 
 The agent receives composed context from Igor. It cannot invent authoritative state, silently turn inference into fact, expose secrets by default, claim execution success without verification or bypass safety/privilege policy.
 
+Model-generated interpretations use the reference-only
+[Decision/Judgment Contract](JUDGMENT_CONTRACT.md) (D055): one provider-neutral,
+versioned in-memory envelope with input/invocation provenance, bounded
+kind-specific output, explicit abstain/unknown and distinct validation/transport
+failures. Schema validity conveys no state, execution or policy authority.
+Step 15D owns later relevance and routing policy; the contract selects no roles,
+providers or models and creates no durable memory.
+
 ### Trust boundary
 
 The current request boundary and reference-data envelope are a foundation to preserve.
