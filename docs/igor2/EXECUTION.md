@@ -105,7 +105,8 @@ Examples:
 - fact: owner, source, timestamp, freshness and confidence/type;
 - plan: steps, provider, approval requirement, recovery semantics and
   verification result;
-- investigation: question, evidence, hypotheses, findings and status.
+- investigation: question, evidence, hypotheses, findings and status;
+- history: operation/correlation identity, scoped affected objects, provider, authority/privilege, execution, verification and outcome.
 
 The later TUI/consolidation work turns these inspection surfaces into one
 coherent operator experience; it is not the first point at which inspection
@@ -173,6 +174,27 @@ Every important persistent value should be able to answer:
 Early non-conflicting Wave C loader work may proceed while this foundation is
 being established, but broad module migration must not freeze the current
 mixed storage assumptions into Module API v2.
+
+## Future-preservation review
+
+Before accepting a new durable/public contract, review whether the contract
+still works if a currently local implementation later changes in one of these
+ways:
+
+- the object/provider lives in another managed machine scope;
+- there are multiple domain/deployment instances;
+- a provider is reached through an external adapter rather than local Bash;
+- the persistence backend changes without changing callers;
+- work waits across restart or an external dependency;
+- a package/provider is third-party with additional provenance/trust metadata;
+- a referenced record is retained, migrated, redacted or no longer locally
+  available.
+
+This is not a requirement to implement those futures now. It is a guard
+against making filesystem paths, handler names, host-local assumptions,
+database schemas or current UI representations part of a durable public
+identity. Reject speculative machinery that has no current need; preserve the
+identity/reference seam that would allow the future implementation.
 
 ## Compatibility discipline
 
