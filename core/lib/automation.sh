@@ -98,10 +98,17 @@ _igor_automation_run_due_locked() {
 
 _igor_automation_dispatch_claim() {
     local _context="$1" _claim="$2" _request _result _completion _id _rc=0
+    local IGOR_HISTORY_ACTOR=automation IGOR_HISTORY_INTERFACE=automation
+    local IGOR_HISTORY_AUTOMATION_ID IGOR_HISTORY_AUTOMATION_CLAIM_ID IGOR_HISTORY_AUTOMATION_SLOT IGOR_HISTORY_CAUSATION_ID
     local _prior_draining="${_IGOR_AUTOMATION_DRAINING:-0}"
     _request="$(python3 -c 'import json,sys; t=json.loads(sys.argv[1])["target"]; r={"tool":"run_capability","id":t["capability_id"],"inputs":t["inputs"]}; r.update({"provider":t["provider"]} if "provider" in t else {}); print(json.dumps(r,separators=(",", ":")))' "$_claim")" || return 1
     _id="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["id"])' "$_claim")" || return 1
     IGOR_CAPABILITY_LAST_RESULT=""
+    IGOR_HISTORY_AUTOMATION_ID="$_id"
+    IGOR_HISTORY_AUTOMATION_CLAIM_ID="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["claim_id"])' "$_claim")" || return 1
+    IGOR_HISTORY_AUTOMATION_SLOT="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("slot", ""))' "$_claim")" || return 1
+    IGOR_HISTORY_CAUSATION_ID="$(python3 -c 'import re,sys; s=sys.argv[1]; print(s if re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",s) else "")' "$IGOR_HISTORY_AUTOMATION_SLOT")" || return 1
+    export IGOR_HISTORY_ACTOR IGOR_HISTORY_INTERFACE IGOR_HISTORY_AUTOMATION_ID IGOR_HISTORY_AUTOMATION_CLAIM_ID IGOR_HISTORY_AUTOMATION_SLOT IGOR_HISTORY_CAUSATION_ID
     _IGOR_AUTOMATION_DRAINING=1
     ai_execute_tool "$_request" >/dev/null || _rc=1
     _IGOR_AUTOMATION_DRAINING="$_prior_draining"

@@ -545,6 +545,7 @@ ai_execute_tool() {
     unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
     IGOR_CAPABILITY_LAST_RESULT=""
     local _operation_id AI_EVENT_NATIVE_ID
+    local IGOR_HISTORY_OPERATION_ID="" IGOR_HISTORY_CORRELATION_ID="" IGOR_CAPABILITY_PRIVILEGE_STATUS=""
     _operation_id="ai_$(date +%s%N 2>/dev/null || date +%s)_$$"
     AI_EVENT_NATIVE_ID=$(printf '%s' "$tool_json" | python3 -c \
         'import json,sys; print(json.load(sys.stdin).get("__native_id", ""))' 2>/dev/null || true)
@@ -836,6 +837,14 @@ ai_execute_tool() {
                 echo "[ERROR: Capability '${T_CAPABILITY_ID}' is unavailable or its inputs are invalid]"
                 return 1
             }
+            # Operational identity is durable before approval, authentication,
+            # compatibility backups, or the provider's possible external effect.
+            IGOR_HISTORY_CORRELATION_ID="${IGOR_AI_REQUEST_ID:-$_operation_id}"
+            IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_cap_prepared" "$IGOR_HISTORY_CORRELATION_ID" "$(ai_get_mode)")" || {
+                _ai_audit_rejected "$T_TOOL" CHANGE history-unavailable "$tool_json" "$_operation_id"
+                echo "[ERROR: Operational History unavailable; capability not admitted]"
+                return 1
+            }
             if [ "$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("precondition_status","failed"))')" != satisfied ]; then
                 output="$(_igor_capability_nonexecution_result "$_cap_prepared" precondition_failed)"
                 IGOR_CAPABILITY_LAST_RESULT="$output"
@@ -905,6 +914,9 @@ ai_execute_tool() {
                 "${_ria_owner:-}" "$tool_json" "$_v_reason" "$_operation_id"
             _ai_write_tool_meta "$tier" denied action_denied "" validation
             _IGOR_LAST_EXEC_TIER="CHANGE"
+            if [ "$T_TOOL" = run_capability ]; then
+                IGOR_CAPABILITY_LAST_RESULT="$(_igor_capability_nonexecution_result "$_cap_prepared" validation_blocked denied not_requested)"
+            fi
             return 1
         fi
     fi
@@ -963,6 +975,9 @@ ai_execute_tool() {
                     "This read-only action is proposed for your review." "$_operation_id" "${T_CMD:-}" || {
                     echo "[BLOCKED: Could not create approval record]"
                     _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                    if [ "$T_TOOL" = run_capability ]; then
+                        IGOR_CAPABILITY_LAST_RESULT="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_record_failed denied not_requested)"
+                    fi
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
@@ -991,6 +1006,9 @@ ai_execute_tool() {
                     "$([ "$_raw_shell" = true ] && echo 'Raw shell fallback requires explicit approval; no deterministic verifier is implied.' || echo 'This action may modify system state.')" "$_operation_id" "${T_CMD:-}" || {
                     echo "[BLOCKED: Could not create approval record]"
                     _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                    if [ "$T_TOOL" = run_capability ]; then
+                        IGOR_CAPABILITY_LAST_RESULT="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_record_failed denied not_requested)"
+                    fi
                     return 1
                 }
                 _ai_write_tool_meta "$tier" pending pending "" ""
@@ -1009,6 +1027,9 @@ ai_execute_tool() {
                 "This action may delete data or cause irreversible effects." "$_operation_id" "${T_CMD:-}" || {
                 echo "[BLOCKED: Could not create approval record]"
                 _ai_write_tool_meta "$tier" denied action_denied "" approval_record
+                if [ "$T_TOOL" = run_capability ]; then
+                    IGOR_CAPABILITY_LAST_RESULT="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_record_failed denied not_requested)"
+                fi
                 return 1
             }
             _ai_write_tool_meta "$tier" pending pending "" ""
@@ -1030,6 +1051,9 @@ ai_execute_tool() {
         _ai_write_tool_meta "$tier" denied action_denied "" approval_revalidation
         _ai_audit_dispatch BLOCKED "$T_TOOL" "$tier" none validation 1 \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
+        if [ "$T_TOOL" = run_capability ]; then
+            IGOR_CAPABILITY_LAST_RESULT="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_invalid denied not_requested)"
+        fi
         echo "$output"
         return 1
     fi
@@ -1048,8 +1072,23 @@ ai_execute_tool() {
     _ai_write_tool_meta "$tier" "$_meta_approval" pending "" ""
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
+    if [ "$T_TOOL" = run_capability ]; then
+        local _history_privilege=not_required
+        [ "$_cap_privilege" = required ] && _history_privilege=not_requested
+        [ "$run" = true ] && [ "$_cap_privilege" = required ] && _history_privilege=required
+        if ! _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "$_meta_approval" "$_history_privilege"; then
+            output="$(_igor_capability_nonexecution_result "$_cap_prepared" history_unavailable "$_meta_approval" "$_history_privilege")"
+            IGOR_CAPABILITY_LAST_RESULT="$output"
+            printf '%s\n' "$output"
+            return 1
+        fi
+    fi
     if [ "$approval_mode" = "stopped" ]; then
         output="[USER STOPPED] Pending action cancelled: ${display_cmd}"
+        if [ "$T_TOOL" = run_capability ]; then
+            output="$(_igor_capability_nonexecution_result "$_cap_prepared" approval_stopped stopped not_requested)"
+            IGOR_CAPABILITY_LAST_RESULT="$output"
+        fi
         echo -e "  ${YEL}  (stopped — command not run)${NC}" >&2
         _ai_write_tool_meta "$tier" denied action_denied "" approval_stopped
         _ai_audit_dispatch STOPPED "$T_TOOL" "$tier" stopped stopped "0" \
@@ -1080,6 +1119,16 @@ ai_execute_tool() {
                 output="[ADMIN AUTHENTICATION FAILED] A terminal is required; the approved action was not run."
                 exit_code=1
                 _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" failed "Administrator authentication requires a terminal; action not run" "" 1 true)"
+            fi
+        fi
+        if [ "$T_TOOL" = run_capability ] && [ "$_admin_auth_failed" = false ]; then
+            local _history_privilege_result=not_required
+            [ "$_requires_admin" = true ] && _history_privilege_result=authenticated
+            if ! _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "$_meta_approval" "$_history_privilege_result"; then
+                output="$(_igor_capability_nonexecution_result "$_cap_prepared" history_unavailable "$_meta_approval" "$_history_privilege_result")"
+                IGOR_CAPABILITY_LAST_RESULT="$output"
+                printf '%s\n' "$output"
+                return 1
             fi
         fi
         # Backups and undo-state reads happen only after approval.
@@ -1131,6 +1180,7 @@ ai_execute_tool() {
                 if [ -n "$_cap_approved_digest" ]; then
                     IGOR_CAPABILITY_APPROVED_DIGEST="$_cap_approved_digest"
                     IGOR_CAPABILITY_APPROVAL_STATUS="$_meta_approval"
+                    IGOR_CAPABILITY_PRIVILEGE_STATUS="${_history_privilege_result:-not_required}"
                     export IGOR_CAPABILITY_APPROVED_DIGEST
                     export IGOR_CAPABILITY_APPROVAL_STATUS
                     output=$(igor_capability_execute "$_cap_prepared" 2>&1)
@@ -1234,9 +1284,10 @@ ${tail_out}"
         fi
 
         # ── Change journal hook ────────────────────────────────────────────
-        # Records every executed Igor (AI) action. ACTOR=igor distinguishes
-        # AI-originated actions from diagnose fixes, menu actions, and web-UI changes.
-        if [ "$_admin_auth_failed" = false ] && declare -f journal_record &>/dev/null; then
+        # Legacy/raw operations retain their command-oriented recovery source.
+        # Canonical operations cut over to Operational History; do not duplicate
+        # their outcomes in the legacy journal or infer generic rollback.
+        if [ "$_admin_auth_failed" = false ] && [ "$T_TOOL" != run_capability ] && declare -f journal_record &>/dev/null; then
             local _js="OK"; [ $exit_code -ne 0 ] && _js="FAIL"
             journal_record "igor" "occ_exec" "$tier" \
                 "${run_cmd:-${display_cmd}}" "$_js" "exit:${exit_code}"

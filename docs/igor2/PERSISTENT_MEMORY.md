@@ -1,6 +1,9 @@
 # Step 15A — Persistent Identity & Memory Foundation
 
-Status: **architecture contract for the Step 15A gate; no Step 15 runtime implementation is implied by this document**.
+Status: **accepted Step 15A architecture contract**. The bounded Step 15B
+implementation and its service behavior are documented in
+[Operational History](../operational_history.md); completion evidence lives in
+[STATUS.md](STATUS.md). D048–D054 remain unchanged.
 
 This document resolves the persistent-identity and System Model persistence
 questions that must be settled before Operational History becomes an
@@ -311,7 +314,13 @@ Operational History -> what happened over time
 
 ## Operational History boundary
 
-Step 15B will create the first durable runtime consumer of this contract.
+Step 15B implements the first durable runtime consumer of this contract through
+the private Operational History service, directly attached to canonical
+capability admission/execution/results. Its versioned episodes and scoped
+references implement these semantics without persisting current System Model
+facts as historical authority. See
+[Operational History](../operational_history.md) for lifecycle, inspection,
+export/recovery and compatibility cutover.
 
 ### History is not the Step 13 event buffer
 

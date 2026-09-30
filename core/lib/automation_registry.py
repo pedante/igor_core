@@ -523,7 +523,7 @@ class Registry:
                     "execution_status": None, "verification_status": None,
                     "outcome": "interrupted_unknown", "reason": "claimed_before_dispatch",
                 }
-                return {"id": row["id"], "claim_id": claim_id, "target": row["target"]}
+                return {"id": row["id"], "claim_id": claim_id, "slot": slot, "target": row["target"]}
         return None
 
     def _event_matches(self, row: dict[str, Any], event: dict[str, Any], mode: str,
@@ -564,7 +564,7 @@ class Registry:
                 "operation_id": None, "execution_status": None, "verification_status": None,
                 "outcome": "interrupted_unknown", "reason": "claimed_before_dispatch",
             }
-            return {"id": row["id"], "claim_id": claim_id, "target": row["target"]}
+            return {"id": row["id"], "claim_id": claim_id, "slot": event["event_id"], "target": row["target"]}
 
     def finish(self, ident: str, claim_id: str, result: Any) -> dict[str, Any]:
         """Keep only canonical status fields; an absent result remains unknown."""

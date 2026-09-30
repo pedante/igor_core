@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core/lib"))
 from automation_registry import AutomationError, Registry
 from module_contract import validate_module
+from operational_history import OperationalHistory  # noqa: E402
 
 TRIGGER = {"kind": "once_at", "schema_version": 1, "once_at": "2030-01-01T00:00:00Z"}
 PERIODIC = {"kind": "periodic", "schema_version": 1,
@@ -379,6 +380,9 @@ PY
         self.assertEqual(state["last_attempt"]["outcome"], "success")
         self.assertEqual(state["last_attempt"]["verification_status"], "passed")
         self.assertEqual(state["last_attempt"]["slot"], events[0]["event_id"])
+        episode = OperationalHistory(self.root).inspect(state["last_attempt"]["operation_id"])
+        self.assertEqual(episode["references"]["causation_id"], events[0]["event_id"])
+        self.assertEqual(episode["references"]["automation_slot"], state["last_attempt"]["slot"])
         restart = subprocess.run(["bash", "-c", script.split("            ai_execute_tool")[0]
                                   + "igor_automation_drain_events Assist"], cwd=ROOT, env=env,
                                  capture_output=True, text=True, check=True)
@@ -746,6 +750,12 @@ PY
                           state["last_attempt"]["verification_status"], state["last_attempt"]["outcome"]),
                          ("succeeded", "passed", "success"))
         self.assertTrue(state["last_attempt"]["operation_id"].startswith("op-"))
+        episode = OperationalHistory(self.root).inspect(state["last_attempt"]["operation_id"])
+        self.assertEqual(episode["provenance"]["actor"], "automation")
+        self.assertEqual(episode["references"]["automation_id"], ident)
+        self.assertEqual(episode["references"]["automation_claim_id"], state["last_attempt"]["claim_id"])
+        self.assertEqual(episode["references"]["automation_slot"], state["last_attempt"]["slot"])
+        self.assertNotIn("causation_id", episode["references"])
         self.assertEqual(events[0]["correlation_id"], state["last_attempt"]["operation_id"])
         self.assertEqual(json.loads(cli("run-due", "Assist").stdout)["admitted"], 0)
         self.assertEqual(json.loads(cli("run-due", "Executive").stdout)["admitted"], 0)

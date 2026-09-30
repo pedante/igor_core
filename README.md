@@ -128,6 +128,16 @@ Raw AI shell requests are identified as unstructured; raw CHANGE requires
 explicit approval even in Executive mode and has no automatic postcondition
 verification.
 
+Canonical capability invocations also create durable Operational History.
+Use `bash igor.sh --history recent`, `--history inspect <operation-id>`,
+`--history correlation <id>` or `--history status` for read-only JSON inspection
+without the TUI. CHANGE attempts receive durable identity before execution;
+after interruption they remain explicitly unknown and are never automatically
+repeated. See [Operational History](docs/operational_history.md) for the record
+contract, explicit verification-only recovery, export/restore and reset.
+Chat `history`/`replay` still display session transcripts; `--ai last` remains
+the bounded AI audit view.
+
 Inspect AI policy and capabilities with `bash igor.sh --ai status` or `--ai tools`.
 Use `--ai last` for the latest structured operational trace. The catalog comes
 from Igor's supported tool grammar and active module actions; legacy `ai_tools`

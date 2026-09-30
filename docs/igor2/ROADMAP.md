@@ -385,7 +385,7 @@ The five proof classes and regression results are recorded in
 [STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
 require later explicit contracts; Step 15 owns durable history.
 
-## Step 15 — Operational History — 15A ARCHITECTURE CONTRACT; RUNTIME FUTURE
+## Step 15 — Operational History — 15A ACCEPTED; 15B IMPLEMENTED, VALIDATION GATE
 
 Step 15A is the persistence/identity gate in
 [PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md). D048–D054 resolve Q003 and
@@ -399,10 +399,13 @@ The implementation sequence is deliberately bounded:
   scoped durable references, System Model persistence semantics, provider and
   correlation identity, evidence/provenance, ownership/lifecycle/reset and the
   canonical history hand-off. No broad runtime store is introduced.
-- **15B — Operational History:** persist structured operational episodes from
-  canonical Igor execution/results. Treat the current AI audit and recovery
-  journal as migration inputs, not the permanent schema. State-changing
-  attempts receive interruption/reconciliation semantics.
+- **15B — Operational History:** implemented through a versioned Igor-owned
+  episode service with private SQLite persistence, pre-effect durable attempt
+  identity, interruption/verification-only reconciliation, read-only CLI
+  inspection and export/recovery/reset. The AI audit is a compatibility
+  projection; the recovery journal retains noncanonical legacy callers. See
+  [Operational History](../operational_history.md) and the validation gate in
+  [STATUS.md](STATUS.md).
 - **Decision/Judgment Contract gate:** before later AI routing depends on model
   judgments, establish a small provider-neutral schema/interface with explicit
   abstain/unknown, provenance, validation and tests. Do not select Jet/Laya or

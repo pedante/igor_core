@@ -3,6 +3,9 @@
 # dispatcher owns authorization and PTY authentication; this file never asks
 # for approval or reads a password.
 
+# shellcheck source=core/lib/operational_history.sh
+source "${_IGOR_LOADER_DIR}/core/lib/operational_history.sh"
+
 if [ "${IGOR_CAPABILITY_RESULT_OWNER:-}" != "$$" ] ||
    [ -z "${IGOR_CAPABILITY_RESULT_FILE:-}" ] ||
    [ ! -f "${IGOR_CAPABILITY_RESULT_FILE:-}" ]; then
@@ -62,8 +65,11 @@ PY
 # digest is checked again before the first step and every later step is
 # re-resolved by igor_capability_prepare inside that dispatcher.
 igor_capability_plan_execute() {
+    local IGOR_HISTORY_PLAN_DIGEST="" IGOR_HISTORY_PLAN_STEP="" IGOR_HISTORY_INTERFACE=capability_plan
     local _resolved="${1:-}" _proposal _expected _actual _step _payload _result _outcome _dispatch_rc _completed='[]'
     _expected="$(_igor_capability_field "$_resolved" digest)" || return 1
+    IGOR_HISTORY_PLAN_DIGEST="$_expected"
+    export IGOR_HISTORY_PLAN_DIGEST IGOR_HISTORY_PLAN_STEP IGOR_HISTORY_INTERFACE
     _proposal="$("$(_ml_python)" - "$_resolved" <<'PY'
 import json, sys
 p = json.loads(sys.argv[1])
@@ -86,6 +92,7 @@ print(json.dumps({"tool": "run_capability", "id": step["capability_id"],
 PY
 )" || return 1
         IGOR_CAPABILITY_LAST_RESULT=""
+        IGOR_HISTORY_PLAN_STEP="$(_igor_capability_field "$_step" capability_id)"
         ai_execute_tool "$_payload"
         _dispatch_rc=$?
         _result="${IGOR_CAPABILITY_LAST_RESULT:-}"
@@ -145,7 +152,7 @@ elif value is not None:
 }
 
 igor_capability_prepare() {
-    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied
+    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
     [ -n "$_inputs" ] || _inputs='{}'
     _records="$(igor_capability_list)" || return 1
     _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" <<'PY'
@@ -184,11 +191,14 @@ PY
         esac
     fi
     _igor_capability_preconditions "$_proposal" || _precondition_status=failed
-    _proposal="$("$(_ml_python)" - "$_proposal" "$_spec" "$_precondition_status" <<'PY'
+    _source_version="$(_ml_v2_query "$(_igor_capability_field "$_proposal" owner)" manifest.version 2>/dev/null)" || _source_version=""
+    _proposal="$("$(_ml_python)" - "$_proposal" "$_spec" "$_precondition_status" "$_source_version" <<'PY'
 import hashlib, json, sys
 value = json.loads(sys.argv[1])
 value["privileged_argv"] = json.loads(sys.argv[2])
 value["precondition_status"] = sys.argv[3]
+if sys.argv[4]:
+    value["provider_source_module_version"] = sys.argv[4]
 value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 print(json.dumps(value, sort_keys=True, separators=(",", ":")))
 PY
@@ -197,13 +207,20 @@ PY
 }
 
 _igor_capability_nonexecution_result() {
-    local _result
-    _result="$("$(_ml_python)" - "$1" "$2" "${3:-not_requested}" "${4:-not_required}" <<'PY'
-import json, sys, uuid
+    local _result _operation="${IGOR_HISTORY_OPERATION_ID:-}" _privilege_result="${4:-}"
+    if [ -z "$_privilege_result" ]; then
+        _privilege_result=not_required
+        [ "$(_igor_capability_field "$1" privilege)" = required ] && _privilege_result=not_requested
+    fi
+    if [ -z "$_operation" ]; then
+        _operation="$(_igor_history_begin "$1" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
+    fi
+    _result="$("$(_ml_python)" - "$1" "$2" "${3:-not_requested}" "$_privilege_result" "$_operation" <<'PY'
+import json, sys
 from datetime import datetime, timezone
 p = json.loads(sys.argv[1])
 reason, approval, privilege = sys.argv[2:5]
-print(json.dumps({"operation_id": "op-" + uuid.uuid4().hex,
+print(json.dumps({"operation_id": sys.argv[5],
                   "capability_id": p["capability_id"], "capability_version": p["capability_version"],
                   "provider": p["provider"],
                   "owner": p["owner"], "approval_status": approval,
@@ -218,9 +235,7 @@ print(json.dumps({"operation_id": "op-" + uuid.uuid4().hex,
                  sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1
-    printf '%s\n' "$_result" >> "$IGOR_CAPABILITY_RESULT_FILE" || return 1
-    _igor_domain_result_published "$_result" || printf 'domain event: capability result publication failed\n' >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
-    printf '%s\n' "$_result"
+    _igor_capability_publish_result "$_result"
 }
 
 _igor_capability_preconditions() {
@@ -328,7 +343,7 @@ PY
 # Only the already approved in-process proposal may be supplied by the
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
-    local _proposal="$1" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier
+    local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier
     _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
     _provider="$(_igor_capability_field "$_proposal" provider)" || return 1
     _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
@@ -336,6 +351,9 @@ igor_capability_execute() {
     _digest="$(_igor_capability_field "$_proposal" digest)" || return 1
     [ -n "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" ] &&
         [ "$IGOR_CAPABILITY_APPROVED_DIGEST" = "$_digest" ] || return 1
+    if [ -z "$IGOR_HISTORY_OPERATION_ID" ]; then
+        IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_proposal" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
+    fi
     if [ "$(_igor_capability_field "$_fresh" precondition_status)" != satisfied ]; then
         # A legitimate precondition change keeps the same proposal content
         # except for its evaluated status. Changed inputs/provider/argv never
@@ -344,15 +362,20 @@ igor_capability_execute() {
         _pending_without_status="$(printf '%s' "$_proposal" | "$(_ml_python)" -c 'import json,sys; p=json.load(sys.stdin); p.pop("digest",None); p.pop("precondition_status",None); print(json.dumps(p,sort_keys=True))')" || return 1
         _fresh_without_status="$(printf '%s' "$_fresh" | "$(_ml_python)" -c 'import json,sys; p=json.load(sys.stdin); p.pop("digest",None); p.pop("precondition_status",None); print(json.dumps(p,sort_keys=True))')" || return 1
         [ "$_pending_without_status" = "$_fresh_without_status" ] || return 1
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed approved
+        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
         return 0
     fi
     [ "$_digest" = "$(_igor_capability_field "$_fresh" digest)" ] || return 1
     if ! _igor_capability_preconditions "$_fresh"; then
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed
+        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
         return 0
     fi
     _spec="$(_igor_capability_field "$_fresh" privileged_argv)" || return 1
+    # Fail closed before the provider's possible external effect. The existing
+    # approval/authentication authorities have already made their decisions.
+    _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+        "$([ "$(_igor_capability_field "$_fresh" privilege)" = required ] && printf authenticated || printf not_required)" || return 1
+    _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
         # safety.sh; -n prevents a hidden prompt here.
@@ -380,6 +403,10 @@ PY
             fi
         fi
     fi
+    # Failure here is diagnostic after an effect: never rewrite the provider
+    # result, and retain running/unknown on disk if completion cannot persist.
+    _igor_history_update provider-complete "$IGOR_HISTORY_OPERATION_ID" "$_exec" 2>/dev/null ||
+        printf 'operational history: provider completion unavailable for %s\n' "$IGOR_HISTORY_OPERATION_ID" >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
     if [ "$_exec" = succeeded ]; then
         _tier="$(_igor_capability_field "$_fresh" safety.tier)" || return 1
         if [ "$(_igor_capability_field "$_fresh" verification.kind)" != none ]; then
@@ -395,8 +422,8 @@ PY
         fi
         [ "$_outcome" = failed ] && _outcome=success
     fi
-    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" <<'PY'
-import json, sys, uuid
+    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" <<'PY'
+import json, sys
 from datetime import datetime, timezone
 proposal = json.loads(sys.argv[1])
 execution, verification, outcome = sys.argv[2:5]
@@ -404,7 +431,7 @@ try:
     evidence = json.loads(sys.argv[5])
 except ValueError:
     evidence = {"reason": "verification_failed"}
-result = {"operation_id": "op-" + uuid.uuid4().hex, "capability_id": proposal["capability_id"],
+result = {"operation_id": sys.argv[7], "capability_id": proposal["capability_id"],
           "capability_version": proposal["capability_version"],
           "provider": proposal["provider"], "owner": proposal["owner"], "approval_status": sys.argv[6],
           "precondition_status": proposal["precondition_status"],
@@ -418,7 +445,5 @@ result = {"operation_id": "op-" + uuid.uuid4().hex, "capability_id": proposal["c
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1
-    printf '%s\n' "$_result" >> "$IGOR_CAPABILITY_RESULT_FILE" || return 1
-    _igor_domain_result_published "$_result" || printf 'domain event: capability result publication failed\n' >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
-    printf '%s\n' "$_result"
+    _igor_capability_publish_result "$_result"
 }

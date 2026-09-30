@@ -4,8 +4,7 @@ Last updated: 2026-09-30
 
 ## Step 15A Persistent Identity & Memory Foundation — architecture gate
 
-**Step 15A is defined as an architecture-only gate; Step 15 runtime remains
-unimplemented.** The contract is
+**Step 15A is accepted and remains an architecture-only gate.** Its contract is
 [PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md), with D048–D054 in
 [DECISIONS.md](DECISIONS.md). It resolves Q003 without turning the current
 System Model, AI audit, recovery journal or Step 13 event buffer into a general
@@ -49,12 +48,87 @@ boundary rather than relying on transient domain-event delivery. Later
 investigations, resumable work, deployments/relationships and learning remain
 separate authorities that share references/provenance.
 
-This gate intentionally selects no public database schema and changes no
-runtime behavior. A future Step 15B implementation may choose a private
-versioned backend from measured requirements, but modules and callers must use
-the service contract. Step 15B must prove restart/interrupted state-changing
-attempt reconciliation, inspection, migration/recovery and preservation of
-the existing green baseline before Operational History becomes authoritative.
+Step 15A selects no public database schema. Step 15B implements its bounded
+Operational History service; runtime and callers use versioned records instead
+of backend tables/paths. The implementation and evidence are recorded below;
+the accepted Step 15A decisions are unchanged.
+
+## Step 15B Operational History — implemented; validation gate
+
+The bounded service is implemented under the accepted D048–D054 contract.
+[Operational History](../operational_history.md) defines the version-1 episode,
+headless commands, private backend and the ten-question architectural review.
+No Step 15A decision was redesigned. Later Decision/Judgment, 15UI, 15C and 15D
+remain separate gates.
+
+**Canonical boundary:** `ai_execute_tool` durably admits the operation before
+approval, privilege authentication, compatibility backups and provider effects.
+The existing executor checks the approval digest and current registration,
+atomically binds/marks the attempt running, records provider completion, then
+verifies. `_igor_capability_publish_result` is the single terminal hand-off for
+execution and nonexecution. History never dispatches; Step 13 still projects
+the result transiently. Automation retains its Step 14 claims and references
+the canonical episode; the System Model remains current-state projection.
+
+**Private storage:** Python's standard-library SQLite provides atomic transitions,
+concurrent process writes and indexed episode/correlation inspection without
+rewriting an unbounded history on every transition. Tables and paths remain
+private behind the service. Version 1 persists one opaque local scope and random
+operation IDs; reset preserves scope and never recycles operation IDs. Private
+permissions, symlink/owner guards, version/schema checks and corruption checks
+fail closed. No remote identity or fake historical migration is introduced.
+
+**Lifecycle/recovery:** admitted, running, provider-complete and terminal states
+extend the existing execution boundary. A dead running owner becomes
+`interrupted_unknown`; admitted work is known never to have started. Inspection
+projects this without writes or verification. Explicit recovery records it and
+can query the existing matching unprivileged service-state verifier. It never
+retries the provider or turns a passing current postcondition into claimed
+execution success. Unsupported/inactive/mismatched verification leaves explicit
+operator recovery required. Versioned export and validated empty-destination
+restore preserve episode/scope identity, normalize unfinished claims and support
+idempotent re-entry. Corrupt stores remain intact for diagnosis.
+
+**Vertical slices:** the real `system.host.memory.refresh` READ records canonical
+capability/version/provider, local `host:local`, provenance, execution,
+verification and outcome, then reopens/inspects the same episode. An isolated
+service CHANGE checks the durable running record inside its fake platform
+provider before the effect. Normal, failed and unverified results are distinct.
+The crash fixture kills only its isolated process group after the disposable
+effect; restart shows uncertainty, matching verification adds evidence and
+repeated recovery leaves the effect count unchanged. Inactive providers retain
+uncertainty. Approval decline and failed sudo authentication never reach it.
+
+**Compatibility cutover:** canonical operations suppress duplicate command-journal
+records. The bounded AI audit remains a diagnostic projection/reference for
+`--ai last`; raw/v1, Diagnose, backup and rollback journal callers remain legacy
+sources. Backup manifests retain artifact ownership. Chat `history`/`replay`
+retain session views. None is imported as complete episodes or can confer
+execution authority. [LEGACY.md](LEGACY.md) records each disposition.
+
+**Validation evidence:**
+
+| Check | Result |
+|---|---|
+| Focused history service | 22 tests passed: closed schema, scoped identity, local scope/reopen/reset, handler/path/UI independence, frozen proposal binding, redaction including short secrets and secret-bearing keys while preserving generated IDs/protocol meanings, corrupt/unsupported versions retained, concurrent process writers/claims, read-only queries, export/restore idempotency and stdin documents over 128 KiB. Duplicate JSON fields and non-JSON numbers fail before store creation. |
+| Canonical vertical slices | 11 history dispatch BATS cases passed, including the actual post-effect crash, no blind retry, supported/unavailable reconciliation, approval decline, privilege authentication failure, provider/verification distinction, post-effect write failure, legacy journal cutover, headless inspection and existing plan references. |
+| Full Bash suite | `bash tests/run_all.sh`: all five groups passed, zero failed/skipped groups; 46 Bash core checks, 46 Python render tests, 305 core BATS, 141 module BATS and 40 integration BATS. Two existing core cases skipped: unavailable GPG agent and `hostname -I`. Capability, approval/safety/privilege, recovery, Step 13, module and integration behavior remains green. |
+| Full Python coverage | 293 discovered unittest cases plus 15 nested/function-style cases passed (308 total). This includes capability/runtime, deterministic verification, Step 13 events and all Step 14 automation tests; real automation retains the canonical episode, claim, schedule slot and event causation references. `pytest` is unavailable; no Python test content was omitted. |
+| Syntax/compile/references | Changed Bash syntax, Python compilation across `core`/`tests`, documentation references and `git diff --check` passed. |
+| Tooling gate | Ruff and CI-configured ShellCheck were attempted but are not installed. Network resolution also prevents refreshing GitHub refs or installing missing tools. No lint success or remote freshness is claimed, and unrelated lint debt was not changed. |
+
+The bounded implementation and behavioral proofs are complete. The wave's
+final validation gate remains open for the unavailable lint tools and remote
+baseline refresh; do not start the Decision/Judgment Contract or 15C on the
+strength of prose alone.
+
+**Repository baseline:** implementation starts from local `igor2` at `141ff36`,
+which contains the intended functional master baseline. Available origin/master
+adds orchestration already reconciled here and an obsolete roadmap superseded
+by the authoritative Igor 2 documents. Original Git metadata is read-only, so
+the feature branch lives in `/tmp/igor-step15b`; fetching there fails DNS.
+The existing ignored system host knowledge asset was copied into the isolated
+checkout for equivalent module validation, without changing its tracking policy.
 
 ## Step 14 Automation Engine — complete
 
@@ -237,7 +311,8 @@ Bash syntax, Python compilation, changed Python Ruff and `git diff --check`
 passed. CI-configured ShellCheck passed on changed event, capability, loader,
 handler and BATS paths; `igor.sh` retains two warnings on untouched lines.
 
-Step 15 durable history and later baselines/healing remain deferred. Q008 is
+At Step 13 acceptance, durable history and later baselines/healing remained deferred.
+Step 15B now supplies the history boundary described above. Q008 is
 resolved by D044; Q003, Q007, Q009 and Q011 retain their assigned decisions.
 
 ## Wave E Agent Architecture implementation
@@ -507,8 +582,8 @@ claim about a newer un-fetched remote branch.
 | 11 Capability System v2 | Bounded Wave E implementation: canonical owner-aware registry/invocation, typed inputs, deterministic preconditions, existing approval/PTY route, structured result/verification, recovery metadata, D038 fallback, inspection and small plans. V1 actions remain compatible; broader providers wait for reviewed adapters. |
 | 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
 | 13 Domain Event Bus | Complete at the bounded Step 13 contract: validated session-local signals, owner-aware producers, read-only inspection and one `capability.completed` projection per committed result. `core/ai/events.sh` remains frontend activity. |
-| 14 Automation Engine | Future. Existing schedules are not an Igor-owned automation contract; Step 13 events do not trigger execution. |
-| 15 Operational History | Partial: private bounded AI audit, recovery journal and backup records exist; structured incidents/outcomes are missing. |
+| 14 Automation Engine | Complete at the bounded unprivileged READ contract: Igor-owned intent, explicit enablement, atomic due-slot claims and canonical dispatch for one-time, periodic, event and condition triggers. |
+| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented. Validation gate and evidence are recorded above; investigations and later slices remain deferred. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
 | 20 Igor TUI as Default | Partial: full-screen TUI works via `--ai-tui`; classic menu/line UI and `--extra` remain, and default launch is unchanged. |
 | 21 Integration Rules | Missing as a shared contract. |

@@ -103,6 +103,21 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --history)
+            # Inspection bypasses module/config startup and never refreshes or
+            # verifies implicitly. Explicit recovery loads current contracts.
+            source "${IGOR_DIR}/core/lib/operational_history.sh"
+            if [ "${2:-recent}" = recover ]; then
+                source "${IGOR_DIR}/core/lib/config_loader.sh"
+                source "${IGOR_DIR}/core/lib/module_loader.sh"
+                igor_load_config >/dev/null
+                igor_load_all_modules >/dev/null
+                igor_load_capabilities >/dev/null
+            fi
+            [ "$#" -le 3 ] || exit 2
+            igor_history_cli "${2:-recent}" "${3:-}"
+            exit $?
+            ;;
         --events)
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
@@ -680,6 +695,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--modules"           "List module policy and activation status"
     printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
     printf "  ${Y}%-30s${N} %s\n" "--events [types|recent]" "Inspect current-session domain event types or recent events"
+    printf "  ${Y}%-30s${N} %s\n" "--history [recent|inspect ID]" "Inspect durable operational episodes"
     printf "  ${Y}%-30s${N} %s\n" "--automations [list|proposals]" "Inspect configured automations or active proposals"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
     printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"
