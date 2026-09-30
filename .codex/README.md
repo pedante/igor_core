@@ -4,11 +4,9 @@ This directory contains Igor's project-local Codex policy. Codex loads `.codex/c
 
 ## Root/orchestrator model is intentionally changeable
 
-`config.toml` gives new Igor threads an efficient default:
+`config.toml` deliberately does **not** set the root model or reasoning effort. The Project Owner chooses the orchestrator per task.
 
-- **GPT-6.1 Sol / Medium** — normal Igor engineering.
-
-This is a default, not a lock. An explicit model/reasoning choice overrides it. In an interactive Codex session, use `/model` to choose the model and reasoning effort for the root/orchestrator. You can therefore use Luna for cheap bounded work, Sol Medium for normal coding, stronger Sol reasoning for difficult engineering, or Astra only when the task really deserves system-level architectural reasoning.
+In an interactive Codex session, use `/model` to choose the model and reasoning effort for the root/orchestrator. You can therefore use Luna for cheap bounded work, Sol Medium for normal coding, stronger Sol reasoning for difficult engineering, or Astra only when the task really deserves system-level architectural reasoning. CLI/profile selections remain available as normal.
 
 The project instructions ask the root to flag a meaningful model mismatch before it starts substantial work. Example: `Model fit: Sol Medium is sufficient for this task.` This is meant to prevent doing an ordinary task on Astra by accident.
 
@@ -18,7 +16,7 @@ The project instructions ask the root to flag a meaningful model mismatch before
 Project Owner
     |
     v
-Root / orchestrator (chosen per task; default: Sol 6.1 Medium)
+Root / orchestrator (chosen per task)
     |\
     | +--> Luna helpers (default: Medium)
     |      search, tests, builds, reproduction, docs, mechanical work
@@ -40,4 +38,4 @@ The project caps Multi-Agent V2 at four spawned threads per session and uses lon
 
 ## Compatibility
 
-These files use current Codex project configuration, custom agent roles, `models.new_thread`, and Multi-Agent V2 settings. Keep Codex reasonably current. If Codex reports an unknown setting after an upgrade/downgrade, validate the project configuration against that installed release before removing behavior.
+These files use current Codex project configuration, custom agent roles, and Multi-Agent V2 settings. Keep Codex reasonably current. If Codex reports an unknown setting after an upgrade/downgrade, validate the project configuration against that installed release before removing behavior.
