@@ -37,7 +37,7 @@ Report failures and skips; missing BATS can yield an incomplete successful run. 
 
 ## Codex Agent Orchestration
 
-Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. New threads default to GPT-6.1 Sol at Medium reasoning, but that is intentionally only a default: the Project Owner may select a different root/orchestrator model and reasoning effort per task.
+Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. The project config intentionally does not select the root/orchestrator model or reasoning effort; the Project Owner chooses them per task.
 
 For non-trivial work, the root agent is the coordinator, scope/alignment owner, integrator, and final reviewer. Use the named `Lead_Eng` role for substantial architecture-sensitive implementation, difficult debugging, cross-cutting changes, and important integration. Use default Luna helpers for bounded repository search, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, mechanical edits, and independent checks.
 
