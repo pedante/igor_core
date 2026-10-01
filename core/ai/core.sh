@@ -156,6 +156,41 @@ PY
     _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
 }
 
+
+# Adapt a human operator selection into the existing structured capability tool.
+# This function owns no approval, privilege, execution, or verification logic.
+_ai_operator_invoke() {
+    local _invoke_rest="${1:-}" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
+    _invoke_spec="${_invoke_rest%% *}"
+    _invoke_id="${_invoke_spec%%@*}"
+    if [ "$_invoke_spec" != "$_invoke_id" ]; then
+        _invoke_provider="${_invoke_spec#*@}"
+    else
+        _invoke_provider=""
+    fi
+    if [ "$_invoke_rest" = "$_invoke_spec" ]; then
+        _invoke_inputs='{}'
+    else
+        _invoke_inputs="${_invoke_rest#* }"
+    fi
+    _invoke_tool=$(python3 - "$_invoke_id" "$_invoke_provider" "$_invoke_inputs" <<'PY'
+import json,re,sys
+ident,provider,raw=sys.argv[1:4]
+pattern=r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+"
+if not re.fullmatch(pattern,ident) or (provider and not re.fullmatch(r"[a-z][a-z0-9_-]*",provider)):
+    raise SystemExit(1)
+value=json.loads(raw)
+if not isinstance(value,dict):
+    raise SystemExit(1)
+request={"tool":"run_capability","id":ident,"inputs":value}
+if provider:
+    request["provider"]=provider
+print(json.dumps(request,separators=(",",":")))
+PY
+    ) || return 2
+    IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool"
+}
+
 # ── Interaction mode authority ───────────────────────────────────────────────
 # The mode is deliberately a single value. executive_mode remains an
 # exported compatibility flag for older callers; policy reads ai_get_mode.
@@ -3261,39 +3296,13 @@ except: print('unknown')
                 _ai_emit_operator_snapshot
                 continue ;;
             invoke\ *)
-                local _invoke_rest="${user_input#invoke }" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
-                _invoke_spec="${_invoke_rest%% *}"
-                _invoke_id="${_invoke_spec%%@*}"
-                if [ "$_invoke_spec" != "$_invoke_id" ]; then
-                    _invoke_provider="${_invoke_spec#*@}"
-                else
-                    _invoke_provider=""
+                if ! _ai_operator_invoke "${user_input#invoke }"; then
+                    local _invoke_rc=$?
+                    if [ "$_invoke_rc" -eq 2 ]; then
+                        warn "Usage: invoke <capability-id[@provider]> [JSON object]"
+                        _ai_frontend_event warning "Invalid capability invocation."
+                    fi
                 fi
-                if [ "$_invoke_rest" = "$_invoke_spec" ]; then
-                    _invoke_inputs='{}'
-                else
-                    _invoke_inputs="${_invoke_rest#* }"
-                fi
-                if ! _invoke_tool=$(python3 - "$_invoke_id" "$_invoke_provider" "$_invoke_inputs" <<'PY'
-import json,re,sys
-ident,provider,raw=sys.argv[1:4]
-pattern=r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+"
-if not re.fullmatch(pattern,ident) or (provider and not re.fullmatch(r"[a-z][a-z0-9_-]*",provider)):
-    raise SystemExit(1)
-value=json.loads(raw)
-if not isinstance(value,dict):
-    raise SystemExit(1)
-request={"tool":"run_capability","id":ident,"inputs":value}
-if provider:
-    request["provider"]=provider
-print(json.dumps(request,separators=(",",":")))
-PY
-                ); then
-                    warn "Usage: invoke <capability-id[@provider]> [JSON object]"
-                    _ai_frontend_event warning "Invalid capability invocation."
-                    continue
-                fi
-                IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool" || true
                 echo ""
                 continue ;;
             # ── Undo stack ────────────────────────────────────────────────────
