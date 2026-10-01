@@ -563,6 +563,65 @@ igor_contribution_list() {
     done | sort
 }
 
+# Structured read-only snapshots for generic frontends.  These expose the
+# existing owner-stamped registry; they do not create another contribution or
+# module catalog.
+igor_contribution_records() {
+    local _key _owner _record _state _reason
+    {
+        while IFS= read -r _key; do
+            [ -n "$_key" ] || continue
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+            _state="$(igor_contribution_state "$_key" 2>/dev/null || printf unavailable)"
+            _reason="$(igor_contribution_reason "$_key" 2>/dev/null || true)"
+            printf '%s\0' "$_key" "$_owner" "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}" \
+                "$_state" "$_reason" "$_record"
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | "$(_ml_python)" -c '
+import json,sys
+raw=sys.stdin.buffer.read().split(b"\\0")
+if raw[-1:]==[b""]: raw.pop()
+if len(raw)%6: raise SystemExit("invalid contribution snapshot")
+rows=[]
+for i in range(0,len(raw),6):
+    key,owner,source,state,reason,record=(part.decode() for part in raw[i:i+6])
+    kind,ident=key.split(":",1)
+    ident=ident.split("@",1)[0]
+    try: descriptor=json.loads(record)
+    except ValueError: descriptor={"kind":kind,"id":ident,"handler":record}
+    rows.append({"index_key":key,"id":ident,"kind":kind,"owner":owner,"source":source,
+                 "availability":state,"unavailable_reason":reason or None,
+                 "descriptor":descriptor})
+print(json.dumps(rows,sort_keys=True,separators=(",",":")))
+'
+}
+
+igor_module_records() {
+    local _name _display _status _reason _enabled
+    {
+        while IFS= read -r _name; do
+            [ -n "$_name" ] || continue
+            _display="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" display_name 2>/dev/null || printf '%s' "$_name")"
+            _status="${_IGOR_MODULE_STATUS[$_name]:-$(igor_module_enabled "$_name" && printf active || printf disabled)}"
+            _reason="${_IGOR_MODULE_REASON[$_name]:-}"
+            if igor_module_enabled "$_name"; then _enabled=true; else _enabled=false; fi
+            printf '%s\0' "$_name" "$_display" "$_status" "$_reason" "$_enabled" "${_IGOR_MODULE_API[$_name]:-1}"
+        done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
+    } | "$(_ml_python)" -c '
+import json,sys
+raw=sys.stdin.buffer.read().split(b"\\0")
+if raw[-1:]==[b""]: raw.pop()
+if len(raw)%6: raise SystemExit("invalid module snapshot")
+rows=[]
+for i in range(0,len(raw),6):
+    name,display,status,reason,enabled,api=(part.decode() for part in raw[i:i+6])
+    rows.append({"name":name,"display_name":display,"status":status,
+                 "reason":reason or None,"enabled":enabled=="true","module_api":int(api)})
+print(json.dumps(rows,sort_keys=True,separators=(",",":")))
+'
+}
+
 _ml_index_contribution() {
     local _key="$1" _owner="$2" _source="$3" _record="$4"
     if [ -n "${_IGOR_CONTRIBUTIONS[$_key]:-}" ] && \
