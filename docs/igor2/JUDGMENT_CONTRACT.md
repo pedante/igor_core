@@ -180,8 +180,14 @@ approval, privilege and verification whenever it proposes an operation.
 remain design explorations. This contract accepts neither their proposed
 roles nor named Jet/Laya policy, budgets, agents or a provider/model solver.
 Step **15D** owns actual relevance/context routing and model-routing policy.
-15UI and 15C can consume this contract later under their own accepted gates.
+15UI and 15C consume this vocabulary under their own accepted gates.
 There is no investigation lifecycle, UI feature or context selector here.
+
+The separate [Step 15C service](INVESTIGATIONS.md) retains validated sanitized
+request/record attachments as investigation evidence, including abstention and
+provenance. This contract itself still owns no persistence or model invocation
+in that integration; attachment does not promote a judgment into a finding
+or current fact automatically.
 
 There is no judgment persistence, history database, durable migration or
 restart replay. Future Operational History consumers may reference that a

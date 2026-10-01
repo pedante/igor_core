@@ -478,6 +478,23 @@ No live-provider wiring, persistence, roles, routing/model selection, agents,
 AI_SPECIALISTS remain proposals; actual relevance/routing policy belongs to
 15D. Future transports reuse the existing provider/privacy boundary.
 
+### D056 — Investigations own bounded durable knowledge organization
+
+The Project Owner confirmed the [Step 15C contract](INVESTIGATIONS.md): a small
+versioned local investigation record, explicit lifecycle/terminal immutability
+and reasoned reopening, bounded hypotheses, typed provenance-bearing evidence
+references and validated Judgment Contract attachments. Conclusions remain
+investigation-scoped findings; creation owner/provenance creates neither
+operational authority nor responsibility.
+
+Private versioned JSON uses locking, atomic updates, fail-closed validation and
+export/idempotent continuation restore. Local identity is reused through the
+Operational History service; no second history database or history schema
+change is introduced. Python/headless data operations and read-only 15UI
+inspection expose the owner state without execution, fact mutation/freshness,
+approval, privilege, module activation, automation or verification authority.
+Agents, workflows, remediation, routing/15D and Step 20 remain deferred.
+
 ---
 
 ## Open decisions

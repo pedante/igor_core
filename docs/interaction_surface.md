@@ -22,7 +22,10 @@ The reusable panel holds data-backed sections rather than module-specific forms.
 Session/AI and execution information come from current frontend events.
 Provider/model display is read-only; an unreported role is unavailable. Enter on
 History queries recent durable Operational History using the existing public
-read-only CLI. Enter on Settings reuses the existing backend settings editor.
+read-only CLI. Enter on Investigations lists durable investigation records
+through its owning read-only CLI and the same structured renderer. Status,
+evidence, hypotheses, judgments, findings and uncertainty remain reference data.
+Enter on Settings reuses the existing backend settings editor.
 No live System Model subprocess snapshot is presented as current session truth.
 The structured renderer can display other owning-backend data when integrated;
 this milestone does not create inspection APIs for missing panel content.
@@ -57,6 +60,7 @@ input goes directly to the backend PTY and bypasses drafts/history.
 
 Closing/restarting the frontend does not apply a draft, property or selection.
 No persistent layout migration or second history store is introduced.
-15C owns durable investigations; 15D owns context relevance and model routing.
+The [15C investigation service](igor2/INVESTIGATIONS.md) owns durable knowledge
+organization; 15D owns context relevance and model routing.
 The [15UI contract](igor2/INTERACTION_SURFACE.md) and
 [completion evidence](igor2/STATUS.md) record the milestone boundary.

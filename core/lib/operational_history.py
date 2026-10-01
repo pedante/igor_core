@@ -613,6 +613,15 @@ class OperationalHistory:
                 output.append(_public_episode(row))
             return output
 
+    def ensure_scope(self) -> str:
+        """Allocate/reuse local identity without an episode or recovery action.
+
+        Durable reference consumers use this explicit write boundary; inspection
+        uses status() and never allocates identity.
+        """
+        with self._store(write=True) as db:
+            return self._scope(db)
+
     def status(self) -> dict[str, Any]:
         with self._store() as db:
             if db is None:

@@ -402,6 +402,11 @@ invented later from chat text.
 
 ## Investigations are separate durable state
 
+The bounded [Step 15C implementation](INVESTIGATIONS.md) formalizes this
+ownership under D056. Investigation findings remain scoped reference data;
+creation provenance grants no operational responsibility or authority. It uses
+15B installation identity without duplicating operational episodes.
+
 An investigation answers:
 
 **what problem/question is Igor trying to understand and what is the current

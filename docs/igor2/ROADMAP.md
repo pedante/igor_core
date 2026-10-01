@@ -385,7 +385,7 @@ The five proof classes and regression results are recorded in
 [STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
 require later explicit contracts; Step 15 owns durable history.
 
-## Step 15 — Operational History — 15A ACCEPTED; 15B IMPLEMENTED, VALIDATION GATE
+## Step 15 — Operational History — 15A ACCEPTED; 15B/JUDGMENT/15UI IMPLEMENTED; 15C COMPLETE; 15D FUTURE
 
 Step 15A is the persistence/identity gate in
 [PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md). D048–D054 resolve Q003 and
@@ -404,7 +404,7 @@ The implementation sequence is deliberately bounded:
   identity, interruption/verification-only reconciliation, read-only CLI
   inspection and export/recovery/reset. The AI audit is a compatibility
   projection; the recovery journal retains noncanonical legacy callers. See
-  [Operational History](../operational_history.md) and the validation gate in
+  [Operational History](../operational_history.md) and evidence in
   [STATUS.md](STATUS.md).
 - **Decision/Judgment Contract gate:** the accepted D055
   [contract](JUDGMENT_CONTRACT.md) supplies a versioned, provider-neutral
@@ -418,10 +418,12 @@ The implementation sequence is deliberately bounded:
   schema/property rendering extend the existing TUI. The UI consumes backend
   inspection/edit contracts; it does not own configuration, history, AI
   routing, safety or authority. See [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md).
-- **15C — Durable Investigations:** add a separate investigation lifecycle for
-  problem/question, evidence, hypotheses, decisions, actions, findings,
-  verification and resolution/status, linked to history/System Model by stable
-  references.
+- **15C — Durable Investigations:** implemented under D056 with a versioned
+  local lifecycle, bounded hypotheses, evidence/history references, validated
+  judgment attachments, investigation-scoped findings and unresolved questions.
+  Private atomic JSON, export/restore, headless data operations and read-only
+  15UI inspection grant no operational or current-state authority. See
+  [INVESTIGATIONS.md](INVESTIGATIONS.md) and [STATUS.md](STATUS.md).
 - **15D — Inspection & Context Integration:** make the new authorities
   inspectable and selectively retrievable by the Context Engine without
   dumping raw history or turning investigation/learning text into authority.

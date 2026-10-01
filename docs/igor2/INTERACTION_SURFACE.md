@@ -45,6 +45,14 @@ backend choice lifecycle, including cancellation. Approval and exact `YES`
 DESTROY confirmation remain backend-owned; sudo input still goes directly to
 the backend PTY.
 
+## Step 15C integration
+
+The confirmed [investigation service](INVESTIGATIONS.md) now supplies a read-only
+Investigations panel section through `--investigations list`. It reuses the lazy
+bounded CLI loader and structured renderer. The UI owns no investigation
+persistence, lifecycle updates, judgment invocation or operational authority.
+Historical 15UI completion evidence remains separate from this 15C addition.
+
 ## Current primitives
 
 [Current UI documentation](../interaction_surface.md) lists the operator keys.

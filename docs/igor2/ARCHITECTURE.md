@@ -230,21 +230,20 @@ Checks evaluate structured state and produce reusable results. Diagnose, health,
 
 ### Investigations
 
-A troubleshooting problem can outlive one prompt or provider call. Igor may
-therefore maintain a durable investigation containing, as appropriate:
+[Step 15C](INVESTIGATIONS.md) (D056) owns bounded durable knowledge organization:
+what Igor or an operator wants to understand, track, evaluate or resolve over
+time. Its versioned local record retains explicit lifecycle, hypotheses, typed
+evidence references, validated judgments, investigation-scoped findings and
+unresolved uncertainty. Private atomic JSON persistence remains behind the
+service; scoped history references retain Operational History's authority.
 
-- problem/question;
-- evidence;
-- hypotheses;
-- decisions/choices;
-- actions;
-- findings;
-- verification;
-- resolution/status.
-
-The AI can reason over an investigation and propose the next useful question or
-capability. The investigation record itself is Igor-owned structured state and
-does not grant authorization.
+Investigation conclusions never become System Model facts, desired state,
+capability authority, automation eligibility, approval, privilege or verification
+results. Creation owner/provenance identifies the source without creating
+operational authority or responsibility. Data-only interfaces and read-only
+inspection have no executor, observer, scheduler or authority transition.
+Step 15D owns later context/relevance integration; agents, workflows and
+remediation are outside this milestone.
 
 ### Capabilities
 

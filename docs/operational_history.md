@@ -167,6 +167,15 @@ The final scrub applies to retained content and preserves Igor-generated
 operation/scope IDs and closed result meanings, even when a configured secret
 coincidentally resembles a UUID substring or a protocol word.
 
+## Investigation reference consumer (Step 15C)
+
+The separate [investigation service](igor2/INVESTIGATIONS.md) references scoped
+episode/result/verification identities without copying operational records. Its
+explicit creation path uses `OperationalHistory.ensure_scope()` to reuse or
+allocate installation identity without an episode, recovery or execution.
+Read-only inspection never allocates identity. History schema and authority
+remain unchanged. Investigation findings cannot override outcomes/verification.
+
 ## Bounded scope
 
 This service supplies durable canonical operational meaning and headless

@@ -103,6 +103,13 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             esac
             exit $?
             ;;
+        --investigations)
+            # Knowledge organization only; no module, observer or AI startup.
+            source "${IGOR_DIR}/core/lib/investigations.sh"
+            [ "$#" -le 3 ] || exit 2
+            igor_investigation_cli "${2:-list}" "${3:-}"
+            exit $?
+            ;;
         --history)
             # Inspection bypasses module/config startup and never refreshes or
             # verifies implicitly. Explicit recovery loads current contracts.
@@ -696,6 +703,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
     printf "  ${Y}%-30s${N} %s\n" "--events [types|recent]" "Inspect current-session domain event types or recent events"
     printf "  ${Y}%-30s${N} %s\n" "--history [recent|inspect ID]" "Inspect durable operational episodes"
+    printf "  ${Y}%-30s${N} %s\n" "--investigations [list|inspect ID]" "Inspect durable investigations"
     printf "  ${Y}%-30s${N} %s\n" "--automations [list|proposals]" "Inspect configured automations or active proposals"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"
     printf "  ${Y}%-30s${N} %s\n" "--enable <module>"   "Enable module for the next Igor process"

@@ -54,6 +54,85 @@ Operational History service; runtime and callers use versioned records instead
 of backend tables/paths. The implementation and evidence are recorded below;
 the accepted Step 15A decisions are unchanged.
 
+## Step 15C Durable Investigations — complete
+
+The Project Owner confirmed D056's bounded architecture and the explicit rule
+that conclusions remain investigation-scoped findings. The
+[Investigation contract](INVESTIGATIONS.md) owns knowledge organization: lifecycle,
+hypotheses, evidence references, validated judgments, findings and uncertainty.
+Creation owner/provenance grants neither operational authority nor responsibility.
+
+**Contract/persistence:** version-1 records share 15B's stable local scope through
+its service boundary. Private versioned JSON uses locking, validated atomic
+replacement, private permissions and fail-closed version/corruption checks.
+History's database/schema and operational episodes remain unchanged. Export and
+validated empty-destination/idempotent restore preserve investigation identity;
+Operational History scope must be recovered first for a continuation.
+
+**Inspection/vertical slice:** bounded Python and headless data operations bypass
+module/config/AI startup. The existing 15UI panel loads investigation records
+through the public read-only CLI and existing structured renderer. A lifecycle
+can retain related history, supporting/contradicting evidence, judgment
+abstention, conclusions and unresolved questions across restart/closure/reopen.
+Inspection performs no refresh, verification, model call or storage allocation.
+
+**Migration:** source is no investigation store; first valid creation initializes
+version 1, reusing history scope. No legacy/chat/observed data is fabricated or
+imported; there is one investigation authority, no dual write or history schema
+migration. Unknown/corrupt stores remain intact. Recover an exported document
+into a fresh destination sharing the restored history scope; no guessing repair.
+[LEGACY.md](LEGACY.md) records unchanged compatibility surfaces.
+
+**Authority:** no capability execution, desired-state change, approval, privilege,
+module activation, System Model writes/freshness, automation, verifier changes or
+background loop. Hypotheses/findings/creation ownership never silently cross
+those boundaries. Judgment attachments validate existing request/record binding
+and retain provenance/abstention without invoking a model or promoting truth.
+
+**Focused validation:** 29 investigation/service/headless/panel tests and 84
+subtests passed; 22 existing interaction tests and 16 subtests passed; 34
+Operational History/Judgment tests and 92 subtests passed. New Python files pass
+Ruff. A concrete secret-metadata regression also passes after rejecting known
+secrets in object references and judgment schema keys. Fixture failures in the
+initial focused run were corrected to use valid history provenance and a real
+stale System Model observation; no unrelated runtime behavior changed.
+
+The tests prove explicit transitions, terminal immutability/reopen, retained
+uncertainty, typed scoped references, judgment validation/abstention, strict
+version/schema/size checks, private storage, concurrent process updates, atomic
+replacement failure recovery, idempotent export/restore and no authority/fact
+mutation. The real CLI/panel slice displays retained history/evidence, hypothesis,
+abstaining judgment, finding/question and provenance with persisted bytes
+unchanged.
+
+**Single final validation gate (2026-10-01):**
+
+| Check | Result |
+|---|---|
+| Python regression | `uvx --offline --from pytest pytest -q`: 371 tests and 321 subtests passed; no failures/skips. |
+| Bash regression | `bash tests/run_all.sh`: all five groups passed, zero failed/skipped groups; 46 core Bash checks, 46 render tests, 305 core BATS, 141 module BATS and 40 integration BATS. Two existing core cases skipped for unavailable GPG agent and `hostname -I`. |
+| Python lint | New service/tests pass Ruff; full `ruff check .` retains exactly 142 existing findings in 28 files. Changed TUI/history files retain their eight baseline findings; no new lint findings. |
+| Bash lint/syntax | Changed Bash syntax passes. CI-configured ShellCheck retains two existing SC2155 warnings in `igor.sh`; new bridge has no warnings. |
+| Compile/docs/diff | All changed Python files compile; all 88 local documentation references resolve; final staged diff/whitespace and scope checks pass. |
+
+All five EXECUTION evidence categories are satisfied for this bounded milestone:
+contract, regression, real CLI/history-linked vertical slice, read-only inspection
+and tested persistence/export recovery. No missing migration/import is claimed:
+there was no prior investigation authority to migrate.
+
+**Baseline:** active clean `igor2` started at `c58ae37`; completed 15B, D055 and
+15UI are present. Local `master` has two documentation/orchestration commits
+outside ancestry, already reconciled by the later local Codex policy and
+canonical Igor 2 roadmap. This task preserves that intended functional baseline;
+no temporary checkout or remote-freshness claim is made.
+
+**Deferrals:** 15D selective retrieval/relevance/model routing remains a separate
+owner gate. No agents, recursive investigations, remediation/self-healing,
+workflows, scheduling, monitoring, remote investigations, relationships/deployments,
+learning, named models or Step 20 changes. **15D is unblocked at the dependency
+level** by completed 15B, D055, 15UI and 15C. Its own scope/architecture approval
+remains a separate owner gate; no 15D work is started here.
+
 ## Step 15UI Interaction Surface Foundation — complete
 
 The bounded [interaction contract](INTERACTION_SURFACE.md) extends the existing
@@ -110,9 +189,9 @@ presentation recovery and no stale-intent replay are tested instead. Work used
 the clean active `igor2` checkout at `4f2d4b8`, with local `master` an ancestor.
 No temporary clone or remote-freshness claim was needed.
 
-15C is now unblocked at the dependency level by completed 15B, D055 and 15UI.
-Its own architecture/implementation acceptance gates still apply; no 15C work
-has begun.
+At 15UI closure, 15C became unblocked at the dependency level by completed
+15B, D055 and 15UI. The separate Step 15C evidence above records its subsequent
+implementation and closure gate.
 
 **Deferrals/next gate:** 15C owns durable investigations; 15D owns relevance and
 model routing; Step 20 owns default-TUI transition and consolidated mature
@@ -707,7 +786,7 @@ claim about a newer un-fetched remote branch.
 | 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
 | 13 Domain Event Bus | Complete at the bounded Step 13 contract: validated session-local signals, owner-aware producers, read-only inspection and one `capability.completed` projection per committed result. `core/ai/events.sh` remains frontend activity. |
 | 14 Automation Engine | Complete at the bounded unprivileged READ contract: Igor-owned intent, explicit enablement, atomic due-slot claims and canonical dispatch for one-time, periodic, event and condition triggers. |
-| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented; judgment and 15UI foundations complete. Evidence is recorded above; 15C investigations and 15D routing remain deferred. |
+| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented; judgment and 15UI foundations complete; bounded 15C investigations implemented with closure evidence above. 15D routing remains deferred. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
 | 20 Igor TUI as Default | Partial: full-screen TUI works via `--ai-tui`; classic menu/line UI and `--extra` remain, and default launch is unchanged. |
 | 21 Integration Rules | Missing as a shared contract. |

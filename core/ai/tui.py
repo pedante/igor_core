@@ -746,10 +746,13 @@ class HistoryInspection:
     commands. Results remain disposable display data, never a history store.
     """
 
+    label = "Operational History"
+    command = ("--history", "recent", "20")
+
     def __init__(self) -> None:
         self.process: subprocess.Popen | None = None
         self.data: Any = None
-        self.status = "Enter to load recent Operational History"
+        self.status = f"Enter to load {self.label}"
         self.started = 0.0
         self.output = bytearray()
 
@@ -759,16 +762,16 @@ class HistoryInspection:
         self.output.clear()
         try:
             self.process = subprocess.Popen(
-                ("bash", str(REPO_ROOT / "igor.sh"), "--history", "recent", "20"),
+                ("bash", str(REPO_ROOT / "igor.sh"), *self.command),
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 close_fds=True, start_new_session=True)
             os.set_blocking(self.process.stdout.fileno(), False)
         except OSError:
             self.close()
-            self.status = "Operational History unavailable"
+            self.status = f"{self.label} unavailable"
             return
         self.started = time.monotonic()
-        self.status = "Loading Operational History…"
+        self.status = f"Loading {self.label}…"
 
     def poll(self) -> bool:
         process = self.process
@@ -782,19 +785,19 @@ class HistoryInspection:
                 self.output.extend(chunk)
                 if len(self.output) > 1_048_576:
                     self.close()
-                    self.status = "Operational History display exceeds bound"
+                    self.status = f"{self.label} display exceeds bound"
                     return True
         except BlockingIOError:
             pass
         except OSError:
             self.close()
-            self.status = "Operational History unavailable"
+            self.status = f"{self.label} unavailable"
             return True
         if process.poll() is None:
             if time.monotonic() - self.started <= 5:
                 return False
             self.close()
-            self.status = "Operational History inspection timed out"
+            self.status = f"{self.label} inspection timed out"
             return True
         code = process.returncode
         self.close()
@@ -805,7 +808,7 @@ class HistoryInspection:
             self.data = result
             self.status = "Read-only · Enter refresh"
         except (ValueError, UnicodeDecodeError):
-            self.status = "Operational History unavailable/invalid response"
+            self.status = f"{self.label} unavailable/invalid response"
         return True
 
     def close(self) -> None:
@@ -830,7 +833,15 @@ class HistoryInspection:
                 self.status = "Inspection cancelled · Enter refresh"
 
 
-def panel_sections(state: EventState, inspection: HistoryInspection) -> list[dict[str, Any]]:
+class InvestigationInspection(HistoryInspection):
+    """Read-only investigation records through the owning CLI, never its files."""
+
+    label = "Investigations"
+    command = ("--investigations", "list")
+
+
+def panel_sections(state: EventState, inspection: HistoryInspection,
+                   investigations: InvestigationInspection | None = None) -> list[dict[str, Any]]:
     """Reusable section data, projected from backend-owned interfaces only."""
     sections = [
         {"id": "session", "label": "Session", "source": "frontend event stream",
@@ -849,6 +860,10 @@ def panel_sections(state: EventState, inspection: HistoryInspection) -> list[dic
         {"id": "history", "label": "Operational History", "source": "--history recent 20",
          "data": inspection.data, "hint": inspection.status},
     ]
+    if investigations is not None:
+        sections.append({"id": "investigations", "label": "Investigations",
+                         "source": "--investigations list", "data": investigations.data,
+                         "hint": investigations.status})
     result = next((item.result for item in reversed(state.activity) if item.result), None)
     if result is not None:
         sections.append({"id": "result", "label": "Latest result", "data": result,
@@ -1519,14 +1534,17 @@ def _child_exit_code(pid: int, block: bool) -> int | None:
 def _loop(screen: Any, pid: int, master: int, path: Path,
           state: EventState | None = None) -> int:
     inspection = HistoryInspection()
+    investigations = InvestigationInspection()
     try:
-        return _interaction_loop(screen, pid, master, path, state, inspection)
+        return _interaction_loop(screen, pid, master, path, state, inspection, investigations)
     finally:
         inspection.close()
+        investigations.close()
 
 
 def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
-                      state: EventState | None, inspection: HistoryInspection) -> int:
+                      state: EventState | None, inspection: HistoryInspection,
+                      investigations: InvestigationInspection | None = None) -> int:
     screen.keypad(True)
     screen.timeout(100)
     state, buffer = state or EventState(), InputBuffer()
@@ -1556,6 +1574,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             _, maximum, after_count = _activity_limits(screen, state, focus)
             navigator.preserve_view(after_count - before_count, maximum)
         dirty = inspection.poll() or dirty or bool(events)
+        if investigations is not None:
+            dirty = investigations.poll() or dirty
         try:
             raw = os.read(master, 4096)
             if not raw:
@@ -1576,7 +1596,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 return _child_exit_code(pid, True) or 0
             raise
         if dirty:
-            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection))
+            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations))
             dirty = False
         key = _next_key(screen)
         if key == -1:
@@ -1624,9 +1644,11 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.preserve_view(after_count - before_count, maximum)
                 if not focus.panel_open:
                     inspection.close()
+                    if investigations is not None:
+                        investigations.close()
             continue
         if focus.region == "panel":
-            sections = panel_sections(state, inspection)
+            sections = panel_sections(state, inspection, investigations)
             if key == curses.KEY_UP:
                 focus.select(-1, len(sections))
             elif key == curses.KEY_DOWN:
@@ -1647,6 +1669,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 section_id = sections[focus.panel_selection]["id"]
                 if section_id == "history":
                     inspection.start()
+                elif section_id == "investigations" and investigations is not None:
+                    investigations.start()
                 elif section_id == "properties" and not state.pending_action:
                     _settings_overlay(screen, master, reader, state)
                     focus.set_focus("input")
