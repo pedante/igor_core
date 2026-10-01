@@ -3296,12 +3296,11 @@ except: print('unknown')
                 _ai_emit_operator_snapshot
                 continue ;;
             invoke\ *)
-                if ! _ai_operator_invoke "${user_input#invoke }"; then
-                    local _invoke_rc=$?
-                    if [ "$_invoke_rc" -eq 2 ]; then
-                        warn "Usage: invoke <capability-id[@provider]> [JSON object]"
-                        _ai_frontend_event warning "Invalid capability invocation."
-                    fi
+                _ai_operator_invoke "${user_input#invoke }"
+                local _invoke_rc=$?
+                if [ "$_invoke_rc" -eq 2 ]; then
+                    warn "Usage: invoke <capability-id[@provider]> [JSON object]"
+                    _ai_frontend_event warning "Invalid capability invocation."
                 fi
                 echo ""
                 continue ;;
