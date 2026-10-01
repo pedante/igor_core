@@ -90,6 +90,14 @@ describe fields. Legacy handler-only configuration declarations remain
 unavailable until explicitly adapted. No real module configuration migrates
 in this step; fixture declarations prove the new seam.
 
+Step 18 Boundary 2 composes that seam with an isolated copy of the real System
+package. A test-only module-scoped field is admitted through registration and
+projected by Core's Configuration Service into structured module inspection.
+It is not a shipped setting or an application-consumption claim. The current
+configuration CLI still exposes the bounded Core `ai.verbose` slice; general
+module writes, binding/resource ownership and application recovery require the
+later workflow proof. See [STATUS.md](STATUS.md) for composition evidence.
+
 ## Module/Core responsibilities
 
 Modules describe domain meaning, defaults, validation, secret purposes,
