@@ -331,7 +331,7 @@ class ConfigurationService:
         for ident in sorted(self.fields):
             field = self.fields[ident]
             owner = field["owner"]
-            public = {key: copy for key, copy in field.items()
+            public = {key: value for key, value in field.items()
                       if key not in {"owner", "schema_version"}}
             grouped.setdefault(owner, []).append(public)
         return [{"owner": owner,
