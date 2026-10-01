@@ -30,6 +30,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+_CORE_LIB = Path(__file__).resolve().parents[1] / "lib"
+if str(_CORE_LIB) not in sys.path:
+    sys.path.insert(0, str(_CORE_LIB))
+from operator_surface import children as operator_children
+
 from interaction import (
     FocusModel,
     Property,
@@ -51,7 +56,7 @@ EVENT_TYPES = frozenset(
         "approval_waiting", "explanation", "action_started", "action_output",
         "action_result", "action_skipped", "action_declined", "action_stopped",
         "privilege_waiting", "privilege_result", "continuation", "warning", "error",
-        "mode_changed", "settings_snapshot", "session_finished", "context_routing",
+        "mode_changed", "settings_snapshot", "operator_snapshot", "session_finished", "context_routing",
     }
 )
 
@@ -90,6 +95,7 @@ class EventState:
     collapse_output: bool = False
     command_state: str = "ready"
     settings_snapshot: dict[str, Any] | None = None
+    operator_snapshot: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
     context_routing: dict[str, Any] | None = None
@@ -109,7 +115,7 @@ class EventState:
             return False
         if sequence <= self.sequence:
             return False
-        if kind != "settings_snapshot":
+        if kind not in {"settings_snapshot", "operator_snapshot"}:
             self.cancel_terminal_capture()
         self.sequence = sequence
         if kind == "context_routing":
@@ -119,6 +125,11 @@ class EventState:
                 self.role = str(decision.get("routing", {}).get("selected_role") or "unavailable")
                 self.provider = str(decision.get("routing", {}).get("provider") or self.provider)
                 self.model = str(decision.get("routing", {}).get("model") or self.model)
+            return True
+        if kind == "operator_snapshot":
+            snapshot = event.get("surface")
+            if isinstance(snapshot, dict):
+                self.operator_snapshot = copy.deepcopy(snapshot)
             return True
         self.mode = str(event.get("mode") or self.mode)
         self.provider = str(event.get("provider") or self.provider)
@@ -1248,6 +1259,151 @@ def _palette_overlay(screen: Any, master: int, buffer: InputBuffer,
         screen.timeout(100)
 
 
+def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
+    """Return canonical invoke command and whether operator input is required."""
+    target = str(entry.get("target_id") or "")
+    if not target:
+        raise ValueError("operator entry has no target")
+    provider = str(entry.get("provider") or "")
+    if entry.get("provider_required") and provider:
+        target += "@" + provider
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
+    return "invoke " + target, bool(required)
+
+
+def _operator_overlay(screen: Any, master: int, reader: EventReader,
+                      state: EventState, buffer: InputBuffer) -> str | None:
+    """Browse contract-derived namespaces without owning execution."""
+    if state.pending_action or state.privilege_waiting or state.finished:
+        return None
+    prefix, query, selected = "", "", 0
+    notice = "Loading operator surface…"
+    state.operator_snapshot = None
+    _send(master, "surface snapshot")
+    screen.timeout(100)
+    try:
+        while True:
+            for event in reader.read():
+                apply_event(state, event)
+                if event.get("event_type") in {"warning", "error"}:
+                    notice = str(event.get("display") or "Operator surface unavailable")
+            if state.pending_action or state.privilege_waiting or state.finished:
+                return None
+            try:
+                os.read(master, 4096)
+            except (BlockingIOError, OSError):
+                pass
+
+            snapshot = state.operator_snapshot
+            nodes = operator_children(snapshot, prefix) if isinstance(snapshot, dict) else []
+            needle = query.casefold()
+            if needle:
+                nodes = [node for node in nodes if needle in str(node.get("name", "")).casefold()]
+            if snapshot is not None and notice == "Loading operator surface…":
+                notice = ""
+            if selected >= len(nodes):
+                selected = max(0, len(nodes) - 1)
+
+            height, width = screen.getmaxyx()
+            screen.erase()
+            location = ":" + (prefix + "." if prefix else "") + query
+            try:
+                screen.addnstr(0, 0, f"Explore  {location}", max(1, width - 1), curses.A_BOLD)
+                visible = max(1, height - 3)
+                first = max(0, selected - visible + 1)
+                for row, node in enumerate(nodes[first:first + visible], 1):
+                    index = first + row - 1
+                    marker = ">" if index == selected else " "
+                    available = node.get("availability") == "active"
+                    flag = " " if available else "×"
+                    branch = " ›" if node.get("has_children") else ""
+                    kind = "" if node.get("kind") == "namespace" else f" [{node.get('kind')}]"
+                    desc = str(node.get("description") or "")
+                    line = f"{marker}{flag} {node.get('name')}{branch}{kind}"
+                    if desc:
+                        line += f"  {desc}"
+                    style = curses.A_REVERSE if index == selected else curses.A_DIM if not available else 0
+                    screen.addnstr(row, 0, line, max(1, width - 1), style)
+                footer = notice or "Type to filter · . / Enter descend · Backspace parent · Esc back"
+                screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
+            except curses.error:
+                pass
+            screen.refresh()
+
+            key = _next_key(screen)
+            if key in (27, 3):
+                if key == 3:
+                    _send(master, "/stop")
+                    return None
+                if query:
+                    query = ""
+                    selected = 0
+                    continue
+                if prefix:
+                    prefix = prefix.rpartition(".")[0]
+                    selected = 0
+                    continue
+                return None
+            if key == curses.KEY_UP:
+                selected = max(0, selected - 1)
+                continue
+            if key == curses.KEY_DOWN:
+                selected = min(max(0, len(nodes) - 1), selected + 1)
+                continue
+            if key in (curses.KEY_BACKSPACE, 127, 8):
+                if query:
+                    query = query[:-1]
+                elif prefix:
+                    prefix = prefix.rpartition(".")[0]
+                selected = 0
+                notice = ""
+                continue
+
+            exact = next((node for node in nodes
+                          if str(node.get("name", "")).casefold() == query.casefold()), None)
+            if key == ord(".") and exact and exact.get("has_children"):
+                prefix, query, selected, notice = str(exact["path"]), "", 0, ""
+                continue
+
+            if key in (10, 13, curses.KEY_ENTER) and nodes:
+                node = nodes[selected]
+                if node.get("has_children"):
+                    prefix, query, selected, notice = str(node["path"]), "", 0, ""
+                    continue
+                if not node.get("leaf"):
+                    continue
+                if node.get("availability") != "active":
+                    notice = str((node.get("entry") or {}).get("unavailable_reason")
+                                 or "This contribution is unavailable")
+                    continue
+                entry = node.get("entry") if isinstance(node.get("entry"), dict) else {}
+                if entry.get("kind") == "capability":
+                    try:
+                        command, needs_input = _operator_invoke_command(entry)
+                    except ValueError as error:
+                        notice = str(error)
+                        continue
+                    if needs_input:
+                        buffer.replace(command + " ")
+                        return None
+                    _send(master, command)
+                    return command
+                notice = f"{entry.get('kind', 'item')}: {entry.get('target_id', node.get('path'))}"
+                continue
+
+            if isinstance(key, str) and key not in "\n\r.":
+                query += key
+                selected = 0
+                notice = ""
+            elif isinstance(key, int) and 32 <= key <= 126 and key != ord("."):
+                query += chr(key)
+                selected = 0
+                notice = ""
+    finally:
+        screen.timeout(100)
+
+
 def _help_overlay(screen: Any) -> None:
     """Show keyboard controls without changing the current draft."""
     controls = [
@@ -1260,7 +1416,7 @@ def _help_overlay(screen: Any) -> None:
         "Output focus: arrows scroll, Home oldest, End latest",
         "PageUp/PageDown scroll output or focused panel; wheel over output",
         "Control focus: arrows select section, Enter open/refresh, Esc input",
-        "Ctrl+P or : on empty input opens command palette",
+        "Ctrl+P opens commands · : on empty input explores modules/capabilities",
         "Ctrl+G collapse/expand successful tool output",
         "Ctrl+C or /stop sends the backend stop action",
         "Guide: Run / Skip / Explain / Stop",
@@ -1704,12 +1860,20 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 buffer.clear()
                 history.leave()
             continue
-        if (key == 16 or (key == ord(":") and not buffer.text())) and not state.pending_action:
+        if key == 16 and not state.pending_action:
             selected = _palette_overlay(screen, master, buffer, state, commands)
             if selected == "settings_view":
                 _settings_overlay(screen, master, reader, state)
                 continue
             if selected and registry_is_local(selected):
+                state.end_terminal_capture()
+                state.add_user_input(selected)
+                state.begin_terminal_capture()
+                navigator.latest()
+            continue
+        if key == ord(":") and not buffer.text() and not state.pending_action:
+            selected = _operator_overlay(screen, master, reader, state, buffer)
+            if selected:
                 state.end_terminal_capture()
                 state.add_user_input(selected)
                 state.begin_terminal_capture()

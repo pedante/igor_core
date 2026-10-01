@@ -114,6 +114,81 @@ PY
     done
 }
 
+
+# Publish a read-only projection of the current module/configuration/capability
+# registries.  Frontends may browse this metadata, but execution still enters
+# the canonical capability dispatcher and configuration owners.
+_ai_emit_operator_snapshot() {
+    [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local _modules='[]' _contributions='[]' _capabilities='[]' _configurations='[]' _payload
+    declare -f igor_module_records >/dev/null 2>&1 &&
+        _modules="$(igor_module_records 2>/dev/null)" || true
+    declare -f igor_contribution_records >/dev/null 2>&1 &&
+        _contributions="$(igor_contribution_records 2>/dev/null)" || true
+    declare -f igor_capability_list >/dev/null 2>&1 &&
+        _capabilities="$(igor_capability_list 2>/dev/null)" || true
+    declare -f igor_configuration_declarations >/dev/null 2>&1 &&
+        _configurations="$(igor_configuration_declarations 2>/dev/null)" || true
+    _payload=$(
+        printf '%s\0%s\0%s\0%s\0' "$_modules" "$_contributions" "$_capabilities" "$_configurations" |
+            python3 -c '
+import json,sys
+parts=sys.stdin.buffer.read().split(b"\\0")
+if parts[-1:]==[b""]: parts.pop()
+if len(parts)!=4: raise SystemExit(1)
+names=("modules","contributions","capabilities","configurations")
+payload={}
+for name,raw in zip(names,parts):
+    value=json.loads(raw.decode())
+    if not isinstance(value,list): raise SystemExit(1)
+    payload[name]=value
+print(json.dumps(payload,separators=(",",":")))
+' | python3 "${IGOR_DIR}/core/lib/operator_surface.py" build
+    ) || return 0
+    _payload=$(printf '%s' "$_payload" | AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 -c '
+import json,os,sys
+surface=json.load(sys.stdin)
+print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
+                  "surface":surface},separators=(",",":")))
+') || return 0
+    _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
+}
+
+
+# Adapt a human operator selection into the existing structured capability tool.
+# This function owns no approval, privilege, execution, or verification logic.
+_ai_operator_invoke() {
+    local _invoke_rest="${1:-}" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
+    _invoke_spec="${_invoke_rest%% *}"
+    _invoke_id="${_invoke_spec%%@*}"
+    if [ "$_invoke_spec" != "$_invoke_id" ]; then
+        _invoke_provider="${_invoke_spec#*@}"
+    else
+        _invoke_provider=""
+    fi
+    if [ "$_invoke_rest" = "$_invoke_spec" ]; then
+        _invoke_inputs='{}'
+    else
+        _invoke_inputs="${_invoke_rest#* }"
+    fi
+    _invoke_tool=$(python3 - "$_invoke_id" "$_invoke_provider" "$_invoke_inputs" <<'PY'
+import json,re,sys
+ident,provider,raw=sys.argv[1:4]
+pattern=r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+"
+if not re.fullmatch(pattern,ident) or (provider and not re.fullmatch(r"[a-z][a-z0-9_-]*",provider)):
+    raise SystemExit(1)
+value=json.loads(raw)
+if not isinstance(value,dict):
+    raise SystemExit(1)
+request={"tool":"run_capability","id":ident,"inputs":value}
+if provider:
+    request["provider"]=provider
+print(json.dumps(request,separators=(",",":")))
+PY
+    ) || return 2
+    IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool"
+}
+
 # ── Interaction mode authority ───────────────────────────────────────────────
 # The mode is deliberately a single value. executive_mode remains an
 # exported compatibility flag for older callers; policy reads ai_get_mode.
@@ -2938,6 +3013,7 @@ except: pass
     fi
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
+    _ai_emit_operator_snapshot
     _ai_set_session_state ready || {
         _ai_startup_fail runtime_state 1 "Could not persist ready state." \
             "$_rt_dir" "Could not write the private runtime state file."
@@ -3214,6 +3290,18 @@ except: print('unknown')
                     _ai_frontend_event warning "Could not update setting '${_setting_key}'."
                 fi
                 echo ""; continue ;;
+            "surface snapshot")
+                _ai_emit_operator_snapshot
+                continue ;;
+            invoke\ *)
+                _ai_operator_invoke "${user_input#invoke }"
+                local _invoke_rc=$?
+                if [ "$_invoke_rc" -eq 2 ]; then
+                    warn "Usage: invoke <capability-id[@provider]> [JSON object]"
+                    _ai_frontend_event warning "Invalid capability invocation."
+                fi
+                echo ""
+                continue ;;
             # ── Undo stack ────────────────────────────────────────────────────
             "undo list")
                 echo ""

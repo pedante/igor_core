@@ -199,6 +199,15 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "cmd",
     },
     {
+        "id": "invoke",
+        "name": "invoke",
+        "aliases": (),
+        "syntax": "invoke <capability-id[@provider]> [JSON]",
+        "category": "tools",
+        "description": "invoke a registered capability through Igor approval and verification",
+        "handler": "invoke",
+    },
+    {
         "id": "exit",
         "name": "exit",
         "aliases": ("quit", "q"),

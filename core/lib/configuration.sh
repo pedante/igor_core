@@ -14,6 +14,12 @@ print(json.dumps(r,separators=(",", ":")))
     printf '%s' "$_request" | python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" "$_action"
 }
 
+# Read-only schema projection for generic frontends. This creates no store and
+# exposes no desired/secret values.
+igor_configuration_declarations() {
+    _igor_configuration_call declarations
+}
+
 _igor_configuration_precondition() {
     local _proposal="$1" _inputs _id
     _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
