@@ -616,7 +616,6 @@ not sandboxed. Third-party isolation/signing remains Q004 and future work.
 Q007's relationship/deployment reconciliation is not closed by this approval or
 the bounded Step 17 configuration foundation.
 
-
 ### D061 — Brownfield resources remain machine state; adoption and configuration location are explicit
 
 The Project Owner directed Igor 2 to support existing installations that Igor
@@ -644,7 +643,6 @@ how competing discovered/configured/installer/user relationship claims reconcile
 and Step 18 still must implement/prove the binding, adoption and reversible
 application path. No broad discovery engine, module migration or ownership
 transfer is implemented by this documentation change.
-
 
 ## Open decisions
 
