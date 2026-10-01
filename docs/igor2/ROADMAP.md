@@ -385,7 +385,7 @@ The five proof classes and regression results are recorded in
 [STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
 require later explicit contracts; Step 15 owns durable history.
 
-## Step 15 — Operational History — 15A ACCEPTED; 15B/JUDGMENT/15UI IMPLEMENTED; 15C COMPLETE; 15D FUTURE
+## Step 15 — Operational History — 15A ACCEPTED; 15B/JUDGMENT/15UI IMPLEMENTED; 15C COMPLETE; 15D IMPLEMENTED
 
 Step 15A is the persistence/identity gate in
 [PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md). D048–D054 resolve Q003 and
@@ -424,11 +424,14 @@ The implementation sequence is deliberately bounded:
   Private atomic JSON, export/restore, headless data operations and read-only
   15UI inspection grant no operational or current-state authority. See
   [INVESTIGATIONS.md](INVESTIGATIONS.md) and [STATUS.md](STATUS.md).
-- **15D — Inspection & Context Integration:** make the new authorities
-  inspectable and selectively retrievable by the Context Engine without
-  dumping raw history or turning investigation/learning text into authority.
-  This step owns actual relevance/context routing and model-routing policy;
-  the Judgment Contract alone implements none of those policies.
+- **15D — Context Relevance and Model Role Routing:** bounded D057 implementation
+  extends the existing Context Engine with deterministic selection, optional
+  validated judgment ranking, explicit scoped history/investigation retrieval,
+  reasoner/summarizer/context_ranker roles and administrator model bindings.
+  Included/excluded reasons and routing rules are read-only CLI/15UI operational
+  provenance, never durable knowledge or authority. No automatic ranker call,
+  provider optimization or new context database. See [CONTEXT_ROUTING.md](CONTEXT_ROUTING.md)
+  and final evidence in [STATUS.md](STATUS.md).
 
 Chat history is not operational memory. Step 13 events remain transient
 signals and are not the only durability path. Persistent records refer to

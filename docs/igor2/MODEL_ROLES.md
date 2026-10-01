@@ -2,6 +2,11 @@
 
 Status: **proposal for architectural review; not an implementation contract**.
 
+The accepted bounded [Step 15D contract](CONTEXT_ROUTING.md) now implements
+reasoner, summarizer and context_ranker roles with deterministic routing and
+explicit administrator bindings. This document's semantic scout and broader
+multi-model proposals remain deferred; they are not enabled by D057.
+
 This note records a possible extension of Igor's AI gateway: use more than one
 LLM role when that improves cost, privacy or context quality, while keeping all
 operational authority in deterministic Igor runtime.

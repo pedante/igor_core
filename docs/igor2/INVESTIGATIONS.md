@@ -186,8 +186,13 @@ Findings, creation ownership and provenance do not acquire those meanings withou
 separate authoritative processes. No automatic consumer or AI context injection
 is added.
 
+[Step 15D](CONTEXT_ROUTING.md) now provides explicit scoped, read-only selection
+of investigation material and attached judgments for AI reference context.
+It changes no investigation lifecycle/storage or fact/approval authority;
+selection provenance is not automatically retained as investigation knowledge.
+
 Deferred: autonomous/recursive investigation, agents, background monitoring,
 self-healing/remediation, plans/workflows, scheduling/automation integration,
-remote scopes, relationships/deployments, learning, model routing/selection and
-Jet/Laya. Step 15D owns selective context/relevance and routing integration;
-Step 20 owns the default interface transition. Neither begins in this milestone.
+remote scopes, relationships/deployments, learning and Jet/Laya. Step 15C added
+no model routing/selection; the subsequent Step 15D contract owns that explicit
+integration. Step 20 owns the separate default interface transition.

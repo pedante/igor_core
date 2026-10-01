@@ -109,14 +109,21 @@ def main():
             except (ValueError, AttributeError):
                 event["privilege_requirement"] = "unknown"
         append(event)
-    elif mode == "last":
+    elif mode in {"last", "decision-last"}:
         path = audit_path()
         if not path.exists():
+            if mode == "decision-last":
+                print('{"availability":"not_recorded"}')
+                return
             print("No AI operations recorded.")
             return
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd, encoding="utf-8") as handle:
             records = [json.loads(line) for line in handle if line.strip()]
+        if mode == "decision-last":
+            record = next((r for r in reversed(records) if r.get("event") == "context_routing"), None)
+            print(json.dumps(record or {"availability": "not_recorded"}))
+            return
         if not records:
             print("No AI operations recorded.")
             return

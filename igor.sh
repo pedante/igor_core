@@ -162,6 +162,16 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             exit $?
             ;;
         --context)
+            case "${2:-}" in
+                last)
+                    [ "$#" -eq 2 ] || exit 2
+                    python3 "${IGOR_DIR}/core/ai/operations.py" decision-last
+                    exit $? ;;
+                select)
+                    [ "$#" -eq 3 ] || exit 2
+                    printf '%s' "$3" | python3 "${IGOR_DIR}/core/ai/request_context.py" select
+                    exit $? ;;
+            esac
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
             source "${IGOR_DIR}/core/ai/context.sh"

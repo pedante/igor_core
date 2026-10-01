@@ -2,6 +2,11 @@
 
 Status: **proposal for architectural review; not an implementation contract**.
 
+The accepted [Step 15D contract](CONTEXT_ROUTING.md) implements only three bounded
+roles (reasoner, summarizer, context_ranker) and explicit deterministic routing.
+It adds no agents, automatic ranker calls, compression service or background AI;
+the specialist/agent proposals below remain outside that milestone.
+
 This document explores where Igor and its modules could benefit from cheap,
 free or local LLM calls beyond the proposed semantic scout.
 
