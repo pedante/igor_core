@@ -2,6 +2,31 @@
 
 Last updated: 2026-10-01
 
+## Contract-driven Operator Surface — bounded implementation candidate
+
+A bounded interaction slice now projects the existing module/contribution,
+capability and configuration registries into a disposable operator-surface
+snapshot. The full-screen TUI keeps `Ctrl+P` for local session commands and uses
+`:` for deterministic dotted namespace discovery. This is a projection over
+existing owners, not a Module API menu contribution or a second registry.
+
+Capability leaves return through the existing `run_capability` dispatcher.
+Zero-input leaves can be submitted directly; required input remains an explicit
+operator JSON draft. Provider ambiguity is preserved rather than guessed.
+Checks, observers, configuration, knowledge and other non-capability
+contributions are browse-only in this first slice. Core configuration exposes a
+read-only declaration query that creates no store; v2 module configuration
+schemas are projected from owner-stamped contribution records.
+
+This work does **not** advance Step 18 Boundary 2/3, migrate the v1
+`nextcloud_docker` menu, implement staged Apply/restart UX or make the TUI the
+default launcher. It establishes the shared discoverability seam those later
+workflows can consume. Focused projection/backend/TUI/configuration tests are
+included on the implementation branch. Runtime pass counts are intentionally not
+claimed here because the repository CI workflow currently targets pull requests
+to `master`/`main`, not `igor2`, and this environment cannot fetch the branch
+for local execution.
+
 ## Step 18 Boundary 1 — module contract completion
 
 The Project Owner approved the Step 18A discovery architecture (D060) and
