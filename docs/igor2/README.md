@@ -29,7 +29,8 @@ For most Igor 2 work:
    - `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
    - `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
    - `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.
-   - `INFLUENCES.md` — ServerMind/Steward lessons intentionally adopted by Igor.
+   - `INFLUENCES.md` — ServerMind/Steward/AOH lessons intentionally adopted by Igor.
+   - `KNOWLEDGE_IMPORT.md` — accepted direction for normalizing docs, scripts, Agent Skills/AOH, ServerMind, Steward and local learning into Igor-managed knowledge/module candidates without granting execution authority.
    - `DECISIONS.md` — accepted and unresolved architectural decisions.
    - `LEGACY.md` — significant current paths that must be kept, adapted or retired.
 

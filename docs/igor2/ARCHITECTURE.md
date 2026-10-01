@@ -35,6 +35,7 @@ A user should be able to inspect, configure, troubleshoot, repair and automate a
 25. **Context routing is domain-neutral.** Core's Context Engine selects from generic registered metadata, object/capability identities, source kinds and provenance; it must not accumulate application/domain-specific natural-language routing rules. Modules and knowledge contributions own domain vocabulary/semantic metadata. The LLM may interpret user language into non-authoritative intent/topic/object hints, but those hints cannot create facts, capabilities, owners or authority.
 26. **Persistent references outlive implementations.** Durable state refers to stable scoped identities and contracts, not filesystem paths, shell function names, process-local objects, UI labels or a particular storage backend. Implementation details may be retained as diagnostics, never as the durable identity of an object, provider or operation.
 27. **Learning never silently becomes authority.** Baselines, patterns, runbooks and other learned artifacts may inform reasoning, diagnosis and proposals, but they do not become desired state, responsibility, policy, approval, privilege or executable capability without an explicit authoritative transition.
+28. **Imported knowledge normalizes before authority.** Documentation, scripts, Agent Skills/AOH packs, external tool manifests, other open-source projects and local learned procedures enter as provenance-bearing reference/candidate material. Import does not activate a module or grant execution authority; executable promotion must enter the normal Module API/capability, approval, privilege and verification contracts.
 
 ## Ownership classes
 
@@ -53,6 +54,12 @@ The target architecture separates at least:
 
 Modules may declare schemas and contributions, but machine-specific mutable data does
 not live inside the installed module package.
+
+Reusable package/module content and machine binding are separate concerns.
+A package may carry knowledge, contribution declarations, reviewed handlers,
+compatibility metadata and tests/evals; machine-specific paths, instance
+selection, secret references, deployment relationships and mutable user intent
+remain Igor-owned configuration/System Model state.
 
 ## Major layers
 
@@ -126,9 +133,24 @@ Knowledge may come from:
 
 - core/platform knowledge;
 - active module domain knowledge;
-- integration-specific knowledge.
+- integration-specific knowledge;
+- imported documentation, guides and runbooks;
+- Agent Skills/AOH skill material;
+- reviewed external project material such as ServerMind/Steward patterns;
+- evidence-backed local learning promoted into a managed candidate.
 
 Knowledge covers architecture, terminology, normal behavior, operating constraints and failure modes. It is reference data, not observed state or authorization policy.
+
+External formats are inputs, not parallel authorities. The
+[Knowledge import and module synthesis](KNOWLEDGE_IMPORT.md) pipeline preserves
+source/provenance, normalizes useful material into Igor concepts and keeps
+executable promotion separate from ingestion. A source script/tool/skill may
+suggest a capability, observer, check or playbook, but Igor must validate and
+promote that contribution through its own contracts before it can execute.
+
+Agent Skills-style `SKILL.md` content is a useful portable knowledge/process
+format. Supporting it does not make AOH or another runtime's pack schema the
+native Igor Module API.
 
 ### System Model
 
