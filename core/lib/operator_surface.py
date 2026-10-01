@@ -200,12 +200,15 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
             "name": segment,
             "path": child_path,
             "leaf": False,
+            "has_children": False,
             "kind": "namespace",
             "availability": "active",
             "description": "",
             "entry": None,
         })
-        if not dot:
+        if dot:
+            node["has_children"] = True
+        else:
             node["leaf"] = True
             node["kind"] = str(entry.get("kind") or "unknown")
             node["availability"] = _availability(entry.get("availability"))
