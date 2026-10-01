@@ -157,6 +157,13 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
     for row in capabilities:
         entries.append(_capability_entry(row))
     for row in contributions:
+        if row.get("kind") == "configuration":
+            descriptor = row.get("descriptor")
+            schema = descriptor.get("schema") if isinstance(descriptor, dict) else None
+            if isinstance(schema, dict):
+                entries.extend(_configuration_entries(
+                    {"owner": row.get("owner"), "schema": schema}, active_owners))
+            continue
         entry = _contribution_entry(row)
         if entry is not None:
             entries.append(entry)
