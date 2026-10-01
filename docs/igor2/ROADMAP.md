@@ -503,6 +503,15 @@ Separate:
 - relationships;
 - deployments.
 
+Treat pre-existing/brownfield resources as normal machine-state participants even
+when Igor did not provision them. Discovery may establish objects/facts and
+relationship claims, while domain modules enrich interpretation; neither
+discovery nor module activation silently creates adoption, desired state or
+responsibility. File-backed configuration participating in a deployment must
+retain a concrete file + stable selector locator, while non-file-backed values
+identify their actual storage/source authority. See
+[BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
+
 Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships. Relationship storage must preserve source claims/reconciliation instead of relying on unqualified last-write-wins edges. Durable participants use the scoped-reference contract from Step 15A so future local and external machine scopes do not require a new relationship identity model.
 
 Installation/configuration workflows use structured plans and leave an
@@ -521,14 +530,24 @@ three boundaries, stopping with evidence after each:
 1. **Contract completion:** versioned capability outputs/compatibility,
    structured module inspection, reproducible package knowledge and explicit
    read-only detach accounting.
-2. **Composition prerequisites:** only the ownership/binding, relationship,
-   storage, secret and recovery seams required by the selected workflow. Q007
-   remains unresolved; this boundary does not inherit a complete ownership model
-   from the bounded Step 17 `ai.verbose` slice.
+2. **Composition prerequisites:** the owner-authorized integration proof uses
+   the existing System package to cross registration, typed capability discovery,
+   knowledge/context candidates, test-only configuration schema discovery and
+   structured inspection through the existing 15UI renderer. It adds no production
+   setting, application migration or live Modules panel.
+
+   The required ownership/binding, relationship, storage, configuration
+   source/target locator, secret and recovery seams remain bounded prerequisites
+   for future composition workflows. Q007 and general binding/resource ownership
+   remain unresolved; the bounded Step 17 `ai.verbose` slice does not establish a
+   complete ownership model.
 3. **First reversible application proof:** one narrow, non-secret Nextcloud
-   configuration workflow crossing desired state, approval, execution,
-   independent readback, History and recovery. Select its setting after reviewing
-   existing writers and retain the combined deployment.
+   configuration workflow crossing brownfield discovery/binding, desired state,
+   approval, execution, independent readback, History and recovery. Select its
+   setting after reviewing existing writers and retain the combined deployment.
+   The proof must include an existing-style configuration source that Igor did
+   not create, with explicit adoption and file + selector provenance when the
+   source is file-backed.
 
 Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
@@ -543,7 +562,12 @@ authority. Capability leaves re-enter the canonical dispatcher; required inputs
 are never guessed. Rich generated module screens may build on this projection as
 the relevant Step 18 contracts mature.
 
-Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
+Use the current `nextcloud_docker` deployment for the first reversible application
+proof **after** the System composition proof and its workflow-specific ownership
+prerequisites are satisfied. The proof must use the existing Operator Surface
+and v2 contracts where applicable, but it does not assume that the Operator
+Surface itself establishes deployment ownership, resource binding or recovery
+semantics.
 
 Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
 

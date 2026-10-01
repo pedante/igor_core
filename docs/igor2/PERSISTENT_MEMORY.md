@@ -233,7 +233,9 @@ Evidence references may point to:
 - another history episode/result;
 - an investigation finding;
 - a report/log locator or bounded excerpt;
-- a verified configuration/deployment record;
+- a verified configuration/deployment record, including its typed storage/source
+  locator when configuration evidence is file-backed or otherwise externally
+  stored;
 - external/adapted evidence in a future scope.
 
 Evidence is reference material. It cannot authorize execution.
@@ -468,6 +470,11 @@ IDs.
 
 Operational History records that a deployment/relationship changed; it is not
 the current deployment source of truth.
+
+Pre-existing resources are valid participants even when Igor did not provision
+them. Discovery does not imply adoption or responsibility; an explicit authority
+transition preserves external/unknown origin and configuration source locators.
+See [BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
 
 ## Baselines and learning are separate
 

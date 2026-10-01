@@ -61,6 +61,13 @@ pattern/primer paths remain compatibility debt: migrate each source through
 explicit eligibility/provenance and recovery, rather than importing it into
 module authority or changing legacy selection in this boundary.
 
+Step 18 Boundary 2 repairs v2 knowledge candidate package-version provenance:
+the candidate now uses Core's validated manifest instead of an absent
+contribution `version` field. Legacy knowledge hook provenance remains best
+effort. Configuration declarations and module inspection compose without
+migrating values or adding a second UI; a live Modules panel, generic module
+writes and binding/resource responsibility inventories remain deferred.
+
 Step 15D extends the existing Context Engine and request boundary with bounded
 selection and operational provenance; it does not create another gateway.
 Owner-stamped knowledge candidates replace their aggregate runtime equivalent.

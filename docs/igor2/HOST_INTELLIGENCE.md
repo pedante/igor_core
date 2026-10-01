@@ -123,6 +123,14 @@ renames/moves can produce new IDs. Encode unsafe identifier characters
 canonically at the boundary; do not use IDs directly as paths. Only active
 owners can publish facts in their declared object kinds/properties.
 
+Object representation does not depend on Igor having provisioned the resource.
+An existing service/container/mount/application may have external or unknown
+creation provenance and still be a valid System Model participant. Creator/origin
+knowledge is separate from current observation and from responsibility. A
+higher-level domain module may add interpretation/facts for an object, but it
+does not become the storage owner of independently sourced machine facts. See
+[BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
+
 Provenance kinds are `observer` (direct measurement), `configuration`
 (effective validated setting and its owner/source), `user_declaration`,
 `installer` (a verified operation record), and `inference` (named rule plus
