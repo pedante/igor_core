@@ -131,7 +131,6 @@ higher-level domain module may add interpretation/facts for an object, but it
 does not become the storage owner of independently sourced machine facts. See
 [BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
 
-
 Provenance kinds are `observer` (direct measurement), `configuration`
 (effective validated setting and its owner/source), `user_declaration`,
 `installer` (a verified operation record), and `inference` (named rule plus
