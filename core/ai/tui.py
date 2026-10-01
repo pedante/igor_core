@@ -51,7 +51,7 @@ EVENT_TYPES = frozenset(
         "approval_waiting", "explanation", "action_started", "action_output",
         "action_result", "action_skipped", "action_declined", "action_stopped",
         "privilege_waiting", "privilege_result", "continuation", "warning", "error",
-        "mode_changed", "settings_snapshot", "session_finished",
+        "mode_changed", "settings_snapshot", "session_finished", "context_routing",
     }
 )
 
@@ -92,6 +92,7 @@ class EventState:
     settings_snapshot: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
+    context_routing: dict[str, Any] | None = None
 
     def accept(self, event: dict[str, Any]) -> bool:
         """Apply one event if it is valid and newer than the current stream."""
@@ -111,6 +112,14 @@ class EventState:
         if kind != "settings_snapshot":
             self.cancel_terminal_capture()
         self.sequence = sequence
+        if kind == "context_routing":
+            decision = event.get("decision")
+            if isinstance(decision, dict):
+                self.context_routing = copy.deepcopy(decision)
+                self.role = str(decision.get("routing", {}).get("selected_role") or "unavailable")
+                self.provider = str(decision.get("routing", {}).get("provider") or self.provider)
+                self.model = str(decision.get("routing", {}).get("model") or self.model)
+            return True
         self.mode = str(event.get("mode") or self.mode)
         self.provider = str(event.get("provider") or self.provider)
         self.model = str(event.get("model") or self.model)
@@ -864,6 +873,10 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
         sections.append({"id": "investigations", "label": "Investigations",
                          "source": "--investigations list", "data": investigations.data,
                          "hint": investigations.status})
+    sections.append({"id": "context_routing", "label": "Context / Routing",
+                     "source": "backend context_routing decision",
+                     "data": state.context_routing or {"availability": "not reported"},
+                     "hint": "Read-only operational provenance"})
     result = next((item.result for item in reversed(state.activity) if item.result), None)
     if result is not None:
         sections.append({"id": "result", "label": "Latest result", "data": result,

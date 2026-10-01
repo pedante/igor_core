@@ -11,6 +11,47 @@ _ai_prepare_transport() {
     esac
     [ -n "${IGOR_AI_REQUEST_ID:-}" ] || ai_begin_request || return 1
     ai_export_privacy_map || return 1
+    export IGOR_AI_ROLE_BINDINGS IGOR_AI_REQUEST_TYPE IGOR_AI_TEXT_ONLY
+    IGOR_AI_ROUTING=$(python3 "${_AI_CONTROL_DIR}/role_transport.py") || return 1
+    local -a _route_fields
+    mapfile -t _route_fields < <(printf '%s' "$IGOR_AI_ROUTING" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+for key in ("status", "provider", "model", "selected_role"):
+    print(r.get(key) or "")
+')
+    if [ "${_route_fields[0]:-}" != selected ]; then
+        PYTHONPATH="${_AI_CONTROL_DIR}" IGOR_AI_ROUTING="$IGOR_AI_ROUTING" python3 -c '
+import json,os
+from request_context import publish
+publish({"request_id": os.environ.get("IGOR_AI_REQUEST_ID", ""), "routing": json.loads(os.environ["IGOR_AI_ROUTING"]), "outcome": "not_invoked"})
+' 2>/dev/null || true
+        printf 'ERROR: Model role unavailable or invalid\n'
+        return 1
+    fi
+    if [ "${_route_fields[1]}" != "${NEXUS_PROVIDER:-anthropic}" ]; then
+        case "${_route_fields[1]}" in
+            anthropic) NEXUS_API_KEY="${ANTHROPIC_API_KEY:-}" ;;
+            openrouter) NEXUS_API_KEY="${OPENROUTER_API_KEY:-}" ;;
+            ollama) NEXUS_API_KEY='' ;;
+        esac
+    fi
+    NEXUS_PROVIDER="${_route_fields[1]}"
+    NEXUS_MODEL="${_route_fields[2]}"
+    [ "${_route_fields[3]}" = reasoner ] || IGOR_AI_TEXT_ONLY=true
+    export NEXUS_PROVIDER NEXUS_MODEL NEXUS_API_KEY IGOR_AI_ROUTING IGOR_AI_TEXT_ONLY
+    if declare -f igor_active_modules >/dev/null 2>&1; then
+        IGOR_AI_ACTIVE_OWNERS=$(igor_active_modules | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().split()))')
+        export IGOR_AI_ACTIVE_OWNERS
+    fi
+    if [ "${IGOR_AI_CONTEXT:-standard}" != minimal ] && [ "${_route_fields[3]}" = reasoner ] && declare -f igor_model_list >/dev/null 2>&1; then
+        IGOR_AI_MODEL_SNAPSHOT=$(igor_model_list) || return 1
+        export IGOR_AI_MODEL_SNAPSHOT
+    fi
+    if [ "${IGOR_AI_CONTEXT:-standard}" != minimal ] && [ "${_route_fields[3]}" = reasoner ] && declare -f igor_capability_list >/dev/null 2>&1; then
+        IGOR_AI_CAPABILITY_SNAPSHOT=$(igor_capability_list) || return 1
+        export IGOR_AI_CAPABILITY_SNAPSHOT
+    fi
     source "${_AI_CONTROL_DIR}/ai_router.sh"
     ai_router_format_tools || return 1
     # Copy-ready commands and history summaries are isolated text requests.
@@ -22,7 +63,7 @@ _ai_prepare_transport() {
     fi
     IGOR_AI_CATALOG=$(ai_catalog_json) || return 1
     export IGOR_AI_CATALOG IGOR_AI_ENABLED IGOR_AI_ALLOWED_TOOLS IGOR_AI_DISABLED_ACTIONS
-    export IGOR_AI_CONTEXT IGOR_AI_AUDIT
+    export IGOR_AI_CONTEXT IGOR_AI_AUDIT IGOR_AI_CONTEXT_REQUEST IGOR_AI_REQUEST_MAX_BYTES
 }
 #  IGOR — ai/api.sh
 #  Python bridge for AI API calls.

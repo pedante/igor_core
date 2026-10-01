@@ -180,6 +180,10 @@ approval, privilege and verification whenever it proposes an operation.
 remain design explorations. This contract accepts neither their proposed
 roles nor named Jet/Laya policy, budgets, agents or a provider/model solver.
 Step **15D** owns actual relevance/context routing and model-routing policy.
+Its accepted [context/routing contract](CONTEXT_ROUTING.md) now consumes optional
+`context.relevance` judgments bound to eligible candidate IDs and content/metadata
+digest. Deterministic eligibility, tiers, required items and budgets remain
+Igor-owned. No automatic ranking invocation or change to this envelope is added.
 15UI and 15C consume this vocabulary under their own accepted gates.
 There is no investigation lifecycle, UI feature or context selector here.
 

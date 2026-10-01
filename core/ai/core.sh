@@ -1172,18 +1172,14 @@ for m in msgs:
 print('\n'.join(lines))
 " 2>/dev/null)
 
-    # Call the API for a compact summary (use haiku/cheap model, 400 tokens max)
+    # Existing foreground compaction uses the administrator-owned summarizer role.
     local _sum_key
     case "${provider:-}" in openrouter) _sum_key="${or_api_key:-}";; ollama) _sum_key="";; *) _sum_key="${api_key:-}";; esac
     local _sum_model="${model:-claude-haiku-4-5-20251001}"
-    # Prefer haiku for summarization regardless of active model (cheap + fast)
-    if [[ "$_sum_model" == *"r1"* ]] || [[ "$_sum_model" == *"opus"* ]]; then
-        _sum_model="claude-haiku-4-5-20251001"
-    fi
 
     ai_begin_request || return 1
     local _sum_raw
-    _sum_raw=$(IGOR_AI_TEXT_ONLY=true NEXUS_API_KEY="$_sum_key" \
+    _sum_raw=$(IGOR_AI_REQUEST_TYPE=summarize IGOR_AI_TEXT_ONLY=true NEXUS_API_KEY="$_sum_key" \
                NEXUS_PROVIDER="${provider:-anthropic}" \
                NEXUS_MODEL="$_sum_model" \
                NEXUS_MAX_TOKENS="400" \
@@ -3300,6 +3296,19 @@ PYEOF
                 echo -e "  ${CYAN}Hybrid menu:${NC}    ${AI_HYBRID_MODE:-false}"
                 _ai_emit_settings_snapshot
                 echo ""; continue ;;
+            context)
+                printf '%s\n' "${IGOR_AI_CONTEXT_REQUEST:-\{\}}"; continue ;;
+            context\ reset)
+                export IGOR_AI_CONTEXT_REQUEST='{}'; continue ;;
+            context\ *)
+                local _selection_request
+                if _selection_request=$(printf '%s' "${user_input#context }" | python3 "${_AI_DIR}/request_context.py" validate); then
+                    export IGOR_AI_CONTEXT_REQUEST="$_selection_request"
+                    printf 'Context selection request updated.\n'
+                else
+                    printf 'Invalid context selection request.\n'
+                fi
+                continue ;;
             refresh)
                 echo -e "  ${CYAN}Re-scanning server and knowledge...${NC}"
                 knowledge_block=$(ai_knowledge_load "${_investigation_state_enabled:-true}")

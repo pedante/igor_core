@@ -300,7 +300,10 @@ _basic_contract() {
 import base64, json, sys
 raw = sys.stdin.read().split("IGOR_REFERENCE_V1:", 1)[1].splitlines()[0]
 reference = json.loads(base64.b64decode(raw))
-assert "# Host basics" in reference["module_knowledge"]
+items = [item for item in reference["context_candidates"] if item["id"] == "host.basics"]
+assert len(items) == 1 and items[0]["owner"] == "system"
+assert "# Host basics" in items[0]["content"]
+assert not reference["module_knowledge"]
 '
 }
 

@@ -138,6 +138,16 @@ Raw AI shell requests are identified as unstructured; raw CHANGE requires
 explicit approval even in Executive mode and has no automatic postcondition
 verification.
 
+AI requests now use bounded context selection and inspectable model roles.
+The Context / Routing TUI panel shows included/excluded sources and routing
+rules. `bash igor.sh --context last` reads the latest retained decision metadata;
+`--context select 'JSON'` previews explicit scoped investigation/history
+references without a model call. In chat, `context JSON` sets selection references
+or tags and `context reset` clears them. Configure optional reasoner/summarizer/
+context_ranker bindings through `IGOR_AI_ROLE_BINDINGS` in existing AI settings.
+Selection records are operational provenance only, never automatic knowledge or
+authorization. See [context and routing](docs/igor2/CONTEXT_ROUTING.md).
+
 Canonical capability invocations also create durable Operational History.
 Use `bash igor.sh --history recent`, `--history inspect <operation-id>`,
 `--history correlation <id>` or `--history status` for read-only JSON inspection

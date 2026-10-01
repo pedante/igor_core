@@ -42,6 +42,7 @@ def main() -> None:
     prompt = re.sub(r"\{\{(MODULE_TOOLS|MODEL_OVERRIDE)\}\}",
                     lambda match: values[match[1]], prompt)
     reference = {
+        "context_candidates": json.loads(os.environ.get("IGOR_CONTEXT_CANDIDATES", "[]")),
         "module_knowledge": os.environ.get("IGOR_MODULE_KNOWLEDGE", ""),
         "module_tier_claims": os.environ.get("IGOR_MODULE_TIERS", ""),
         "persistent_knowledge_and_reports": os.environ.get("IGOR_KNOWLEDGE", ""),

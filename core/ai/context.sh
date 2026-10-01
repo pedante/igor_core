@@ -207,6 +207,44 @@ _ai_build_system_prompt() {
 }
 
 # ── Internal: base system prompt ─────────────────────────────────────────────
+_ai_knowledge_candidates() {
+    local _hook _fn _owner _text _key _record _id
+    {
+        for _hook in ai_knowledge ai_tiers; do
+            while IFS= read -r _fn; do
+                [ -n "$_fn" ] || continue
+                _owner="${_IGOR_HOOK_OWNERS[$_hook:$_fn]:-core}"
+                _text=$(timeout "${IGOR_HOOK_TIMEOUT:-30}" bash -c "$(declare -f "$_fn"); $_fn" </dev/null 2>/dev/null | head -c 24001)
+                IGOR_CANDIDATE_OWNER="$_owner" IGOR_CANDIDATE_ID="legacy.${_hook}.${_fn}" \
+                IGOR_CANDIDATE_KIND="module_knowledge" IGOR_CANDIDATE_CONTENT="$_text" python3 - <<'PY'
+import json, os
+from datetime import datetime, timezone
+print(json.dumps({"id": os.environ["IGOR_CANDIDATE_ID"], "kind": os.environ["IGOR_CANDIDATE_KIND"],
+ "owner": os.environ["IGOR_CANDIDATE_OWNER"], "source_id": os.environ["IGOR_CANDIDATE_ID"],
+ "tags": [os.environ["IGOR_CANDIDATE_OWNER"]], "freshness": "static",
+ "collected_at": datetime.now(timezone.utc).isoformat(), "content": os.environ["IGOR_CANDIDATE_CONTENT"]}))
+PY
+            done < <(igor_get_hooks "$_hook")
+        done
+        while IFS= read -r _key; do
+            case "$_key" in knowledge:*) ;; *) continue ;; esac
+            _id="${_key#knowledge:}"
+            _record=$(igor_v2_contribution_get knowledge "$_id") || continue
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]}"
+            _text=$(igor_v2_knowledge "$_id" 2>/dev/null | head -c 24001)
+            IGOR_CANDIDATE_OWNER="$_owner" IGOR_CANDIDATE_ID="$_id" \
+            IGOR_CANDIDATE_RECORD="$_record" IGOR_CANDIDATE_CONTENT="$_text" python3 - <<'PY'
+import json, os
+record = json.loads(os.environ["IGOR_CANDIDATE_RECORD"])
+print(json.dumps({"id": os.environ["IGOR_CANDIDATE_ID"], "kind": "module_knowledge",
+ "owner": os.environ["IGOR_CANDIDATE_OWNER"], "source_id": os.environ["IGOR_CANDIDATE_ID"],
+ "tags": record.get("tags", [os.environ["IGOR_CANDIDATE_OWNER"]]), "freshness": "static",
+ "source_version": record.get("version"), "content": os.environ["IGOR_CANDIDATE_CONTENT"]}))
+PY
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | python3 -c 'import json,sys; print(json.dumps([json.loads(line) for line in sys.stdin if line.strip()]))'
+}
+
 # P1-5: Calls ai_render.py (primary) with IGOR_KNOWLEDGE / IGOR_CONTEXT env vars.
 # Falls back to the heredoc below if the renderer is missing or fails.
 # Parameters: $1=knowledge_block $2=scrubbed_context
@@ -232,11 +270,13 @@ _ai_load_base_prompt() {
         # Collect plain-text module sections (tiers + knowledge)
         local _module_tiers=""
         local _module_knowledge=""
+        local _context_candidates='[]'
         if [ "${IGOR_AI_CONTEXT:-standard}" != minimal ] && declare -f igor_run_all_hooks &>/dev/null; then
-            _module_tiers=$(igor_run_all_hooks "ai_tiers" 2>/dev/null || true)
-            _module_knowledge=$(igor_run_all_hooks "ai_knowledge" 2>/dev/null || true)
-            if declare -f igor_v2_collect_knowledge >/dev/null 2>&1; then
-                _module_knowledge+=$'\n'"$(igor_v2_collect_knowledge 2>/dev/null || true)"
+            if declare -f igor_get_hooks >/dev/null 2>&1; then
+                _context_candidates=$(_ai_knowledge_candidates) || return 1
+            else
+                _module_tiers=$(igor_run_all_hooks "ai_tiers" 2>/dev/null || true)
+                _module_knowledge=$(igor_run_all_hooks "ai_knowledge" 2>/dev/null || true)
             fi
         fi
 
@@ -262,6 +302,7 @@ _ai_load_base_prompt() {
             IGOR_MODULE_TOOLS="${IGOR_MODULE_TOOLS:-}" \
             IGOR_MODULE_TIERS="$_module_tiers" \
             IGOR_MODULE_KNOWLEDGE="$_module_knowledge" \
+            IGOR_CONTEXT_CANDIDATES="$_context_candidates" \
             IGOR_KNOWLEDGE="$_knowledge" \
             IGOR_CONTEXT="$_context" \
             python3 "$_lib" "$_model" 2>/dev/null)

@@ -604,7 +604,23 @@ class _ScratchpadFilter:
 
 def mode_call():
     """Full API round-trip: HTTP stream + parse + validate + emit markers."""
-    provider   = os.environ.get("NEXUS_PROVIDER",    "anthropic").lower()
+    from role_transport import from_environment
+    route = from_environment()
+    os.environ["IGOR_AI_ROUTING"] = json.dumps(route)
+    if route["status"] != "selected":
+        from request_context import publish
+        publish({"request_id": os.environ.get("IGOR_AI_REQUEST_ID", ""), "routing": route,
+                 "outcome": "not_invoked"})
+        _emit_error("Model role unavailable", "configuration_error")
+        return
+    original_provider = os.environ.get("NEXUS_PROVIDER", "anthropic")
+    provider = route["provider"]
+    if provider != original_provider:
+        os.environ["NEXUS_API_KEY"] = os.environ.get(provider.upper() + "_API_KEY", "") if provider != "ollama" else ""
+    os.environ["NEXUS_PROVIDER"] = provider
+    os.environ["NEXUS_MODEL"] = route["model"]
+    if route["selected_role"] != "reasoner":
+        os.environ["NEXUS_TOOLS_JSON"] = "[]"
     if os.environ.get("IGOR_AI_ENABLED", "true") != "true":
         _emit_error("AI is disabled by administrator policy", "payload_blocked")
         return

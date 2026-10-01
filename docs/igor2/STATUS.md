@@ -35,7 +35,7 @@ After the merged 15A architecture gate, the bounded sequence is:
 -> provider-neutral Decision/Judgment Contract
 -> 15UI Interaction Surface Foundation
 -> 15C Durable Investigations
--> 15D Inspection & Context Integration
+-> 15D Context Relevance and Model Role Routing
 ```
 
 15UI is defined in [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md). It is a
@@ -69,6 +69,74 @@ Step 15A selects no public database schema. Step 15B implements its bounded
 Operational History service; runtime and callers use versioned records instead
 of backend tables/paths. The implementation and evidence are recorded below;
 the accepted Step 15A decisions are unchanged.
+
+## Step 15D Context Relevance and Model Role Routing — implemented; validation complete
+
+**Accepted boundary:** D057 and [CONTEXT_ROUTING.md](CONTEXT_ROUTING.md) extend
+the existing selector/provider path. Selection is deterministic by default;
+optional D055 ranking is digest/schema-bound assistance within relevance tiers,
+with abstention, invalid output and low-confidence fallback. Initial roles are
+reasoner, summarizer and context_ranker with explicit administrator bindings,
+inspectable rules/reasons and no provider optimizer or cross-provider fallback.
+
+**Contract/inspection:** bounded candidate metadata includes source, scope,
+freshness, provenance, sensitivity, authority class, size/estimated tokens and
+content digest. Included/excluded reasons, budgets and role-selection rules are
+read-only operational provenance through the existing private audit, headless
+`--context last`/`select` and 15UI Context / Routing projection. Preview is
+distinguished from an actual prepared request. Existing `--context inspect`
+remains compatible. Current protocol conversation groups are mandatory.
+
+**Vertical slice:** a real local Operational History episode is referenced by
+a durable investigation; explicit scoped selection crosses the existing request
+boundary into a mocked provider HTTP payload, then the real frontend event owner,
+panel renderer and headless inspection. Source storage bytes remain unchanged;
+inactive context is excluded with its reason. No live external provider or
+terminal-interaction claim is made by this fixture proof.
+
+**Migration/recovery:** source is existing settings/context/audit behavior;
+omitted role bindings inherit the existing configured primary model for reasoner
+and summarizer. The old vendor-specific summarizer substitution is removed.
+Existing memory selection/inspection, v1 Nextcloud and classic/headless paths
+remain. Owner-stamped static knowledge replaces equivalent aggregate knowledge
+on the runtime path; legacy sources remain bounded labeled candidates where no
+typed replacement exists. No new durable context store, scope allocation,
+history/investigation schema, import or dual write exists. Restart cannot replay
+authority from disposable decisions; optional existing audit retention is
+diagnostic provenance only, never automatic durable knowledge or memory.
+
+**Authority:** selectors/routing have no executor, approver, privilege, observer
+refresh or System Model writer. Existing AI-disable, privacy, active-owner,
+tool-validation, Guide/Assist/Executive, exact `YES` and PTY approval/security
+boundaries remain authoritative. Helper requests are tool-free and do not collect
+additional machine/investigation context. Judgments remain reference-only.
+
+**Validation gate (2026-10-01):**
+
+| Check | Result |
+|---|---|
+| Focused contracts/security | 84 Python tests and 76 subtests passed; 59 focused Bash checks passed. After correcting source-time provenance, 67 affected Python tests and 37 subtests passed, including the additional timestamp regression. |
+| Full Python regression | 388 tests and 321 subtests passed. The additional timestamp regression was added after collection and is covered by the affected run above. |
+| Full Bash regression and affected correction | All five groups ran: 46 core Bash checks, 46 render checks, 305 core BATS, 141 module BATS and 40 integration BATS. Initial aggregate exit was 1: two obsolete assertions expected the old event vocabulary and aggregate knowledge envelope. Both assertions were corrected; all 32 tests in their affected files then passed. All remaining full-run cases passed, with two existing core skips for unavailable GPG agent and `hostname -I`. |
+| Python lint | New/extended selector, routing adapters and focused tests pass Ruff. Full scan retains exactly 142 baseline findings in 28 files. |
+| Bash syntax/lint | Changed scripts pass syntax checks; the two corrected BATS files pass ShellCheck. CI-configured ShellCheck on other changed scripts reports only five existing SC2155 warnings. Whole-file `core.sh` ShellCheck is unavailable: both current and unchanged HEAD are killed with exit 137. Its exact changed regions pass separately with CI flags; full syntax and regression coverage also pass. |
+| Compile/docs/diff | Changed Python files compile; all 99 local documentation references resolve; diff/whitespace checks pass. Final staged scope is reviewed before the scoped commit. |
+
+Contract, regression, vertical slice, inspection and migration/recovery are the
+five required [EXECUTION](EXECUTION.md) evidence categories, demonstrated above.
+The whole-file ShellCheck resource limitation is recorded rather than claimed
+as a passing check; scoped changed-region lint supplies the affected static gate.
+
+**Baseline:** clean active `igor2` at `99d65a1`; the prerequisite commits are
+present. The two local master documentation/orchestration commits outside ancestry
+retain the reconciliation recorded in Step 15C; no remote-freshness claim or
+temporary checkout is made.
+
+**Deferrals/Step 20:** automatic ranker/scout calls, autonomous gathering, agents,
+embeddings, compression services, provider optimization/expansion, background AI,
+Jet/Laya and Step 20 are excluded. This implementation supplies Step 20's context/
+routing dependency; normal-workflow readiness and default-launch consolidation
+remain separate gates. No Step 20 work starts here.
 
 ## Step 15C Durable Investigations — complete
 
@@ -802,7 +870,7 @@ claim about a newer un-fetched remote branch.
 | 12 Knowledge & Context Engine | Bounded Wave E implementation: deterministic typed, source-aware selection and read-only inspection for the memory domain inside `IGOR_REFERENCE_V1`. Other domains retain labeled legacy context until authoritative sources and relevance mappings exist. |
 | 13 Domain Event Bus | Complete at the bounded Step 13 contract: validated session-local signals, owner-aware producers, read-only inspection and one `capability.completed` projection per committed result. `core/ai/events.sh` remains frontend activity. |
 | 14 Automation Engine | Complete at the bounded unprivileged READ contract: Igor-owned intent, explicit enablement, atomic due-slot claims and canonical dispatch for one-time, periodic, event and condition triggers. |
-| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented; judgment and 15UI foundations complete; bounded 15C investigations implemented with closure evidence above. 15D routing remains deferred. |
+| 15 Operational History | 15A accepted; 15B service, durable lifecycle, inspection and recovery implemented; judgment and 15UI foundations complete; bounded 15C investigations implemented. D057/15D context relevance and model-role routing implemented with its evidence gate above. |
 | 16 Baselines; 17 Relationships/Deployments; 18 Composable Modules; 19 Self-Healing v2 | Missing as target contracts. Preserve the current combined Nextcloud deployment until prerequisites exist. |
 | 20 Igor TUI as Default | Partial: full-screen TUI works via `--ai-tui`; classic menu/line UI and `--extra` remain, and default launch is unchanged. |
 | 21 Integration Rules | Missing as a shared contract. |

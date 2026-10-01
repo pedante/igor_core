@@ -53,6 +53,16 @@ bounded CLI loader and structured renderer. The UI owns no investigation
 persistence, lifecycle updates, judgment invocation or operational authority.
 Historical 15UI completion evidence remains separate from this 15C addition.
 
+## Step 15D integration
+
+The [context/routing contract](CONTEXT_ROUTING.md) supplies the latest actual
+backend decision through `context_routing` events. The read-only Context / Routing
+section displays included/excluded metadata, reasons, limits, optional judgment
+status and role/provider/model selection rule. Opening the section invokes no
+source collector, model, observer or policy edit. These projections remain
+disposable operational provenance, not durable memory. `--context last` exposes
+retained audit metadata; `--context select` is explicitly a read-only preview.
+
 ## Current primitives
 
 [Current UI documentation](../interaction_surface.md) lists the operator keys.

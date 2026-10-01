@@ -108,8 +108,11 @@ Model-generated interpretations use the reference-only
 versioned in-memory envelope with input/invocation provenance, bounded
 kind-specific output, explicit abstain/unknown and distinct validation/transport
 failures. Schema validity conveys no state, execution or policy authority.
-Step 15D owns later relevance and routing policy; the contract selects no roles,
-providers or models and creates no durable memory.
+[Step 15D](CONTEXT_ROUTING.md) owns deterministic relevance and role routing with
+explicit administrator bindings. The judgment contract itself selects no roles,
+providers or models and creates no durable memory. Context/routing records are
+operational provenance only; they cannot become knowledge or memory without an
+explicit owning-subsystem operation.
 
 ### Trust boundary
 

@@ -47,6 +47,17 @@ give a removal condition.
 
 ## Regression properties to preserve
 
+Step 15D extends the existing Context Engine and request boundary with bounded
+selection and operational provenance; it does not create another gateway.
+Owner-stamped knowledge candidates replace their aggregate runtime equivalent.
+The summarizer now uses an explicit/inherited administrator binding instead of
+a hard-coded vendor/model substitution. Existing settings, memory inspection,
+legacy context domains, audit retention, native tool transaction handling,
+v1 Nextcloud and classic/headless launch remain compatible. Removal of these
+remaining paths requires their own equivalent-authority/consumer proof.
+History/investigation storage is unchanged; selection records are not imported
+as durable knowledge, memory or episodes. See [15D](CONTEXT_ROUTING.md).
+
 1. Exercise activation across hooks, menus, action advertisement **and execution**, diagnose/healing, AI knowledge/context, config validation, backup/restore and notifications. Include disabled, unavailable and lazy/stale owners.
 2. Keep the Step 2 Healing/Diagnose active-set and host-only storage guards when check contracts evolve; avoid reintroducing installed-only discovery.
 3. Prove generic operation without an active application module does not require Nextcloud files, settings or commands, including healing validation and legacy UI/context.

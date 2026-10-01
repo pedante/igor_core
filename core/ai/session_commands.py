@@ -15,6 +15,10 @@ from typing import Any
 
 
 _COMMANDS: tuple[dict[str, Any], ...] = (
+    {"id": "context", "name": "context", "aliases": (),
+     "syntax": "context [reset|JSON]", "category": "session",
+     "description": "inspect or set explicit context references for subsequent requests",
+     "handler": "context"},
     {
         "id": "help",
         "name": "help",

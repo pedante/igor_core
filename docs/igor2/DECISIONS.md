@@ -516,6 +516,25 @@ preconditions, verification, recovery and ownership. Agent Skills compatibility
 and AOH-style Pack/Binding separation may inform the import format, but no
 external pack schema becomes Igor's native authority contract.
 
+### D058 — Igor owns bounded context relevance and model-role routing
+
+The Project Owner confirmed [Step 15D](CONTEXT_ROUTING.md): extend the existing
+Context Engine with deterministic candidate eligibility/relevance, optional
+validated D055 ranking assistance, and bounded operational provenance. Initial
+provider-neutral roles are reasoner, summarizer and context_ranker; explicit
+administrator bindings and inspectable rules/reasons select the model. There
+is no provider optimizer, automatic ranking call or cross-provider fallback.
+
+Context/routing records are operational provenance only, not durable knowledge
+or memory unless explicitly stored through an owning Igor subsystem. They use
+disposable session state and the existing optional bounded private AI audit,
+with no new durable context database or history/investigation schema.
+Read-only CLI and 15UI inspection expose included/excluded reasons and routing
+rules, not just a selected role. Selection cannot execute, approve, grant
+privilege, refresh facts, alter System Model truth or bypass security policy.
+Judgments remain reference-only. Agents, autonomous gathering, embeddings,
+compression services, provider optimization, background AI, Jet/Laya and Step 20
+remain outside this decision.
 
 ---
 
