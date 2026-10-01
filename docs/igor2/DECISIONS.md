@@ -495,6 +495,28 @@ inspection expose the owner state without execution, fact mutation/freshness,
 approval, privilege, module activation, automation or verification authority.
 Agents, workflows, remediation, routing/15D and Step 20 remain deferred.
 
+### D057 — External knowledge import normalizes before authority
+
+The Project Owner accepted the direction in
+[KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md): installation documents, scripts,
+guides, native Igor modules, Agent Skills/AOH, ServerMind/Steward material and
+local learned procedures may all be source material for Igor-managed knowledge
+or module candidates.
+
+Import preserves source/provenance and normalizes material into existing Igor
+concepts. Imported prose, scripts, tool manifests, skills and source-runtime
+guardrails are reference/candidate material by default. They cannot activate a
+module, create System Model truth, grant desired-state/responsibility,
+authorize an automation, select approval/privilege, or become an executable
+capability merely because the source expressed one.
+
+Executable promotion is a separate reviewed transition into the normal Module
+API/capability contract, where Igor recomputes and enforces safety, privilege,
+preconditions, verification, recovery and ownership. Agent Skills compatibility
+and AOH-style Pack/Binding separation may inform the import format, but no
+external pack schema becomes Igor's native authority contract.
+
+
 ---
 
 ## Open decisions
