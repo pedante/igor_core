@@ -208,7 +208,7 @@ _ai_build_system_prompt() {
 
 # ── Internal: base system prompt ─────────────────────────────────────────────
 _ai_knowledge_candidates() {
-    local _hook _fn _owner _text _key _record _id
+    local _hook _fn _owner _text _key _record _id _version
     {
         for _hook in ai_knowledge ai_tiers; do
             while IFS= read -r _fn; do
@@ -231,15 +231,19 @@ PY
             _id="${_key#knowledge:}"
             _record=$(igor_v2_contribution_get knowledge "$_id") || continue
             _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]}"
+            # Package provenance comes from Core's validated registration, not
+            # a version claim in the knowledge text/contribution.
+            _version=$(_ml_v2_query "$_owner" manifest.version) || continue
             _text=$(igor_v2_knowledge "$_id" 2>/dev/null | head -c 24001)
             IGOR_CANDIDATE_OWNER="$_owner" IGOR_CANDIDATE_ID="$_id" \
+            IGOR_CANDIDATE_VERSION="$_version" \
             IGOR_CANDIDATE_RECORD="$_record" IGOR_CANDIDATE_CONTENT="$_text" python3 - <<'PY'
 import json, os
 record = json.loads(os.environ["IGOR_CANDIDATE_RECORD"])
 print(json.dumps({"id": os.environ["IGOR_CANDIDATE_ID"], "kind": "module_knowledge",
  "owner": os.environ["IGOR_CANDIDATE_OWNER"], "source_id": os.environ["IGOR_CANDIDATE_ID"],
  "tags": record.get("tags", [os.environ["IGOR_CANDIDATE_OWNER"]]), "freshness": "static",
- "source_version": record.get("version"), "content": os.environ["IGOR_CANDIDATE_CONTENT"]}))
+ "source_version": os.environ["IGOR_CANDIDATE_VERSION"], "content": os.environ["IGOR_CANDIDATE_CONTENT"]}))
 PY
         done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
     } | python3 -c 'import json,sys; print(json.dumps([json.loads(line) for line in sys.stdin if line.strip()]))'

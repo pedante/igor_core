@@ -146,9 +146,20 @@ does not erase desired values, History or investigation evidence. Dependents
 become explicitly unavailable without automatic enable/install/provider switch.
 Restoring old code is safe only when retained schema/data contracts are compatible.
 
-General bindings/resource ownership and responsibility transfer are Boundary 2
-prerequisites. The first reversible Nextcloud workflow is Boundary 3. Neither
-is implemented or certified by Boundary 1. Broad migration, structural splitting,
+Boundary 2's owner-authorized integration proof uses the existing `system`
+package, its typed READ capability and packaged knowledge. An isolated copy adds
+a test-only configuration declaration to prove schema admission and inspection
+through Step 17 without inventing a production setting or migrating legacy
+values. Runtime inspection is consumed by the existing generic 15UI renderer;
+the proof does not add a live Modules panel or make the TUI the default.
+Context Routing receives eligible knowledge candidates with the package version
+from Core's validated registration. Candidate content remains reference data.
+
+General bindings/resource ownership and responsibility transfer remain gaps
+to resolve only as required by the selected Boundary 3 workflow. This composition
+proof does not establish deployment authority, certify detach or provide a
+general module configuration write CLI. The first reversible Nextcloud workflow
+is Boundary 3. Broad migration, structural splitting,
 marketplaces, signing/isolation, dependency installation and autonomous module
 generation remain outside this boundary. Reviewed local Bash code is trusted
 executable code, not a security sandbox.

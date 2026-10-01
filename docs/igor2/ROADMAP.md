@@ -521,10 +521,13 @@ three boundaries, stopping with evidence after each:
 1. **Contract completion:** versioned capability outputs/compatibility,
    structured module inspection, reproducible package knowledge and explicit
    read-only detach accounting.
-2. **Composition prerequisites:** only the ownership/binding, relationship,
-   storage, secret and recovery seams required by the selected workflow. Q007
-   remains unresolved; this boundary does not inherit a complete ownership model
-   from the bounded Step 17 `ai.verbose` slice.
+2. **Composition prerequisites:** the owner-authorized integration proof uses
+   the existing System package to cross registration, typed capability discovery,
+   knowledge/context candidates, test-only configuration schema discovery and
+   structured inspection through the existing 15UI renderer. It adds no production
+   setting, application migration or live Modules panel. Q007 and general
+   binding/resource ownership remain unresolved; the bounded Step 17 `ai.verbose`
+   slice does not establish a complete ownership model.
 3. **First reversible application proof:** one narrow, non-secret Nextcloud
    configuration workflow crossing desired state, approval, execution,
    independent readback, History and recovery. Select its setting after reviewing
@@ -534,7 +537,9 @@ Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
 implementation/evidence status is recorded in [STATUS.md](STATUS.md).
 
-Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
+Use the current `nextcloud_docker` deployment for the first reversible application
+proof **after** the System composition proof and its workflow-specific ownership
+prerequisites are satisfied.
 
 Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
 

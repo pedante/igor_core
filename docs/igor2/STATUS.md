@@ -1,6 +1,61 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-01
+Last updated: 2026-10-02
+
+## Step 18 Boundary 2 — module composition prerequisites
+
+The Project Owner authorized a bounded integration proof after Boundary 1 at
+`77b2e40`. The representative is the existing mixed v1/v2 **System** package:
+real `host.basics` knowledge and the typed `system.host.memory.refresh` READ
+capability. An isolated package copy contributes one test-only module-scoped
+configuration field to cross the Step 17 schema seam; no production setting or
+application configuration is introduced or migrated.
+
+Discovery confirmed the existing loader, capability registry, knowledge candidate
+path, Configuration Service, structured module projection and generic 15UI
+renderer already compose. One concrete compatibility fix preserves the package
+version in v2 context candidates by reading Core's validated registration rather
+than an absent contribution field. Approval, privilege and execution flow remain
+unchanged. Knowledge is descriptive reference data, never a System Model fact.
+
+The existing generic 15UI renderer consumes the real inspection record in the
+acceptance fixture. A live Modules panel is not added; default UI consolidation
+remains Step 20. Schema admission/inspection is proved, not a general module
+write CLI or application apply workflow. Reviewed Bash modules are trusted code,
+not a security sandbox.
+
+The starting checkout was clean `igor2` at `77b2e40`. A read-only remote query
+confirmed `origin/igor2=77b2e40` and unchanged `origin/master=852ce8f`. The
+Boundary 1 content reconciliation of the two unmatched master documentation/
+orchestration commits remains applicable; no missing runtime baseline was
+identified. The existing focused module/configuration/context/interaction
+checks passed: 100 tests plus 16 subtests.
+
+**EXECUTION evidence (2026-10-02):**
+
+| Proof/check | Result |
+|---|---|
+| Contract | Ten composition cases cover valid/idempotent individual module admission, rejected Module API/package/capability versions and foreign schema identity before source, typed capability discovery/output, disabled-owner exclusion, invented capability rejection, exact approval digest enforcement, and required-privilege unavailability without a reviewed Core adapter. Negative assertions check explicit exit status. Existing Boundary 1 cases retain invalid typed-output and version-recovery proof. |
+| Vertical slice | The copied System package crosses actual registration, capability inspection, knowledge candidates, Context Routing, configuration declarations, Core service inspection and existing generic 15UI `panel_rows`. The real typed memory READ separately crosses the canonical dispatcher, observer, verification and durable History with System/package/version provenance. No policy or privilege stub grants admission. |
+| Inspection | Active and disabled lifecycle/declaration states remain structured. Host knowledge keeps owner, source identity and package version in context selection with `authority_class=reference`. The test-only field resolves a declared default with absent desired state, unobserved runtime and unverified application. Rendering, context selection and inspection preserve the entire fixture file inventory/hashes and model bytes. |
+| Configuration ownership | A schema is admitted through Core's owner-stamped contribution index and consumed by Step 17, not a module storage path. Forged owners/targets and executable configuration invocation are rejected. Validation/inspection create no desired store or package writes; no general write/apply capability is added. |
+| Migration/recovery | No production schema, application setting or persistent layout changes. Existing v1 compatibility and Boundary 1 History recovery remain tested. The read-only composition slice requires no data migration; actual application rollback, resource bindings and detach recovery remain Boundary 3 prerequisites. |
+| Python regression/lint | Full Python: 443 passed plus 321 subtests; the same four baseline Guide/Assist automation cases fail, with no additional failure or startup timeout. The full run is not green. Full Ruff output is byte-identical to Boundary 1: 142 existing findings. |
+| Bash regression | All 207 BATS pass with no skips: 162 module cases (including all ten new composition cases and retained Boundary 1 acceptance) plus 45 relevant Core context-refresh, host-context and safety-dispatch cases. The unmodified execution-policy/approval/privilege paths retain their regression evidence. |
+| Bash syntax/lint | `context.sh` passes Bash syntax; CI ShellCheck finds only its three unchanged SC2155 warnings, confirmed against HEAD. The new composition BATS passes CI ShellCheck after converting bare negation into explicit exit-status assertions. |
+| Documentation | All 67 local references in changed documents resolve; whitespace checks pass. The roadmap and module/configuration documentation distinguish this integration proof from production migration and later application ownership. |
+
+Boundary 3 still requires selection of a narrow non-secret application setting,
+review of existing writers/ownership, a canonical approved apply capability,
+independent readback, desired/observed/consumed distinction, History and declared
+recovery. General bindings/resource ownership, complete detach and Q007 are
+not closed by this integration proof. No Nextcloud rewrite/split, broad module
+migration, marketplace, hot unload, automatic dependency installation or
+external trust system is introduced. Boundary 3 is not started.
+
+Boundary 2 is complete within this integration-proof scope. The result stops
+here for Project Owner review; it does not close the whole Step 18 roadmap item
+or automatically begin Boundary 3.
 
 ## Step 18 Boundary 1 — module contract completion
 
