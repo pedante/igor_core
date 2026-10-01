@@ -155,6 +155,56 @@ validated export into an empty configuration backend using the retained
 installation scope. A different scope is rejected. There is no automatic
 overwrite, startup repair or replay of a failed operation.
 
+## Storage/source locator contract
+
+A setting's durable identity remains its scoped `setting_id`; paths and
+filenames are not identity. D054's private/replaceable backend rule still
+applies. At the same time, a configuration value must not become an anonymous
+scalar with no answer to "where did this come from?" or "where will this be
+applied?"
+
+Every inspected value/source therefore carries a typed `storage_locator` (or
+equivalent owning-service projection). Locators belong to the particular
+default, desired, override, observed/configured value or application target
+being described; one ambiguous global filename is insufficient.
+
+For a file-backed value, the locator **must** identify:
+
+- a semantic/rooted path to the concrete file; and
+- a stable selector within that file, such as section/key, JSON pointer,
+  Compose service/environment key or application setting key.
+
+Line numbers are diagnostic only because ordinary edits move them. A module may
+declare how to parse or apply a domain setting, but the machine-specific locator
+is Igor-owned binding/provenance and does not live in the portable module
+package.
+
+Non-file-backed settings must identify their real authority rather than invent a
+fake path: declared environment/process source, secret reference, database
+object/key, runtime/command-line source or Configuration Service. When an
+environment value comes from a known env/unit/Compose file, include that file
+and key. Secret material is never copied into the locator.
+
+For Igor-owned desired values, inspection may expose the current private backend
+path as diagnostic storage metadata, but callers cannot use that filename as the
+setting reference or bypass Configuration Service. A future move from SQLite to
+another backend therefore does not change `setting_id`.
+
+External/application-native configuration remains external authority until an
+explicit adoption transition. Read-only discovery may record a value plus its
+storage locator as observed/configured state. Adoption preserves the original
+locator as `imported_from` provenance, commits desired state through the normal
+configuration boundary, and binds any write/readback target explicitly before a
+capability can apply it. Finding a file never grants write ownership.
+
+See [Brownfield Discovery, Adoption, and Configuration Location](BROWNFIELD_ADOPTION.md)
+for the machine-state and adoption model.
+
+This locator refinement is a forward requirement for application/module
+composition. The already implemented bounded `ai.verbose` slice is not claimed
+to prove native-file/application locator support; Step 18 must implement and
+verify the required locator/binding seam before its first application proof.
+
 ## Secrets and sensitivity
 
 Credentials, tokens, private keys and authentication material are secrets.
@@ -261,7 +311,10 @@ observed System Model fact.
 The owning surface exposes service status, declarations, scoped value
 inspection, proposal validation and versioned export. It reports default,
 desired and effective input independently, selected source, schema owner/version,
-revision, operation reference, secret status and availability. Application/
+revision, operation reference, secret status and availability. Each projected
+value/source also reports its typed storage locator; file-backed values expose the
+concrete file plus stable selector, and managed application settings expose the
+bound write/readback target separately where applicable. Application/
 verification evidence remains explicitly separate, with unavailable observation
 when there is no System Model source.
 

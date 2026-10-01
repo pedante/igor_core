@@ -36,6 +36,8 @@ A user should be able to inspect, configure, troubleshoot, repair and automate a
 26. **Persistent references outlive implementations.** Durable state refers to stable scoped identities and contracts, not filesystem paths, shell function names, process-local objects, UI labels or a particular storage backend. Implementation details may be retained as diagnostics, never as the durable identity of an object, provider or operation.
 27. **Learning never silently becomes authority.** Baselines, patterns, runbooks and other learned artifacts may inform reasoning, diagnosis and proposals, but they do not become desired state, responsibility, policy, approval, privilege or executable capability without an explicit authoritative transition.
 28. **Imported knowledge normalizes before authority.** Documentation, scripts, Agent Skills/AOH packs, external tool manifests, other open-source projects and local learned procedures enter as provenance-bearing reference/candidate material. Import does not activate a module or grant execution authority; executable promotion must enter the normal Module API/capability, approval, privilege and verification contracts.
+29. **Brownfield resources are machine state, not module property.** Igor may discover and represent resources it did not create. Modules may enrich interpretation and operations, but machine-specific mutable facts, bindings, desired values and responsibility remain in their owning Igor services; discovery never silently adopts a resource.
+30. **Configuration location is inspectable.** Every file-backed configuration value is traceable to a concrete file plus stable selector, and every non-file-backed value identifies its real storage/source authority. Storage locators are provenance/binding, never durable setting identity.
 
 ## Ownership classes
 
@@ -54,6 +56,9 @@ The target architecture separates at least:
 
 Modules may declare schemas and contributions, but machine-specific mutable data does
 not live inside the installed module package.
+Existing deployments remain representable when Igor did not provision them; explicit
+adoption and configuration-location rules are defined in
+[BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
 
 The approved Step 18A module model distinguishes portable package content,
 Core-admitted registration, Igor-owned machine bindings and operational records.
@@ -98,6 +103,10 @@ contracts, dependency direction and independent testability, not microservices.
 Core-owned configuration boundary. Modules declare configuration meaning and
 schemas; Core owns validated desired values, precedence, storage, provenance
 and migration. Configuration stores secret references, not material.
+Setting inspection also preserves storage/source locators: file-backed values identify
+the concrete file and stable selector, while non-file-backed values name their actual
+authority. These locators are provenance and application binding, not setting identity
+or a public dependency on Configuration Service's private backend.
 
 Configuration is not System Model: desired values and resolved consumer inputs
 are not observations or proof of successful runtime application. Capabilities
