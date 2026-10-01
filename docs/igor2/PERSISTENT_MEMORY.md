@@ -476,7 +476,6 @@ them. Discovery does not imply adoption or responsibility; an explicit authority
 transition preserves external/unknown origin and configuration source locators.
 See [BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
 
-
 ## Baselines and learning are separate
 
 Step 16 can derive explainable baselines and evidence-backed local artifacts
