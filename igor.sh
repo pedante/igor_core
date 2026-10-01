@@ -189,6 +189,13 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             exit $?
             ;;
         --enable|--disable|--modules)
+            if [[ "$1" == --modules ]] && [[ "${2:-}" == inspect || "${2:-}" == detach-plan ]]; then
+                [ "$#" -eq 3 ] || { printf 'Usage: bash igor.sh --modules %s NAME\n' "$2" >&2; exit 2; }
+                # Package inspection is data-only: no config migration, module
+                # source, observer refresh, or disposable runtime initialization.
+                python3 "${IGOR_DIR}/core/lib/module_inspection.py" "$2" "$IGOR_DIR" "$3"
+                exit $?
+            fi
             source "${IGOR_DIR}/core/lib/module_loader.sh"
             if [[ "$1" == --modules ]]; then
                 source "${IGOR_DIR}/core/lib/config_loader.sh"

@@ -48,6 +48,19 @@ give a removal condition.
 
 ## Regression properties to preserve
 
+Step 18 Boundary 1 retains v1 actions/hooks and their current safety behavior.
+Capability version 1 remains supported while version 2 makes domain output
+validation explicit; no legacy Nextcloud operation is silently advertised as
+verified canonical work. Package/configuration/binding and lifecycle migrations
+remain separate from this contract cutover. Detach inspection cannot certify
+resource cleanup or responsibility transfer before those inventories exist.
+
+The packaged `system` host knowledge is now tracked independently of ignored
+installation-local `/knowledge/`. Root runbook selection and ownerless learned
+pattern/primer paths remain compatibility debt: migrate each source through
+explicit eligibility/provenance and recovery, rather than importing it into
+module authority or changing legacy selection in this boundary.
+
 Step 15D extends the existing Context Engine and request boundary with bounded
 selection and operational provenance; it does not create another gateway.
 Owner-stamped knowledge candidates replace their aggregate runtime equivalent.

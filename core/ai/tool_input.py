@@ -8,7 +8,7 @@ import sys
 FIELDS = (
     "tool", "cmd", "action", "target", "lines", "search", "path", "find",
     "replace", "filename", "title", "description", "command", "type", "tier",
-    "message", "capability_id", "inputs", "provider",
+    "message", "capability_id", "inputs", "provider", "capability_version",
 )
 SCHEMAS = {
     "host": ({"cmd"}, {"cmd"}),
@@ -25,7 +25,7 @@ SCHEMAS = {
     ),
     "reply": ({"message", "status"}, {"message"}),
     "run_igor_action": ({"cmd"}, {"cmd"}),
-    "run_capability": ({"id", "inputs", "provider"}, {"id", "inputs"}),
+    "run_capability": ({"id", "inputs", "provider", "capability_version"}, {"id", "inputs"}),
 }
 ALIASES = {"host_command": "host", "occ_command": "occ", "container_action": "container"}
 
@@ -41,6 +41,10 @@ def tool_fields(text):
     if data.keys() - (allowed | {"tool", "__native_id"}) or required - data.keys():
         raise ValueError("unknown or missing tool fields")
     for key, value in data.items():
+        if name == "run_capability" and key == "capability_version":
+            if type(value) is not int or value not in {1, 2}:
+                raise ValueError("unsupported capability version")
+            value = str(value)
         if name == "run_capability" and key == "inputs":
             if not isinstance(value, dict):
                 raise ValueError("capability inputs must be an object")

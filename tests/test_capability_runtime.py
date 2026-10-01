@@ -13,6 +13,8 @@ from capability_runtime import (
     CapabilityRegistry,
     SecretReference,
     validate_inputs,
+    validate_output_schema,
+    validate_outputs,
 )
 
 
@@ -30,6 +32,70 @@ def descriptor(**changes):
 
 
 class CapabilityRuntimeTests(unittest.TestCase):
+    def test_version_two_requires_closed_typed_output_and_exact_consumer_version(self):
+        outputs = {"schema_version": 1, "properties": {"observer_id": {"type": "enum", "enum": ["host.memory"]}}, "required": ["observer_id"], "additionalProperties": False}
+        cap = descriptor(capability_version=2, outputs=outputs)
+        registry = CapabilityRegistry()
+        registry.register(cap)
+        proposal = registry.prepare(cap.id, {"unit": "demo.service"}, capability_version=2)
+        self.assertEqual(proposal["descriptor"]["outputs"], outputs)
+        for version in (1, True, "2", 3):
+            with self.assertRaises(CapabilityError):
+                registry.prepare(cap.id, {"unit": "demo.service"}, capability_version=version)
+        with self.assertRaises(CapabilityError):
+            descriptor(capability_version=2)
+        with self.assertRaises(CapabilityError):
+            descriptor(outputs=outputs)
+        plan = CapabilityPlan("typed result", [{"capability_id": cap.id, "inputs": {"unit": "demo.service"}, "capability_version": 2}]).resolve(registry)
+        self.assertEqual(plan.steps[0]["capability_version"], 2)
+        for version in (1, None, True, 3):
+            with self.assertRaises(CapabilityError):
+                CapabilityPlan("mismatch", [{"capability_id": cap.id, "inputs": {"unit": "demo.service"}, "capability_version": version}]).resolve(registry)
+
+    def test_output_schema_and_values_are_bounded_without_authority(self):
+        schema = {"schema_version": 1, "properties": {"count": {"type": "integer", "minimum": 0, "maximum": 100}, "label": {"type": "string", "maxLength": 4}}, "required": ["count"], "additionalProperties": False}
+        self.assertEqual(validate_outputs(schema, {"count": 2, "label": "host"}), {"count": 2, "label": "host"})
+        for value in ({}, {"count": True}, {"count": float("nan")}, {"count": 101}, {"count": 2, "label": "longer"}, {"count": 2, "owner": "core"}, {"count": 10**400}):
+            with self.assertRaises(CapabilityError):
+                validate_outputs(schema, value)
+        for spec in ({"type": "secret_ref"}, {"type": "integer", "maximum": float("inf")}, {"type": "integer", "maximum": 10**400}, {"type": "string", "maxLength": 99999}, {"type": "boolean", "unknown": 1}):
+            with self.assertRaises(CapabilityError):
+                validate_output_schema({**schema, "properties": {"count": spec}})
+
+    def test_output_cli_rejects_duplicate_json_and_never_prints_rejected_values(self):
+        schema = {"schema_version": 1, "properties": {"label": {"type": "string", "maxLength": 4}}, "required": ["label"], "additionalProperties": False}
+        for envelope in ('{"status":"ok","result":{"label":"ok","label":"REJECTED_SECRET_VALUE"}}', '{"status":"ok","result":{"label":"REJECTED_SECRET_VALUE"}}'):
+            result = subprocess.run([sys.executable, "core/lib/capability_runtime.py"], input=json.dumps({"op": "output", "outputs": schema, "envelope": envelope}), text=True, capture_output=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("REJECTED_SECRET_VALUE", result.stdout + result.stderr)
+
+    def test_prepare_cli_rejects_explicit_null_version(self):
+        request = {"op": "prepare", "descriptors": [descriptor().inspect()], "id": "system.service.restart", "inputs": {"unit": "demo.service"}, "capability_version": None}
+        # Inspection-only availability keys are not descriptor syntax.
+        for key in ("available",):
+            request["descriptors"][0].pop(key)
+        result = subprocess.run([sys.executable, "core/lib/capability_runtime.py"], input=json.dumps(request), text=True, capture_output=True, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported capability_version", result.stderr)
+
+    def test_tool_input_preserves_only_integer_supported_version_pins(self):
+        sys.path.insert(0, "core/ai")
+        from tool_input import tool_fields
+        for version in (1, 2):
+            self.assertEqual(tool_fields(json.dumps({"tool": "run_capability", "id": "system.host.memory.refresh", "inputs": {}, "capability_version": version}))[-1], str(version))
+        for version in (None, True, 0, 3, "2"):
+            with self.assertRaises(ValueError):
+                tool_fields(json.dumps({"tool": "run_capability", "id": "system.host.memory.refresh", "inputs": {}, "capability_version": version}))
+
+    def test_v2_result_cannot_claim_success_without_typed_domain_result(self):
+        base = {"operation_id": "op-1", "capability_id": "system.fixture.change", "capability_version": 2,
+                "execution_status": "succeeded", "verification_status": "passed", "outcome": "success"}
+        for fields in ({}, {"output_status": "not_applicable"}, {"output_status": "valid", "result": None}, {"output_status": "valid", "result": []}):
+            completed = subprocess.run([sys.executable, "core/lib/capability_runtime.py"], input=json.dumps({"op": "result", "result": {**base, **fields}}), text=True, capture_output=True, check=False)
+            self.assertNotEqual(completed.returncode, 0)
+        completed = subprocess.run([sys.executable, "core/lib/capability_runtime.py"], input=json.dumps({"op": "result", "result": {**base, "output_status": "valid", "result": {"count": 2}}}), text=True, capture_output=True, check=False)
+        self.assertEqual(completed.returncode, 0)
+
     def test_registry_resolves_provider_and_reports_ambiguity(self):
         registry = CapabilityRegistry()
         registry.register(descriptor())

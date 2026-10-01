@@ -8,6 +8,151 @@ The kind-specific observer and check result/ingestion contract selected for
 Wave D is in [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md); it extends this
 existing envelope when implemented.
 
+Step 18A's architecture is approved in D060. Boundary 1 completes the bounded
+capability output/version and inspection contracts below; composition
+prerequisites and the reversible application proof remain separate boundaries.
+Current validation and migration evidence belongs in [STATUS.md](STATUS.md).
+
+## First-class module boundary (Step 18A)
+
+A module is a portable reviewed package that teaches and operates a coherent
+domain. It may contribute knowledge, schemas, observers, checks, capabilities
+and lifecycle operations without owning another Igor runtime. Knowledge-only
+packages remain valid. Modules do not own configuration storage, authorization,
+privilege, policy, scheduling, history or custom frontends.
+
+Four concepts remain separate:
+
+| Concept | Meaning and authority |
+|---|---|
+| Package | Replaceable code, knowledge, templates, declarations and compatibility metadata. |
+| Registration | Core's validated, owner-stamped, eligibility-aware contribution view. |
+| Binding | Igor-owned association with machine objects, settings, secret references and selected providers; general deployment reconciliation remains Q007. |
+| Operational record | Typed state, History, Investigations and local learning under their respective owning services. |
+
+Modules supply domain meaning and implementation. Core owns module identity
+admission, lifecycle enforcement, dependency evaluation, security, approval,
+privilege, execution, provenance and Operational History. Configuration retains
+D059: modules declare defaults/types/domain validation and application needs;
+Core owns desired values, precedence, revisions, validation sequencing,
+persistence and migration orchestration. Application-native settings remain
+external authority unless explicitly adopted; discovering a file does not
+transfer ownership to Igor.
+
+Module knowledge answers what a component is and how it may operate. System
+Model answers what is currently known; History records what happened;
+Investigations organize questions/hypotheses/evidence; Context Routing selects
+relevant eligible reference material. Runbooks/patterns are procedures/reference
+data until explicitly promoted through reviewed capability contracts. Source
+instructions, confidence or successful prior outcomes cannot activate code,
+register actions, change facts or authorize execution.
+
+Shipped knowledge is explicit package content, distinct from installation-local
+learned artifacts. Domain metadata belongs with contributions rather than Core
+keyword tables. AI receives eligible knowledge and capability descriptions and
+may propose typed intent; Core resolves it. Module-provided prose cannot change
+model roles, policy, ownership or available tools.
+
+## Capability output and compatibility contract (Boundary 1)
+
+Package version, Module API version, contribution-envelope version, capability
+version and configuration schema version have independent meanings. Updating
+package code does not silently change an operation's observable contract.
+Version 1 remains compatible with existing capability declarations. Version 2
+adds mandatory typed domain outputs and retains the same Core execution path;
+this is not Module API v3 or a second action registry.
+
+Version 2 declares `outputs` as a closed object with `schema_version: 1`,
+`properties`, `required` and `additionalProperties: false`. The bounded fields
+are string, integer, finite number, boolean, enum and object ID. Unknown schema
+versions, fields/types, invalid constraints/default assumptions and malformed
+results fail deterministically. Secret material and arbitrary file/path outputs
+are not admitted as typed domain properties. Rich nested schemas remain deferred
+until a real consumer requires them.
+
+Core validates the handler's domain result against the frozen output contract.
+Domain data cannot supply its own execution, verification, owner, safety,
+approval or privilege status. Provider completion, output validity and
+verification are separate facts. Invalid output after a provider completed may
+still mean the system changed: retain execution completion, report invalid
+output/unknown verification, record the attempt in History and never claim
+success or automatically retry. Do not retain the rejected raw payload as
+ordinary result/audit material.
+
+Requests/plans may pin an exact supported `capability_version`. A mismatch fails
+before handler effects; pending approval must retain and recheck the selected
+version/provider/descriptor. Unpinned compatibility callers use the currently
+resolved supported contract. A breaking input/output change requires a new
+supported capability version or ID, with explicit consumer migration. There is
+no version-range solver, silent provider substitution or reinterpretation of
+historical operation references.
+
+The existing `system.host.memory.refresh` operation proves version 2 with a
+closed `observer_id` output identifying `host.memory`. No new domain operation,
+privileged adapter, secret consumer or real module configuration migrates here.
+The package version is `2.1.0`; Module API remains 2. Privileged version-2
+declarations remain unavailable until a reviewed Core adapter supplies typed
+output; the existing version-1 privileged adapter retains its behavior. A
+version-2 success result requires valid typed output, not merely a zero command
+exit. Retained version-1 History stays inspectable; recovery cannot silently
+verify it through the current version-2 contract.
+
+## Inspection and detach accounting contract (Boundary 1)
+
+One structured projection combines manifest/registry metadata with owning-service
+snapshots where available. It distinguishes package/policy/activation,
+contribution availability, dependencies, capabilities, knowledge, configuration
+declarations, System Model evidence and lifecycle/detach impact. The projection
+does not become another configuration, state, History or binding store.
+
+Static package inspection is data-only and never sources module code, loads
+legacy shell configuration, migrates policy, initializes persistent stores,
+authenticates or probes applications. Enabled policy is not active state: static
+inspection reports activation as not evaluated. A loaded backend may supply
+actual process-local registration/model snapshots without invoking an observer.
+Missing desired/application/health information remains unavailable; declarations
+and defaults do not manufacture observations or success.
+
+15UI consumes these structured backend records through its reusable renderer;
+this boundary supplies the contract without adding custom module UI or moving
+authority into presentation helpers.
+
+The data-only CLI is:
+
+```bash
+bash igor.sh --modules inspect system
+bash igor.sh --modules detach-plan system
+```
+
+The existing `--modules` text listing remains compatible. A loaded backend uses
+`igor_module_inspect NAME` or `igor_module_detach_plan NAME`; these query existing
+registrations/model/configuration snapshots without loading another package or
+refreshing facts. Both return a version-1 inspection envelope. Static CLI
+activation is `not_evaluated`, not a live status inferred from enabled policy.
+Detach `ready` remains false while accounting is incomplete. Unknown inventories
+remain explicit even when the module is disabled.
+
+Detach removes management participation/responsibility, not necessarily retained
+resources. A read-only assessment accounts for known contributions/dependencies
+and explicitly names absent session, binding, resource, secret and responsibility
+inventories. Incomplete accounting cannot certify detach. Existing-process
+replacement remains restart-based; no hot unload is implied.
+
+The long-term lifecycle distinguishes package installation, enablement,
+attachment/adoption, provisioning, disablement, detachment, code removal,
+resource destruction and update/replacement. Provision/apply/migrate/destroy
+operations use canonical capabilities and declared recovery; package deletion
+does not erase desired values, History or investigation evidence. Dependents
+become explicitly unavailable without automatic enable/install/provider switch.
+Restoring old code is safe only when retained schema/data contracts are compatible.
+
+General bindings/resource ownership and responsibility transfer are Boundary 2
+prerequisites. The first reversible Nextcloud workflow is Boundary 3. Neither
+is implemented or certified by Boundary 1. Broad migration, structural splitting,
+marketplaces, signing/isolation, dependency installation and autonomous module
+generation remain outside this boundary. Reviewed local Bash code is trusted
+executable code, not a security sandbox.
+
 ## Choice and boundary
 
 The public v2 contract is language-neutral data. Wave C implements a Bash

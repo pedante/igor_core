@@ -513,7 +513,26 @@ how canonical settings and deployment/instance scopes attach to this model.
 a workflow depends on OAuth, DNS propagation, reboot, user action or another
 external condition. Neither proposal is runtime implementation yet.
 
-## Step 18 — Composable Modules — FUTURE
+## Step 18 — Composable Modules — architecture approved; bounded execution
+
+The Project Owner approved Step 18A discovery (D060). Execution proceeds through
+three boundaries, stopping with evidence after each:
+
+1. **Contract completion:** versioned capability outputs/compatibility,
+   structured module inspection, reproducible package knowledge and explicit
+   read-only detach accounting.
+2. **Composition prerequisites:** only the ownership/binding, relationship,
+   storage, secret and recovery seams required by the selected workflow. Q007
+   remains unresolved; this boundary does not inherit a complete ownership model
+   from the bounded Step 17 `ai.verbose` slice.
+3. **First reversible application proof:** one narrow, non-secret Nextcloud
+   configuration workflow crossing desired state, approval, execution,
+   independent readback, History and recovery. Select its setting after reviewing
+   existing writers and retain the combined deployment.
+
+Contract completion does not certify real detach, migrate module settings,
+implement instance/deployment authority or authorize broad splitting. The
+implementation/evidence status is recorded in [STATUS.md](STATUS.md).
 
 Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
 

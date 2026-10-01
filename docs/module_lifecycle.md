@@ -156,6 +156,21 @@ archive does not activate backup/restore hooks or live application operations.
 
 ## Remaining architectural debt
 
+Step 18 Boundary 1 adds data-only structured package inspection and a read-only
+detach assessment. These expose known declarations/dependency impact and missing
+inventories; they do not execute detach, unload an existing session, transfer
+responsibilities or remove resources. The approved long-term boundary is in
+[Module API v2](igor2/MODULE_API.md). General bindings/deployments and a real
+application lifecycle proof remain separately gated.
+
+Use `bash igor.sh --modules inspect NAME` and
+`bash igor.sh --modules detach-plan NAME` for JSON package projections without
+module sourcing, config migration or observer refresh. Policy and process
+activation are separate: these static commands report activation not evaluated.
+The loaded backend's `igor_module_inspect` / `igor_module_detach_plan` queries
+can include existing process registry/model/configuration snapshots, with
+unavailable evidence explicit. No new module-specific UI is introduced.
+
 Some legacy core helpers and configuration aliases still use Nextcloud names,
 and some application diagnostic implementation remains in core behind capability
 guards. Those compatibility surfaces should move to module-owned helpers in a

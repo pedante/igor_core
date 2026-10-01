@@ -558,7 +558,7 @@ ai_execute_tool() {
     while IFS= read -r -d '' _field; do
         _fields+=("$_field")
     done < <(printf '%s' "$tool_json" | python3 "$_AI_INPUT_PARSER" fields)
-    if [ "${#_fields[@]}" -ne 20 ] || [ "${_fields[19]:-}" != "IGOR_INPUT_OK" ]; then
+    if [ "${#_fields[@]}" -ne 21 ] || [ "${_fields[20]:-}" != "IGOR_INPUT_OK" ]; then
         _ai_audit_dispatch BLOCKED "unknown" "unknown" "none" "invalid-input" "1" \
             "" "" "" "$_operation_id"
         echo "[BLOCKED: Invalid tool input]"
@@ -571,6 +571,7 @@ ai_execute_tool() {
     local T_COMMAND="${_fields[12]}" T_TYPE="${_fields[13]}" T_TIER="${_fields[14]}"
     local T_MESSAGE="${_fields[15]}"
     local T_CAPABILITY_ID="${_fields[16]:-}" T_INPUTS="${_fields[17]:-}" T_PROVIDER="${_fields[18]:-}"
+    local T_CAPABILITY_VERSION="${_fields[19]:-}"
     local -a _ai_words=() run_argv=()
     if declare -f ai_policy_tool_allowed >/dev/null 2>&1 &&
        ! ai_policy_tool_allowed "$T_TOOL"; then
@@ -832,7 +833,7 @@ ai_execute_tool() {
                 return 1
             fi
             local _cap_prepared
-            _cap_prepared=$(igor_capability_prepare "$T_CAPABILITY_ID" "$T_INPUTS" "$T_PROVIDER") || {
+            _cap_prepared=$(igor_capability_prepare "$T_CAPABILITY_ID" "$T_INPUTS" "$T_PROVIDER" "$T_CAPABILITY_VERSION") || {
                 _ai_audit_rejected "$T_TOOL" CHANGE capability-unavailable "$tool_json" "$_operation_id"
                 echo "[ERROR: Capability '${T_CAPABILITY_ID}' is unavailable or its inputs are invalid]"
                 return 1

@@ -573,6 +573,49 @@ settings UI, external secret manager, inheritance, agent, self-healing or later
 roadmap work. Q007 and Q012 remain open; this bounded foundation does not close
 the entire Ownership Foundation gate.
 
+### D060 — First-class modules extend v2 under Core-owned authority (Step 18A)
+
+The Project Owner approved the Step 18A discovery proposal and its three
+sequential boundaries: contract completion, composition prerequisites, then
+one reversible application proof. Each boundary stops with its own evidence
+report before scope expands. [MODULE_API.md](MODULE_API.md) defines the module
+contract; [EXECUTION.md](EXECUTION.md) supplies the five proof classes.
+
+A module is a portable reviewed package for a coherent domain. Package content,
+registration, Igor-owned machine bindings and operational records are distinct.
+Modules contribute knowledge, schemas, capabilities and domain implementations.
+Core owns identity admission, lifecycle enforcement, dependency evaluation,
+security, approval, privilege, configuration authority, execution policy,
+provenance and Operational History. No module-specific operating runtime or UI
+is introduced. Module API v1 remains temporary compatibility, not the extension
+point for new functionality.
+
+Knowledge explains domains; System Model represents current typed state;
+History records operational attempts/outcomes; Investigations organize questions
+and evidence; Context Routing selects eligible reference material. None of the
+reference consumers can activate modules, invent capabilities or alter policy.
+15UI consumes structured owning-service inspection and submits typed proposals.
+Configuration retains D059's authority split; portable schemas/defaults do not
+give modules ownership of mutable desired values or secret material.
+
+Capability outputs and compatibility become explicit versioned contracts while
+Core retains provider resolution, input/output validation, approval, privilege,
+verification and history. Provider completion and valid output are separate;
+invalid output after execution cannot erase a possible effect or imply success.
+
+Detach ends hidden management participation/responsibility, not necessarily
+application resources or retained evidence. Inspection must account for known
+dependencies and contributions, retained data, running processes and missing
+inventories. Contract completion may expose an incomplete read-only assessment;
+it must not certify detach before binding/resource ownership is established.
+
+The approved scope excludes broad module migration, structural splitting without
+a proven workflow need, marketplaces, automatic dependency installation, hot
+unload and autonomous module generation. Reviewed local executable modules are
+not sandboxed. Third-party isolation/signing remains Q004 and future work.
+Q007's relationship/deployment reconciliation is not closed by this approval or
+the bounded Step 17 configuration foundation.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy

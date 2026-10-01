@@ -2,13 +2,71 @@
 
 Last updated: 2026-10-01
 
+## Step 18 Boundary 1 — module contract completion
+
+The Project Owner approved the Step 18A discovery architecture (D060) and
+authorized three sequential boundaries with an evidence stop after each.
+This entry covers **Boundary 1 only**. Composition prerequisites (including
+Q007), real module configuration migration and the reversible Nextcloud proof
+remain outside this result. No bundled application is split or rewritten.
+
+The starting checkout was clean `igor2` at `227d5c2`. A read-only remote branch
+query confirmed `origin/igor2=227d5c2` and `origin/master=852ce8f`. Master is not
+an ancestor; its two unmatched commits contain an obsolete roadmap and older
+orchestration policy already superseded by this branch's design authority and
+current `.codex` policy. This is content reconciliation, not a merge or a claim
+that the ancestor check passed. The earlier Step 17 wording is corrected below.
+
+The bounded change completes supported capability versions 1/2, closed typed
+version-2 outputs, exact request/plan version checks, one structured module
+inspection projection and read-only detach accounting. The existing `system`
+memory refresh is the real version-2 reference; its static host knowledge is
+packaged instead of depending on an ignored local asset. V1 capabilities and
+the combined `nextcloud_docker` deployment retain their compatibility paths.
+
+Static inspection never sources module code/legacy configuration, evaluates
+process activation, refreshes an observer or initializes private state. A
+loaded backend can project its current registry/model snapshots. Detach
+accounting exposes known contributions/dependencies and unknown binding,
+resource, session and responsibility inventories. It is not a detach executor
+or completion certificate. 15UI may consume the shared records; no module UI
+or default-interface cutover is added.
+
+Baseline evidence before runtime edits: 28 focused module/capability tests
+passed. Full Python reported 424 passed, 321 subtests passed and the same four
+Guide/Assist automation failures recorded for Step 17. Full Ruff reported the
+same 142 existing findings. Personal ignored configuration was not rewritten.
+The Boundary 1 proof covers the following bounded acceptance evidence:
+
+| Proof/check | Result |
+|---|---|
+| Contract | Capability versions 1/2, closed typed outputs, unsupported/mismatched consumer pins, malformed/duplicate/non-finite results, bounded values and Core-owned result status are covered. V2 privileged declarations remain unavailable without a typed Core adapter. |
+| Regression | Full Python: 443 passed plus 320 subtests; the same four baseline Guide/Assist automation failures remain. One additional startup subtest exceeded its unchanged 20-second subprocess timeout during concurrent validation. After concurrent suites finished, that exact startup test passed unchanged: 1 passed plus 2 subtests. The unmodified full run was not green; the timeout did not reproduce in isolation. Full Ruff's 142 diagnostic identities match the baseline, with none added or removed. |
+| Bash regression | Full runner passes all five groups: 46 Bash checks, 46 render checks, 305 core BATS, 152 module BATS and 40 integration BATS. Two existing core cases skip for unavailable GPG agent and `hostname -I`. The focused dispatch/History/module-v2 suite also passes all 58 BATS. |
+| Vertical slice | Seven new dispatch/inspection BATS pass. The real `system.host.memory.refresh` version-2 operation returns a valid typed result, refreshes the existing observer and records provider/package/version plus verification in durable History. A CHANGE fixture proves invalid output preserves an actual effect and execution completion, reports unknown verification and excludes rejected raw data from results/History. |
+| Inspection | Static CLI inspection executes no module code, migrates no omitted policy and creates no runtime files. Runtime projection reads existing facts without another observer, filters owning-service rows and redacts sensitive fact values. Detach reports known contributions/dependents, retained records and explicit unknown inventories with `ready=false`. Eleven inspection unit tests pass. |
+| Migration/recovery | No persistent backend/layout migration is introduced. V1 capabilities remain compatible; `nextcloud_docker` stays v1. Retained version-1 History remains inspectable and reconciliation refuses to reinterpret it through version 2. The `system` package validates when reconstructed from tracked files plus its declared host knowledge asset, which is included in this commit. This proves package delivery, not application rollback or complete detach. |
+| Python lint/compile | Changed/new capability, module-contract and inspection helpers/tests pass scoped Ruff; runtime helpers compile. Full Ruff retains 142 baseline findings. `tool_input.py` retains its existing SIM103 finding. |
+| Bash syntax/lint | Changed scripts pass syntax checks. Capability/module-loader adapters and the new acceptance BATS pass CI ShellCheck flags. Six unchanged whole-file warnings remain in safety, startup and the older History fixture. |
+| Documentation/diff | All 119 local documentation references resolve; whitespace checks pass. Accepted D060 and the bounded public contracts, migration disposition and roadmap boundaries are documented. |
+
+This closes **Boundary 1 only**. The approved architecture is retained; no
+composition/binding authority or application migration was introduced. Boundary
+2 and Boundary 3 are not started. The boundary stops here with its evidence for
+Project Owner review rather than automatically expanding scope.
+
 ## Step 17 Configuration Ownership and Schema Foundation — bounded implementation
 
 The Project Owner accepted Step 17A's architecture and authorized the bounded
 foundation plus the Core `ai.verbose` vertical slice. D059 and
 [CONFIGURATION.md](CONFIGURATION.md) are the accepted boundary. The working
-baseline is clean `igor2` at `619d0cd`; local `master` and `origin/master` are
-ancestors. Remote freshness was not fetched for this task.
+baseline was clean `igor2` at `619d0cd`. The original ancestor statement was
+incorrect: `master` and `origin/master` are not ancestors. Step 18's read-only
+remote check confirmed `igor2=227d5c2` and `master=852ce8f`; the two unmatched
+master commits contain an obsolete roadmap and earlier orchestration policy,
+superseded on this branch by the accepted design documents and current `.codex`
+policy. No missing runtime baseline change was identified. Remote freshness was
+not checked during Step 17 itself.
 
 Configuration owns validated desired values, resolution, schema admission,
 private persistence, precedence, provenance and recovery. It does not own

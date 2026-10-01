@@ -20,6 +20,8 @@ SECRET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 TIERS = {"READ", "CHANGE", "DESTROY"}
 RECOVERY = {"reversible", "best_effort", "compensating_action", "snapshot_required", "irreversible", "not_applicable"}
 INPUT_TYPES = {"string", "integer", "number", "boolean", "enum", "object_id", "path", "secret_ref"}
+CAPABILITY_VERSIONS = {1, 2}
+OUTPUT_TYPES = {"string", "integer", "number", "boolean", "enum", "object_id"}
 
 
 class CapabilityError(ValueError):
@@ -181,6 +183,75 @@ def _validate_schema(schema: Any) -> None:
             raise CapabilityError(f"input schema field {name!r} is invalid")
 
 
+def validate_output_schema(schema: Any) -> dict[str, Any]:
+    """Bounded domain data; never an execution or authority envelope."""
+    if (not isinstance(schema, dict) or
+            set(schema) != {"schema_version", "properties", "required", "additionalProperties"} or
+            type(schema["schema_version"]) is not int or schema["schema_version"] != 1 or
+            schema["additionalProperties"] is not False):
+        raise CapabilityError("outputs requires a closed version-1 schema")
+    props, required = schema["properties"], schema["required"]
+    if (not isinstance(props, dict) or len(props) > 32 or not isinstance(required, list) or
+            any(type(name) is not str for name in required) or
+            len(required) != len(set(required)) or set(required) - set(props)):
+        raise CapabilityError("outputs has invalid properties or required fields")
+    for name, spec in props.items():
+        if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name) or
+                any(word in name for word in ("password", "token", "credential", "secret"))):
+            raise CapabilityError("outputs has invalid or secret-bearing field")
+        if not isinstance(spec, dict) or set(spec) - {"type", "enum", "minimum", "maximum", "minLength", "maxLength"}:
+            raise CapabilityError("output field has unsupported metadata")
+        typ = spec.get("type")
+        if typ not in OUTPUT_TYPES:
+            raise CapabilityError("output field has unsupported type")
+        if typ == "enum":
+            values = spec.get("enum")
+            if (not isinstance(values, list) or not 1 <= len(values) <= 32 or
+                    any(type(v) not in (str, int, bool) or (isinstance(v, str) and len(v) > 4096) for v in values) or
+                    len({(type(v).__name__, str(v)) for v in values}) != len(values)):
+                raise CapabilityError("output enum is invalid")
+        elif "enum" in spec:
+            raise CapabilityError("output enum requires enum type")
+        for bound in ("minimum", "maximum"):
+            if bound in spec and (typ not in {"integer", "number"} or type(spec[bound]) not in (int, float) or not _finite_output_number(spec[bound])):
+                raise CapabilityError("output numeric bound is invalid")
+        if "minimum" in spec and "maximum" in spec and spec["minimum"] > spec["maximum"]:
+            raise CapabilityError("output numeric bounds are reversed")
+        for bound in ("minLength", "maxLength"):
+            if bound in spec and (typ not in {"string", "object_id"} or type(spec[bound]) is not int or not 0 <= spec[bound] <= 4096):
+                raise CapabilityError("output length bound is invalid")
+        if spec.get("minLength", 0) > spec.get("maxLength", 4096):
+            raise CapabilityError("output length bounds are reversed")
+    return copy.deepcopy(schema)
+
+
+def validate_outputs(schema: Any, value: Any) -> dict[str, Any]:
+    schema = validate_output_schema(schema)
+    inputs = {key: schema[key] for key in ("properties", "required", "additionalProperties")}
+    try:
+        result = validate_inputs(inputs, value)
+    except OverflowError as exc:
+        raise CapabilityError("output numeric value is outside supported bounds") from exc
+    # object_id validation has no input-specific length bound.
+    for name, item in result.items():
+        if isinstance(item, str) and not schema["properties"][name].get("minLength", 0) <= len(item) <= schema["properties"][name].get("maxLength", 4096):
+            raise CapabilityError("output string is outside its bounds")
+    return result
+
+
+def _finite_output_number(value: float) -> bool:
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def _version(value: Any) -> int:
+    if type(value) is not int or value not in CAPABILITY_VERSIONS:
+        raise CapabilityError("unsupported capability_version")
+    return value
+
+
 @dataclass
 class CapabilityDescriptor:
     id: str
@@ -200,6 +271,7 @@ class CapabilityDescriptor:
     timeout_seconds: int | None = None
     active: bool = True
     unavailable_reason: str | None = None
+    outputs: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, owner: str | None = None, provider: str | None = None) -> CapabilityDescriptor:
@@ -209,7 +281,7 @@ class CapabilityDescriptor:
         missing = required - set(raw)
         if missing:
             raise CapabilityError(f"capability descriptor is incomplete: {min(missing)}")
-        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds"})
+        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds", "outputs"})
         if unknown:
             raise CapabilityError(f"capability descriptor has unknown field {min(unknown)}")
         ident = _cap_id(raw["id"])
@@ -220,8 +292,10 @@ class CapabilityDescriptor:
             raise CapabilityError("safety.tier must be READ, CHANGE or DESTROY")
         if raw["privilege"] not in {"none", "required"}:
             raise CapabilityError("privilege must be none or required")
-        if not isinstance(raw["capability_version"], int) or raw["capability_version"] < 1:
-            raise CapabilityError("capability_version must be positive")
+        version = _version(raw["capability_version"])
+        outputs = validate_output_schema(raw.get("outputs")) if version == 2 else None
+        if version == 1 and "outputs" in raw:
+            raise CapabilityError("outputs requires capability_version 2")
         timeout = raw.get("timeout_seconds")
         if timeout is not None and (type(timeout) is not int or timeout <= 0):
             raise CapabilityError("timeout_seconds must be a positive integer")
@@ -232,10 +306,10 @@ class CapabilityDescriptor:
             raise CapabilityError("recovery.class is invalid")
         inputs = raw["inputs"]
         _validate_schema(inputs)
-        return cls(ident, owner or raw.get("owner", "core"), provider or raw.get("provider", owner or "core"), raw["handler"], raw["capability_version"], raw["description"], copy.deepcopy(inputs), copy.deepcopy(raw["safety"]), raw["privilege"], copy.deepcopy(raw["preconditions"]), copy.deepcopy(raw["verification"]), copy.deepcopy(recovery), copy.deepcopy(raw["affects"]), raw.get("source", "core"), timeout, raw.get("active", True), raw.get("unavailable_reason"))
+        return cls(ident, owner or raw.get("owner", "core"), provider or raw.get("provider", owner or "core"), raw["handler"], version, raw["description"], copy.deepcopy(inputs), copy.deepcopy(raw["safety"]), raw["privilege"], copy.deepcopy(raw["preconditions"]), copy.deepcopy(raw["verification"]), copy.deepcopy(recovery), copy.deepcopy(raw["affects"]), raw.get("source", "core"), timeout, raw.get("active", True), raw.get("unavailable_reason"), outputs)
 
     def inspect(self) -> dict[str, Any]:
-        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), "handler": self.handler, **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {})}
+        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), "handler": self.handler, **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {}), **({"outputs": _json(self.outputs)} if self.outputs is not None else {})}
 
 
 @dataclass(frozen=True)
@@ -298,9 +372,11 @@ class CapabilityRegistry:
         records = self._records.get(ident, [])
         return {"resolution": {"status": resolution.status, "providers": list(resolution.providers), "selected_provider": resolution.selected_provider, "reason": resolution.reason}, "declarations": [d.inspect() for d in records]}
 
-    def prepare(self, capability_id: str, inputs: dict[str, Any] | None = None, *, provider: str | None = None) -> dict[str, Any]:
+    def prepare(self, capability_id: str, inputs: dict[str, Any] | None = None, *, provider: str | None = None, capability_version: int | None = None) -> dict[str, Any]:
         """Resolve and freeze a proposal without approval or execution."""
         desc = self._selected(capability_id, provider)
+        if capability_version is not None and _version(capability_version) != desc.capability_version:
+            raise CapabilityError("capability_version does not match selected provider")
         validated = validate_inputs(desc.inputs, inputs or {})
         proposal = {
             "capability_id": desc.id,
@@ -358,14 +434,16 @@ class CapabilityPlan:
             _validate_value("object", object_id, {"type": "object_id"})
 
         def resolve_step(step: dict[str, Any], *, check: bool = False) -> dict[str, Any]:
-            if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs"}:
+            if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs", "capability_version"}:
                 raise CapabilityError("plan step has unknown fields")
             ident = _cap_id(step.get("capability_id"))
             desc = registry._selected(ident, step.get("provider"))
+            if "capability_version" in step and _version(step["capability_version"]) != desc.capability_version:
+                raise CapabilityError("plan capability_version does not match selected provider")
             args = validate_inputs(desc.inputs, step.get("inputs", {}))
             if check and (desc.safety.get("tier") != "READ" or desc.verification.get("kind") == "none"):
                 raise CapabilityError("final check must be a verifiable READ capability")
-            return {"capability_id": ident, "provider": desc.provider, "inputs": args,
+            return {"capability_id": ident, "capability_version": desc.capability_version, "provider": desc.provider, "inputs": args,
                     "inspection": registry.inspect(ident, desc.provider)}
 
         self.steps = [resolve_step(step) for step in self.steps]
@@ -384,9 +462,24 @@ def _cli() -> int:
     """JSON stdin bridge for shell-owned loaders (resolution only)."""
     import sys
 
+    op = None
     try:
         request = json.load(sys.stdin)
         op = request.get("op")
+        if op == "output":
+            def unique(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise CapabilityError("duplicate output field")
+                    result[key] = value
+                return result
+            envelope = json.loads(request["envelope"], object_pairs_hook=unique)
+            if not isinstance(envelope, dict) or set(envelope) != {"status", "result"} or envelope["status"] != "ok":
+                raise CapabilityError("invalid output envelope")
+            result = validate_outputs(request["outputs"], envelope["result"])
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
         if op == "validate":
             descriptor = CapabilityDescriptor.from_dict(request["descriptor"])
             print(json.dumps(descriptor.inspect(), sort_keys=True, separators=(",", ":")))
@@ -426,7 +519,9 @@ def _cli() -> int:
             print(json.dumps(plan.inspect(), sort_keys=True, separators=(",", ":")))
             return 0
         if op == "prepare":
-            print(json.dumps(registry.prepare(request["id"], request.get("inputs", {}), provider=request.get("provider")), sort_keys=True, separators=(",", ":")))
+            if "capability_version" in request:
+                _version(request["capability_version"])
+            print(json.dumps(registry.prepare(request["id"], request.get("inputs", {}), provider=request.get("provider"), capability_version=request.get("capability_version")), sort_keys=True, separators=(",", ":")))
             return 0
         if op == "result":
             # Result inspection is deliberately a value projection; it never
@@ -437,7 +532,7 @@ def _cli() -> int:
             return 0
         raise CapabilityError("unsupported operation")
     except (CapabilityError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        print(f"capability runtime: {exc}", file=sys.stderr)
+        print("capability runtime: invalid domain output" if op == "output" else f"capability runtime: {exc}", file=sys.stderr)
         return 1
 
 
@@ -454,6 +549,13 @@ def _validate_result(value: Any) -> None:
     safety = value.get("safety", {})
     if not isinstance(safety, dict):
         raise CapabilityError("invalid result safety")
+    if value.get("output_status") not in {None, "valid", "invalid", "not_applicable"}:
+        raise CapabilityError("invalid output_status")
+    if value.get("output_status") == "invalid" and (value.get("result") is not None or value["outcome"] == "success"):
+        raise CapabilityError("invalid domain output cannot be reported as success")
+    if value.get("capability_version") == 2 and value["outcome"] == "success" and (
+            value.get("output_status") != "valid" or not isinstance(value.get("result"), dict)):
+        raise CapabilityError("capability version 2 success requires valid domain output")
     if value["outcome"] == "success":
         if value["execution_status"] != "succeeded" or value["verification_status"] in {"failed", "unknown", "unavailable"}:
             raise CapabilityError("unverified execution cannot be reported as success")

@@ -1,6 +1,7 @@
 """Focused contract tests for the Module API v2 data validator."""
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -42,6 +43,33 @@ class ModuleContractTests(unittest.TestCase):
         result = module_contract.validate_module(ROOT / "modules/system")
         self.assertEqual(result["manifest"]["name"], "system")
         self.assertEqual(result["contributions"][0]["owner"], "system")
+        capability = next(r for r in result["contributions"] if r["kind"] == "capability")
+        self.assertEqual(capability["capability_version"], 2)
+        self.assertEqual(capability["outputs"]["required"], ["observer_id"])
+
+    def test_system_package_reproduces_from_tracked_content_and_declared_asset(self):
+        tracked = subprocess.run(["git", "ls-files", "modules/system"], cwd=ROOT, check=True, text=True, capture_output=True).stdout.splitlines()
+        asset = "modules/system/knowledge/host.md"
+        ignored = subprocess.run(["git", "check-ignore", asset], cwd=ROOT, text=True, capture_output=True, check=False)
+        self.assertEqual(ignored.returncode, 1)
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "system"
+            for relative in sorted(set(tracked) | {asset}):
+                destination = package / Path(relative).relative_to("modules/system")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, destination)
+            result = module_contract.validate_module(package)
+        self.assertEqual(result["contributions"][0]["path"], "knowledge/host.md")
+
+    def test_module_typed_output_contract_rejects_missing_unsupported_or_foreign_shape(self):
+        original = json.loads((ROOT / "modules/system/contracts/host.json").read_text())
+        cap = next(r for r in original["contributions"] if r["kind"] == "capability")
+        cap = {**cap, "id": "fixture.refresh", "handler": "fixture__refresh"}
+        for changes in ({"outputs": None}, {"capability_version": True}, {"capability_version": 3}, {"capability_version": 1}, {"outputs": {**cap["outputs"], "additionalProperties": True}}):
+            root = self.package(self.valid_manifest(), {"contract_version": 1, "contributions": [{**cap, **changes}]})
+            (root / "module.sh").write_text("fixture__refresh() { :; }\n", encoding="utf-8")
+            with self.assertRaises(module_contract.ValidationError):
+                module_contract.validate_module(root)
 
     def test_configuration_schema_is_validated_and_core_stamps_owner(self):
         schema = {"schema_version": 1, "fields": [

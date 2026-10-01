@@ -55,6 +55,12 @@ The target architecture separates at least:
 Modules may declare schemas and contributions, but machine-specific mutable data does
 not live inside the installed module package.
 
+The approved Step 18A module model distinguishes portable package content,
+Core-admitted registration, Igor-owned machine bindings and operational records.
+A first-class module teaches and operates a coherent domain through the existing
+Module API v2, rather than owning another configuration, policy, scheduling,
+history or UI runtime. [D060](DECISIONS.md) records this boundary.
+
 Reusable package/module content and machine binding are separate concerns.
 A package may carry knowledge, contribution declarations, reviewed handlers,
 compatibility metadata and tests/evals; machine-specific paths, instance
@@ -239,6 +245,13 @@ Igor 2 requires the **semantics**, not specific new vocabulary:
 
 No hot-unload requirement exists unless a later need justifies it. Restart-based activation is acceptable.
 
+Detach ends management participation and makes retained resources and unresolved
+responsibilities explicit. Disablement alone is not complete detach proof:
+existing processes, dependent contributions, bindings, jobs and retained records
+have different lifetimes. Missing inventories remain unknown, never a successful
+detach certificate. Removing code and destroying application resources are
+separate operations.
+
 ### Module API
 
 Module API v2 is a versioned target contract. A module may contribute any subset of:
@@ -292,6 +305,8 @@ A mature capability defines:
 
 - canonical name and owner;
 - structured inputs;
+- versioned typed domain outputs, separate from Core-owned execution and
+  verification status;
 - safety tier;
 - privilege requirement;
 - preconditions;

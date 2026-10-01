@@ -193,7 +193,7 @@ import json,sys
 row=json.loads(sys.argv[1])
 matches=json.loads(sys.argv[2])
 assert row["lifecycle"] == "terminal"
-assert row["capability"] == {"id":"system.host.memory.refresh", "version":1}
+assert row["capability"] == {"id":"system.host.memory.refresh", "version":2}
 assert row["provider"]["id"] == "system"
 assert row["affected_objects"] == [{"scope_id":row["scope_id"], "object_id":"host:local"}]
 assert row["execution_status"] == "succeeded"

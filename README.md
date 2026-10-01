@@ -17,6 +17,11 @@ New modules can be added without touching core code.
 
 Modules can stay installed while disabled. Use `bash igor.sh --modules` to inspect
 API version, activation state, unavailable reasons and owned contributions.
+Use `bash igor.sh --modules inspect system` for data-only JSON package inspection
+or `bash igor.sh --modules detach-plan system` for a read-only impact assessment.
+These commands source no module code or legacy configuration and do not refresh
+observers. Static inspection does not evaluate process activation; detach
+assessment reports missing inventories and does not certify or execute detach.
 Use `bash igor.sh --disable nextcloud_docker` to disable its participation
 in new Igor processes. Restart existing sessions after a policy change. This does
 not stop running services or delete their data. See the
@@ -137,6 +142,12 @@ current memory-domain context selection without refreshing an observer.
 Raw AI shell requests are identified as unstructured; raw CHANGE requires
 explicit approval even in Executive mode and has no automatic postcondition
 verification.
+
+The existing memory refresh now uses capability version 2 with a closed typed
+domain result; version 1 capabilities remain supported. Requests and plans may
+pin an exact capability version. Core validates provider output separately from
+execution and verification, and records invalid output without claiming success
+or erasing a possible effect. See [the module contract](docs/igor2/MODULE_API.md).
 
 AI requests now use bounded context selection and inspectable model roles.
 The Context / Routing TUI panel shows included/excluded sources and routing

@@ -72,6 +72,14 @@ observable contract, not its Bash function, OS command, provider or menu
 label. A material input/outcome change requires a new contract version or ID;
 the initial descriptor records `capability_version: 1`.
 
+Step 18 Boundary 1 additionally supports capability version 2 with mandatory
+closed typed domain outputs and exact request/plan version pins. Version 1
+retains its compatibility behavior. Output validity is distinct from provider
+completion and deterministic verification; rejected output after execution
+does not erase possible effects. See [Module API](MODULE_API.md) for the bounded
+output/compatibility contract. This does not add a provider/version solver or
+change the approval/privilege authority described here.
+
 The loader supplies provider identity `(owner, source contract, handler)`;
 module JSON cannot claim another owner. Core platform capabilities use
 `owner=core` through the same registry query shape. Multiple active providers

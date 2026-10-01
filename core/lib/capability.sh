@@ -49,10 +49,10 @@ steps = plan.get("steps")
 if not isinstance(steps, list) or not 1 <= len(steps) <= 16:
     raise SystemExit(1)
 for step in steps:
-    if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs"}:
+    if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs", "capability_version"}:
         raise SystemExit(1)
 final_check = plan.get("final_check")
-if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs"}):
+if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs", "capability_version"}):
     raise SystemExit(1)
 print(json.dumps({"op": "plan", "records": records, "plan_version": 1,
                   "intended_outcome": plan["intended_outcome"], "objects": plan.get("objects", []),
@@ -76,7 +76,7 @@ igor_capability_plan_execute() {
 import json, sys
 p = json.loads(sys.argv[1])
 def original(s):
-    return {"capability_id": s["capability_id"], "provider": s["provider"], "inputs": s["inputs"]}
+    return {"capability_id": s["capability_id"], "capability_version": s["capability_version"], "provider": s["provider"], "inputs": s["inputs"]}
 print(json.dumps({"plan_version": p["plan_version"], "intended_outcome": p["intended_outcome"],
                   "objects": p.get("objects", []), "steps": [original(s) for s in p["steps"]],
                   "final_check": original(p["final_check"]) if p.get("final_check") else None},
@@ -90,6 +90,7 @@ PY
 import json, sys
 step = json.loads(sys.argv[1])
 print(json.dumps({"tool": "run_capability", "id": step["capability_id"],
+                  "capability_version": step["capability_version"],
                   "provider": step["provider"], "inputs": step["inputs"]}, separators=(",", ":")))
 PY
 )" || return 1
@@ -154,21 +155,29 @@ elif value is not None:
 }
 
 igor_capability_prepare() {
-    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
+    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
     [ -n "$_inputs" ] || _inputs='{}'
     _records="$(igor_capability_list)" || return 1
-    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" <<'PY'
+    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" <<'PY'
 import json, sys
 try:
-    print(json.dumps({"op": "prepare", "records": json.loads(sys.argv[1]),
+    request = {"op": "prepare", "records": json.loads(sys.argv[1]),
                       "id": sys.argv[2], "inputs": json.loads(sys.argv[3]),
-                      "provider": sys.argv[4] or None}, separators=(",", ":")))
+                      "provider": sys.argv[4] or None}
+    if sys.argv[5]:
+        if sys.argv[5] not in {"1", "2"}:
+            raise ValueError("unsupported capability version")
+        request["capability_version"] = int(sys.argv[5])
+    print(json.dumps(request, separators=(",", ":")))
 except (ValueError, TypeError):
     raise SystemExit(1)
 PY
 )" || return 1
     _proposal="$(printf '%s' "$_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py")" || return 1
     if [ "$(_igor_capability_field "$_proposal" privilege)" = required ]; then
+        # The existing privileged adapter has no typed domain result. Keep v1
+        # usable; a v2 provider stays unavailable until that adapter is reviewed.
+        [ "$(_igor_capability_field "$_proposal" capability_version)" = 1 ] || return 1
         # Reviewed Core operation adapter. A privileged module handler may not
         # replace argv after approval. Additional privileged operations need a
         # reviewed adapter here before becoming available.
@@ -355,11 +364,12 @@ PY
 # Only the already approved in-process proposal may be supplied by the
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
-    local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier
+    local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
     _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
     _provider="$(_igor_capability_field "$_proposal" provider)" || return 1
     _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
-    _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider")" || return 1
+    _version="$(_igor_capability_field "$_proposal" capability_version)" || return 1
+    _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider" "$_version")" || return 1
     _digest="$(_igor_capability_field "$_proposal" digest)" || return 1
     [ -n "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" ] &&
         [ "$IGOR_CAPABILITY_APPROVED_DIGEST" = "$_digest" ] || return 1
@@ -402,7 +412,28 @@ PY
         then _exec=succeeded; fi
     else
         if _envelope="$(_igor_capability_invoke_handler "$_fresh")"; then
-            if [ "$_id" = system.host.memory.refresh ]; then
+            _exec=succeeded
+            if [ "$_version" = 2 ]; then
+                local _output_request
+                _output_request="$("$(_ml_python)" - "$_fresh" "$_envelope" <<'PY'
+import json, sys
+p = json.loads(sys.argv[1])
+print(json.dumps({"op": "output", "outputs": p["descriptor"]["outputs"],
+                  "envelope": sys.argv[2]}, separators=(",", ":")))
+PY
+)" || return 1
+                if _domain_result="$(printf '%s' "$_output_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" 2>/dev/null)"; then
+                    _output_status=valid
+                else
+                    _domain_result=null
+                    _output_status=invalid
+                    _verify=unknown
+                    _outcome=invalid_output
+                    _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
+                fi
+            fi
+            if [ "$_output_status" != invalid ] && [ "$_id" = system.host.memory.refresh ]; then
+                _exec=failed
                 [ "$(_igor_capability_field "$_envelope" result.observer_id)" = host.memory ] &&
                     igor_observer_refresh host.memory host:local && _exec=succeeded
                 if [ "$_exec" = succeeded ]; then
@@ -410,8 +441,6 @@ PY
                         source "${_IGOR_LOADER_DIR}/core/lib/health_runner.sh"
                     igor_health_run_v2_check host.memory.health >/dev/null 2>&1 || true
                 fi
-            else
-                _exec=succeeded
             fi
         fi
     fi
@@ -419,7 +448,7 @@ PY
     # result, and retain running/unknown on disk if completion cannot persist.
     _igor_history_update provider-complete "$IGOR_HISTORY_OPERATION_ID" "$_exec" 2>/dev/null ||
         printf 'operational history: provider completion unavailable for %s\n' "$IGOR_HISTORY_OPERATION_ID" >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
-    if [ "$_exec" = succeeded ]; then
+    if [ "$_exec" = succeeded ] && [ "$_output_status" != invalid ]; then
         _tier="$(_igor_capability_field "$_fresh" safety.tier)" || return 1
         if [ "$(_igor_capability_field "$_fresh" verification.kind)" != none ]; then
             if _evidence="$(_igor_capability_verify "$_fresh")"; then
@@ -434,7 +463,7 @@ PY
         fi
         [ "$_outcome" = failed ] && _outcome=success
     fi
-    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" <<'PY'
+    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" "$_output_status" "$_domain_result" <<'PY'
 import json, sys
 from datetime import datetime, timezone
 proposal = json.loads(sys.argv[1])
@@ -454,6 +483,9 @@ result = {"operation_id": sys.argv[7], "capability_id": proposal["capability_id"
           "affected_objects": proposal["affected_objects"], "recovery": proposal["recovery"],
           "verification_evidence": [evidence] if evidence else [],
           "recorded_at": datetime.now(timezone.utc).isoformat()}
+if proposal["capability_version"] == 2:
+    result["output_status"] = sys.argv[8]
+    result["result"] = json.loads(sys.argv[9])
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1

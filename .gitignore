@@ -31,7 +31,8 @@ CLAUDE.md
 # ── Runtime data ──────────────────────────────────────────────────────────────
 data/
 mailcmd/
-knowledge/
+# Installation-local learned knowledge; portable module knowledge is tracked.
+/knowledge/
 
 # Specific runtime files
 scratchpad.txt

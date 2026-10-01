@@ -456,6 +456,76 @@ igor_module_list() {
 igor_module_status() { printf '%s\n' "${_IGOR_MODULE_STATUS[${1:-}]:-unknown}"; }
 igor_module_reason() { printf '%s\n' "${_IGOR_MODULE_REASON[${1:-}]:-}"; }
 
+# Project existing owning-service snapshots. This never loads a package,
+# dispatches a probe, changes policy, or creates persistent state.
+_igor_module_inspection() {
+    local _action="$1" _name="$2" _states _rows _model _schemas _key _owner _record _state _reason
+    _ml_valid_name "$_name" && [ -n "${_IGOR_MODULE_DIRS[$_name]:-}" ] || return 2
+    _states="$(
+        for _owner in "${!_IGOR_MODULE_DIRS[@]}"; do
+            printf '%s\0' "$_owner" "${_IGOR_MODULE_STATUS[$_owner]:-not_evaluated}" \
+                "${_IGOR_MODULE_REASON[$_owner]:-}" "${_IGOR_LOADED_MODULES[$_owner]:-0}" \
+                "${_IGOR_MODULE_STATE[$_owner]:-}"
+        done | "$(_ml_python)" -c '
+import json, sys
+parts = sys.stdin.buffer.read().split(b"\0")[:-1]
+result = {}
+for i in range(0, len(parts), 5):
+    name, status, reason, loaded, policy = (p.decode() for p in parts[i:i+5])
+    result[name] = {"status": status, "reason": reason or None, "loaded": loaded == "1",
+                    "enabled": policy == "enabled" if policy else None}
+print(json.dumps(result,separators=(",", ":")))'
+    )" || return 1
+    _rows="$(
+        for _key in "${!_IGOR_CONTRIBUTIONS[@]}"; do
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+            _state="$(igor_contribution_state "$_key")"
+            _reason="$(igor_contribution_reason "$_key")"
+            printf '%s\0' "$_key" "$_owner" "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}" "$_state" "$_reason" "$_record"
+        done | "$(_ml_python)" -c '
+import json, sys
+parts = sys.stdin.buffer.read().split(b"\0")[:-1]
+result = []
+for i in range(0,len(parts),6):
+    key,owner,source,state,reason,raw = (p.decode() for p in parts[i:i+6])
+    kind,ident = key.split(":",1)
+    ident = ident.split("@",1)[0]
+    try: descriptor=json.loads(raw)
+    except ValueError: descriptor={"kind":kind,"id":ident,"handler":raw}
+    result.append({"index_key":key,"id":ident,"kind":kind,"owner":owner,"source":source,
+                   "availability":state,"unavailable_reason":reason or None,"descriptor":descriptor})
+print(json.dumps(result,separators=(",", ":")))'
+    )" || return 1
+    _model="$(igor_model_list)" || return 1
+    _schemas="$(igor_configuration_declarations)" || return 1
+    "$(_ml_python)" - "${_IGOR_LOADER_DIR}/core/lib" "${IGOR_DIR:-$_IGOR_LOADER_DIR}" \
+        "${IGOR_DATA_DIR:-${IGOR_DIR:-$_IGOR_LOADER_DIR}/data}" "$_name" "$_action" "$_states" "$_rows" "$_model" "$_schemas" <<'PY' |
+import json, sys
+sys.path.insert(0,sys.argv[1])
+from pathlib import Path
+from configuration import ConfigurationService
+states, rows, model, schemas = map(json.loads,sys.argv[6:10])
+configuration=[]
+try:
+    service=ConfigurationService(Path(sys.argv[3]), schemas=[(r["owner"],r["schema"]) for r in schemas],
+                                 owner_active=lambda owner: states.get(owner,{}).get("status")=="active")
+    for field in service.fields.values():
+        if field["owner"] == sys.argv[4]:
+            configuration.append(service.inspect(field["id"], "module:"+field["owner"]))
+except ValueError:
+    configuration=[{"schema_owner":sys.argv[4],"availability":"unavailable",
+                    "reason":"configuration service inspection unavailable"}]
+print(json.dumps({"root":sys.argv[2],"name":sys.argv[4],"action":sys.argv[5],
+                  "runtime":{"module_states":states,"contributions":rows,"model":model,
+                             "configuration":configuration}},separators=(",", ":")))
+PY
+        "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/module_inspection.py" --snapshot
+}
+
+igor_module_inspect() { _igor_module_inspection inspect "${1:-}"; }
+igor_module_detach_plan() { _igor_module_inspection detach-plan "${1:-}"; }
+
 igor_contribution_state() {
     local _key="${1:-}" _owner="${_IGOR_CONTRIBUTION_OWNER[${1:-}]:-}"
     [ -n "${_IGOR_CONTRIBUTIONS[$_key]:-}" ] || { printf 'unknown\n'; return 1; }
@@ -1046,6 +1116,10 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                     # an implicit module file-read channel.
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="secret_consumer_unavailable"
+                elif [ "$(_ml_json_field "$_record" privilege)" = required ] &&
+                     [ "$(_ml_json_field "$_record" capability_version)" = 2 ]; then
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="typed_privileged_output_adapter_unavailable"
                 elif [ "$(_ml_json_field "$_record" privilege)" = required ] &&
                      [ "${_key#capability:}" != system.service.restart ]; then
                     # A required privilege declaration is executable only

@@ -2,6 +2,14 @@
 
 > **Current contract (Module API v1).** This guide documents the v1 compatibility implementation. Igor 2's v2 contract and the first migrated `system` slice are documented separately in [igor2/MODULE_API.md](igor2/MODULE_API.md). New v2 packages use strict `module.conf` metadata and explicit JSON contract files; do not extend v1 with speculative hooks to imitate v2.
 
+Step 18A confirms that first-class modules extend that v2 contract. Portable
+package content is separate from Igor-owned machine bindings and operational
+records. The bounded contract completion adds typed capability outputs/version
+checks and structured inspection; it does not migrate v1 application code or
+give modules configuration storage, lifecycle authority or custom UIs. Static
+module knowledge must be included in the tracked/distributed package, never
+depend on installation-local learned files.
+
 ## Table of Contents
 
 1. [Overview](#overview)
