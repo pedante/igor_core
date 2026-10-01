@@ -129,30 +129,28 @@ _ai_emit_operator_snapshot() {
         _capabilities="$(igor_capability_list 2>/dev/null)" || true
     declare -f igor_configuration_declarations >/dev/null 2>&1 &&
         _configurations="$(igor_configuration_declarations 2>/dev/null)" || true
-    _payload=$(OP_MODULES="$_modules" OP_CONTRIBUTIONS="$_contributions" \
-        OP_CAPABILITIES="$_capabilities" OP_CONFIGURATIONS="$_configurations" \
-        python3 - <<'PY' | python3 "${IGOR_DIR}/core/lib/operator_surface.py" build
-import json, os
-def load(name):
-    try:
-        value=json.loads(os.environ.get(name,"[]"))
-        return value if isinstance(value,list) else []
-    except ValueError:
-        return []
-print(json.dumps({"modules":load("OP_MODULES"),
-                  "contributions":load("OP_CONTRIBUTIONS"),
-                  "capabilities":load("OP_CAPABILITIES"),
-                  "configurations":load("OP_CONFIGURATIONS")},
-                 separators=(",",":")))
-PY
+    _payload=$(
+        printf '%s\0%s\0%s\0%s\0' "$_modules" "$_contributions" "$_capabilities" "$_configurations" |
+            python3 -c '
+import json,sys
+parts=sys.stdin.buffer.read().split(b"\\0")
+if parts[-1:]==[b""]: parts.pop()
+if len(parts)!=4: raise SystemExit(1)
+names=("modules","contributions","capabilities","configurations")
+payload={}
+for name,raw in zip(names,parts):
+    value=json.loads(raw.decode())
+    if not isinstance(value,list): raise SystemExit(1)
+    payload[name]=value
+print(json.dumps(payload,separators=(",",":")))
+' | python3 "${IGOR_DIR}/core/lib/operator_surface.py" build
     ) || return 0
-    _payload=$(OP_SURFACE="$_payload" AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 - <<'PY'
-import json, os
-surface=json.loads(os.environ["OP_SURFACE"])
+    _payload=$(printf '%s' "$_payload" | AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 -c '
+import json,os,sys
+surface=json.load(sys.stdin)
 print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
                   "surface":surface},separators=(",",":")))
-PY
-    ) || return 0
+') || return 0
     _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
 }
 
