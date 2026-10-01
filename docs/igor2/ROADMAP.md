@@ -54,6 +54,9 @@ ownership model for:
 
 Every important persistent value should have an owner, source, scope,
 lifecycle, migration/reset behavior and appropriate inspection surface.
+Imported knowledge/module candidates additionally retain source kind, upstream
+project/document identity, version/tag/commit or retrieval point, license/provenance
+where applicable and the transformation that produced the Igor-managed artifact.
 
 The configuration direction in [CONFIGURATION.md](CONFIGURATION.md) keeps
 canonical setting identity and semantics independent from current env-file or
@@ -69,11 +72,17 @@ be green.
 
 ## Igor 2.0 scope boundary
 
-The A-H roadmap through Step 23 defines Igor 2.0. Post-2.0 ideas such as
-AI-assisted capability promotion, a module marketplace/packs/signing
-infrastructure, sophisticated dependency solving, hot unload and a second
-handler-language adapter do not block Igor 2.0 unless a concrete requirement
-moves one into scope.
+The A-H roadmap through Step 23 defines Igor 2.0. The knowledge/module import
+foundation in [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md) is part of that direction:
+Igor 2 should preserve source provenance, keep portable package content separate
+from machine binding/configuration, accept Agent Skills-style knowledge as a
+bounded input, and give module developer tooling a normal import/normalize/
+validate path.
+
+A full public marketplace/registry, third-party signing infrastructure,
+sophisticated dependency solving, hot unload, a second handler-language adapter
+and live AOH/ServerMind/Steward interoperability remain post-2.0 unless a
+concrete requirement moves one into scope.
 
 ---
 
@@ -340,6 +349,12 @@ backed runbooks, patterns and successful investigation procedures may become
 local learning with provenance, but they do not become executable authority
 merely because the AI produced or used them.
 
+Imported documentation, Agent Skills/AOH material and other external knowledge
+must enter through the same reference-data boundary. Source provenance survives
+normalization; imported scripts/tool manifests remain candidate/reference
+material until explicitly promoted through the normal Module API/capability
+contract. See [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md).
+
 ## Step 13 — Domain Event Bus — COMPLETE
 
 Do not confuse this with the existing AI frontend event stream.
@@ -443,6 +458,11 @@ Also allow evidence-backed local learning such as patterns, runbooks and
 symptom/cause/resolution relationships, stored outside installed module
 packages with provenance and reset semantics.
 
+Local experience may later be crystallized into a candidate Agent Skill/runbook
+or module contribution through the same import/promotion pipeline used for
+external knowledge. Promotion creates a reviewable candidate first; it does not
+let Igor silently rewrite its installed executable modules.
+
 Begin with explainable statistics and thresholds, not opaque ML. A learned baseline describes evidence about normal behavior; it is not desired state or responsibility. Learned artifacts remain reference material under D053 until an explicit authoritative transition exists.
 
 ## Step 17 — Relationships & Deployments — FUTURE
@@ -469,6 +489,18 @@ external condition. Neither proposal is runtime implementation yet.
 Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
 
 Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
+
+A coherent Igor module/package may be authored natively or synthesized from
+reviewed source material: installation documents, scripts, guides/runbooks,
+Agent Skills/AOH, ServerMind/Steward material, other open-source projects or
+local Igor learning. The source format is not the runtime contract. Import
+normalizes material into Igor-managed knowledge/contribution candidates with
+provenance, then the ordinary Module API/capability/compatibility rules apply.
+
+Keep reusable package content separate from its machine binding. A module may
+ship configuration schema and deployment knowledge, but instance paths, secret
+references, selected providers, local relationships and mutable user intent
+remain Igor-owned machine configuration/state.
 
 Preserve the working v1 deployment during migration.
 
@@ -513,6 +545,17 @@ After Module API v2 is proven:
 
 - converge module create/validate/test/inspect tooling on one supported path;
 - generate v2 module skeletons;
+- add a bounded import/normalize/inspect path for external operational material,
+  beginning with documentation/Agent Skills/reference assets and preserving
+  source/license/provenance;
+- allow scripts, ServerMind tool manifests, Steward/AOH material and local learned
+  procedures to produce **candidate** observers/checks/capabilities/playbooks
+  without becoming executable merely by import;
+- show the normalized candidate/diff and validation/eval results before any
+  reviewed promotion into executable Module API contributions;
+- evaluate AOH-inspired source locks, owned-file manifests, safe-tree hygiene and
+  convergent/crash-safe install semantics for the future package installer
+  without making AOH a runtime dependency;
 - remove duplicate/experimental validators;
 - make notification transports consume shared domain events;
 - evolve notification/report delivery and authenticated email into the shared
@@ -559,8 +602,10 @@ No compatibility path survives indefinitely without an explicit reason.
 
 Keep extension points for, but do not staff as Igor 2.0 requirements:
 
-- reviewed promotion of learned/AI-generated capability candidates into trusted
-  executable code;
-- module packs/marketplace and third-party signing/distribution;
-- richer external adapters and interoperability;
+- broad automatic promotion of learned/AI-generated capability candidates into
+  trusted executable code beyond the reviewed candidate path;
+- public module/knowledge registry or marketplace and third-party
+  signing/distribution infrastructure;
+- live richer external adapters/interoperability with AOH, ServerMind, Steward
+  and other control planes;
 - sophisticated dependency resolution beyond demonstrated need.
