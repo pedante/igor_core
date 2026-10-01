@@ -21,6 +21,7 @@ For most Igor 2 work:
    - `INVESTIGATIONS.md` — accepted Step 15C durable local investigation lifecycle, typed references, hypotheses, scoped findings, private persistence and read-only inspection.
    - `CONTEXT_ROUTING.md` — accepted Step 15D bounded context relevance, optional judgment ranking, provider-neutral roles, explicit bindings and operational provenance.
    - `INTERACTION_SURFACE.md` — implemented Step 15UI interaction foundation: scrolling, selection/focus, toggleable control panel, schema-driven inputs/properties and backend-reported AI role visibility.
+   - `OPERATOR_SURFACE.md` — initial contract-driven operator projection and `:` namespace explorer over existing module/capability/configuration registries; no parallel execution or menu authority.
    - `CONFIGURATION.md` — accepted D059 Core-owned configuration foundation: versioned schemas, scoped desired values, private persistence, references-only secrets, precedence, inspection and the bounded `ai.verbose` cutover; richer surfaces and deployments remain deferred.
    - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
    - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
