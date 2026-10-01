@@ -36,6 +36,20 @@ def test_absent_inspection_never_creates_storage(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_declarations_are_read_only_owner_stamped_schemas(tmp_path):
+    schema = {"schema_version": 1, "fields": [
+        {"id": "fixture.value", "type": "boolean", "scope": "module",
+         "label": "Fixture value"}
+    ]}
+    service = ConfigurationService(tmp_path, schemas=[("fixture", schema)])
+    declarations = service.declarations()
+    by_owner = {row["owner"]: row["schema"] for row in declarations}
+    assert by_owner["core"]["fields"][0]["id"] == "ai.verbose"
+    assert by_owner["fixture"]["owner"] == "fixture"
+    assert by_owner["fixture"]["fields"][0]["id"] == "fixture.value"
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_desired_revision_scope_permissions_and_reopen(tmp_path):
     service = ConfigurationService(tmp_path)
     assert commit(service)["application"] == "not_verified"
