@@ -503,6 +503,15 @@ Separate:
 - relationships;
 - deployments.
 
+Treat pre-existing/brownfield resources as normal machine-state participants even
+when Igor did not provision them. Discovery may establish objects/facts and
+relationship claims, while domain modules enrich interpretation; neither
+discovery nor module activation silently creates adoption, desired state or
+responsibility. File-backed configuration participating in a deployment must
+retain a concrete file + stable selector locator, while non-file-backed values
+identify their actual storage/source authority. See
+[BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
+
 Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships. Relationship storage must preserve source claims/reconciliation instead of relying on unqualified last-write-wins edges. Durable participants use the scoped-reference contract from Step 15A so future local and external machine scopes do not require a new relationship identity model.
 
 Installation/configuration workflows use structured plans and leave an
@@ -522,13 +531,17 @@ three boundaries, stopping with evidence after each:
    structured module inspection, reproducible package knowledge and explicit
    read-only detach accounting.
 2. **Composition prerequisites:** only the ownership/binding, relationship,
-   storage, secret and recovery seams required by the selected workflow. Q007
-   remains unresolved; this boundary does not inherit a complete ownership model
-   from the bounded Step 17 `ai.verbose` slice.
+   storage, configuration source/target locator, secret and recovery seams
+   required by the selected workflow. Q007 remains unresolved; this boundary
+   does not inherit a complete ownership model from the bounded Step 17
+   `ai.verbose` slice.
 3. **First reversible application proof:** one narrow, non-secret Nextcloud
-   configuration workflow crossing desired state, approval, execution,
-   independent readback, History and recovery. Select its setting after reviewing
-   existing writers and retain the combined deployment.
+   configuration workflow crossing brownfield discovery/binding, desired state,
+   approval, execution, independent readback, History and recovery. Select its
+   setting after reviewing existing writers and retain the combined deployment.
+   The proof must include an existing-style configuration source that Igor did
+   not create, with explicit adoption and file + selector provenance when the
+   source is file-backed.
 
 Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
