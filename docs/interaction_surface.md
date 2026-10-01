@@ -16,6 +16,13 @@ Input focus retains prompt recall and editing. Panel Up/Down moves visible
 section selection; Page Up/Down scrolls section content. Terminal resize and
 panel toggling preserve the composer and backend projection.
 
+Ctrl+P opens the existing local command palette. Typing `:` on an empty draft
+opens the contract-driven operator explorer. The explorer reads an
+`operator_snapshot` projected by the backend from already-loaded module,
+contribution, capability and configuration registries. Type a segment to filter;
+`.` or Enter descends; Backspace/Esc returns toward the root. Browsing performs
+no model call or host probe.
+
 ## Panel and inspection
 
 The reusable panel holds data-backed sections rather than module-specific forms.
@@ -59,6 +66,11 @@ reuse current backend prompts, including exact `YES` for DESTROY. Sudo password
 input goes directly to the backend PTY and bypasses drafts/history.
 
 Closing/restarting the frontend does not apply a draft, property or selection.
+A selected capability is sent back as `invoke <capability-id[@provider]> [JSON]`
+and enters the existing structured `run_capability` dispatcher; the TUI does
+not classify, approve, elevate, execute or verify it. Capabilities with required
+inputs prepare a draft instead of guessing values. Non-capability leaves are
+browse-only in this first slice.
 No persistent layout migration or second history store is introduced.
 The [15C investigation service](igor2/INVESTIGATIONS.md) owns durable knowledge
 organization; 15D owns context relevance and model routing.
