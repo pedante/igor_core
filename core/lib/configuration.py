@@ -325,6 +325,19 @@ class ConfigurationService:
             return {"schema_version": 1, "availability": "available" if db else "not_created",
                     "scope_id": metadata["scope_id"], "revision": int(metadata["revision"]), "settings": len(self._records(db)), "state_token": self._state_token(db)}
 
+    def declarations(self):
+        """Return owner-stamped schemas without opening or creating storage."""
+        grouped = {}
+        for ident in sorted(self.fields):
+            field = self.fields[ident]
+            owner = field["owner"]
+            public = {key: copy for key, copy in field.items()
+                      if key not in {"owner", "schema_version"}}
+            grouped.setdefault(owner, []).append(public)
+        return [{"owner": owner,
+                 "schema": {"schema_version": 1, "owner": owner, "fields": fields}}
+                for owner, fields in sorted(grouped.items())]
+
     def inspect(self, ident="ai.verbose", target="installation:local", *, compatibility=None, overrides=None):
         field = self._field(ident, target)
         with self._store() as db:
@@ -525,6 +538,8 @@ def cli():
         action = sys.argv[1]
         if action == "capabilities":
             result = capability_records()
+        elif action == "declarations":
+            result = service.declarations()
         elif action == "status":
             result = service.status()
         elif action == "export":
