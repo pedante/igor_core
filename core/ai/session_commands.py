@@ -202,7 +202,7 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "id": "invoke",
         "name": "invoke",
         "aliases": (),
-        "syntax": "invoke <capability-id> [JSON]",
+        "syntax": "invoke <capability-id[@provider]> [JSON]",
         "category": "tools",
         "description": "invoke a registered capability through Igor approval and verification",
         "handler": "invoke",
