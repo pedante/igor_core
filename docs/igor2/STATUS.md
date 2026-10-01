@@ -2,6 +2,25 @@
 
 Last updated: 2026-10-01
 
+## Step 16 Architecture Integration Review and Readiness Assessment — complete
+
+The completed read-only review is finalized in
+[ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md). The 15-series foundations
+compose coherently; Step 20 can build on existing UI and owning inspection
+contracts. Configuration ownership, a representative application workflow and
+default-launch cutover evidence remain readiness gaps. Legacy paths, AI helper
+coverage and knowledge-delivery risks remain documented, with explicit
+deferrals and Step 17 prerequisites.
+
+Closure is documentation-only: references, formatting, repository consistency
+and the final diff are checked. Under [EXECUTION.md](EXECUTION.md), runtime
+contract/regression, a new vertical slice, a new inspection surface and
+persistent migration/recovery proofs are not applicable to this review artifact:
+no runtime contract, behavior or persistent layout changes. Existing foundation
+evidence is inherited, not rerun. This completes the owner-scoped Step 16 review;
+the roadmap's Baselines implementation remains FUTURE. Step 17 and Step 20 are
+not started, and the TUI default cutover is not approved.
+
 ## Step 15A Persistent Identity & Memory Foundation — architecture gate
 
 **Step 15A is accepted and remains an architecture-only gate.** Its contract is

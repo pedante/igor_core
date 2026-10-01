@@ -7,13 +7,17 @@ D055, 15UI, 15C and 15D. The checkout was clean at review start.
 operational authority. They support further interface consolidation now. They
 do not yet prove readiness to make the TUI the default for normal system and
 application administration. Configuration ownership and a representative
-application workflow remain the principal integration gaps.
+application workflow, together with default-launch cutover evidence, remain
+the principal readiness gaps.
 
-This is the requested “Step 16” review, not implementation or completion of
+**Step 16 — Architecture Integration Review and Readiness Assessment is
+complete.** This is the requested review, not implementation or completion of
 the roadmap's [Step 16 — Baselines](ROADMAP.md#step-16--baselines--future).
-It accepts no new architecture, changes no roadmap status and authorizes no
-later work. Code, configuration and existing documentation were only read;
-this report is the sole deliverable. Existing test evidence is attributed to
+It accepts no new architecture and authorizes no later work. The read-only
+review is preserved here; finalization adds only documentation closure notes
+in [STATUS](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete)
+and [ROADMAP](ROADMAP.md#step-16--baselines--future). Runtime code and
+configuration are unchanged. Existing test evidence is attributed to
 [STATUS.md](STATUS.md), not presented as tests rerun during this review. No
 live-provider, terminal usability, remote Git freshness or deployment test was
 performed. Recommendations below require their own owner-scoped work.
@@ -265,6 +269,24 @@ implement them now. They preserve existing foundations and roadmap ordering.
    surfaces in the existing TUI, prove normal workflows and failure/recovery,
    and separately approve the launcher/default transition with CLI and
    `--ai-tui` compatibility. No Step 20 implementation begins in this review.
+
+### Step 17 prerequisites identified
+
+Before [Relationships & Deployments](ROADMAP.md#step-17--relationships--deployments--future)
+implementation, obtain owner confirmation for its bounded contract and workflow
+scope. Reuse Step 15A scoped identities and preserve relationship source claims
+and reconciliation across discovered, configured, installer-created,
+user-declared and AI-proposed evidence. Configuration ownership, effective
+source/scope inspection and migration/recovery semantics must be established
+for the selected workflow before broad application-module migration.
+
+Use the representative application slice to prove structured plans, capability
+selection, approval/privilege, deterministic verification and retained
+deployment/relationship evidence under [EXECUTION](EXECUTION.md). Preserve v1
+Nextcloud compatibility. Durable external waits need their own accepted
+resumption contract if the selected workflow requires them. These are later
+design and evidence gates; Step 17 is not started or declared implementation-ready
+by this review.
 
 ## 6. Step 20 readiness assessment
 

@@ -440,6 +440,13 @@ or UI names.
 
 ## Step 16 — Baselines — FUTURE
 
+The owner-scoped **Step 16 — Architecture Integration Review and Readiness
+Assessment** is complete; see [ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md)
+and [closure evidence](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete).
+That documentation-only review does not implement the Baselines work below or
+start Step 17. Configuration ownership, a representative application workflow
+and cutover evidence remain readiness gates.
+
 Use transparent operational history to learn normal ranges/behavior for this machine.
 
 Also allow evidence-backed local learning such as patterns, runbooks and
