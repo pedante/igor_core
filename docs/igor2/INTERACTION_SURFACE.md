@@ -63,6 +63,21 @@ source collector, model, observer or policy edit. These projections remain
 disposable operational provenance, not durable memory. `--context last` exposes
 retained audit metadata; `--context select` is explicitly a read-only preview.
 
+## Operator Surface integration
+
+The initial [Operator Surface](OPERATOR_SURFACE.md) extends the same frontend
+boundary with a contract-derived `operator_snapshot`. The backend projects its
+existing module, contribution, capability and configuration registries; the TUI
+does not scan packages or invent actions.
+
+`Ctrl+P` remains the local command palette. `:` on an empty draft opens the
+operator namespace explorer, where dotted navigation is a presentation path.
+Selecting a zero-input capability submits an `invoke` request back to the
+backend; required inputs remain explicit and no frontend default is invented.
+The backend adapts `invoke` into the existing `run_capability` dispatcher, so
+safety tier, approval, privilege, provider resolution, verification and History
+are unchanged. Other contribution kinds remain browse-only in this first slice.
+
 ## Current primitives
 
 [Current UI documentation](../interaction_surface.md) lists the operator keys.
@@ -104,6 +119,8 @@ schema contribution, not an implemented setting.
   already authoritative;
 - consistent rendering of pending questions, approvals and choices owned by the
   existing interaction runtime.
+- contract-driven discovery of active module capabilities/configuration/checks
+  without adding module-owned TUI menus.
 
 The result should feel like one operator surface over Igor's backend, not a
 collection of menus that each reimplement domain behavior.
