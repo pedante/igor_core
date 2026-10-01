@@ -616,6 +616,36 @@ not sandboxed. Third-party isolation/signing remains Q004 and future work.
 Q007's relationship/deployment reconciliation is not closed by this approval or
 the bounded Step 17 configuration foundation.
 
+
+### D061 — Brownfield resources remain machine state; adoption and configuration location are explicit
+
+The Project Owner directed Igor 2 to support existing installations that Igor
+did not deploy. [BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md) records the
+refinement.
+
+Machine resources are represented by their owning System Model/relationship
+services, not stored inside a module package. Modules may contribute recognition,
+domain observations, knowledge and capabilities, but discovery or module
+activation does not create desired state, responsibility or management
+authority. An externally created/unknown-origin resource may be discovered and
+understood before any explicit adoption. Adoption is a separate authoritative
+transition and preserves the original provenance.
+
+Configuration values are location-transparent in identity but location-explicit
+in provenance. Every file-backed configuration value used by Igor must expose a
+concrete file plus stable selector; non-file-backed values must identify their
+actual storage/source authority rather than a fabricated path. Application
+read/write bindings and imported-from provenance remain inspectable. Filenames,
+line numbers and Configuration Service's private backend path never become the
+durable setting identity, preserving D054/D059 and backend replaceability.
+
+This decision constrains Q007 but does not close it. Step 17 still must define
+how competing discovered/configured/installer/user relationship claims reconcile,
+and Step 18 still must implement/prove the binding, adoption and reversible
+application path. No broad discovery engine, module migration or ownership
+transfer is implemented by this documentation change.
+
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
@@ -629,7 +659,11 @@ Decision target: before a third-party distribution or marketplace contract.
 
 ### Q007 — Relationship/deployment ownership
 
-How are relationships created/reconciled among discovery, configuration, installers, users and AI proposals?
+How are competing relationship/deployment claims reconciled among discovery,
+configuration, installers, users and AI proposals once D061's brownfield object,
+explicit-adoption and storage-locator constraints are satisfied? Which source
+wins, when can authority transfer, and how is conflict/drift represented without
+last-write-wins ambiguity?
 
 Decision target: Step 17.
 
