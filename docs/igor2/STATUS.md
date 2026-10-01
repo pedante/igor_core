@@ -2,6 +2,22 @@
 
 Last updated: 2026-10-01
 
+## Knowledge import / module synthesis direction — accepted, not implemented
+
+D057 and [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md) now define the architecture
+for turning heterogeneous operational material into Igor-managed knowledge or
+module candidates. Supported source classes include installation docs, scripts,
+guides/runbooks, native Igor modules, Agent Skills/AOH, ServerMind/Steward
+material and local evidence-backed learning.
+
+This changes no runtime authority. Import is reference/candidate normalization
+with provenance; executable promotion must still satisfy the normal Module API,
+capability, compatibility, approval, privilege and verification contracts.
+Portable package content remains separate from machine-specific
+binding/configuration. Step 22 owns future import/authoring tooling; a public
+registry/signing service and live external-system interoperability remain later
+work.
+
 ## Step 15A Persistent Identity & Memory Foundation — architecture gate
 
 **Step 15A is accepted and remains an architecture-only gate.** Its contract is
