@@ -10,7 +10,7 @@ import json,sys
 r=json.load(sys.stdin)
 r.update(data_dir=sys.argv[1],igor_dir=sys.argv[2],inherited_verbose=sys.argv[3] or None,session_id=sys.argv[4] or None)
 print(json.dumps(r,separators=(",", ":")))
-' "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$IGOR_DIR" "${verbose:-}" "${IGOR_AI_EVENT_SESSION_ID:-$}")" || return 1
+' "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$IGOR_DIR" "${verbose:-}" "${IGOR_AI_EVENT_SESSION_ID:-$$}")" || return 1
     printf '%s' "$_request" | python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" "$_action"
 }
 
