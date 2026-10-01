@@ -3261,26 +3261,35 @@ except: print('unknown')
                 _ai_emit_operator_snapshot
                 continue ;;
             invoke\ *)
-                local _invoke_rest="${user_input#invoke }" _invoke_id _invoke_inputs _invoke_tool
-                _invoke_id="${_invoke_rest%% *}"
-                if [ "$_invoke_rest" = "$_invoke_id" ]; then
+                local _invoke_rest="${user_input#invoke }" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
+                _invoke_spec="${_invoke_rest%% *}"
+                _invoke_id="${_invoke_spec%%@*}"
+                if [ "$_invoke_spec" != "$_invoke_id" ]; then
+                    _invoke_provider="${_invoke_spec#*@}"
+                else
+                    _invoke_provider=""
+                fi
+                if [ "$_invoke_rest" = "$_invoke_spec" ]; then
                     _invoke_inputs='{}'
                 else
                     _invoke_inputs="${_invoke_rest#* }"
                 fi
-                if ! _invoke_tool=$(python3 - "$_invoke_id" "$_invoke_inputs" <<'PY'
+                if ! _invoke_tool=$(python3 - "$_invoke_id" "$_invoke_provider" "$_invoke_inputs" <<'PY'
 import json,re,sys
-ident,raw=sys.argv[1:3]
-if not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+",ident):
+ident,provider,raw=sys.argv[1:4]
+pattern=r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+"
+if not re.fullmatch(pattern,ident) or (provider and not re.fullmatch(r"[a-z][a-z0-9_-]*",provider)):
     raise SystemExit(1)
 value=json.loads(raw)
 if not isinstance(value,dict):
     raise SystemExit(1)
-print(json.dumps({"tool":"run_capability","id":ident,"inputs":value},
-                 separators=(",",":")))
+request={"tool":"run_capability","id":ident,"inputs":value}
+if provider:
+    request["provider"]=provider
+print(json.dumps(request,separators=(",",":")))
 PY
                 ); then
-                    warn "Usage: invoke <capability-id> [JSON object]"
+                    warn "Usage: invoke <capability-id[@provider]> [JSON object]"
                     _ai_frontend_event warning "Invalid capability invocation."
                     continue
                 fi
