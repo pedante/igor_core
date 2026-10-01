@@ -1,7 +1,7 @@
 # Brownfield Discovery, Adoption, and Configuration Location
 
-Status: **proposed architecture refinement for Igor 2**. Acceptance occurs when
-this change is merged into the Igor 2 design authority.
+Status: **accepted architecture refinement (D061)**. Runtime implementation is
+pending the Step 17/18 ownership, binding and composition work.
 
 ## Problem
 
