@@ -65,6 +65,8 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
         "kind": "capability",
         "owner": owner,
         "target_id": ident,
+        "provider": str(row.get("provider") or owner),
+        "provider_required": False,
         "availability": _availability(row.get("availability")),
         "unavailable_reason": row.get("unavailable_reason") if isinstance(row.get("unavailable_reason"), str) else None,
         "label": ident.rsplit(".", 1)[-1].replace("_", " "),
@@ -170,6 +172,8 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
     for entry in entries:
         if counts[entry["path"]] > 1:
             entry["path"] = f'{entry["path"]}@{entry["owner"]}'
+            if entry["kind"] == "capability":
+                entry["provider_required"] = True
 
     entries.sort(key=lambda row: (row["path"], row["kind"], row["owner"]))
     document = {"surface_version": SURFACE_VERSION, "entries": entries}
