@@ -30,6 +30,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+_CORE_LIB = Path(__file__).resolve().parents[1] / "lib"
+if str(_CORE_LIB) not in sys.path:
+    sys.path.insert(0, str(_CORE_LIB))
+from operator_surface import children as operator_children
+
 from interaction import (
     FocusModel,
     Property,
@@ -51,7 +56,7 @@ EVENT_TYPES = frozenset(
         "approval_waiting", "explanation", "action_started", "action_output",
         "action_result", "action_skipped", "action_declined", "action_stopped",
         "privilege_waiting", "privilege_result", "continuation", "warning", "error",
-        "mode_changed", "settings_snapshot", "session_finished", "context_routing",
+        "mode_changed", "settings_snapshot", "operator_snapshot", "session_finished", "context_routing",
     }
 )
 
@@ -90,6 +95,7 @@ class EventState:
     collapse_output: bool = False
     command_state: str = "ready"
     settings_snapshot: dict[str, Any] | None = None
+    operator_snapshot: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
     context_routing: dict[str, Any] | None = None
@@ -109,7 +115,7 @@ class EventState:
             return False
         if sequence <= self.sequence:
             return False
-        if kind != "settings_snapshot":
+        if kind not in {"settings_snapshot", "operator_snapshot"}:
             self.cancel_terminal_capture()
         self.sequence = sequence
         if kind == "context_routing":
@@ -119,6 +125,11 @@ class EventState:
                 self.role = str(decision.get("routing", {}).get("selected_role") or "unavailable")
                 self.provider = str(decision.get("routing", {}).get("provider") or self.provider)
                 self.model = str(decision.get("routing", {}).get("model") or self.model)
+            return True
+        if kind == "operator_snapshot":
+            snapshot = event.get("surface")
+            if isinstance(snapshot, dict):
+                self.operator_snapshot = copy.deepcopy(snapshot)
             return True
         self.mode = str(event.get("mode") or self.mode)
         self.provider = str(event.get("provider") or self.provider)
