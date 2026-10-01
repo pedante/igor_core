@@ -61,7 +61,7 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
     properties = inputs.get("properties") if isinstance(inputs.get("properties"), dict) else {}
     safety = descriptor.get("safety") if isinstance(descriptor.get("safety"), dict) else {}
     return {
-        "path": _path(owner, ident),
+        "path": ident,
         "kind": "capability",
         "owner": owner,
         "target_id": ident,
