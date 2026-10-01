@@ -5,6 +5,8 @@
 
 # shellcheck source=core/lib/operational_history.sh
 source "${_IGOR_LOADER_DIR}/core/lib/operational_history.sh"
+# shellcheck source=core/lib/configuration.sh
+source "${_IGOR_LOADER_DIR}/core/lib/configuration.sh"
 
 if [ "${IGOR_CAPABILITY_RESULT_OWNER:-}" != "$$" ] ||
    [ -z "${IGOR_CAPABILITY_RESULT_FILE:-}" ] ||
@@ -239,6 +241,7 @@ PY
 }
 
 _igor_capability_preconditions() {
+    _igor_configuration_precondition "$1" || return 1
     local _proposal="$1" _row _kind _arg _object _property _expected _state _value _root
     while IFS=$'\t' read -r _kind _arg _object _property _expected; do
         [ -n "$_kind" ] || continue
@@ -291,6 +294,10 @@ _igor_capability_invoke_handler() {
     local _proposal="$1" _id _owner _key _handler _timeout _entrypoint _input
     _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
     _owner="$(_igor_capability_field "$_proposal" owner)" || return 1
+    if [ "$_owner" = core ] && [[ "$_id" = core.configuration.* ]]; then
+        _igor_configuration_invoke "$_proposal"
+        return $?
+    fi
     _key="capability:${_id}"
     [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "$_owner" ] || _key="${_key}@${_owner}"
     [ "$(igor_contribution_state "$_key")" = active ] || return 1
@@ -308,6 +315,11 @@ _igor_capability_verify() {
     local _proposal="$1" _kind _observer _fact _attempt _unit _state _expected
     _kind="$(_igor_capability_field "$_proposal" verification.kind)" || return 1
     case "$_kind" in
+        configuration_revision|configuration_restore|ai_verbose_session)
+            local _inputs _action=verify
+            _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+            [ "$_kind" = ai_verbose_session ] && _action=verify-session
+            _igor_configuration_call "$_action" "$_inputs" ;;
         observer_fact)
             _observer="$(_igor_capability_field "$_proposal" verification.observer)" || return 1
             _fact="$(igor_model_read "$(_igor_capability_field "$_proposal" verification.object_id)" \

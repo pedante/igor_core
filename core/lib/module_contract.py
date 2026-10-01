@@ -44,7 +44,8 @@ _KINDS = {
 _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
-                "verification", "recovery", "affects", "payload_schema", "trigger", "target"}
+                "verification", "recovery", "affects", "payload_schema", "trigger", "target",
+                "schema"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -376,7 +377,8 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
     return {field: item[field] for field in fields}
 
 
-def _validate_contribution(package: Path, item: Any, index: int, source: str) -> dict[str, Any]:
+def _validate_contribution(package: Path, item: Any, index: int, source: str,
+                           owner: str) -> dict[str, Any]:
     where = f"{source} contribution {index}"
     if not isinstance(item, dict):
         raise _error(f"{where} must be an object")
@@ -471,7 +473,16 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str) ->
             raise _error(f"{where}.handler is not a valid Bash handler reference")
         result["handler"] = handler
     executable_kinds = {"observer", "check", "capability", "configuration", "lifecycle"}
-    if kind in executable_kinds and "handler" not in result:
+    if kind == "configuration" and "schema" in item:
+        try:
+            from configuration_schema import validate_schema
+            result["schema"] = validate_schema(item["schema"], owner)
+        except (ImportError, ValueError) as exc:
+            raise _error(f"{where}.schema is invalid: {exc}") from exc
+    elif "schema" in item:
+        raise _error(f"{where}.schema is configuration-only")
+    if kind in executable_kinds and "handler" not in result and not (
+            kind == "configuration" and "schema" in result):
         raise _error(f"{where} requires handler")
     if kind == "knowledge" and "path" not in result and "handler" not in result:
         raise _error(f"{where} requires path or handler")
@@ -654,7 +665,7 @@ def validate_module(module_dir: str | os.PathLike[str]) -> dict[str, Any]:
         if not isinstance(declared, list):
             raise _error(f"{contract}.contributions must be an array")
         for index, item in enumerate(declared, 1):
-            value = _validate_contribution(package, item, index, contract)
+            value = _validate_contribution(package, item, index, contract, name)
             if value["kind"] == "domain_event" and not value["id"].startswith(name + "."):
                 raise _error(f"domain event {value['id']} must belong to {name}")
             if value["kind"] == "automation" and not value["id"].startswith(name + "."):

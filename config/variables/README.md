@@ -6,6 +6,13 @@ Everything in this directory is safe to commit. It contains defaults and
 preferences only. Site-specific values (domain, username, paths, passwords)
 all belong in `secrets/`.
 
+The bounded [Configuration Service](../../docs/igor2/CONFIGURATION.md) transfers
+only `ai.verbose` on an explicit approved change. Until cutover, literal
+`verbose` assignments remain compatibility inputs; after cutover they cannot
+override the authoritative desired value. Other variables and secret files
+retain their existing loading behavior. This legacy layout is not the public
+Module API v2 storage contract.
+
 ## Files
 
 | File | Purpose |

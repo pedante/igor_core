@@ -538,6 +538,41 @@ remain outside this decision.
 
 ---
 
+### D059 — Core owns validated desired configuration; application stays separate
+
+The Project Owner accepted Step 17A's configuration architecture and authorized
+the bounded Step 17 foundation plus one Core slice, `ai.verbose`. The contract
+is [CONFIGURATION.md](CONFIGURATION.md); implementation and proof are recorded
+in [STATUS.md](STATUS.md).
+
+Core's Configuration Service owns schema admission, scoped desired values,
+validation lifecycle, deterministic precedence, revisions, persistence,
+provenance and migration/recovery. Modules declare meaning, defaults, types and
+domain semantics through a versioned configuration contribution; they do not
+own security-critical storage semantics. A private SQLite store with readable
+export/recovery and separate secret storage is selected for atomic updates and
+concurrent revision checks, not because another subsystem uses SQLite.
+
+Declared defaults, durable desired values, resolved effective inputs, temporary
+overrides and observed runtime state are distinct. Configuration is never a
+replacement System Model: desired or resolved values do not prove runtime
+application. System Model owns observed state; canonical capabilities own
+application and verification; Operational History owns operation outcomes.
+Configuration stores secret references only; Secret Service owns material and
+mediated access. 15UI renders safe projections and submits typed proposals.
+
+Durable identity uses Igor scope/object/setting references, not handlers,
+paths or labels. Explicit supported session/environment overrides are validated
+and inspectable; legacy files retain their rules only for unmigrated settings.
+Each cutover names sources, validates before commit, preserves recovery,
+supports idempotent re-entry and removes competing write authority.
+
+The first implementation does not migrate Nextcloud, module configurations,
+secrets, host thresholds or broad environment variables. It adds no generic
+settings UI, external secret manager, inheritance, agent, self-healing or later
+roadmap work. Q007 and Q012 remain open; this bounded foundation does not close
+the entire Ownership Foundation gate.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy

@@ -277,9 +277,22 @@ Full guide: [docs/module_creation.md](docs/module_creation.md)
 
 ## Configuration
 
-### Two-layer design
+### Configuration ownership
 
-Igor splits config into two layers that never mix:
+The bounded Configuration Service owns validated desired values for
+`ai.verbose`; [its contract](docs/igor2/CONFIGURATION.md) distinguishes desired
+configuration, resolved input and observed runtime state. Existing verbose
+commands submit changes through the backend capability/approval boundary.
+Read-only inspection does not migrate files; an explicit write performs the
+single-key cutover. Other settings retain the legacy loading rules below.
+
+The service uses private installation-local storage and readable export/recovery.
+Secret material remains separate; no module, Nextcloud, secret or host-threshold
+configuration migrates in this foundation.
+
+### Legacy two-layer layout
+
+Unmigrated configuration uses two legacy file groups:
 
 | Layer | Location | Tracked by git | Contains |
 |-------|----------|----------------|---------|
@@ -336,7 +349,9 @@ provider in **SETTINGS**. Key entry is visible so you can check your paste;
 Enter without a key keeps the existing value. Igor validates replacements,
 saves them in `secrets/<provider>.key` with mode `600`, and updates the active
 session immediately. Saved `config/variables/ai_settings.env` preferences take
-precedence over `ai.env` when opening chat.
+precedence over `ai.env` when opening chat for unmigrated settings. After
+`ai.verbose` cutover, verbosity comes from Configuration Service rather than
+these files; saving other preferences no longer writes a competing verbose key.
 
 If chat reports HTTP 401, type `apikey` to replace the active provider's key,
 then resend your message. Enter the key at the separate prompt, not in a chat

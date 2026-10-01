@@ -1071,7 +1071,13 @@ raise SystemExit(0 if unsupported else 1)
             automation:*)
                 # Step 14A consumes data-only proposals; this never schedules or enables them.
                 ;;
-            relationship:*|configuration:*|lifecycle:*)
+            configuration:*)
+                if [ -z "$(_ml_json_field "$_record" schema)" ]; then
+                    _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
+                    _IGOR_CONTRIBUTION_REASON["$_index_key"]="schema_missing"
+                fi
+                ;;
+            relationship:*|lifecycle:*)
                 _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                 _IGOR_CONTRIBUTION_REASON["$_index_key"]="consumer deferred beyond Wave C"
                 ;;
@@ -1092,6 +1098,30 @@ igor_v2_contribution_get() {
     _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 1
     _ml_v2_requirement_failure "$_requires" >/dev/null || return 1
     printf '%s\n' "$_record"
+}
+
+# Return validated declarative schemas from active configuration owners. This
+# is inspection data only: the module loader does not persist or apply values.
+igor_configuration_declarations() {
+    local _key _record
+    {
+        while IFS= read -r _key; do
+            case "$_key" in configuration:*) ;; *) continue ;; esac
+            _record="$(igor_v2_contribution_get configuration "${_key#configuration:}")" || continue
+            [ -n "$(_ml_json_field "$_record" schema)" ] || continue
+            printf '%s\n' "$_record"
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | "$(_ml_python)" -c '
+import json, sys
+rows = []
+for line in sys.stdin:
+    if not line.strip():
+        continue
+    record = json.loads(line)
+    rows.append({"id": record["id"], "owner": record["owner"],
+                 "source": record["source"], "schema": record["schema"]})
+print(json.dumps(rows, sort_keys=True, separators=(",", ":")))
+'
 }
 
 # The same owner-stamped contribution index backs active dispatch and
@@ -1143,8 +1173,11 @@ for index in range(0, len(raw), 6):
     result.append({"index_key": key, "id": record["id"], "owner": owner,
                    "provider": owner, "source": source, "availability": state,
                    "unavailable_reason": reason or None, "descriptor": record})
+sys.path.insert(0, sys.argv[1])
+from configuration import capability_records
+result.extend(capability_records())
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-'
+' "${_IGOR_LOADER_DIR}/core/lib"
 }
 
 igor_capability_inspect() {

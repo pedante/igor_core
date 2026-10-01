@@ -161,7 +161,7 @@ module code.
 | Domain event | Event type and payload identity. | Emission uses Igor's later domain event API, not `core/ai/events.sh`; no arbitrary event handler is activated in Wave C. |
 | Automation | Proposed trigger and canonical capability reference. | Igor schedules and invokes the capability in Step 14; modules do not schedule directly. |
 | Relationship | Type and participating object types. | Optional discovery through an observer; Step 17 defines provenance and reconciliation. |
-| Configuration | Namespaced settings, defaults, secret flags and validation description. | Optional validation/migration handler; actual values remain in `config/variables/` or private `secrets/`. Invalid user values affect relevant features, not unrelated modules. |
+| Configuration | D059 adds a closed version-1 `schema` with owned fields, types, defaults, scope, sensitivity and application semantics. | Declarative schemas need no handler. Core owns mutable values and storage; handler-only legacy declarations stay unavailable. Real module settings remain on their current compatibility paths until separately migrated. |
 | Lifecycle | Explicit install/upgrade/remove handler IDs; enable/disable remains runtime policy. | Named handlers run under the normal approval/privilege boundary; removing a package is distinct from destroying managed resources. |
 
 Wave C establishes the common descriptor and invocation envelope and makes the
@@ -170,6 +170,42 @@ kind-specific fields and consumers. A declaration for a kind whose dispatcher
 is not implemented is visible as unavailable metadata and is neither
 advertised as an executable action nor scheduled. V2 does not add ten new
 registration hooks.
+
+## Configuration declaration (Step 17 foundation)
+
+The existing contribution envelope can carry a data-only schema:
+
+```json
+{
+  "contract_version": 1,
+  "contributions": [{
+    "kind": "configuration",
+    "id": "fixture.settings",
+    "schema": {
+      "schema_version": 1,
+      "fields": [{
+        "id": "fixture.enabled",
+        "type": "boolean",
+        "scope": "module",
+        "default": false
+      }]
+    }
+  }]
+}
+```
+
+Core stamps the owner/source from the package. Module setting IDs must belong
+to that module's namespace and use module scope. Schema versions, unknown
+fields, invalid defaults and duplicate/foreign IDs fail validation as data;
+inspection does not source disabled code. `igor_configuration_declarations`
+returns eligible active schemas from the existing contribution index.
+The configuration consumer owns scoped value admission and validation; the
+module loader does not write values or apply settings.
+
+See [CONFIGURATION.md](CONFIGURATION.md) for D059's authority split, exact
+bounded implementation, secret/reference policy, persistence and migration.
+This step uses fixtures to prove declaration admission; neither bundled
+module's configuration values migrate.
 
 ## Handler invocation
 

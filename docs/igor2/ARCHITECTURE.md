@@ -86,6 +86,20 @@ target internal services/components include:
 These may remain in one process/repository. The requirement is explicit
 contracts, dependency direction and independent testability, not microservices.
 
+### Configuration authority
+
+[D059](DECISIONS.md) and [CONFIGURATION.md](CONFIGURATION.md) establish the
+Core-owned configuration boundary. Modules declare configuration meaning and
+schemas; Core owns validated desired values, precedence, storage, provenance
+and migration. Configuration stores secret references, not material.
+
+Configuration is not System Model: desired values and resolved consumer inputs
+are not observations or proof of successful runtime application. Capabilities
+apply and verify changes; System Model owns observations; Operational History
+records attempts and outcomes. Interfaces render owning-service projections
+and submit typed proposals. The bounded first slice is `ai.verbose`; broader
+module/deployment migration remains separately gated.
+
 ### Interfaces
 
 Human and external entry points:

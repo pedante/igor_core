@@ -43,6 +43,29 @@ class ModuleContractTests(unittest.TestCase):
         self.assertEqual(result["manifest"]["name"], "system")
         self.assertEqual(result["contributions"][0]["owner"], "system")
 
+    def test_configuration_schema_is_validated_and_core_stamps_owner(self):
+        schema = {"schema_version": 1, "fields": [
+            {"id": "fixture.enabled", "type": "boolean", "scope": "module", "default": False}
+        ]}
+        root = self.package(self.valid_manifest(), {"contract_version": 1, "contributions": [
+            {"kind": "configuration", "id": "fixture.preferences", "schema": schema}
+        ]})
+        (root / "module.sh").write_text(":\n", encoding="utf-8")
+        result = module_contract.validate_module(root)
+        contribution = result["contributions"][0]
+        self.assertEqual(contribution["schema"]["owner"], "fixture")
+        self.assertEqual(contribution["schema"]["fields"][0]["id"], "fixture.enabled")
+        self.assertNotIn("handler", contribution)
+
+    def test_invalid_configuration_schema_rejects_module_contract(self):
+        root = self.package(self.valid_manifest(), {"contract_version": 1, "contributions": [
+            {"kind": "configuration", "id": "fixture.preferences",
+             "schema": {"schema_version": 2, "fields": []}}
+        ]})
+        (root / "module.sh").write_text(":\n", encoding="utf-8")
+        with self.assertRaisesRegex(module_contract.ValidationError, "schema is invalid"):
+            module_contract.validate_module(root)
+
     def test_probe_preserves_permissive_v1_manifest(self):
         root = self.package("[module]\nname=fixture\nunknown_v1_key=value # inline\n")
         self.assertEqual(module_contract.probe_api(root), "1")

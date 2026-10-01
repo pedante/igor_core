@@ -2,6 +2,62 @@
 
 Last updated: 2026-10-01
 
+## Step 17 Configuration Ownership and Schema Foundation — bounded implementation
+
+The Project Owner accepted Step 17A's architecture and authorized the bounded
+foundation plus the Core `ai.verbose` vertical slice. D059 and
+[CONFIGURATION.md](CONFIGURATION.md) are the accepted boundary. The working
+baseline is clean `igor2` at `619d0cd`; local `master` and `origin/master` are
+ancestors. Remote freshness was not fetched for this task.
+
+Configuration owns validated desired values, resolution, schema admission,
+private persistence, precedence, provenance and recovery. It does not own
+System Model observations or Operational History outcomes. Canonical
+capabilities retain authorization, application and verification; configuration
+stores secret references only. 15UI keeps its existing typed proposal boundary.
+
+Scope excludes real module/Nextcloud configuration, secrets, host thresholds,
+broad environment migration, generic settings UI, inheritance, external secret
+managers, agents and Steps 18/19/20. Q007 and Q012 remain open. The full
+Ownership Foundation gate is not closed by this slice.
+
+The foundation is implemented in `configuration_schema.py`, `configuration.py`
+and its Bash adapter. Version-1 declarative module schemas are admitted through
+the existing contribution index; no bundled module settings migrate. Read-only
+`--configuration` status/list/inspect/export/validate creates no configuration
+store and runs no legacy shell. Private SQLite commits validate the candidate,
+bind to revision plus a frozen state token, and retain JSON recovery. Recovery
+into an empty backend cannot admit an old proposal merely because an integer
+revision repeats.
+
+Existing verbose commands use canonical CHANGE admission and History. The
+successful desired write verifies persistence only; the AI session then consumes
+the exact revision and invokes separate READ verification of that session.
+Inspection continues to report observed state unavailable and application
+not verified; it never manufactures a System Model fact or global runtime
+success. Declined changes leave the session and desired store unchanged. Saving
+other AI preferences ceases writing verbose after the explicit single-key cutover.
+
+**EXECUTION evidence (2026-10-01):**
+
+| Proof/check | Result |
+|---|---|
+| Contract | Closed version-1 schemas, scoped ownership, types/constraints, inactive-owner retention, duplicate/non-finite JSON rejection, secret handles, path validation, domain rejection and concurrent CAS are covered. Focused configuration/startup/privilege checks: 59 passed plus 16 subtests. Module contract tests and all 145 module BATS also pass. |
+| Regression | Full Python: 424 passed plus 321 subtests; four existing automation cases fail because the ignored checkout preference selects Guide while they request automatic Assist. The automation implementation and tests are unchanged from HEAD; the existing Guide guard rejects them. All four pass in a separate in-memory harness with explicit test-only Assist configuration: five Bash contexts and eight CLI contexts were adjusted, preserving arguments and installation paths. No repository or personal files changed. No claim of a green unmodified full Python run is made. |
+| Bash regression | Full runner passes all five groups: 46 Bash checks, 46 render checks, 305 core BATS, 145 module BATS and 40 integration BATS. Two existing core cases skip for unavailable GPG agent and `hostname -I`. After the recovery/startup fixes, 49 affected dispatch/event BATS pass. |
+| Vertical slice | Real `ai.verbose` canonical write, desired verification, session consumption, separate session verification, process reopen and legacy-writer retirement pass; the decline fixture proves nonexecution without session mutation. History links the desired change to the canonical operation. |
+| Inspection | Absent storage creates nothing. Owner, scope, desired/default/resolved source, revision/state token, safe secret status, operation reference and History availability are queryable. Observations and application remain explicitly separate. |
+| Migration/recovery | Literal legacy precedence and first-write cutover, prior-value recovery, export/scope validation, retained damaged backend/empty-store restore, initialization/backup failure and stale proposals across recovery pass. Private paths reject unsafe links/permissions/corruption/versions. Trusted linked Core defaults remain readable. No other settings or secret material are copied. |
+| Python lint/compile | All five changed/new Python files pass focused Ruff; runtime helpers compile. Full Ruff retains the same 142 baseline findings in unrelated files. |
+| Bash syntax/lint | All changed scripts pass syntax checks. Configuration/capability/module-loader adapters and changed module BATS pass CI ShellCheck flags. `igor.sh` retains its two existing SC2155 warnings. Whole-file `core.sh` lint times out, matching its previously documented resource limitation; its exact changed regions pass separately with CI flags. |
+| Documentation/diff | 107 local documentation references resolve; diff/whitespace checks pass. Final staged scope is reviewed before the scoped commit. |
+
+Baseline affected tests before implementation were 53 passed plus 16 subtests;
+those are not presented as evidence of the new implementation. Personal ignored
+configuration is preserved, and no unrelated lint/safety behavior is repaired.
+This closes only the owner-authorized configuration foundation and Core slice;
+the original roadmap's Relationships & Deployments Step 17 remains FUTURE.
+
 ## Step 16 Architecture Integration Review and Readiness Assessment — complete
 
 The completed read-only review is finalized in
@@ -18,8 +74,8 @@ contract/regression, a new vertical slice, a new inspection surface and
 persistent migration/recovery proofs are not applicable to this review artifact:
 no runtime contract, behavior or persistent layout changes. Existing foundation
 evidence is inherited, not rerun. This completes the owner-scoped Step 16 review;
-the roadmap's Baselines implementation remains FUTURE. Step 17 and Step 20 are
-not started, and the TUI default cutover is not approved.
+the roadmap's Baselines implementation remains FUTURE. At that review's closure,
+Step 17 and Step 20 were not started, and the TUI default cutover was not approved.
 ## Knowledge import / module synthesis direction — accepted, not implemented
 
 D057 and [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md) now define the architecture

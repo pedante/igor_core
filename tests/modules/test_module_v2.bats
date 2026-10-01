@@ -92,6 +92,60 @@ _basic_contract() {
     [[ "$output" == *'knowledge:demo.basics'*$'\t'demo$'\tactive'* ]]
 }
 
+@test "configuration declarations are inspectable without enabling value writes" {
+    mkdir -p "$IGOR_DIR/modules/config_owner"
+    _manifest config_owner
+    _module config_owner '{"contract_version":1,"contributions":[{"kind":"configuration","id":"config_owner.preferences","schema":{"schema_version":1,"fields":[{"id":"config_owner.enabled","type":"boolean","scope":"module","default":false}]}}]}'
+    printf 'config_owner=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    _load
+
+    [ "$(igor_contribution_state configuration:config_owner.preferences)" = active ]
+    run igor_configuration_declarations
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"owner":"config_owner"'* ]]
+    [[ "$output" == *'"id":"config_owner.enabled"'* ]]
+    ! igor_v2_invoke configuration config_owner.preferences '{}'
+}
+
+@test "configuration declarations from disabled owners are absent" {
+    mkdir -p "$IGOR_DIR/modules/config_disabled"
+    _manifest config_disabled
+    _module config_disabled '{"contract_version":1,"contributions":[{"kind":"configuration","id":"config_disabled.preferences","schema":{"schema_version":1,"fields":[{"id":"config_disabled.enabled","type":"boolean","scope":"module"}]}}]}'
+    printf 'config_disabled=disabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    _load
+
+    [ "$(igor_module_status config_disabled)" = disabled ]
+    [ "$(igor_configuration_declarations)" = '[]' ]
+}
+
+@test "legacy handler-only configuration contribution remains unavailable" {
+    mkdir -p "$IGOR_DIR/modules/config_legacy"
+    _manifest config_legacy
+    _module config_legacy '{"contract_version":1,"contributions":[{"kind":"configuration","id":"config_legacy.preferences","handler":"config_legacy__validate"}]}' $'config_legacy__register() { :; }\nconfig_legacy__validate() { :; }'
+    printf 'config_legacy=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    _load
+
+    [ "$(igor_contribution_state configuration:config_legacy.preferences)" = unavailable ]
+    [ "$(igor_contribution_reason configuration:config_legacy.preferences)" = schema_missing ]
+    [ "$(igor_configuration_declarations)" = '[]' ]
+}
+
+@test "malformed configuration schema fails before module source" {
+    mkdir -p "$IGOR_DIR/modules/config_bad"
+    _manifest config_bad
+    _module config_bad '{"contract_version":1,"contributions":[{"kind":"configuration","id":"config_bad.preferences","schema":{"schema_version":7,"fields":[]}}]}' 'printf sourced > "$IGOR_DIR/sourced"'
+    printf 'config_bad=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    _load
+
+    [ "$(igor_module_status config_bad)" = unavailable ]
+    [[ "$(igor_module_reason config_bad)" == *'schema is invalid'* ]]
+    [ ! -e "$IGOR_DIR/sourced" ]
+}
+
 @test "malformed v2 metadata fails before module code is sourced" {
     mkdir -p "$IGOR_DIR/modules/broken"
     _manifest broken

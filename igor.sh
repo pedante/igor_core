@@ -28,6 +28,11 @@ export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 # source its code, run its validators, or create a tmux session first.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --configuration)
+            source "${IGOR_DIR}/core/lib/configuration.sh"
+            igor_configuration_cli "${2:-status}" "${3:-}"
+            exit $?
+            ;;
         --ai-tui)
             if [ ! -t 0 ] || [ ! -t 1 ]; then
                 printf 'The AI TUI needs an interactive terminal. Use bash igor.sh for the classic UI.\n' >&2

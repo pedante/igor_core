@@ -27,6 +27,8 @@ source "${_AI_DIR}/cost.sh"
 source "${_AI_DIR}/safety.sh"
 source "${_AI_DIR}/context.sh"
 source "${_AI_DIR}/events.sh"
+# shellcheck source=core/lib/configuration.sh
+source "${IGOR_DIR}/core/lib/configuration.sh"
 
 # Session events are observations of existing state and transaction records.
 # Event failures must never change a provider turn or an authorization result.
@@ -282,14 +284,21 @@ else: print(d["command"]["name"] + (" " + " ".join(d["arguments"]) if d["argumen
 
 # The classic session and the TUI command path use this one settings writer.
 _ai_persist_settings() {
-    local _path="${1:-}"
+    local _path="${1:-}" _verbose_managed
     [ -n "$_path" ] || return 2
+    _verbose_managed="$(_igor_configuration_call managed | python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["ai_verbose"] else "false")')" || return 1
     mkdir -p "$(dirname "$_path")" || return 1
     {
-        printf "model=%s\nmax_tokens=%s\nai_mode=%s\nprovider=%s\nverbose=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
+        printf "model=%s\nmax_tokens=%s\nai_mode=%s\nprovider=%s\ntemperature=%s\nAI_AUTOSTART=%s\nAI_HYBRID_MODE=%s\n" \
             "$model" "$max_tokens" "$ai_mode" \
-            "$provider" "$IGOR_VERBOSE" "${NEXUS_TEMPERATURE:-0.7}" \
+            "$provider" "${NEXUS_TEMPERATURE:-0.7}" \
             "${AI_AUTOSTART:-false}" "${AI_HYBRID_MODE:-false}"
+        # Until explicit ai.verbose cutover preserve its existing legacy
+        # preference when saving unrelated settings. Afterwards stop emitting
+        # a competing writable authority.
+        if [ "$_verbose_managed" != true ]; then
+            printf 'verbose=%s\n' "${IGOR_VERBOSE:-true}"
+        fi
         [ -n "${IGOR_OLLAMA_HOST:-}" ] && printf "IGOR_OLLAMA_HOST=%s\n" "$IGOR_OLLAMA_HOST"
         [ -n "${IGOR_OLLAMA_DEFAULT_MODEL:-}" ] && printf "IGOR_OLLAMA_DEFAULT_MODEL=%s\n" "$IGOR_OLLAMA_DEFAULT_MODEL"
         :
@@ -1011,11 +1020,11 @@ _ai_handle_ipc_command() {
             export NEXUS_TEMPERATURE
             echo -e "  ${CYN}[--extra] Temperature → ${NEXUS_TEMPERATURE}${NC}" ;;
         verbose:on)
-            IGOR_VERBOSE="true"; export IGOR_VERBOSE
+            _ai_configuration_verbose_set true || return 1
             echo -e "  ${CYN}[--extra] Verbose ON${NC}"
             _ai_save_settings 2>/dev/null || true ;;
         verbose:off)
-            IGOR_VERBOSE="false"; export IGOR_VERBOSE
+            _ai_configuration_verbose_set false || return 1
             echo -e "  ${CYN}[--extra] Verbose off${NC}"
             _ai_save_settings 2>/dev/null || true ;;
         pause)
@@ -2102,6 +2111,7 @@ menu_ai() {
         [ -n "$sv_ol_host"  ] && IGOR_OLLAMA_HOST="$sv_ol_host" && export IGOR_OLLAMA_HOST
         [ -n "$sv_ol_model" ] && IGOR_OLLAMA_DEFAULT_MODEL="$sv_ol_model" && export IGOR_OLLAMA_DEFAULT_MODEL
     fi
+    _ai_configuration_verbose_load || { _ai_startup_fail configuration 1 "ai.verbose configuration is unavailable; inspect configuration before retrying."; return $?; }
     # Normalize model for active provider
     model=$(_ai_model_for_provider "$model" "$provider")
     export provider ai_mode executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
@@ -2637,8 +2647,8 @@ except: pass
                     read -rp "  Enable? [y/n/keep]: " vchoice ;;
             esac
             case "$vchoice" in
-                y|Y) IGOR_VERBOSE="true"  ;;
-                n|N) IGOR_VERBOSE="false" ;;
+                y|Y) _ai_configuration_verbose_set true || return 1 ;;
+                n|N) _ai_configuration_verbose_set false || return 1 ;;
             esac
 
             _ai_save_settings
@@ -3420,10 +3430,12 @@ PYEOF
                 _igor_loop_quiet=false; export IGOR_LOOP_QUIET=false
                 echo -e "  ${YEL}✔ Quiet loop OFF — all steps shown.${NC}"; echo ""; continue ;;
             "verbose on")
-                IGOR_VERBOSE="true"; _ai_save_settings
+                _ai_configuration_verbose_set true || { echo ""; continue; }
+                _ai_save_settings
                 echo -e "  ${GRN}✔ Verbose mode ON.${NC}"; echo ""; continue ;;
             "verbose off")
-                IGOR_VERBOSE="false"; _ai_save_settings
+                _ai_configuration_verbose_set false || { echo ""; continue; }
+                _ai_save_settings
                 echo -e "  ${GRN}✔ Verbose mode off.${NC}"; echo ""; continue ;;
             stop)
                 # Fix 6: Soft pause — blocks agentic continuation until resumed

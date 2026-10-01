@@ -1,373 +1,318 @@
-# Igor 2 configuration model and surfaces
-
-Status: **design proposal for architectural review; no implementation is implied by this document**.
-
-This document extends the existing Module API v2 configuration contribution into a future configuration service and user-facing configuration surfaces. It does not replace the Ownership Foundation, capability authority, structured plans, secret mediation, or deployment model. It gives those systems a common configuration vocabulary.
-
-## Product goal
-
-A user should be able to say:
-
-> Set the Nextcloud maximum upload size to 20 GB.
-
-or browse:
-
-~~~text
-Nextcloud
-└── Uploads
-    └── Maximum upload size
-~~~
-
-and reach the same canonical setting.
-
-The user should not need to know which file, environment variable, application command, reverse proxy, or database contains the effective setting.
-
-A module describes configuration. Igor owns configured values and secrets. Interfaces present configuration. Capabilities apply configuration. Verification proves the resulting state.
-
-## Architectural invariants
-
-1. A configuration setting has a stable canonical identity independent of its current storage file, UI location, or presentation label.
-2. Modules declare configuration schemas and semantics but do not own mutable machine-specific values inside the installed package.
-3. A presentation surface is not the configuration source of truth.
-4. AI may resolve natural language to registered settings but cannot invent setting identities, dependencies, authority, or successful application.
-5. Secrets are represented by mediated references or configured/unconfigured state; secret values do not enter AI context by default.
-6. A configured value and the effective observed value are distinct. Changing desired/configured state does not prove the target system accepted it.
-7. State-changing configuration is applied through normal Igor capabilities or structured plans and keeps normal approval, privilege, recovery and verification semantics.
-8. Configuration storage is behind an Igor service boundary. Modules must not depend on SQLite, environment files, JSON, or another backend directly.
-9. Configuration may be scoped to a machine, module, deployment, instance or other future object without changing the canonical setting definition.
-10. Configuration relationships are metadata and planning constraints, not a second authorization mechanism.
-
-## Existing foundation
-
-Module API v2 already reserves a configuration contribution kind for namespaced settings, defaults, secret flags, validation and migration metadata. This design evolves that contribution instead of creating another registration hook.
-
-Existing config/variables/*.env and secrets/*.env remain compatibility storage during migration. The immediate goal is to establish one configuration service contract before selecting or migrating to a richer canonical backend.
-
-## Three distinct structures
-
-### Canonical settings tree
-
-Canonical IDs express identity, not menu layout.
-
-~~~text
-communications.email.smtp.host
-communications.email.imap.host
-communications.email.remote.mode
-
-ai.reasoner.provider
-ai.reasoner.model
-ai.verbose
-
-nextcloud.upload.max_size
-nextcloud.maintenance.window
-~~~
-
-IDs should remain stable across UI redesigns and storage migrations.
-
-### Presentation tree
-
-A configuration surface groups and orders settings for a human workflow.
-
-~~~text
-Communications
-└── Email
-    ├── Account
-    ├── Outbound mail
-    ├── Incoming mail
-    ├── Administrator identity
-    ├── Notifications & reports
-    ├── Remote administration
-    └── Test & verify
-~~~
-
-The same canonical setting may appear in more than one useful presentation context without creating multiple values.
-
-### Dependency and impact graph
-
-Igor needs machine-readable relationships between settings and managed state.
-
-Useful relationship concepts include requires, affects, conflicts_with, derived_from, must_match, must_be_at_least, suggest_follow, invalidates, restart_required and verification.
-
-The final public vocabulary should stay intentionally small and evidence-based; new relationship kinds are added only when real modules need them.
-
-## Conceptual setting declaration
-
-The exact JSON schema remains a later design decision. A setting needs enough metadata to support deterministic validation and useful presentation.
-
-~~~json
-{
-  "kind": "configuration",
-  "id": "nextcloud.settings",
-  "settings": [
-    {
-      "id": "nextcloud.upload.max_size",
-      "type": "size",
-      "default": "10GiB",
-      "scope": "deployment",
-      "secret": false,
-      "label": "Maximum upload size",
-      "aliases": ["max upload", "upload size", "max_uploadsize"],
-      "topics": ["uploads", "files", "php", "reverse proxy"],
-      "user_help": "Largest individual file users may upload.",
-      "ai_help": "This setting coordinates application, PHP and reverse-proxy limits."
-    }
-  ]
-}
-~~~
-
-AI help is untrusted reference material. It may explain domain semantics but cannot declare an operation safe, remove approval, grant privilege, create a capability or override Core policy.
-
-## Semantic resolution
-
-Natural-language requests resolve against active registered settings.
-
-~~~text
-"make uploads allow 20 gig files"
-        ↓
-semantic/context resolution
-        ↓
-nextcloud.upload.max_size
-        ↓
-typed value normalization
-        ↓
-configuration change proposal
-~~~
-
-Strong exact matches should resolve deterministically. A semantic scout or main reasoner may provide non-authoritative hints for fuzzy language. If multiple settings remain materially plausible, Igor asks a clarification instead of guessing.
-
-AI does not navigate menu paths internally. Presentation trees are for humans; AI resolution targets canonical setting IDs.
-
-## Related and cascading settings
-
-A single intent may require coordinated changes.
-
-~~~text
-nextcloud.upload.max_size = 20 GiB
-            │
-            ├── php.upload_max_filesize >= 20 GiB
-            ├── php.post_max_size >= 20 GiB
-            └── reverse_proxy.body_limit >= 20 GiB
-~~~
-
-Required constraints may become part of one structured plan. Advisory relationships do not silently mutate unrelated settings.
-
-For example:
-
-~~~text
-communications.identity.email
-    ├── suggest_follow -> notifications.recipient
-    ├── suggest_follow -> reports.recipient
-    └── affects        -> remote_admin.allowed_sender
-~~~
-
-Igor should ask whether optional followers should change, while hard invariants must be satisfied or the plan remains invalid.
-
-## Setting behavior
-
-Not all settings are applied the same way.
-
-- **storage-only** — changing the Igor-owned value is the operation.
-- **managed** — the value is desired configuration that requires capabilities or a plan to apply to an external system.
-- **derived/read-only** — displayed for context but not editable.
-
-A managed setting may have distinct configured, pending, applied and verification states. Exact lifecycle vocabulary should align with the System Model and history instead of creating duplicate concepts.
-
-## Structured apply path
-
-~~~text
-requested setting change
-        ↓
-validate and normalize
-        ↓
-resolve relationships / affected settings
-        ↓
-build structured plan
-        ↓
-preview approval / privilege / recovery implications
-        ↓
-execute registered capabilities
-        ↓
-verify effective state
-        ↓
-commit/report outcome
-~~~
-
-The configuration service does not become another shell dispatcher.
-
-## Configuration surfaces
-
-A configuration surface is a discoverable presentation/workflow contribution, not an arbitrary interactive hook.
-
-A surface may describe pages or groups, fields bound to canonical settings, labels and help, visibility conditions, warnings, ordering, and bounded actions such as discover, test, import, generate, verify or apply.
-
-Most surfaces should be declarative so the same model can be rendered by the classic UI, default TUI, CLI, AI-assisted workflow, future web interface, or installer.
-
-### Bounded actions
-
-Some setup cannot be represented by fields alone: OAuth/device authorization, key import/generation, disk or deployment discovery, testing SMTP/IMAP, discovering local models, or validating a remote API.
-
-A surface may reference registered typed handlers or capabilities for these actions. It must not embed arbitrary shell command strings as executable configuration.
-
-## Launching a surface from Igor
-
-~~~text
-conversation
-    ↓
-"configure email"
-    ↓
-communications.email surface
-    ↓
-interactive child/configuration session
-    ↓
-structured completion result
-    ↓
-original conversation resumes
-~~~
-
-The parent Igor session remains authoritative. A surface cannot bypass policy, secret mediation or capability execution merely because it was launched from AI.
-
-## Installation and partial availability
-
-Module installation and configuration are distinct.
-
-~~~text
-package installed
-    ↓
-configuration requirements inspected
-    ↓
-configuration surface offered
-    ↓
-values collected
-    ↓
-apply plan
-    ↓
-verification
-    ↓
-deployment record
-~~~
-
-A module may remain installed but partially unavailable when required settings are missing. The unavailable reason should identify missing configuration rather than failing later through an unset variable.
-
-## Scopes and multiple instances
-
-Potential scopes include global, machine, module, deployment, instance and user. Only real scopes need implementation initially, but APIs and storage must not assume one value per module forever.
-
-~~~text
-deployment:personal / nextcloud.upload.max_size
-deployment:family   / nextcloud.upload.max_size
-~~~
-
-Step 17 deployment and relationship records are the natural place to attach deployment/instance scope.
-
-## Secrets
-
-A secret setting stores or returns a mediated reference instead of exposing its value through normal configuration inspection.
-
-~~~text
-communications.email.smtp.password
-    -> secret://communications/email/smtp_password
-~~~
-
-Inspection may expose configured state, timestamp and owner, but not the value. Consumers resolve the value only through Igor secret authorization, with use auditable where practical.
-
-## Storage backend
-
-The service contract, not a file format, is the permanent API.
-
-~~~text
-Configuration Service
-    ├── env compatibility backend
-    └── future richer backend
-~~~
-
-SQLite is a strong future candidate because it is transactional, serverless, low-resource, available through Python on normal builds, and suitable for relationships and scoped values. Selecting SQLite does not make SQL or table layout part of the module API.
-
-A possible future shape is data/config/config.db with human-readable export/recovery support. Backups should include a readable configuration export so recovery does not depend on a working UI.
-
-Secrets may remain in a separate backend even if non-secret values move to SQLite.
-
-## Transactions and coordinated changes
-
-A richer backend should support atomic updates to Igor-owned desired/configured state when several related values form one logical change.
-
-This does not imply that external system changes are transactionally reversible. External application uses normal plan recovery semantics from D028/D030.
+# Step 17 — Configuration Ownership and Schema Foundation
+
+Status: **accepted bounded architecture (D059)**. The implementation boundary is
+the foundation and one Core preference, `ai.verbose`. Current implementation,
+validation results and limitations are recorded in [STATUS.md](STATUS.md).
+Deployment/relationship work under the roadmap's original Step 17 remains
+future work.
+
+## Authority and state
+
+Core's Configuration Service owns schema admission, validated desired values,
+resolution, revisions, provenance and migration/recovery. It is an internal
+service boundary, not a daemon requirement or a universal state database.
+Consumers use versioned records and service operations, never SQL or filenames.
+
+| Category | Meaning | Owner |
+|---|---|---|
+| Declared/default | Package baseline tied to a schema version | Core or module declaration |
+| Desired | Durable validated operator intent, including explicit unset | Configuration Service |
+| Effective input | Resolved value for a target/consumer, with selected source | Configuration resolution; consumer owns its consumed snapshot |
+| Observed runtime | What the target actually reports, with freshness | System Model observer |
+| Secret reference | Handle and safe configured/available status | Configuration stores reference; Secret Service owns material |
+| Temporary override | Explicit validated input with session/process lifetime | Session runtime under configuration precedence |
+
+A desired commit is not evidence that an application accepted a value.
+Resolution is not consumption; consumption is not an observation. A running
+process can still use an older revision. Unknown, unavailable, unset and
+defaulted remain distinct. Drift never rewrites desired intent.
+
+Capabilities own application and verification. Operational History owns
+attempts, approvals, execution, verification and outcomes. Configuration retains
+revision/source metadata and operation references, not a second outcome journal.
+Investigations and judgments are reference consumers, with no write authority.
+15UI renders safe backend projections and submits typed intent.
+
+## Scope and identity
+
+A durable setting reference consists of an Igor installation `scope_id`, a
+target object reference and a stable `setting_id`. Reuse D049 scope identity
+and existing object IDs. Restoration of the same installation preserves scope;
+a distinct installation cannot silently reuse it. Read-only inspection never
+allocates a scope.
+
+Version 1 supports installation and module targets. Lookup uses the exact
+target; there is no implicit inheritance. Modules own setting definitions,
+not mutable instance values. Unknown target identities fail closed.
+Deployment, instance, capability/provider and durable user scopes require their
+own established target registries before implementation.
+
+Handlers, paths, labels and discovery/load order are not setting identity.
+
+## Schema version 1
+
+Configuration declarations extend the existing owner-stamped Module API v2
+contribution rather than creating another hook registry. The descriptor is
+strict versioned JSON data. Configuration schema, package, Module API and
+private store versions have separate meanings.
+
+A schema declares stable fields, scope, required/optional status, type,
+optional default, bounded constraints, help, sensitivity, behavior,
+mutability/application semantics and explicit override permissions.
+Core stamps ownership; a declaration cannot impersonate another owner.
+
+Initial value types are text, boolean, integer, finite number, enum, size,
+path reference and secret reference. Sizes normalize to bytes with explicit
+units. Ambiguous legacy units require an explicit conversion.
+Paths are typed root-relative references or deliberately external absolute
+paths. Secret fields accept handles only and have no literal secret defaults.
+
+The implemented descriptor uses `schema_version: 1` and a bounded `fields`
+array. Field names are `id`, `type`, `scope`, `required`, `default`, `enum`,
+`minimum`, `maximum`, `min_length`, `max_length`, `label`, `help`, `sensitivity`,
+`behavior`, `apply`, `overrides`, `secret_purpose`, `path_roots` and `path_kind`.
+Type spellings are `string`, `boolean`, `integer`, `number`, `enum`, `size`,
+`path` and `secret_ref`. `behavior` is `stored` or `managed`; a managed `apply`
+describes capability/verification IDs and `restart` (`none`, `reload`, `restart`).
+Secret-reference values have a `reference`; path values have `root` and
+`relative`. The bounded API accepts sizes as integer bytes and root-relative
+paths only. Human-unit parsing, external absolute paths, general mutability
+controls and richer validation/migration contribution metadata remain deferred.
+
+Primitive constraints remain small: lengths, numeric ranges, enum membership
+and bounded path rules. Domain/cross-field validators are registered, bounded,
+non-mutating functions. They do not embed commands or authorize execution.
+Unsupported descriptor versions/fields, duplicate identities, invalid
+defaults and malformed values fail before writes.
+
+A declarative configuration contribution does not need a Bash handler just to
+describe fields. Legacy handler-only configuration declarations remain
+unavailable until explicitly adapted. No real module configuration migrates
+in this step; fixture declarations prove the new seam.
+
+## Module/Core responsibilities
+
+Modules describe domain meaning, defaults, validation, secret purposes,
+application/restart requirements, capabilities and verification. They may
+supply reviewed migration mappings/conversions; Core orchestrates migration.
+
+Core owns persistence, precedence, atomic commits, authorization, secret
+mediation, provenance, export/recovery and validation sequencing.
+Module code cannot choose security-critical file semantics or bypass approval.
+
+Only active eligible owners contribute live schemas/validation/application.
+Stored values survive disablement for recovery, but availability is explicit
+and disabled modules do not execute to validate or edit them.
+
+## Persistence and recovery
+
+The selected hybrid is private SQLite for desired values/revision metadata,
+versioned JSON export/recovery, separate secret material and generated
+application/compatibility outputs. This choice supports atomic multi-field
+updates and concurrent revision checks without making SQL the module API.
+Structured files alone would need additional locking/transaction machinery;
+readable exports retain headless recovery.
+
+The initial private store is under the installation's data root. Bootstrap
+root bindings locate it before service startup; the store's location must not
+depend on a value inside itself. Root relocation is an explicit migration.
+
+Private directories and files have restrictive permissions and checked
+ownership. Unsafe links, corrupt stores and unsupported versions fail closed;
+existing content is retained. Inspection of an absent store reports absence
+and creates nothing.
+
+Validate the full candidate before persistence. Compare the expected revision
+and frozen configuration-state token inside the transaction; stale proposals cannot overwrite intervening changes.
+Commit values, revision, source and operation reference atomically.
+Application side effects are outside this transaction.
+
+Exports are versioned non-secret documents. Restore validates the whole
+document before changing authority, requires matching installation identity
+and uses the same explicit change boundary. Recovery restores configuration,
+not applications, History, Investigations or observations. Revision identity
+and interruption handling prevent silent replay.
+
+The implementation keeps a private `recovery.json` before a desired commit.
+The first cutover includes a typed `legacy_baseline` for `ai.verbose` so an
+existing false value can be recovered after an initial true proposal. It does
+not copy other legacy settings or secret material. Restore creates a new
+authoritative revision. An empty backend can reuse an integer revision;
+proposals also bind to a digest of the current record identities, revisions,
+operation references and values. That token is checked atomically, so a stale
+proposal cannot cross recovery merely because revision numbers match. The
+absent-store token does not depend on History initialization.
+For a damaged backend, preserve the damaged files first, then restore a
+validated export into an empty configuration backend using the retained
+installation scope. A different scope is rejected. There is no automatic
+overwrite, startup repair or replay of a failed operation.
+
+## Secrets and sensitivity
+
+Credentials, tokens, private keys and authentication material are secrets.
+Hostnames, usernames and paths can be sensitive without being secret.
+Sensitivity controls projection/export; it does not change ownership.
+
+Configuration stores opaque secret references only. Reuse the existing
+[secret reference service](../../core/lib/secret_refs.py): owner, purpose,
+consumer, authorization, safe private file access and value-free access audit.
+This step does not migrate or create real credentials.
+
+Secret material is excluded from ordinary config inspection, UI, AI context,
+History, events, validation errors and exports. Do not include plaintext
+previews, literal defaults or secret-value hashes in provenance.
+Normal inspection returns configured/available status and safe references.
+Only reviewed consumers resolve material; subprocess exposure is explicit.
+
+Ordinary exports do not back up material. Secret recovery is a separate
+sensitive operation. An unresolved restored handle remains unavailable and
+blocks a required consumer. External secret managers are deferred.
+
+## Paths and environment
+
+Code/package roots, durable data/config, secrets, disposable runtime,
+module data and application/deployment paths are separate ownership classes.
+Portable path values bind a semantic root plus relative path. Deliberately
+external absolute paths are marked nonportable. Never evaluate shell
+interpolation or resolve against incidental current working directory.
+
+For migrated settings with supported overrides, precedence is:
+
+```text
+explicit session/CLI override
+  > explicitly supported environment override
+  > durable desired value
+  > declared default
+```
+
+Only declared/Core-approved override bindings participate. Invalid explicit
+overrides fail validation rather than falling back. Inspection identifies
+the override and lifetime separately from the durable value.
+Policy, activation and privilege do not become configurable through arbitrary
+environment variables. Secret injection goes through a reviewed secret binding.
+
+Classify each existing environment name as bootstrap input, compatibility
+import alias, secret injection, session override or internal/derived export.
+No broad environment-variable migration occurs here. `ai.verbose` has no
+arbitrary environment override after cutover. Unmigrated settings retain their
+existing loading behavior.
+
+## Validation and change lifecycle
+
+Validation layers are descriptor/type/normalization, eligible owner,
+scope/reference, secret status, path containment, domain/cross-field candidate
+validation and application capability/precondition checks. No layer claims
+that an external application successfully applied a value. Active filesystem
+or network discovery belongs to explicit READ capabilities.
+
+```text
+typed proposal
+  -> resolve schema, target and current revision
+  -> validate candidate and freeze diff/effects
+  -> canonical policy, approval and privilege
+  -> atomic desired-state commit
+  -> explicit capability/plan application where required
+  -> independent verification
+  -> Operational History outcome
+```
+
+Durable writes are CHANGE operations at minimum. Destructive effects use the
+existing DESTROY classification and exact `YES` behavior. Guide/Assist/Executive
+remain separate from OS privilege. Provider eligibility, frozen inputs and
+preconditions are rechecked; native sudo remains on the existing backend PTY.
+
+History identifies the attempt before effect. Configuration links the committed
+revision to that operation. Missing/pruned History remains unavailable; it
+cannot erase a committed desired value or turn an unknown effect into success.
+Interrupted work is inspected/reconciled explicitly, never automatically retried.
+
+## Bounded Core slice: ai.verbose
+
+The first real setting is the existing verbosity preference. Its commands
+and existing 15UI interaction remain; the UI gains no storage authority.
+Only this key transfers from legacy inputs to Configuration Service. Trusted
+package defaults remain readable when the Core code directory is linked;
+mutable legacy configuration and private authoritative storage reject links.
+Other AI settings remain with their existing writer.
+
+Startup and read-only inspection resolve configuration without migrating.
+An explicit canonical change validates/imports the old value as needed,
+preserves a recovery point and establishes the new authoritative revision.
+Legacy inputs cannot override the value after cutover; the old writer stops
+writing this key.
+
+The desired-state capability verifies persistence only. Current-session
+consumption happens after a successful canonical result and revision check.
+Separate verification identifies the consumer/session evidence it checks.
+A headless desired write does not claim that an already-running chat session
+changed. Configuration inspection never substitutes a resolved value for an
+observed System Model fact.
 
 ## Inspection
 
-The configuration authority should expose read-only inspection as soon as it becomes authoritative.
+The owning surface exposes service status, declarations, scoped value
+inspection, proposal validation and versioned export. It reports default,
+desired and effective input independently, selected source, schema owner/version,
+revision, operation reference, secret status and availability. Application/
+verification evidence remains explicitly separate, with unavailable observation
+when there is no System Model source.
 
-~~~text
-config list
-config inspect <setting>
-config effective <setting>
-config explain <setting>
-config export
-~~~
+Inspection does not create storage, refresh observers, execute validators with
+side effects, authenticate or apply settings. 15UI receives safe projections;
+it does not infer schemas from arbitrary files.
 
-Inspection should reveal provenance, scope, configured/default/effective state, availability reasons and relationships without revealing secrets.
+The bounded headless interface is:
 
-## Migration
+```bash
+bash igor.sh --configuration status
+bash igor.sh --configuration list
+bash igor.sh --configuration inspect ai.verbose
+bash igor.sh --configuration export
+bash igor.sh --configuration validate '[{"id":"ai.verbose","target":"installation:local","value":false}]'
+```
 
-Moving from direct environment-file consumers to the configuration service requires explicit cutover:
+These commands do not source legacy configuration or module code. The shell
+bootstrap data-root binding selects the private store. The headless list
+currently exposes the Core slice; module declarations are inspected through
+`igor_configuration_declarations` and admitted through the service's explicit
+schema boundary in fixtures. It is not a module configuration migration.
 
-1. identify the legacy source;
-2. import and normalize the value;
-3. validate it against the registered schema;
-4. preserve or back up the old source where appropriate;
-5. switch the consumer to the configuration service;
-6. verify equivalent behavior;
-7. prevent indefinite dual-source ambiguity;
-8. remove the legacy path only after documented consumers migrate.
+Canonical operations are `core.configuration.ai_verbose.set` (CHANGE),
+`core.configuration.ai_verbose.verify` (READ, current-session evidence only)
+and `core.configuration.restore` (CHANGE, desired-state recovery only).
+Set inputs are a boolean `value`, expected `revision` and frozen `state` token
+from inspection; verification takes the consumed `revision`; restore takes a
+serialized versioned `document`, expected `revision` and frozen `state` token.
+They use the existing capability adapter/policy/History path, not a new unmediated CLI writer. Durable desired verification and
+session verification produce separate episodes. Existing AI commands provide
+the real editable slice; no generic configuration editor is introduced.
 
-Environment files may remain supported import/export formats after they stop being Igor's canonical internal configuration model.
+## Migration evidence and legacy paths
 
-## Relationship to AI settings
+Current migration inputs include executable `config/variables/*.env`,
+`secrets/*.env` and deprecated root env files, the overlapping
+[legacy loader](../../core/lib/config.sh), specialized AI settings writer,
+module setup/adoption scripts and generated application configuration.
+[LEGACY.md](LEGACY.md) records retention and removal conditions.
 
-The current special AI settings writer is a future candidate consumer.
+Each future migration must name source/precedence, target/version, parser,
+conversion, validation, backup, idempotency, cutover, verification and recovery.
+Imports use bounded literal parsers, not arbitrary shell sourcing. Ambiguous
+or executable assignments require explicit resolution.
+Generated exports do not remain competing writable authorities.
 
-~~~text
-ai.reasoner.provider
-ai.reasoner.model
-ai.reasoner.temperature
-ai.reasoner.max_tokens
-ai.verbose
-~~~
+Nextcloud, module settings, secrets, activation policy and host thresholds
+remain unchanged. Q012's documented/executed RAM-threshold mismatch stays open.
 
-Future model roles naturally extend the namespace:
+## Completion and deferred work
 
-~~~text
-ai.semantic_scout.provider
-ai.semantic_scout.model
-ai.log_compressor.provider
-ai.log_compressor.model
-~~~
+[EXECUTION.md](EXECUTION.md) requires contract, regression, a real vertical
+slice, inspection and migration/recovery proof. [STATUS.md](STATUS.md) records
+actual validation, failures, skips and unavailable checks. The foundation does
+not close the entire Ownership Foundation.
 
-## Non-goals
-
-This design does not require replacing every environment file immediately, selecting a final SQLite schema now, a web UI, arbitrary hot module reconfiguration, generic rollback of external configuration, AI-generated setting identities, configuration metadata as authorization, or every possible scope before a real use case.
-
-## Roadmap fit
-
-- Ownership Foundation: configuration, secret and persistent-state ownership.
-- Module API v2: configuration remains an owner-stamped contribution.
-- Step 17: deployment/instance scope and provenance.
-- Step 20: default TUI can render shared configuration surfaces.
-- Step 22: developer tooling validates configuration descriptors and external interfaces consume the same service.
-- Step 23: obsolete direct config paths are removed only after explicit cutover.
-
-## Proof requirements for implementation
-
-1. **Contract proof** — malformed descriptors, duplicate IDs, invalid types, secret misuse and inactive owners fail closed.
-2. **Regression proof** — legacy config consumers work during documented compatibility.
-3. **Vertical-slice proof** — one real setting can be inspected, changed, applied where necessary and verified.
-4. **Inspection proof** — configured/effective/provenance state is visible without exposing secrets.
-5. **Migration/recovery proof** — an existing-style configuration migrates idempotently and can export/recover without dual-source ambiguity.
-
-## Questions left for later decisions
-
-- exact descriptor schema and initial relationship vocabulary;
-- first implemented scopes;
-- when SQLite becomes canonical rather than experimental;
-- how much configuration history belongs in configuration storage versus Step 15 history;
-- exact TUI suspend/resume protocol for interactive surfaces;
-- whether managed-setting application uses generic or module-specific plan templates.
+Deferred: deployments/relationships, inheritance, cascades, generic settings
+or setup UI, richer 15UI size/path controls, module migrations, external secret
+managers, live privileged secret-consuming adapters, resumable workflows,
+agents, new AI features, self-healing and Steps 18/19/20. The original broader
+configuration-surface ideas remain future design work, not schema-v1 authority.

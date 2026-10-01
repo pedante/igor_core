@@ -475,6 +475,25 @@ let Igor silently rewrite its installed executable modules.
 
 Begin with explainable statistics and thresholds, not opaque ML. A learned baseline describes evidence about normal behavior; it is not desired state or responsibility. Learned artifacts remain reference material under D053 until an explicit authoritative transition exists.
 
+## Step 17 configuration foundation — owner-scoped bounded implementation
+
+After the Architecture Readiness Review, the Project Owner accepted Step 17A's
+configuration architecture (D059) and authorized the foundation plus one Core
+slice, `ai.verbose`. [CONFIGURATION.md](CONFIGURATION.md) defines schema/value
+ownership, separate desired/effective/observed values, private SQLite hybrid
+persistence, secret references, explicit precedence and migration/recovery.
+[STATUS.md](STATUS.md) records the bounded implementation and evidence gate.
+
+Configuration does not replace System Model, Operational History or canonical
+application/verification. 15UI remains a typed proposal/inspection layer. This
+step does not migrate module settings, Nextcloud, secrets, host thresholds or
+broad environment variables, and adds no generic settings UI, inheritance,
+external secret managers, agents or Steps 18/19/20. It does not close Q007 or
+the whole Ownership Foundation.
+
+The original Relationships & Deployments work below remains future work under
+its own architecture and implementation gate.
+
 ## Step 17 — Relationships & Deployments — FUTURE
 
 Separate:
