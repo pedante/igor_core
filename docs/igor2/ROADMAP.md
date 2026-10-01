@@ -534,6 +534,15 @@ Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
 implementation/evidence status is recorded in [STATUS.md](STATUS.md).
 
+The initial [contract-driven Operator Surface](OPERATOR_SURFACE.md) is an
+interaction/composition aid over those same registries: active v2 contributions,
+capabilities and configuration declarations become discoverable through one
+read-only projection and the TUI `:` namespace explorer. It does **not** add a
+Module API menu kind, infer deployment ownership or make UI selection an
+authority. Capability leaves re-enter the canonical dispatcher; required inputs
+are never guessed. Rich generated module screens may build on this projection as
+the relevant Step 18 contracts mature.
+
 Use the current `nextcloud_docker` deployment as the first composition proof case **after** v2 contracts exist.
 
 Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
@@ -573,8 +582,11 @@ The TUI consolidates inspection surfaces already introduced with modules,
 configuration, facts, capabilities, plans, investigations, events and history;
 Wave G is not the first point at which those systems become observable.
 Step 15UI establishes the reusable scrolling, focus, selection, control-panel
-and schema-driven rendering primitives earlier; Step 20 is the later
-default-launch/consolidation cutover, not the first usability work.
+and schema-driven rendering primitives earlier. The Operator Surface adds a
+contract-driven discovery projection and `:` namespace navigation without
+restoring module-owned menus. Step 20 is the later default-launch/consolidation
+cutover, including richer generated module views over those same contracts, not
+the first usability work.
 The proposed configuration-surface contract can let the TUI temporarily enter
 a bounded setup workflow and return to the originating session, while resumable
 work lets long external waits survive without keeping that UI open.
