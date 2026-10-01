@@ -76,6 +76,35 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertTrue(memory["has_children"])
         self.assertEqual(memory["kind"], "observer")
 
+    def test_module_configuration_contribution_projects_schema_fields(self):
+        payload = self.payload()
+        payload["contributions"].append({
+            "id": "system.runtime",
+            "kind": "configuration",
+            "owner": "system",
+            "availability": "active",
+            "unavailable_reason": None,
+            "descriptor": {
+                "schema": {
+                    "schema_version": 1,
+                    "owner": "system",
+                    "fields": [{
+                        "id": "system.runtime.enabled",
+                        "type": "boolean",
+                        "scope": "module",
+                        "label": "Runtime enabled",
+                        "behavior": "stored",
+                    }],
+                }
+            },
+        })
+        surface = build_surface(payload)
+        row = next(item for item in surface["entries"]
+                   if item["target_id"] == "system.runtime.enabled")
+        self.assertEqual(row["kind"], "configuration")
+        self.assertEqual(row["path"], "system.runtime.enabled")
+
+
     def test_duplicate_capability_providers_remain_explicit(self):
         payload = self.payload()
         duplicate = json.loads(json.dumps(CAP))
