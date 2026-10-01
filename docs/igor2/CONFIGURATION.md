@@ -192,6 +192,11 @@ capability can apply it. Finding a file never grants write ownership.
 See [Brownfield Discovery, Adoption, and Configuration Location](BROWNFIELD_ADOPTION.md)
 for the machine-state and adoption model.
 
+This locator refinement is a forward requirement for application/module
+composition. The already implemented bounded `ai.verbose` slice is not claimed
+to prove native-file/application locator support; Step 18 must implement and
+verify the required locator/binding seam before its first application proof.
+
 ## Secrets and sensitivity
 
 Credentials, tokens, private keys and authentication material are secrets.
