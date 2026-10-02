@@ -1228,6 +1228,13 @@ def _palette_overlay(screen: Any, master: int, buffer: InputBuffer,
                     pass
             screen.refresh()
             key = _next_key(screen)
+            if key == 18:  # Ctrl+R: refresh from currently loaded backend registries.
+                state.operator_snapshot = None
+                notice = "Refreshing operator surface…"
+                requested_at = time.monotonic()
+                _send(master, "surface snapshot")
+                selected = 0
+                continue
             if key in (27, 3):
                 return None
             if key == curses.KEY_UP:
@@ -1272,14 +1279,50 @@ def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
     return "invoke " + target, bool(required)
 
 
+def _operator_surface_summary(snapshot: dict[str, Any] | None) -> tuple[str, str]:
+    """Return compact source counts and an actionable state message."""
+    if not isinstance(snapshot, dict):
+        return "Waiting for backend snapshot", ""
+    sources = snapshot.get("sources") if isinstance(snapshot.get("sources"), dict) else {}
+    parts = []
+    failed = []
+    missing = []
+    for name in ("modules", "contributions", "capabilities", "configurations"):
+        row = sources.get(name) if isinstance(sources.get(name), dict) else {}
+        count = row.get("count")
+        count = count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else 0
+        status = str(row.get("status") or "unknown")
+        parts.append(f"{name} {count}")
+        if status == "error":
+            failed.append(name)
+        elif status == "missing":
+            missing.append(name)
+    entry_count = snapshot.get("entry_count")
+    if not isinstance(entry_count, int) or isinstance(entry_count, bool) or entry_count < 0:
+        entries = snapshot.get("entries")
+        entry_count = len(entries) if isinstance(entries, list) else 0
+    summary = f"{entry_count} entries · " + " · ".join(parts)
+    state_name = str(snapshot.get("state") or ("empty" if entry_count == 0 else "ready"))
+    if failed:
+        return summary, "Projection failed for: " + ", ".join(failed) + " · Ctrl+R retry"
+    if state_name == "empty":
+        detail = (" No registry providers are loaded." if len(missing) == 4
+                  else " The loaded registries contain no operator contracts.")
+        return summary, "No operator contracts registered." + detail + " · Ctrl+R refresh"
+    if missing:
+        return summary, "Partial surface; unavailable sources: " + ", ".join(missing) + " · Ctrl+R refresh"
+    return summary, ""
+
+
 def _operator_overlay(screen: Any, master: int, reader: EventReader,
                       state: EventState, buffer: InputBuffer) -> str | None:
     """Browse contract-derived namespaces without owning execution."""
     if state.pending_action or state.privilege_waiting or state.finished:
         return None
     prefix, query, selected = "", "", 0
-    notice = "Loading operator surface…"
+    notice = "Refreshing operator surface…"
     state.operator_snapshot = None
+    requested_at = time.monotonic()
     _send(master, "surface snapshot")
     screen.timeout(100)
     try:
@@ -1300,8 +1343,14 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             needle = query.casefold()
             if needle:
                 nodes = [node for node in nodes if needle in str(node.get("name", "")).casefold()]
-            if snapshot is not None and notice == "Loading operator surface…":
-                notice = ""
+            summary, surface_notice = _operator_surface_summary(snapshot)
+            if snapshot is not None and notice in {
+                "Refreshing operator surface…",
+                "No operator snapshot received · Ctrl+R retry",
+            }:
+                notice = surface_notice
+            elif snapshot is None and time.monotonic() - requested_at >= 2.0 and notice == "Refreshing operator surface…":
+                notice = "No operator snapshot received · Ctrl+R retry"
             if selected >= len(nodes):
                 selected = max(0, len(nodes) - 1)
 
@@ -1310,10 +1359,11 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             location = ":" + (prefix + "." if prefix else "") + query
             try:
                 screen.addnstr(0, 0, f"Explore  {location}", max(1, width - 1), curses.A_BOLD)
-                visible = max(1, height - 3)
+                screen.addnstr(1, 0, summary, max(1, width - 1), curses.A_DIM)
+                visible = max(1, height - 4)
                 first = max(0, selected - visible + 1)
-                for row, node in enumerate(nodes[first:first + visible], 1):
-                    index = first + row - 1
+                for row, node in enumerate(nodes[first:first + visible], 2):
+                    index = first + row - 2
                     marker = ">" if index == selected else " "
                     available = node.get("availability") == "active"
                     flag = " " if available else "×"
@@ -1325,7 +1375,7 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                         line += f"  {desc}"
                     style = curses.A_REVERSE if index == selected else curses.A_DIM if not available else 0
                     screen.addnstr(row, 0, line, max(1, width - 1), style)
-                footer = notice or "Type to filter · . / Enter descend · Backspace parent · Esc back"
+                footer = notice or "Type filter · . / Enter descend · Ctrl+R refresh · Backspace parent · Esc back"
                 screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
             except curses.error:
                 pass
