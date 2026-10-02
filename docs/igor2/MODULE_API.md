@@ -53,6 +53,37 @@ keyword tables. AI receives eligible knowledge and capability descriptions and
 may propose typed intent; Core resolves it. Module-provided prose cannot change
 model roles, policy, ownership or available tools.
 
+## Registered capability plans
+
+Module API v2 also admits a data-only `plan` contribution for bounded
+cross-domain composition. A plan owns semantic intent and ordered references to
+canonical capabilities; it does **not** own execution, approval, privilege or
+verification. Plan IDs are module-scoped, the contract lists every referenced
+capability in `requires.capabilities`, and Core derives availability from those
+dependencies.
+
+A caller invokes only the registered plan ID. Core reloads the owner-stamped
+plan, resolves provider/version/input bindings and freezes a plan digest. At
+execution, every step re-enters the ordinary capability dispatcher and is
+re-resolved before effects, so the existing safety tier, approval, PTY
+authentication, exact privileged adapter, verification and Operational History
+contracts remain authoritative. Arbitrary plan JSON from AI/operator input is
+not an execution interface.
+
+The Docker experiment is the first vertical proof:
+
+```text
+docker.install
+  -> system.package.install(pkg_docker)
+  -> system.service.enable(docker.service)
+  -> system.service.start(docker.service)
+```
+
+The Docker package contains no apt/pacman/systemctl/sudo implementation and does
+not depend on the `system` module identity; it depends on those canonical
+capability IDs. Another provider can satisfy the same contracts later without a
+Docker-module change.
+
 ## Capability output and compatibility contract (Boundary 1)
 
 Package version, Module API version, contribution-envelope version, capability
