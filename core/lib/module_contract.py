@@ -39,13 +39,14 @@ _SECTION_KEYS = {
 }
 _KINDS = {
     "knowledge", "observer", "capability", "check", "domain_event",
-    "automation", "relationship", "configuration", "lifecycle",
+    "automation", "relationship", "configuration", "lifecycle", "plan",
 }
 _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "timeout_seconds",
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
                 "verification", "recovery", "affects", "payload_schema", "trigger", "target",
-                "schema", "outputs"}
+                "schema", "outputs", "plan_version", "intended_outcome", "steps", "objects",
+                "final_check"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -418,6 +419,57 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
         result.update(trigger=trigger, target=target)
     elif "trigger" in item or "target" in item:
         raise _error(f"{where}.trigger/target are automation-only")
+
+    if kind == "plan":
+        if item.get("plan_version") != 1:
+            raise _error(f"{where}.plan_version must be 1")
+        description = item.get("description")
+        intended = item.get("intended_outcome")
+        if not isinstance(description, str) or not description.strip() or len(description) > 512:
+            raise _error(f"{where}.description must be a bounded non-empty string")
+        if not isinstance(intended, str) or not intended.strip() or len(intended) > 512:
+            raise _error(f"{where}.intended_outcome must be a bounded non-empty string")
+
+        def plan_step(raw: Any, field: str) -> dict[str, Any]:
+            step = _closed_object(raw, {"capability_id", "provider", "inputs", "capability_version"},
+                                  f"{where}.{field}")
+            capability_id = _validate_id(step.get("capability_id"), f"{where}.{field}.capability_id")
+            if "." not in capability_id:
+                raise _error(f"{where}.{field}.capability_id must be dotted")
+            if "provider" in step:
+                _validate_id(step["provider"], f"{where}.{field}.provider")
+            if not isinstance(step.get("inputs"), dict):
+                raise _error(f"{where}.{field}.inputs must be an object")
+            try:
+                encoded = json.dumps(step["inputs"], sort_keys=True, separators=(",", ":"))
+            except (TypeError, ValueError) as exc:
+                raise _error(f"{where}.{field}.inputs must be JSON data") from exc
+            if len(encoded) > 16384:
+                raise _error(f"{where}.{field}.inputs is too large")
+            if "capability_version" in step and (
+                    type(step["capability_version"]) is not int or
+                    step["capability_version"] not in {1, 2}):
+                raise _error(f"{where}.{field}.capability_version is unsupported")
+            return step
+
+        steps = item.get("steps")
+        if not isinstance(steps, list) or not 1 <= len(steps) <= 16:
+            raise _error(f"{where}.steps must contain 1..16 entries")
+        normalized_steps = [plan_step(step, f"steps[{index}]")
+                            for index, step in enumerate(steps)]
+        objects = item.get("objects", [])
+        if (not isinstance(objects, list) or len(objects) > 16 or
+                any(not isinstance(value, str) or not re.fullmatch(
+                    r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value
+                ) for value in objects)):
+            raise _error(f"{where}.objects has invalid object identity")
+        final_check = item.get("final_check")
+        normalized_final = plan_step(final_check, "final_check") if final_check is not None else None
+        result.update(plan_version=1, description=description,
+                      intended_outcome=intended, steps=normalized_steps,
+                      objects=objects, final_check=normalized_final)
+    elif set(item) & {"plan_version", "intended_outcome", "steps", "objects", "final_check"}:
+        raise _error(f"{where} has plan-only metadata")
     if kind == "domain_event":
         if not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", result["id"]):
             raise _error(f"{where}.id must be owner.domain.occurrence")
@@ -464,10 +516,21 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
         if result["id"].count(".") < 1:
             raise _error(f"{where}.id requires at least two dotted segments")
         result.update(_validate_capability_metadata(item, where))
+    elif kind == "plan":
+        if set(item) & (capability_fields - {"description"}):
+            raise _error(f"{where} has capability-only metadata")
     elif set(item) & capability_fields:
         raise _error(f"{where} has capability-only metadata")
     if "requires" in item:
         result["requires"] = _validate_requirement_map(item["requires"], where)
+    if kind == "plan":
+        if "requires" not in result:
+            raise _error(f"{where}.requires must declare referenced capabilities")
+        referenced = {step["capability_id"] for step in result["steps"]}
+        if result["final_check"] is not None:
+            referenced.add(result["final_check"]["capability_id"])
+        if set(result["requires"].get("capabilities", [])) != referenced:
+            raise _error(f"{where}.requires.capabilities must exactly match plan references")
     if "path" in item:
         path = item["path"]
         if not isinstance(path, str):
