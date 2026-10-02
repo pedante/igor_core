@@ -345,7 +345,7 @@ not bypass them via legacy `execute` or provider-specific parsing.
 
 ### Minimal structured plans
 
-A plan proposal is an ordered, inspectable value: `plan_version`, intended
+A resolved plan is an ordered, inspectable runtime value. Module-owned reusable composition is declared as a composite capability provider in `MODULE_API.md`; it does not create a second plan registry or AI tool. Ad-hoc/internal planning uses the same value: `plan_version`, intended
 outcome, typed object references, ordered steps (`capability_id`, optional
 provider, validated inputs), step preconditions, affected objects, effective
 tier/approval point, privilege, verification and recovery, plus an optional
