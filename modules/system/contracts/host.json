@@ -794,6 +794,89 @@
           "systemctl"
         ]
       }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.upgrade",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Upgrade the local Debian or Arch system through Core-reviewed package-manager commands.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.package.updates.empty",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "There is no generic package downgrade. Use package-manager history, snapshots or host-specific recovery if an upgrade must be reversed."
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.cache.clean",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Clean the distro package cache through a fixed Debian/Arch package-manager command.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "irreversible",
+        "description": "Cached package files are deleted and can only be obtained again from package sources or another cache."
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
     }
   ]
 }
