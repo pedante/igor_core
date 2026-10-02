@@ -51,7 +51,7 @@ The System package now declares:
 | Services | `system.service.list` | READ | list systemd service units and active/sub states |
 | Services | `system.service.status` | READ | read one validated systemd unit state |
 | Services | `system.service.restart` | CHANGE + privilege | restart one validated existing systemd unit |
-| Logs | `system.logs.recent` | READ | last 40 journal entries, bounded to the typed output limit |
+| Logs | `system.logs.summary` | READ | recent/warning/error counts and latest timestamp; no raw log body is persisted |
 
 The existing memory observer, health/configuration capabilities and knowledge
 remain part of the same module.
@@ -148,6 +148,14 @@ orphans, but this experiment does **not** automatically remove them.
 The discovered package set is machine state. A later removal capability should
 freeze the exact candidate/package identities into an approved operation rather
 than rerun discovery after approval.
+
+Raw journal messages are also deliberately excluded from the generic capability
+result. Capability v2 results become part of Operational History, and arbitrary
+journal text may contain credentials or other sensitive material. The first
+Logs contract therefore reports bounded metadata only. A useful raw-log
+experience should be a dedicated read-only viewer/stream with explicit
+scrubbing and retention semantics rather than an ordinary durable capability
+result.
 
 Likewise, this experiment does not yet add:
 
