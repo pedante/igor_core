@@ -889,6 +889,165 @@
           "arch"
         ]
       }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.install",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Install one validated package through the host package manager.",
+      "inputs": {
+        "properties": {
+          "package": {
+            "type": "string",
+            "validator": "package_name"
+          }
+        },
+        "required": [
+          "package"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.package.installed",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort"
+      },
+      "affects": [
+        {
+          "object": "package",
+          "input": "package"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.service.enable",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Enable one validated systemd service to start at boot.",
+      "inputs": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "validator": "systemd_unit"
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "service_exists",
+          "input": "unit"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.service.enabled",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort"
+      },
+      "affects": [
+        {
+          "object": "service",
+          "input": "unit"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "systemctl"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.service.start",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Start one validated systemd service.",
+      "inputs": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "validator": "systemd_unit"
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "service_exists",
+          "input": "unit"
+        }
+      ],
+      "verification": {
+        "kind": "service_state",
+        "input": "unit",
+        "equals": "active",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort"
+      },
+      "affects": [
+        {
+          "object": "service",
+          "input": "unit"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "systemctl"
+        ]
+      }
     }
   ]
 }
