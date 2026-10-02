@@ -838,6 +838,20 @@ ai_execute_tool() {
                 echo "[ERROR: Capability '${T_CAPABILITY_ID}' is unavailable or its inputs are invalid]"
                 return 1
             }
+            if printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; raise SystemExit(0 if "composition_plan" in json.load(sys.stdin) else 1)'; then
+                local _composite_tier _composite_rc _composite_output
+                _composite_tier=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("safety",{}).get("tier","CHANGE"))') || _composite_tier=CHANGE
+                IGOR_HISTORY_CORRELATION_ID="${IGOR_HISTORY_CORRELATION_ID:-${IGOR_AI_REQUEST_ID:-$_operation_id}}"
+                _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$_composite_tier" orchestrated admitted 0                     "$(_igor_capability_field "$_cap_prepared" owner 2>/dev/null)" "$tool_json" "" "$_operation_id"
+                _ai_emit_event continuation "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$_composite_tier" orchestrated running "Composite capability: $T_CAPABILITY_ID" "" "" false)"
+                IGOR_CAPABILITY_LAST_RESULT=""
+                _composite_output=$(igor_capability_composite_execute "$_cap_prepared")
+                _composite_rc=$?
+                [ -n "$IGOR_CAPABILITY_LAST_RESULT" ] && _composite_output="$IGOR_CAPABILITY_LAST_RESULT"
+                _ai_audit_dispatch RESULT "$T_TOOL" "$_composite_tier" orchestrated                     "$([ "$_composite_rc" -eq 0 ] && printf completed || printf failed)" "$_composite_rc"                     "$(_igor_capability_field "$_cap_prepared" owner 2>/dev/null)" "$tool_json" "$_composite_output" "$_operation_id"
+                printf '%s\n' "$_composite_output"
+                return "$_composite_rc"
+            fi
             # Operational identity is durable before approval, authentication,
             # compatibility backups, or the provider's possible external effect.
             IGOR_HISTORY_CORRELATION_ID="${IGOR_HISTORY_CORRELATION_ID:-${IGOR_AI_REQUEST_ID:-$_operation_id}}"
