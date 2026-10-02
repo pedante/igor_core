@@ -19,7 +19,7 @@ SURFACE_VERSION = 1
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _KINDS = {
     "automation", "capability", "check", "configuration", "domain_event",
-    "knowledge", "lifecycle", "observer", "relationship",
+    "knowledge", "lifecycle", "observer", "relationship", "plan",
 }
 _SOURCE_NAMES = ("modules", "contributions", "capabilities", "configurations")
 _SOURCE_STATES = {"ok", "missing", "error"}
@@ -101,6 +101,7 @@ def _contribution_entry(row: dict[str, Any]) -> dict[str, Any] | None:
         "lifecycle": "Lifecycle",
         "relationship": "Relationship",
         "domain_event": "Domain event",
+        "plan": "Capability plan",
     }
     return {
         "path": _path(owner, ident),
