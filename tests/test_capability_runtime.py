@@ -174,25 +174,112 @@ class CapabilityRuntimeTests(unittest.TestCase):
         self.assertTrue(plan.digest)
         self.assertEqual(plan.inspect()["steps"][0]["inputs"], {"unit": "demo.service"})
 
-    def test_plan_keeps_objects_and_verifiable_final_check(self):
+    def test_plan_keeps_objects_and_typed_final_check_expectation(self):
         registry = CapabilityRegistry()
         registry.register(descriptor())
-        check = descriptor(id="system.host.memory.refresh", privilege="none",
-                           safety={"tier": "READ"}, inputs={"properties": {}, "required": [],
-                                                            "additionalProperties": False},
-                           verification={"kind": "observer_fact", "required": True},
-                           affects=[{"object": "host", "id": "local"}])
+        outputs = {
+            "schema_version": 1,
+            "properties": {
+                "installed": {"type": "boolean"},
+                "daemon_accessible": {"type": "boolean"},
+            },
+            "required": ["installed", "daemon_accessible"],
+            "additionalProperties": False,
+        }
+        check = descriptor(
+            id="docker.status", handler="docker__status", owner="docker", provider="docker",
+            capability_version=2, outputs=outputs, privilege="none",
+            safety={"tier": "READ"}, inputs={"properties": {}, "required": [],
+                                               "additionalProperties": False},
+            verification={"kind": "none", "required": False},
+            affects=[],
+        )
         registry.register(check)
-        plan = CapabilityPlan("restart then inspect", [
-            {"capability_id": "system.service.restart", "inputs": {"unit": "demo.service"}}],
+        plan = CapabilityPlan(
+            "restart then inspect",
+            [{"capability_id": "system.service.restart", "inputs": {"unit": "demo.service"}}],
             objects=["service:systemd:demo.service"],
-            final_check={"capability_id": check.id, "inputs": {}}).resolve(registry)
+            final_check={"capability_id": check.id, "inputs": {},
+                         "expect": {"installed": True, "daemon_accessible": True}},
+        ).resolve(registry)
         self.assertEqual(plan.inspect()["objects"], ["service:systemd:demo.service"])
         self.assertEqual(plan.inspect()["final_check"]["capability_id"], check.id)
+        self.assertEqual(plan.inspect()["final_check"]["expect"],
+                         {"installed": True, "daemon_accessible": True})
         with self.assertRaises(CapabilityError):
-            CapabilityPlan("invalid", [{"capability_id": check.id, "inputs": {}}],
-                           final_check={"capability_id": "system.service.restart",
-                                        "inputs": {"unit": "demo.service"}}).resolve(registry)
+            CapabilityPlan(
+                "invalid",
+                [{"capability_id": check.id, "inputs": {}}],
+                final_check={"capability_id": "system.service.restart",
+                             "inputs": {"unit": "demo.service"},
+                             "expect": {"state": "active"}},
+            ).resolve(registry)
+        with self.assertRaises(CapabilityError):
+            CapabilityPlan(
+                "invalid expectation",
+                [{"capability_id": "system.service.restart",
+                  "inputs": {"unit": "demo.service"}}],
+                final_check={"capability_id": check.id, "inputs": {},
+                             "expect": {"unknown": True}},
+            ).resolve(registry)
+
+    def test_composite_provider_resolves_platform_variant_into_internal_plan(self):
+        registry = CapabilityRegistry()
+        package = descriptor(
+            id="system.package.install", handler="system__privileged_marker",
+            inputs={"properties": {"package": {"type": "string", "validator": "package_name"}},
+                    "required": ["package"], "additionalProperties": False},
+            verification={"kind": "trusted_query", "required": True},
+            affects=[{"object": "package", "input": "package"}],
+        )
+        registry.register(package)
+        status_outputs = {
+            "schema_version": 1,
+            "properties": {"ready": {"type": "boolean"}},
+            "required": ["ready"], "additionalProperties": False,
+        }
+        status = descriptor(
+            id="fixture.status", owner="fixture", provider="fixture",
+            handler="fixture__status", capability_version=2, outputs=status_outputs,
+            privilege="none", safety={"tier": "READ"},
+            inputs={"properties": {}, "required": [], "additionalProperties": False},
+            verification={"kind": "none", "required": False}, affects=[],
+        )
+        registry.register(status)
+        raw = {
+            "kind": "capability", "id": "fixture.install", "owner": "fixture",
+            "provider": "fixture", "capability_version": 1,
+            "description": "Install fixture.",
+            "inputs": {"properties": {}, "required": [], "additionalProperties": False},
+            "safety": {"tier": "CHANGE"}, "privilege": "none",
+            "preconditions": [], "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "best_effort"},
+            "affects": [{"object": "package", "id": "fixture"}],
+            "implementation": {
+                "kind": "composition", "intended_outcome": "Fixture is ready.",
+                "variants": [
+                    {"requires": {"platform_families": ["debian"]},
+                     "steps": [{"capability_id": "system.package.install",
+                                "inputs": {"package": "fixture-deb"}}]},
+                    {"requires": {"platform_families": ["arch"]},
+                     "steps": [{"capability_id": "system.package.install",
+                                "inputs": {"package": "fixture"}}]},
+                ],
+                "final_check": {"capability_id": "fixture.status", "inputs": {},
+                                "expect": {"ready": True}},
+            },
+        }
+        registry.register(raw)
+        proposal = registry.prepare("fixture.install", {}, provider="fixture",
+                                    platform_family="debian")
+        self.assertEqual(proposal["composition_plan"]["steps"][0]["inputs"],
+                         {"package": "fixture-deb"})
+        self.assertEqual(proposal["composition_plan"]["final_check"]["expect"],
+                         {"ready": True})
+        self.assertTrue(proposal["composition_plan"]["digest"])
+        with self.assertRaises(CapabilityError):
+            registry.prepare("fixture.install", {}, provider="fixture",
+                             platform_family="unknown")
 
     def test_inspection_is_read_only(self):
         registry = CapabilityRegistry(); cap = descriptor(); registry.register(cap)
