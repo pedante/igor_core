@@ -614,7 +614,6 @@ ai_execute_tool() {
         _plan_rc=$?
         _plan_result="${IGOR_CAPABILITY_PLAN_LAST_RESULT:-}"
         _ai_audit_dispatch RESULT "$T_TOOL" orchestrated not_required             "$([ "$_plan_rc" -eq 0 ] && printf completed || printf failed)" "$_plan_rc"             "" "$tool_json" "$_plan_result" "$_operation_id"
-        [ -n "$_plan_result" ] && printf '%s\n' "$_plan_result"
         return "$_plan_rc"
     fi
 
