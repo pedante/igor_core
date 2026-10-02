@@ -1228,13 +1228,6 @@ def _palette_overlay(screen: Any, master: int, buffer: InputBuffer,
                     pass
             screen.refresh()
             key = _next_key(screen)
-            if key == 18:  # Ctrl+R: refresh from currently loaded backend registries.
-                state.operator_snapshot = None
-                notice = "Refreshing operator surface…"
-                requested_at = time.monotonic()
-                _send(master, "surface snapshot")
-                selected = 0
-                continue
             if key in (27, 3):
                 return None
             if key == curses.KEY_UP:
@@ -1382,6 +1375,13 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             screen.refresh()
 
             key = _next_key(screen)
+            if key == 18:  # Ctrl+R: refresh from currently loaded backend registries.
+                state.operator_snapshot = None
+                notice = "Refreshing operator surface…"
+                requested_at = time.monotonic()
+                _send(master, "surface snapshot")
+                selected = 0
+                continue
             if key in (27, 3):
                 if key == 3:
                     _send(master, "/stop")
