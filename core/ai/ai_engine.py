@@ -122,6 +122,13 @@ def validate_tool_call(tool):
             return False, True, "Capability id is required", []
         if not isinstance(tool.get("inputs"), dict):
             return False, True, "Capability inputs must be an object", []
+    elif tool_type == "run_plan":
+        ident = tool.get("id")
+        if (not isinstance(ident, str) or
+                not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", ident)):
+            return False, True, "Registered plan id is required", []
+        if set(tool) - {"tool", "id", "__native_id"}:
+            return False, True, "Plan invocation accepts only a registered id", []
     elif tool_type in ("read_log", "propose_menu_item", "reply", "run_igor_action"):
         pass  # always valid — run_igor_action tier is determined by the capability catalog
 
@@ -516,6 +523,8 @@ def _extract_xml_tools(reply_text):
         lambda g: {"tool": "run_igor_action", "cmd": g.strip()}, reply_text)
     reply_text = _extract(r'<run_capability\s+id="([^"]+)"(?:\s+provider="([^"]+)")?>\s*(.*?)\s*</run_capability>',
         lambda g: _capability_xml_tool(g), reply_text)
+    reply_text = _extract(r'<run_plan\s+id="([^"]+)"\s*/>',
+        lambda g: {"tool": "run_plan", "id": g.strip()}, reply_text)
     reply_text = _extract(r'<read_file\s+lines="([0-9]+)">\s*(.*?)\s*</read_file>',
         lambda g: {"tool": "read_file", "lines": g[0], "path": g[1].strip()}, reply_text)
     reply_text = _extract(r'<read_report>\s*(.*?)\s*</read_report>',
