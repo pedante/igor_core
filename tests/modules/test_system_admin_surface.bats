@@ -79,17 +79,17 @@ _execute_read() {
     capabilities="$(igor_capability_list)"
     configurations="$(igor_configuration_declarations)"
     surface="$(printf '%s\0%s\0%s\0%s\0' "$modules" "$contributions" "$capabilities" "$configurations" |
-        python3 - "$REPO_DIR/core/lib/operator_surface.py" <<'PY'
+        python3 -c '
 import json,subprocess,sys
-parts=sys.stdin.buffer.read().split(b"\0")
+tool=sys.argv[1]
+parts=sys.stdin.buffer.read().split(b"\\0")
 if parts[-1:]==[b""]: parts.pop()
 payload=dict(zip(("modules","contributions","capabilities","configurations"),
                  (json.loads(part) for part in parts)))
-proc=subprocess.run([sys.executable,sys.argv[1],"build"],
-                    input=json.dumps(payload),text=True,capture_output=True,check=True)
+proc=subprocess.run([sys.executable,tool,"build"],input=json.dumps(payload),
+                    text=True,capture_output=True,check=True)
 print(proc.stdout,end="")
-PY
-    )"
+' "$REPO_DIR/core/lib/operator_surface.py")"
     python3 - "$surface" <<'PY'
 import json,sys
 surface=json.loads(sys.argv[1])
