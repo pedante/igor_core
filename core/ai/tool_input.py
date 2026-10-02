@@ -26,6 +26,7 @@ SCHEMAS = {
     "reply": ({"message", "status"}, {"message"}),
     "run_igor_action": ({"cmd"}, {"cmd"}),
     "run_capability": ({"id", "inputs", "provider", "capability_version"}, {"id", "inputs"}),
+    "run_plan": ({"id"}, {"id"}),
 }
 ALIASES = {"host_command": "host", "occ_command": "occ", "container_action": "container"}
 
@@ -64,6 +65,13 @@ def tool_fields(text):
         if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", data["id"]):
             raise ValueError("invalid capability id")
         data["capability_id"] = data.pop("id")
+    if name == "run_plan":
+        if not data["id"].strip():
+            raise ValueError("empty plan id")
+        if not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", data["id"]):
+            raise ValueError("invalid plan id")
+        # Reuse the fixed cmd slot so the shell parser contract stays stable.
+        data["cmd"] = data.pop("id")
     if name in {"read_log", "read_file"}:
         lines = data.get("lines", "20" if name == "read_log" else "50")
         if not re.fullmatch(r"[0-9]{1,9}", lines) or int(lines) < 1:
