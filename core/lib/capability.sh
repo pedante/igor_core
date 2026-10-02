@@ -219,12 +219,18 @@ igor_capability_prepare() {
     local _family _argv _update_argv _upgrade_argv _package _resolved_package _op
     [ -n "$_inputs" ] || _inputs='{}'
     _records="$(igor_capability_list)" || return 1
-    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" <<'PY'
+    if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+        # shellcheck source=core/lib/distro.sh
+        source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+        igor_detect_distro >/dev/null 2>&1 || true
+    fi
+    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" "${IGOR_DISTRO_FAMILY:-}" <<'PY'
 import json, sys
 try:
     request = {"op": "prepare", "records": json.loads(sys.argv[1]),
                       "id": sys.argv[2], "inputs": json.loads(sys.argv[3]),
-                      "provider": sys.argv[4] or None}
+                      "provider": sys.argv[4] or None,
+                      "platform_family": sys.argv[6] or None}
     if sys.argv[5]:
         if sys.argv[5] not in {"1", "2"}:
             raise ValueError("unsupported capability version")
