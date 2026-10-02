@@ -160,7 +160,7 @@ _ai_emit_operator_snapshot() {
         printf '%s\0%s\0%s\0%s\0%s\0' "$_modules" "$_contributions" "$_capabilities" "$_configurations" "$_sources" |
             python3 -c '
 import json,sys
-parts=sys.stdin.buffer.read().split(b"\\0")
+parts=sys.stdin.buffer.read().split(b"\0")
 if parts[-1:]==[b""]: parts.pop()
 if len(parts)!=5: raise SystemExit(1)
 names=("modules","contributions","capabilities","configurations")
