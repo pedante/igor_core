@@ -54,7 +54,7 @@ for step in steps:
     if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs", "capability_version"}:
         raise SystemExit(1)
 final_check = plan.get("final_check")
-if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs", "capability_version"}):
+if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs", "capability_version", "expect"}):
     raise SystemExit(1)
 print(json.dumps({"op": "plan", "records": records, "plan_version": 1,
                   "intended_outcome": plan["intended_outcome"], "objects": plan.get("objects", []),
@@ -65,9 +65,6 @@ PY
     printf '%s' "$_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py"
 }
 
-# Resolve a plan that came from an active Module API contribution. Callers
-# supply only its durable ID; plan structure and referenced capabilities remain
-# owner-stamped contract data.
 # Each step enters the same AI dispatcher as a single operation. The resolved
 # digest is checked again before the first step and every later step is
 # re-resolved by igor_capability_prepare inside that dispatcher.
