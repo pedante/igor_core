@@ -543,6 +543,9 @@ igor_contribution_state() {
 _ml_contribution_dynamic_failure() {
     local _key="$1" _record="${_IGOR_CONTRIBUTIONS[$1]:-}" _requires
     [[ "$_record" = \{* ]] || return 0
+    # Most contributions have no dynamic requirements. Avoid spawning Python
+    # for those records on every Operator Surface snapshot.
+    [[ "$_record" == *'"requires"'* ]] || return 0
     _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 0
     _ml_v2_requirement_failure "$_requires" || true
 }
@@ -570,14 +573,29 @@ igor_contribution_list() {
 # existing owner-stamped registry; they do not create another contribution or
 # module catalog.
 igor_contribution_records() {
-    local _key _owner _record _state _reason
+    local _key _owner _record _state _reason _dynamic _base_state _owner_active
     {
         while IFS= read -r _key; do
             [ -n "$_key" ] || continue
             _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
             _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
-            _state="$(igor_contribution_state "$_key" 2>/dev/null || printf unavailable)"
-            _reason="$(igor_contribution_reason "$_key" 2>/dev/null || true)"
+            _base_state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
+            _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
+            _dynamic=""
+            if _ml_owner_active "$_owner"; then _owner_active=true; else _owner_active=false; fi
+            if [ -z "$_reason" ] || { [ "$_owner_active" = true ] && [ "$_base_state" = active ]; }; then
+                _dynamic="$(_ml_contribution_dynamic_failure "$_key" 2>/dev/null || true)"
+            fi
+            if [ "$_owner_active" != true ]; then
+                _state=inactive
+            elif [ "$_base_state" != active ]; then
+                _state="$_base_state"
+            elif [ -n "$_dynamic" ]; then
+                _state=unavailable
+            else
+                _state=active
+            fi
+            [ -n "$_reason" ] || _reason="$_dynamic"
             printf '%s\0' "$_key" "$_owner" "${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}" \
                 "$_state" "$_reason" "$_record"
         done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
@@ -1294,7 +1312,7 @@ print(json.dumps(rows, sort_keys=True, separators=(",", ":")))
 # read-only inspection. Duplicate providers retain their @owner index keys;
 # selection is deliberately left to the capability resolver.
 igor_capability_list() {
-    local _key _owner _record _state _reason
+    local _key _owner _record _state _reason _dynamic _base_state _owner_active
     {
         while IFS= read -r _key; do
             case "$_key" in capability:*|legacy_action:*) ;; *) continue ;; esac
@@ -1318,8 +1336,23 @@ print(json.dumps({"kind": "legacy_action", "id": ident, "owner": owner,
 PY
 )" || return 1
             fi
-            _state="$(igor_contribution_state "$_key" 2>/dev/null || true)"
-            _reason="$(igor_contribution_reason "$_key" 2>/dev/null || true)"
+            _base_state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
+            _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
+            _dynamic=""
+            if _ml_owner_active "$_owner"; then _owner_active=true; else _owner_active=false; fi
+            if [ -z "$_reason" ] || { [ "$_owner_active" = true ] && [ "$_base_state" = active ]; }; then
+                _dynamic="$(_ml_contribution_dynamic_failure "$_key" 2>/dev/null || true)"
+            fi
+            if [ "$_owner_active" != true ]; then
+                _state=inactive
+            elif [ "$_base_state" != active ]; then
+                _state="$_base_state"
+            elif [ -n "$_dynamic" ]; then
+                _state=unavailable
+            else
+                _state=active
+            fi
+            [ -n "$_reason" ] || _reason="$_dynamic"
             if [ "$_state" = inactive ]; then
                 _reason="${_IGOR_MODULE_STATUS[$_owner]:-inactive}${_IGOR_MODULE_REASON[$_owner]:+ (${_IGOR_MODULE_REASON[$_owner]})}"
             fi
