@@ -672,10 +672,10 @@
     },
     {
       "kind": "capability",
-      "id": "system.logs.recent",
-      "handler": "system__logs_recent",
+      "id": "system.logs.summary",
+      "handler": "system__logs_summary",
       "capability_version": 2,
-      "description": "Show the most recent local system journal entries without modifying the journal.",
+      "description": "Summarize recent journal activity without persisting raw log message bodies.",
       "inputs": {
         "properties": {},
         "required": [],
@@ -684,14 +684,24 @@
       "outputs": {
         "schema_version": 1,
         "properties": {
-          "count": {
+          "recent_count": {
             "type": "integer",
             "minimum": 0,
             "maximum": 40
           },
-          "entries": {
+          "warning_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "error_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "latest_entry_at": {
             "type": "string",
-            "maxLength": 4096
+            "maxLength": 128
           },
           "source": {
             "type": "string",
@@ -699,8 +709,10 @@
           }
         },
         "required": [
-          "count",
-          "entries",
+          "recent_count",
+          "warning_count",
+          "error_count",
+          "latest_entry_at",
           "source"
         ],
         "additionalProperties": false
