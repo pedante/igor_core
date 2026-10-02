@@ -276,10 +276,22 @@ class CapabilityRuntimeTests(unittest.TestCase):
                          {"package": "fixture-deb"})
         self.assertEqual(proposal["composition_plan"]["final_check"]["expect"],
                          {"ready": True})
+        self.assertEqual(proposal["affected_objects"], ["package:fixture-deb"])
+        self.assertEqual(proposal["composition_summary"]["privilege"], "required")
+        self.assertEqual(proposal["composition_summary"]["child_tier_floor"], "CHANGE")
+        self.assertEqual(proposal["composition_summary"]["effective_tier"], "CHANGE")
         self.assertTrue(proposal["composition_plan"]["digest"])
         with self.assertRaises(CapabilityError):
             registry.prepare("fixture.install", {}, provider="fixture",
                              platform_family="unknown")
+        with self.assertRaisesRegex(CapabilityError, "direct privilege"):
+            CapabilityDescriptor.from_dict({**raw, "privilege": "required"})
+        weak = CapabilityDescriptor.from_dict({**raw, "id": "fixture.weak",
+                                                "safety": {"tier": "READ"}})
+        registry.register(weak)
+        with self.assertRaisesRegex(CapabilityError, "safety tier"):
+            registry.prepare("fixture.weak", {}, provider="fixture",
+                             platform_family="debian")
 
     def test_inspection_is_read_only(self):
         registry = CapabilityRegistry(); cap = descriptor(); registry.register(cap)
