@@ -97,6 +97,56 @@ _execute_read() {
     igor_capability_execute "$proposal"
 }
 
+@test "reviewed package administration declarations are active only in their exact shape" {
+    run igor_capability_inspect system.package.upgrade system
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"resolution":"resolved"'* ]]
+    [[ "$output" == *'"selected_provider":"system"'* ]]
+    run igor_capability_inspect system.package.cache.clean system
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"resolution":"resolved"'* ]]
+}
+
+@test "forged package administration handler is unavailable before preparation" {
+    python3 - "$IGOR_DIR/modules/system/contracts/host.json" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+row=next(x for x in data["contributions"] if x.get("id")=="system.package.upgrade")
+row["handler"]="system__package_updates_list"
+path.write_text(json.dumps(data))
+PY
+    run bash -c '
+        source "$1/core/lib/module_loader.sh"
+        _ml_log() { :; }
+        igor_load_all_modules >/dev/null
+        igor_capability_inspect system.package.upgrade system
+        igor_capability_prepare system.package.upgrade "{}" system 1
+    ' _ "$REPO_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *'privileged_adapter_unavailable'* ]]
+}
+
+@test "forged package upgrade verifier is unavailable before preparation" {
+    python3 - "$IGOR_DIR/modules/system/contracts/host.json" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+row=next(x for x in data["contributions"] if x.get("id")=="system.package.upgrade")
+row["verification"]={"kind":"trusted_query","check_id":"other.check","required":True}
+path.write_text(json.dumps(data))
+PY
+    run bash -c '
+        source "$1/core/lib/module_loader.sh"
+        _ml_log() { :; }
+        igor_load_all_modules >/dev/null
+        igor_capability_inspect system.package.upgrade system
+        igor_capability_prepare system.package.upgrade "{}" system 1
+    ' _ "$REPO_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *'trusted_adapter_unavailable'* ]]
+}
+
 @test "system administration contracts project into the generic operator namespace" {
     modules="$(igor_module_records)"
     contributions="$(igor_contribution_records)"
