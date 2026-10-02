@@ -421,6 +421,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
         raise _error(f"{where}.trigger/target are automation-only")
 
     if kind == "plan":
+        if not result["id"].startswith(owner + "."):
+            raise _error(f"{where}.id must belong to module {owner}")
         if item.get("plan_version") != 1:
             raise _error(f"{where}.plan_version must be 1")
         description = item.get("description")
