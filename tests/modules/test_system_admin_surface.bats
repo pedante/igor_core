@@ -353,6 +353,21 @@ PY
     [ ! -e "$ADMIN_DOCKER_ACTIVE" ]
 }
 
+@test "registered plan becomes unavailable when a required capability is unavailable" {
+    _IGOR_CONTRIBUTION_STATE["capability:system.service.start"]="unavailable"
+    _IGOR_CONTRIBUTION_REASON["capability:system.service.start"]="fixture_missing"
+    run igor_v2_contribution_get plan docker.install
+    [ "$status" -ne 0 ]
+    records="$(igor_contribution_records)"
+    python3 - "$records" <<'PY'
+import json,sys
+rows=json.loads(sys.argv[1])
+plan=next(row for row in rows if row["kind"]=="plan" and row["id"]=="docker.install")
+assert plan["availability"]=="unavailable"
+assert "system.service.start" in plan["unavailable_reason"]
+PY
+}
+
 @test "unregistered plan cannot become an execution sequence" {
     run igor_capability_plan_resolve_registered docker.invented
     [ "$status" -ne 0 ]
