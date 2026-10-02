@@ -146,9 +146,21 @@ model call and no host probe. The backend publishes an `operator_snapshot`
 from its already-loaded registries, and the TUI performs prefix/child lookups in
 memory.
 
-The snapshot is refreshed explicitly when the explorer opens and may later be
-cached against its digest/revision. Module activation remains restart-based
-under the current Module Runtime contract; this slice does not add hot unload.
+The snapshot is refreshed explicitly when the explorer opens. `Ctrl+R`
+requests another snapshot from the currently loaded backend registries without
+calling a model or probing the host. The projection reports source counts and a
+state of `ready`, `empty` or `error` so a frontend does not confuse a
+genuinely empty registry with a failed projection. Missing registry providers
+remain visible as partial/unavailable source metadata.
+
+If no snapshot event arrives, the TUI changes from the transient refresh message
+to an explicit retry prompt rather than leaving an indefinite blank surface.
+Registry collector failures or malformed JSON are surfaced instead of being
+silently converted into success.
+
+The snapshot may later be cached against its digest/revision. Module activation
+remains restart-based under the current Module Runtime contract; this slice does
+not add hot unload.
 
 The current v1 Nextcloud package remains a compatibility module. Its legacy menu
 continues to work. This implementation does **not** claim that the v1 Nextcloud
