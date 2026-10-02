@@ -17,6 +17,7 @@ DESCRIPTIONS = {
     "reply": "Return a public answer or operational summary, without private reasoning.",
     "run_igor_action": "Request a registered module action; Igor enforces its owner and declared tier.",
     "run_capability": "Invoke a canonical Igor capability with structured inputs; Igor enforces availability, safety, privilege and verification.",
+    "run_plan": "Execute a registered Igor capability plan. Every step re-enters the canonical capability dispatcher.",
 }
 
 XML_EXAMPLES = {
@@ -24,6 +25,7 @@ XML_EXAMPLES = {
     "occ": '<occ>status</occ>',
     "run_igor_action": '<run_igor_action>registered_action_name</run_igor_action>',
     "run_capability": '<run_capability id="system.host.memory.refresh">{"inputs":{}}</run_capability>',
+    "run_plan": '<run_plan id="docker.install" />',
     "container": '<container action="restart">service_name</container>',
     "read_log": '<read_log target="terminal" lines="20">search text</read_log>',
     "read_file": '<read_file lines="50">config/example.conf</read_file>',
@@ -36,7 +38,7 @@ XML_EXAMPLES = {
 
 
 def build_catalog(records):
-    tools, actions, capabilities = [], [], []
+    tools, actions, capabilities, plans = [], [], [], []
     for kind, name, owner, tier, description in records:
         if kind == "action":
             actions.append({"name": name, "owner": owner, "tier": tier, "description": description})
@@ -47,6 +49,13 @@ def build_catalog(records):
             except (TypeError, ValueError):
                 continue
             capabilities.append(metadata)
+            continue
+        if kind == "plan":
+            try:
+                metadata = json.loads(description)
+            except (TypeError, ValueError):
+                continue
+            plans.append(metadata)
             continue
         if name not in DESCRIPTIONS:
             continue
@@ -90,7 +99,21 @@ def build_catalog(records):
                       "xml_tag": "run_capability",
                       "xml_example": XML_EXAMPLES["run_capability"],
                       "xml_content": "inputs"})
+    if plans:
+        ids = sorted({item.get("descriptor", {}).get("id", "") for item in plans} - {""})
+        if ids:
+            tools.append({
+                "name": "run_plan", "owner": "core", "tier": "orchestrated",
+                "description": DESCRIPTIONS["run_plan"],
+                "openai_params": {"id": {"type": "string", "enum": ids}},
+                "required": ["id"], "xml_tag": "run_plan",
+                "xml_example": XML_EXAMPLES["run_plan"], "xml_content": "message",
+            })
     tools = [t for t in tools if t["name"] != "run_igor_action" or actions]
+    # Generic capability/plan tools are materialized only from active registry records.
+    tools = [t for t in tools if t["name"] not in {"run_capability", "run_plan"} or
+             (t["name"] == "run_capability" and capabilities) or
+             (t["name"] == "run_plan" and plans)]
     return {"tools": tools, "actions": actions}
 
 
