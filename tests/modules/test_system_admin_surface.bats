@@ -197,6 +197,64 @@ PY
     [[ "$output" == *'trusted_adapter_unavailable'* ]]
 }
 
+@test "forged generic package install adapter is unavailable before preparation" {
+    python3 - "$IGOR_DIR/modules/system/contracts/host.json" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+row=next(x for x in data["contributions"] if x.get("id")=="system.package.install")
+row["handler"]="system__package_updates_list"
+path.write_text(json.dumps(data))
+PY
+    run bash -c '
+        source "$1/core/lib/module_loader.sh"
+        _ml_log() { :; }
+        igor_load_all_modules >/dev/null
+        igor_capability_inspect system.package.install system
+        igor_capability_prepare system.package.install "{"package":"pkg_docker"}" system 1
+    ' _ "$REPO_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *'privileged_adapter_unavailable'* ]]
+}
+
+@test "forged generic package install verifier is unavailable before preparation" {
+    python3 - "$IGOR_DIR/modules/system/contracts/host.json" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+row=next(x for x in data["contributions"] if x.get("id")=="system.package.install")
+row["verification"]={"kind":"trusted_query","check_id":"other.check","required":True}
+path.write_text(json.dumps(data))
+PY
+    run bash -c '
+        source "$1/core/lib/module_loader.sh"
+        _ml_log() { :; }
+        igor_load_all_modules >/dev/null
+        igor_capability_inspect system.package.install system
+    ' _ "$REPO_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *'trusted_adapter_unavailable'* ]]
+}
+
+@test "forged service enable verifier is unavailable before preparation" {
+    python3 - "$IGOR_DIR/modules/system/contracts/host.json" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+row=next(x for x in data["contributions"] if x.get("id")=="system.service.enable")
+row["verification"]={"kind":"trusted_query","check_id":"other.check","required":True}
+path.write_text(json.dumps(data))
+PY
+    run bash -c '
+        source "$1/core/lib/module_loader.sh"
+        _ml_log() { :; }
+        igor_load_all_modules >/dev/null
+        igor_capability_inspect system.service.enable system
+    ' _ "$REPO_DIR"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *'trusted_adapter_unavailable'* ]]
+}
+
 @test "system administration contracts project into the generic operator namespace" {
     modules="$(igor_module_records)"
     contributions="$(igor_contribution_records)"
