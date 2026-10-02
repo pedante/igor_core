@@ -129,11 +129,13 @@ EOF
     [ "$(pkg_remove_argv pkg_docker)" = "apt-get remove -y docker.io" ]
     [ "$(pkg_update_argv)" = "apt-get update" ]
     [ "$(pkg_upgrade_argv)" = "apt-get upgrade -y" ]
+    [ "$(pkg_cache_clean_argv)" = "apt-get clean" ]
     IGOR_DISTRO_FAMILY=arch
     [ "$(pkg_install_argv pkg_docker pkg_python)" = "pacman -S --noconfirm docker python" ]
     [ "$(pkg_remove_argv pkg_docker)" = "pacman -R --noconfirm docker" ]
     [ "$(pkg_update_argv)" = "pacman -Syu --noconfirm" ]
     [ "$(pkg_upgrade_argv)" = "pacman -Syu --noconfirm" ]
+    [ "$(pkg_cache_clean_argv)" = "pacman -Sc --noconfirm" ]
 }
 
 @test "Wave D package argv rejects invalid names and unknown families" {
