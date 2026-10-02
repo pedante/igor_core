@@ -229,6 +229,22 @@ PY
     IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool"
 }
 
+# Adapt a human operator plan selection into the registered-plan tool. The
+# supplied string is only a durable plan ID; Core reloads the contract-owned
+# plan before any step can execute.
+_ai_operator_plan() {
+    local _plan_id="${1:-}" _plan_tool
+    _plan_tool=$(python3 - "$_plan_id" <<'PY'
+import json,re,sys
+ident=sys.argv[1]
+if not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", ident):
+    raise SystemExit(1)
+print(json.dumps({"tool":"run_plan","id":ident},separators=(",",":")))
+PY
+    ) || return 2
+    IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_plan_tool"
+}
+
 # Frontend control messages are not conversational turns. Keep them out of
 # pending-choice resolution, prompt-injection checks, runbook matching, and the
 # model request path. Capability execution still goes through ai_execute_tool.
@@ -246,6 +262,16 @@ _ai_frontend_control() {
             if [ "$_invoke_rc" -eq 2 ]; then
                 warn "Usage: invoke <capability-id[@provider]> [JSON object]"
                 _ai_frontend_event warning "Invalid capability invocation."
+            fi
+            return 0
+            ;;
+        plan\ *)
+            declare -f _ai_pending_choice_clear >/dev/null 2>&1 && _ai_pending_choice_clear
+            _ai_operator_plan "${_input#plan }"
+            _invoke_rc=$?
+            if [ "$_invoke_rc" -eq 2 ]; then
+                warn "Usage: plan <registered-plan-id>"
+                _ai_frontend_event warning "Invalid capability plan invocation."
             fi
             return 0
             ;;
