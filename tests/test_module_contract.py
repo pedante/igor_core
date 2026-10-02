@@ -229,5 +229,103 @@ class ModuleContractTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
 
 
+    def test_composite_capability_is_data_only_and_requires_exact_external_references(self):
+        status = {
+            "kind": "capability", "id": "fixture.status", "handler": "fixture__status",
+            "capability_version": 2, "description": "Read fixture state.",
+            "inputs": {"properties": {}, "required": [], "additionalProperties": False},
+            "outputs": {"schema_version": 1, "properties": {"ready": {"type": "boolean"}},
+                        "required": ["ready"], "additionalProperties": False},
+            "safety": {"tier": "READ"}, "privilege": "none",
+            "preconditions": [{"kind": "owner_active"}],
+            "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "not_applicable"}, "affects": [],
+        }
+        composite = {
+            "kind": "capability", "id": "fixture.install", "capability_version": 1,
+            "description": "Install the fixture through host capabilities.",
+            "inputs": {"properties": {}, "required": [], "additionalProperties": False},
+            "safety": {"tier": "CHANGE"}, "privilege": "none",
+            "preconditions": [{"kind": "owner_active"}],
+            "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "best_effort"}, "affects": [],
+            "implementation": {
+                "kind": "composition", "intended_outcome": "The fixture is ready.",
+                "variants": [
+                    {"requires": {"platform_families": ["debian"]},
+                     "steps": [{"capability_id": "system.package.install",
+                                "inputs": {"package": "fixture-debian"}}]},
+                    {"requires": {"platform_families": ["arch"]},
+                     "steps": [{"capability_id": "system.package.install",
+                                "inputs": {"package": "fixture-arch"}}]},
+                ],
+                "final_check": {"capability_id": "fixture.status", "inputs": {},
+                                "expect": {"ready": True}},
+            },
+            "requires": {"capabilities": ["system.package.install"]},
+        }
+        root = self.package(
+            self.valid_manifest(),
+            {"contract_version": 1, "contributions": [status, composite]},
+        )
+        (root / "module.sh").write_text(
+            "fixture__status() { printf '%s\\n' '{\"status\":\"ok\",\"result\":{\"ready\":true}}'; }\n",
+            encoding="utf-8",
+        )
+        result = module_contract.validate_module(root)
+        item = next(row for row in result["contributions"] if row["id"] == "fixture.install")
+        self.assertNotIn("handler", item)
+        self.assertEqual(item["implementation"]["kind"], "composition")
+        self.assertEqual(item["implementation"]["variants"][0]["steps"][0]["inputs"]["package"],
+                         "fixture-debian")
+
+        forged = json.loads(json.dumps(composite))
+        forged["requires"]["capabilities"] = []
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [status, forged]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "exactly match external"):
+            module_contract.validate_module(root)
+
+    def test_composite_capability_rejects_handler_overlap_and_ambiguous_platform_variants(self):
+        item = {
+            "kind": "capability", "id": "fixture.install", "capability_version": 1,
+            "description": "Composite fixture.",
+            "inputs": {"properties": {}, "required": [], "additionalProperties": False},
+            "safety": {"tier": "CHANGE"}, "privilege": "none",
+            "preconditions": [{"kind": "owner_active"}],
+            "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "best_effort"}, "affects": [],
+            "implementation": {
+                "kind": "composition", "intended_outcome": "Ready.",
+                "variants": [
+                    {"requires": {"platform_families": ["debian"]},
+                     "steps": [{"capability_id": "fixture.read", "inputs": {}}]},
+                    {"requires": {"platform_families": ["debian"]},
+                     "steps": [{"capability_id": "fixture.read", "inputs": {}}]},
+                ],
+                "final_check": {"capability_id": "fixture.read", "inputs": {},
+                                "expect": {"ready": True}},
+            },
+            "requires": {"capabilities": []},
+        }
+        root = self.package(self.valid_manifest(),
+                            {"contract_version": 1, "contributions": [item]})
+        (root / "module.sh").write_text(":\n", encoding="utf-8")
+        with self.assertRaisesRegex(module_contract.ValidationError, "overlap"):
+            module_contract.validate_module(root)
+
+        item["implementation"]["variants"] = item["implementation"]["variants"][:1]
+        item["handler"] = "fixture__install"
+        (root / "module.sh").write_text("fixture__install() { :; }\n", encoding="utf-8")
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [item]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "both handler and composite"):
+            module_contract.validate_module(root)
+
+
 if __name__ == "__main__":
     unittest.main()
