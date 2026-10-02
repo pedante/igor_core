@@ -231,6 +231,7 @@ PY
         _ml_log() { :; }
         igor_load_all_modules >/dev/null
         igor_capability_inspect system.package.install system
+        igor_capability_prepare system.package.install "{"package":"docker.io"}" system 1
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'trusted_adapter_unavailable'* ]]
@@ -250,6 +251,7 @@ PY
         _ml_log() { :; }
         igor_load_all_modules >/dev/null
         igor_capability_inspect system.service.enable system
+        igor_capability_prepare system.service.enable "{"unit":"docker.service"}" system 1
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'trusted_adapter_unavailable'* ]]
@@ -408,7 +410,10 @@ PY
 @test "Docker install composite capability resolves a frozen platform plan without executing" {
     before_trace="$(cat "$ADMIN_PRIVILEGE_TRACE")"
     run igor_capability_prepare docker.install '{}' docker 1
-    [ "$status" -eq 0 ]
+    if [ "$status" -ne 0 ]; then
+        printf '# docker.install prepare failed: %s\n' "$output" >&3
+        false
+    fi
     proposal="$output"
     python3 - "$proposal" <<'PY'
 import json,sys
