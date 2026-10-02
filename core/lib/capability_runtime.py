@@ -523,14 +523,17 @@ class CapabilityRegistry:
                 (step["safety"]["tier"] for step in resolved_plan["steps"]),
                 key=lambda value: tier_rank[value],
             )
-            if tier_rank[desc.safety["tier"]] < tier_rank[child_tier]:
-                raise CapabilityError("composite capability safety tier is lower than a child step")
+            if tier_rank[desc.safety["tier"]] != tier_rank[child_tier]:
+                raise CapabilityError("composite capability safety tier must match the maximum child tier")
+            privilege_records = list(resolved_plan["steps"])
+            if resolved_plan.get("final_check"):
+                privilege_records.append(resolved_plan["final_check"])
             proposal["affected_objects"] = list(resolved_plan["objects"])
             proposal["composition_summary"] = {
                 "effective_tier": desc.safety["tier"],
                 "child_tier_floor": child_tier,
                 "privilege": "required" if any(
-                    step["privilege"] == "required" for step in resolved_plan["steps"]
+                    step["privilege"] == "required" for step in privilege_records
                 ) else "none",
                 "affected_objects": list(resolved_plan["objects"]),
             }
