@@ -65,6 +65,31 @@ PY
     printf '%s' "$_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py"
 }
 
+# Resolve a plan that came from an active Module API contribution. Callers
+# supply only its durable ID; plan structure and referenced capabilities remain
+# owner-stamped contract data.
+igor_capability_plan_resolve_registered() {
+    local _id="${1:-}" _record _plan
+    [[ "$_id" =~ ^[a-z][a-z0-9]*(\.[a-z0-9_-]+)+$ ]] || return 2
+    declare -f igor_v2_contribution_get >/dev/null 2>&1 || return 1
+    _record="$(igor_v2_contribution_get plan "$_id")" || return 1
+    _plan="$("$(_ml_python)" - "$_record" <<'PY'
+import json, sys
+record=json.loads(sys.argv[1])
+if record.get("kind")!="plan" or record.get("id") is None:
+    raise SystemExit(1)
+print(json.dumps({
+    "plan_version":record["plan_version"],
+    "intended_outcome":record["intended_outcome"],
+    "objects":record.get("objects",[]),
+    "steps":record["steps"],
+    "final_check":record.get("final_check"),
+},sort_keys=True,separators=(",",":")))
+PY
+)" || return 1
+    igor_capability_plan_resolve "$_plan"
+}
+
 # Each step enters the same AI dispatcher as a single operation. The resolved
 # digest is checked again before the first step and every later step is
 # re-resolved by igor_capability_prepare inside that dispatcher.
