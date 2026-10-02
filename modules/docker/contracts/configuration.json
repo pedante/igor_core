@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "fields": [
+    {
+      "id": "docker.log_rotation.enabled",
+      "type": "boolean",
+      "description": "Enable Docker log rotation management"
+    }
+  ]
+}
