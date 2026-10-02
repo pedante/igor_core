@@ -94,6 +94,76 @@ class ModuleContractTests(unittest.TestCase):
         with self.assertRaisesRegex(module_contract.ValidationError, "schema is invalid"):
             module_contract.validate_module(root)
 
+    def test_plan_contribution_is_data_only_and_requires_exact_references(self):
+        plan = {
+            "kind": "plan",
+            "id": "fixture.install",
+            "plan_version": 1,
+            "description": "Install fixture runtime.",
+            "intended_outcome": "Fixture runtime is active.",
+            "objects": ["package:fixture", "service:systemd:fixture.service"],
+            "steps": [
+                {"capability_id": "system.package.install",
+                 "inputs": {"package": "fixture"}},
+                {"capability_id": "system.service.start",
+                 "inputs": {"unit": "fixture.service"}},
+            ],
+            "final_check": None,
+            "requires": {
+                "capabilities": ["system.package.install", "system.service.start"]
+            },
+        }
+        root = self.package(
+            self.valid_manifest(runtime="", entrypoint=""),
+            {"contract_version": 1, "contributions": [plan]},
+        )
+        result = module_contract.validate_module(root)
+        contribution = result["contributions"][0]
+        self.assertEqual(contribution["kind"], "plan")
+        self.assertEqual(contribution["owner"], "fixture")
+        self.assertEqual(contribution["steps"][0]["capability_id"],
+                         "system.package.install")
+        self.assertNotIn("handler", contribution)
+        self.assertIsNone(result["manifest"]["runtime"])
+
+        forged = json.loads(json.dumps(plan))
+        forged["requires"]["capabilities"] = ["system.package.install"]
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [forged]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError,
+                                   "exactly match plan references"):
+            module_contract.validate_module(root)
+
+    def test_plan_rejects_executable_or_unbounded_shape(self):
+        base = {
+            "kind": "plan",
+            "id": "fixture.install",
+            "plan_version": 1,
+            "description": "Install fixture.",
+            "intended_outcome": "Fixture active.",
+            "steps": [{"capability_id": "system.service.start",
+                       "inputs": {"unit": "fixture.service"}}],
+            "objects": [],
+            "final_check": None,
+            "requires": {"capabilities": ["system.service.start"]},
+        }
+        for changes in (
+            {"handler": "fixture__install"},
+            {"plan_version": 2},
+            {"steps": []},
+            {"final_check": {"capability_id": "system.invented.root",
+                             "inputs": {}}},
+        ):
+            item = {**base, **changes}
+            root = self.package(
+                self.valid_manifest(runtime="", entrypoint=""),
+                {"contract_version": 1, "contributions": [item]},
+            )
+            with self.assertRaises(module_contract.ValidationError):
+                module_contract.validate_module(root)
+
     def test_probe_preserves_permissive_v1_manifest(self):
         root = self.package("[module]\nname=fixture\nunknown_v1_key=value # inline\n")
         self.assertEqual(module_contract.probe_api(root), "1")
