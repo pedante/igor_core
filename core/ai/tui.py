@@ -243,7 +243,11 @@ class EventState:
 
     def add_operator_input(self, text: str) -> None:
         if text:
-            label = text.removeprefix("invoke ").strip()
+            label = text.strip()
+            for prefix in ("invoke ", "plan "):
+                if label.startswith(prefix):
+                    label = label[len(prefix):].strip()
+                    break
             self.activity.append(Activity("operator", label or text))
             if len(self.activity) > 2000:
                 del self.activity[:-2000]
@@ -1515,6 +1519,18 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     _send(master, command)
                     state.backend_ready = False
                     return command
+                if entry.get("kind") == "plan":
+                    target = str(entry.get("target_id") or "")
+                    if not target:
+                        notice = "Plan entry has no target"
+                        continue
+                    if not state.backend_ready:
+                        notice = "Backend busy — wait for READY or press Ctrl+C to stop current work"
+                        continue
+                    command = "plan " + target
+                    _send(master, command)
+                    state.backend_ready = False
+                    return command
                 notice = f"{entry.get('kind', 'item')}: {entry.get('target_id', node.get('path'))}"
                 continue
 
@@ -2053,7 +2069,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.latest()
                 continue
             state.end_terminal_capture()
-            operator_control = not pending and submitted.strip().startswith("invoke ")
+            operator_control = (not pending and
+                                submitted.strip().startswith(("invoke ", "plan ")))
             local = not pending and (operator_control or registry_is_local(submitted))
             if not local and not pending:
                 history.add(submitted)
