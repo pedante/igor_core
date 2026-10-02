@@ -2053,11 +2053,15 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.latest()
                 continue
             state.end_terminal_capture()
-            local = not pending and registry_is_local(submitted)
+            operator_control = not pending and submitted.strip().startswith("invoke ")
+            local = not pending and (operator_control or registry_is_local(submitted))
             if not local and not pending:
                 history.add(submitted)
             if submitted:
-                state.add_user_input(submitted)
+                if operator_control:
+                    state.add_operator_input(submitted)
+                else:
+                    state.add_user_input(submitted)
             if local:
                 state.begin_terminal_capture()
             _send(master, submitted)
