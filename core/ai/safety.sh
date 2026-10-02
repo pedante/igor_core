@@ -839,11 +839,27 @@ ai_execute_tool() {
                 return 1
             }
             if printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; raise SystemExit(0 if "composition_plan" in json.load(sys.stdin) else 1)'; then
-                local _composite_tier _composite_rc _composite_output
+                local _composite_tier _composite_rc _composite_output _composite_admin=false
+                if [ "$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("precondition_status","failed"))')" != satisfied ]; then
+                    _composite_output=$(printf '%s' "$_cap_prepared" | python3 -c '
+import json,sys
+p=json.load(sys.stdin)
+print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.get("capability_version"),
+                  "provider":p.get("provider"),"owner":p.get("owner"),
+                  "execution_status":"not_executed","verification_status":"not_applicable",
+                  "outcome":"precondition_failed","affected_objects":p.get("affected_objects",[]),
+                  "recovery":p.get("recovery",{})},sort_keys=True,separators=(",",":")))
+')
+                    IGOR_CAPABILITY_LAST_RESULT="$_composite_output"
+                    _ai_audit_rejected "$T_TOOL" CHANGE precondition_failed "$tool_json" "$_operation_id"
+                    printf '%s\n' "$_composite_output"
+                    return 1
+                fi
                 _composite_tier=$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("safety",{}).get("tier","CHANGE"))') || _composite_tier=CHANGE
+                [ "$(printf '%s' "$_cap_prepared" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("composition_summary",{}).get("privilege","none"))')" = required ] && _composite_admin=true
                 IGOR_HISTORY_CORRELATION_ID="${IGOR_HISTORY_CORRELATION_ID:-${IGOR_AI_REQUEST_ID:-$_operation_id}}"
                 _ai_audit_dispatch CLASSIFIED "$T_TOOL" "$_composite_tier" orchestrated admitted 0                     "$(_igor_capability_field "$_cap_prepared" owner 2>/dev/null)" "$tool_json" "" "$_operation_id"
-                _ai_emit_event continuation "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$_composite_tier" orchestrated running "Composite capability: $T_CAPABILITY_ID" "" "" false)"
+                _ai_emit_event continuation "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$_composite_tier" orchestrated running "Composite capability: $T_CAPABILITY_ID" "" "" "$_composite_admin")"
                 IGOR_CAPABILITY_LAST_RESULT=""
                 _composite_output=$(igor_capability_composite_execute "$_cap_prepared")
                 _composite_rc=$?
