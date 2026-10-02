@@ -3069,6 +3069,11 @@ except: pass
         _ai_poll_fifo || break   # break if end_session was requested
         _ai_update_state         # keep --extra Lens 2 / 4 current
 
+        # Tell structured frontends exactly when stdin is safe for a new command.
+        # Without this boundary, a TUI command can be queued behind an in-flight
+        # model request and appear to have caused the older response.
+        _ai_frontend_event model_status '' 'input_ready'
+
         # [FIX-1] Auto-refresh context if stale (default: every 5 minutes)
         local _now; _now=$(date +%s)
         if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
@@ -3820,6 +3825,7 @@ END USER STEERING"
         IGOR_RESPONSE_TRUNCATED=false
         _ai_pin_enter
         _ai_pin_update "Igor is thinking..."
+        _ai_frontend_event model_status '' 'request_started'
         ai_begin_request || { warn "AI request identity unavailable."; return 1; }
         if ! _raw_result=$(_nexus_api_call); then
             _ai_set_session_state provider_failed
