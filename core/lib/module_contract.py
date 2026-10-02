@@ -560,6 +560,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
             raise _error(f"{where}.id requires at least two dotted segments")
         result.update(_validate_capability_metadata(item, where))
         if "implementation" in item:
+            if result["privilege"] != "none":
+                raise _error(f"{where} composite capability cannot declare direct privilege")
             result["implementation"] = _validate_composite_implementation(
                 item["implementation"], where, result["inputs"])
     elif set(item) & capability_fields:
