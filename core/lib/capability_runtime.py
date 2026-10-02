@@ -385,6 +385,8 @@ class CapabilityDescriptor:
         inputs = raw["inputs"]
         _validate_schema(inputs)
         normalized_implementation = _validate_composite_implementation(implementation, inputs) if implementation is not None else None
+        if normalized_implementation is not None and raw["privilege"] != "none":
+            raise CapabilityError("composite capability cannot declare direct privilege")
         return cls(
             id=ident,
             owner=owner or raw.get("owner", "core"),
@@ -515,7 +517,24 @@ class CapabilityRegistry:
             plan = CapabilityPlan(desc.implementation["intended_outcome"], steps,
                                   objects=proposal["affected_objects"],
                                   final_check=final_check).resolve(self)
-            proposal["composition_plan"] = plan.inspect()
+            resolved_plan = plan.inspect()
+            tier_rank = {"READ": 0, "CHANGE": 1, "DESTROY": 2}
+            child_tier = max(
+                (step["safety"]["tier"] for step in resolved_plan["steps"]),
+                key=lambda value: tier_rank[value],
+            )
+            if tier_rank[desc.safety["tier"]] < tier_rank[child_tier]:
+                raise CapabilityError("composite capability safety tier is lower than a child step")
+            proposal["affected_objects"] = list(resolved_plan["objects"])
+            proposal["composition_summary"] = {
+                "effective_tier": desc.safety["tier"],
+                "child_tier_floor": child_tier,
+                "privilege": "required" if any(
+                    step["privilege"] == "required" for step in resolved_plan["steps"]
+                ) else "none",
+                "affected_objects": list(resolved_plan["objects"]),
+            }
+            proposal["composition_plan"] = resolved_plan
         proposal["digest"] = hashlib.sha256(json.dumps(proposal, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return proposal
 
@@ -567,6 +586,10 @@ class CapabilityPlan:
             args = validate_inputs(desc.inputs, step.get("inputs", {}))
             result = {"capability_id": ident, "capability_version": desc.capability_version,
                       "provider": desc.provider, "inputs": args,
+                      "safety": _json(desc.safety), "privilege": desc.privilege,
+                      "recovery": _json(desc.recovery),
+                      "affected_objects": [_affected(item, args) for item in desc.affects
+                                           if _affected(item, args)],
                       "inspection": registry.inspect(ident, desc.provider)}
             if check:
                 if desc.safety.get("tier") != "READ" or desc.outputs is None:
@@ -584,6 +607,12 @@ class CapabilityPlan:
 
         self.steps = [resolve_step(step) for step in self.steps]
         self.final_check = resolve_step(self.final_check, check=True) if self.final_check is not None else None
+        if not self.objects:
+            self.objects = sorted({
+                object_id
+                for step in self.steps
+                for object_id in step.get("affected_objects", [])
+            })
         payload = {"plan_version": self.plan_version, "intended_outcome": self.intended_outcome,
                    "objects": self.objects, "steps": self.steps, "final_check": self.final_check}
         self.digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
