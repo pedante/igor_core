@@ -195,16 +195,7 @@
         "class": "best_effort",
         "description": "A stopped composition is recorded as partial progress. Removal or rollback is a separately approved capability request."
       },
-      "affects": [
-        {
-          "object": "package",
-          "id": "docker"
-        },
-        {
-          "object": "service",
-          "id": "docker.service"
-        }
-      ],
+      "affects": [],
       "implementation": {
         "kind": "composition",
         "intended_outcome": "Docker Engine is installed and docker.service is enabled, active, and reachable.",
