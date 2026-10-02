@@ -57,6 +57,9 @@ class OperatorSurfaceTests(unittest.TestCase):
         surface = build_surface(self.payload())
         by_path = {row["path"]: row for row in surface["entries"]}
         self.assertEqual(surface["surface_version"], 1)
+        self.assertEqual(surface["state"], "ready")
+        self.assertEqual(surface["entry_count"], len(surface["entries"]))
+        self.assertEqual(surface["sources"]["modules"], {"status": "ok", "count": 1})
         self.assertEqual(by_path["system.host.memory.refresh"]["kind"], "capability")
         self.assertEqual(by_path["system.host.memory.refresh"]["safety"], "READ")
         self.assertEqual(by_path["system.host.memory"]["kind"], "observer")
@@ -118,6 +121,32 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertTrue(all(row["provider_required"] for row in rows))
         self.assertEqual({row["provider"] for row in rows}, {"system", "alternate"})
+
+    def test_empty_surface_is_explicit_and_reports_source_counts(self):
+        surface = build_surface({
+            "modules": [], "contributions": [], "capabilities": [],
+            "configurations": [],
+            "sources": {
+                "modules": "ok", "contributions": "ok",
+                "capabilities": "ok", "configurations": "ok",
+            },
+        })
+        self.assertEqual(surface["state"], "empty")
+        self.assertEqual(surface["entry_count"], 0)
+        self.assertEqual(surface["sources"]["capabilities"]["count"], 0)
+
+    def test_source_failure_is_not_silently_presented_as_empty(self):
+        surface = build_surface({
+            "modules": [], "contributions": [], "capabilities": [],
+            "configurations": [],
+            "sources": {
+                "modules": "ok", "contributions": "ok",
+                "capabilities": "error", "configurations": "ok",
+            },
+        })
+        self.assertEqual(surface["state"], "error")
+        self.assertEqual(surface["sources"]["capabilities"],
+                         {"status": "error", "count": 0})
 
     def test_malformed_payload_fails_closed(self):
         with self.assertRaises(SurfaceError):
