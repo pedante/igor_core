@@ -317,6 +317,15 @@ class ModuleContractTests(unittest.TestCase):
             module_contract.validate_module(root)
 
         item["implementation"]["variants"] = item["implementation"]["variants"][:1]
+        privileged = json.loads(json.dumps(item))
+        privileged["privilege"] = "required"
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [privileged]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "direct privilege"):
+            module_contract.validate_module(root)
+
         item["handler"] = "fixture__install"
         (root / "module.sh").write_text("fixture__install() { :; }\n", encoding="utf-8")
         (root / "contracts/host.json").write_text(
