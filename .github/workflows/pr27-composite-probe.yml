@@ -1,0 +1,31 @@
+name: PR27 Composite Probe
+
+on:
+  push:
+    branches: ["experiment-capability-plan-composition"]
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          pip install pytest
+          sudo apt-get update -qq
+          sudo apt-get install -y bats
+      - name: Syntax
+        run: |
+          python -m py_compile core/lib/module_contract.py core/lib/capability_runtime.py
+          bash -n core/lib/capability.sh core/lib/module_loader.sh core/lib/pkg.sh core/ai/safety.sh modules/docker/module.sh
+      - name: Validate module contracts
+        run: |
+          python core/lib/module_contract.py validate modules/system >/dev/null
+          python core/lib/module_contract.py validate modules/docker >/dev/null
+      - name: Focused Python tests
+        run: pytest -q tests/test_module_contract.py tests/test_docker_module.py
+      - name: System composition tests
+        run: bats --tap tests/modules/test_system_admin_surface.bats
