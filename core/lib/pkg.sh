@@ -245,6 +245,15 @@ pkg_upgrade_argv() {
     esac
 }
 
+pkg_cache_clean_argv() {
+    [ "$#" -eq 0 ] || return 2
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian) printf '%s\n' 'apt-get clean' ;;
+        arch) printf '%s\n' 'pacman -Sc --noconfirm' ;;
+        *) return 2 ;;
+    esac
+}
+
 _svc_validate_name() {
     [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]]
 }
@@ -283,6 +292,83 @@ svc_stop_argv() { _svc_argv stop "$@"; }
 svc_restart_argv() { _svc_argv restart "$@"; }
 svc_enable_argv() { _svc_argv enable "$@"; }
 svc_disable_argv() { _svc_argv disable "$@"; }
+
+# Read-only administration queries shared by the System module. These expose
+# mechanisms, not policy: callers decide how to present or interpret results.
+pkg_updates_list() {
+    [ "$#" -eq 0 ] || return 2
+    _pkg_wave_d_family || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    local _timeout _output _rc
+    _timeout="$(_pkg_query_timeout)" || return 2
+    case "$IGOR_DISTRO_FAMILY" in
+        debian)
+            command -v apt-get >/dev/null 2>&1 || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" apt-get -s upgrade 2>/dev/null)" || return 2
+            printf '%s\n' "$_output" | awk '/^Inst[[:space:]]+/ { print $2 }' | sort -u
+            ;;
+        arch)
+            command -v pacman >/dev/null 2>&1 || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" pacman -Qu 2>/dev/null)"
+            _rc=$?
+            [ "$_rc" -eq 0 ] || [ "$_rc" -eq 1 ] || return 2
+            printf '%s\n' "$_output" | awk 'NF { print $1 }' | sort -u
+            ;;
+    esac
+}
+
+pkg_cleanup_candidates() {
+    [ "$#" -eq 0 ] || return 2
+    _pkg_wave_d_family || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    local _timeout _output _rc
+    _timeout="$(_pkg_query_timeout)" || return 2
+    case "$IGOR_DISTRO_FAMILY" in
+        debian)
+            command -v apt-get >/dev/null 2>&1 || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" apt-get -s autoremove 2>/dev/null)" || return 2
+            printf '%s\n' "$_output" | awk '/^Remv[[:space:]]+/ { print $2 }' | sort -u
+            ;;
+        arch)
+            command -v pacman >/dev/null 2>&1 || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" pacman -Qdtq 2>/dev/null)"
+            _rc=$?
+            [ "$_rc" -eq 0 ] || [ "$_rc" -eq 1 ] || return 2
+            printf '%s\n' "$_output" | awk 'NF { print $1 }' | sort -u
+            ;;
+    esac
+}
+
+pkg_cache_usage() {
+    [ "$#" -eq 0 ] || return 2
+    _pkg_wave_d_family || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    command -v du >/dev/null 2>&1 || return 2
+    local _path _kb _timeout
+    _timeout="$(_pkg_query_timeout)" || return 2
+    case "$IGOR_DISTRO_FAMILY" in
+        debian) _path=/var/cache/apt/archives ;;
+        arch) _path=/var/cache/pacman/pkg ;;
+    esac
+    [ -d "$_path" ] || {
+        printf '%s\t0\n' "$_path"
+        return 0
+    }
+    _kb="$(LC_ALL=C timeout "$_timeout" du -sk -- "$_path" 2>/dev/null | awk 'NR==1 { print $1 }')" || return 2
+    [[ "$_kb" =~ ^[0-9]+$ ]] || return 2
+    printf '%s\t%s\n' "$_path" "$((_kb * 1024))"
+}
+
+svc_list_query() {
+    [ "$#" -eq 0 ] || return 2
+    _pkg_wave_d_family || return 2
+    command -v systemctl >/dev/null 2>&1 || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    local _timeout _output
+    _timeout="$(_pkg_query_timeout)" || return 2
+    _output="$(LC_ALL=C timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null)" || return 2
+    printf '%s\n' "$_output" | awk 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
+}
 
 # ── pkg_install_docker_post ───────────────────────────────────────────────────
 # Post-install activation for Docker.  Safe to call on any distro — no-ops

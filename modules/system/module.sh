@@ -66,6 +66,271 @@ system__check_memory() { _mod_sys_memory_warning_request check; }
 system__apply_memory_warning() { _mod_sys_memory_warning_request apply; }
 system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
+
+# Experimental generic administration capabilities. Platform-specific package
+# and service mechanics stay in Core; this module gives them host-domain meaning.
+_mod_sys_admin_platform() {
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+    source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+    if [ -z "${IGOR_DISTRO_FAMILY:-}" ] || [ -z "${IGOR_DISTRO_ID:-}" ]; then
+        igor_detect_distro
+    fi
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian|arch) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_mod_sys_admin_request() {
+    local expected="$1" request
+    IFS= read -r request || return 1
+    printf '%s' "$request" | "${IGOR_PYTHON:-python3}" -c '
+import json,sys
+try:
+    value=json.load(sys.stdin)
+except ValueError:
+    raise SystemExit(1)
+if (not isinstance(value,dict) or value.get("api_version") != 2 or
+        value.get("contribution_id") != sys.argv[1] or
+        not isinstance(value.get("input"),dict)):
+    raise SystemExit(1)
+print(json.dumps(value["input"],separators=(",",":")))
+' "$expected"
+}
+
+_mod_sys_admin_error() {
+    local code="$1" message="$2"
+    ADMIN_CODE="$code" ADMIN_MESSAGE="$message" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"error","error":{"code":os.environ["ADMIN_CODE"],
+      "message":os.environ["ADMIN_MESSAGE"]}},separators=(",",":")))
+PY
+}
+
+system__host_summary() {
+    local input distro_id kernel architecture uptime_seconds package_manager
+    input="$(_mod_sys_admin_request system.host.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.host.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.host.summary takes no inputs"
+        return 0
+    }
+    _mod_sys_admin_platform || {
+        _mod_sys_admin_error unsupported "host administration currently supports Debian and Arch families"
+        return 0
+    }
+    distro_id="${IGOR_DISTRO_ID:-unknown}"
+    kernel="$(uname -r 2>/dev/null || printf unknown)"
+    architecture="$(uname -m 2>/dev/null || printf unknown)"
+    uptime_seconds="$(awk '{printf "%d",$1}' /proc/uptime 2>/dev/null)"
+    [[ "$uptime_seconds" =~ ^[0-9]+$ ]] || uptime_seconds=0
+    case "$IGOR_DISTRO_FAMILY" in
+        debian) package_manager=apt ;;
+        arch) package_manager=pacman ;;
+    esac
+    ADMIN_DISTRO_ID="$distro_id" ADMIN_FAMILY="$IGOR_DISTRO_FAMILY" ADMIN_KERNEL="$kernel" \
+    ADMIN_ARCH="$architecture" ADMIN_UPTIME="$uptime_seconds" ADMIN_PACKAGE_MANAGER="$package_manager" \
+        "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "distro_id":os.environ["ADMIN_DISTRO_ID"][:128],
+    "distro_family":os.environ["ADMIN_FAMILY"],
+    "kernel":os.environ["ADMIN_KERNEL"][:256],
+    "architecture":os.environ["ADMIN_ARCH"][:64],
+    "uptime_seconds":int(os.environ["ADMIN_UPTIME"]),
+    "package_manager":os.environ["ADMIN_PACKAGE_MANAGER"],
+}},separators=(",",":")))
+PY
+}
+
+system__package_updates_list() {
+    local input packages count preview
+    input="$(_mod_sys_admin_request system.package.updates.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.package.updates.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.package.updates.list takes no inputs"
+        return 0
+    }
+    _mod_sys_admin_platform || {
+        _mod_sys_admin_error unsupported "package update discovery supports Debian and Arch families"
+        return 0
+    }
+    packages="$(pkg_updates_list)" || {
+        _mod_sys_admin_error unavailable "package update query failed"
+        return 0
+    }
+    count="$(printf '%s\n' "$packages" | awk 'NF{n++} END{print n+0}')"
+    preview="$(printf '%s\n' "$packages" | awk 'NF' | head -100 | head -c 4096)"
+    ADMIN_FAMILY="$IGOR_DISTRO_FAMILY" ADMIN_COUNT="$count" ADMIN_TEXT="$preview" \
+        "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "distro_family":os.environ["ADMIN_FAMILY"],
+    "count":int(os.environ["ADMIN_COUNT"]),
+    "packages":os.environ.get("ADMIN_TEXT",""),
+    "source":"platform.package_updates",
+}},separators=(",",":")))
+PY
+}
+
+system__package_cleanup_preview() {
+    local input candidates count preview cache_path cache_bytes cache tab
+    input="$(_mod_sys_admin_request system.package.cleanup.preview)" || {
+        _mod_sys_admin_error invalid_request "expected system.package.cleanup.preview v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.package.cleanup.preview takes no inputs"
+        return 0
+    }
+    _mod_sys_admin_platform || {
+        _mod_sys_admin_error unsupported "package cleanup discovery supports Debian and Arch families"
+        return 0
+    }
+    candidates="$(pkg_cleanup_candidates)" || {
+        _mod_sys_admin_error unavailable "package cleanup candidate query failed"
+        return 0
+    }
+    cache="$(pkg_cache_usage)" || {
+        _mod_sys_admin_error unavailable "package cache query failed"
+        return 0
+    }
+    tab="$(printf '\t')"
+    IFS="$tab" read -r cache_path cache_bytes <<< "$cache"
+    [[ "$cache_bytes" =~ ^[0-9]+$ ]] || cache_bytes=0
+    count="$(printf '%s\n' "$candidates" | awk 'NF{n++} END{print n+0}')"
+    preview="$(printf '%s\n' "$candidates" | awk 'NF' | head -100 | head -c 4096)"
+    ADMIN_FAMILY="$IGOR_DISTRO_FAMILY" ADMIN_COUNT="$count" ADMIN_TEXT="$preview" \
+    ADMIN_CACHE_PATH="$cache_path" ADMIN_CACHE_BYTES="$cache_bytes" \
+        "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "distro_family":os.environ["ADMIN_FAMILY"],
+    "candidate_count":int(os.environ["ADMIN_COUNT"]),
+    "candidates":os.environ.get("ADMIN_TEXT",""),
+    "cache_path":os.environ.get("ADMIN_CACHE_PATH","")[:256],
+    "cache_bytes":int(os.environ["ADMIN_CACHE_BYTES"]),
+    "source":"platform.package_cleanup",
+}},separators=(",",":")))
+PY
+}
+
+system__service_list() {
+    local input rows count preview
+    input="$(_mod_sys_admin_request system.service.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.service.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.service.list takes no inputs"
+        return 0
+    }
+    _mod_sys_admin_platform || {
+        _mod_sys_admin_error unsupported "service discovery supports Debian and Arch families"
+        return 0
+    }
+    rows="$(svc_list_query)" || {
+        _mod_sys_admin_error unavailable "systemd service query failed"
+        return 0
+    }
+    count="$(printf '%s\n' "$rows" | awk 'NF{n++} END{print n+0}')"
+    preview="$(printf '%s\n' "$rows" | awk 'NF' | head -80 | head -c 4096)"
+    ADMIN_COUNT="$count" ADMIN_TEXT="$preview" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "count":int(os.environ["ADMIN_COUNT"]),
+    "services":os.environ.get("ADMIN_TEXT",""),
+    "source":"platform.systemd_services",
+}},separators=(",",":")))
+PY
+}
+
+system__service_status() {
+    local input unit state
+    input="$(_mod_sys_admin_request system.service.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.service.status v2 request"
+        return 0
+    }
+    unit="$(printf '%s' "$input" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; print(json.load(sys.stdin).get("unit",""))')" || unit=""
+    [[ "$unit" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]] || {
+        _mod_sys_admin_error invalid_request "invalid systemd unit"
+        return 0
+    }
+    _mod_sys_admin_platform || {
+        _mod_sys_admin_error unsupported "service status supports Debian and Arch families"
+        return 0
+    }
+    state="$(svc_query "$unit")" || {
+        _mod_sys_admin_error unavailable "service is unknown or its state could not be read"
+        return 0
+    }
+    ADMIN_UNIT="$unit" ADMIN_STATE="$state" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "unit":os.environ["ADMIN_UNIT"],
+    "state":os.environ["ADMIN_STATE"][:64],
+    "source":"platform.service_query",
+}},separators=(",",":")))
+PY
+}
+
+system__logs_summary() {
+    local input recent warning errors latest timeout_seconds
+    input="$(_mod_sys_admin_request system.logs.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.logs.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.logs.summary takes no inputs"
+        return 0
+    }
+    command -v journalctl >/dev/null 2>&1 || {
+        _mod_sys_admin_error unavailable "journalctl is not available"
+        return 0
+    }
+    command -v timeout >/dev/null 2>&1 || {
+        _mod_sys_admin_error unavailable "timeout is not available"
+        return 0
+    }
+    timeout_seconds="${IGOR_PLATFORM_QUERY_TIMEOUT_SECONDS:-5}"
+    [[ "$timeout_seconds" =~ ^[1-9][0-9]?$ ]] || timeout_seconds=5
+    recent="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+        _mod_sys_admin_error unavailable "journal query failed or is not permitted"
+        return 0
+    }
+    warning="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -p warning -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+        _mod_sys_admin_error unavailable "journal warning query failed or is not permitted"
+        return 0
+    }
+    errors="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -p err -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+        _mod_sys_admin_error unavailable "journal error query failed or is not permitted"
+        return 0
+    }
+    latest="$(printf '%s\n' "$recent" | awk 'NF { stamp=$1 } END { print stamp }' | head -c 128)"
+    ADMIN_RECENT="$(printf '%s\n' "$recent" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_WARNING="$(printf '%s\n' "$warning" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_ERRORS="$(printf '%s\n' "$errors" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_LATEST="$latest" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json,os
+print(json.dumps({"status":"ok","result":{
+    "recent_count":int(os.environ["ADMIN_RECENT"]),
+    "warning_count":int(os.environ["ADMIN_WARNING"]),
+    "error_count":int(os.environ["ADMIN_ERRORS"]),
+    "latest_entry_at":os.environ.get("ADMIN_LATEST","")[:128],
+    "source":"systemd.journal",
+}},separators=(",",":")))
+PY
+}
+
+system__privileged_marker() {
+    _mod_sys_admin_error authority "privileged System actions must execute through Core's reviewed adapter"
+}
+
 # REQUIRED — called at igor startup
 system__register() {
     igor_register_hook "health"      "system__health"

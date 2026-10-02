@@ -2,6 +2,35 @@
 
 Last updated: 2026-10-02
 
+## System 2.3.0 administration surface — experimental candidate
+
+A bounded experiment extends the existing `system` owner rather than creating a
+second sysadmin module. Core/Platform keeps Debian/Arch package-manager and
+systemd mechanics; System declares host-domain semantics that the generic
+Operator Surface can discover as `system.host.*`, `system.package.*`,
+`system.service.*` and `system.logs.*`.
+
+The READ slice includes host summary, pending-update discovery, package-cleanup
+preview/cache usage, service list/status and journal summary metadata. Raw
+journal message bodies are deliberately excluded because v2 capability results
+become durable Operational History. The mutation slice is intentionally small:
+service restart reuses the existing reviewed exact-argv adapter; package upgrade
+and package-cache clean add narrowly admitted System-owned v1 privilege adapters.
+Debian upgrade freezes `apt-get update` then `apt-get upgrade -y`; Arch freezes
+`pacman -Syu --noconfirm`. Upgrade rechecks pending updates after execution.
+Cache cleaning is marked irreversible and does not claim a generic verifier.
+
+Orphan/autoremove candidates are preview-only. Reboot, journal vacuum, arbitrary
+shell, user/group, firewall/network, filesystem deletion and storage repair are
+not added. This experiment does not complete a roadmap boundary or establish a
+general privileged-module mechanism.
+
+Focused Platform/System tests are added on the experiment branch, including
+Debian/Arch normalization, Operator Surface discovery, exact privileged argv,
+post-upgrade verification and forged-adapter rejection. Runtime pass counts are
+not claimed here because the current execution environment cannot resolve
+GitHub for a local branch checkout.
+
 ## Step 19 Boundary 2 — brownfield attachment implementation candidate
 
 This work starts from clean `igor2` at Boundary 1 commit `72552d3`, under the

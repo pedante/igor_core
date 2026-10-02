@@ -129,11 +129,13 @@ EOF
     [ "$(pkg_remove_argv pkg_docker)" = "apt-get remove -y docker.io" ]
     [ "$(pkg_update_argv)" = "apt-get update" ]
     [ "$(pkg_upgrade_argv)" = "apt-get upgrade -y" ]
+    [ "$(pkg_cache_clean_argv)" = "apt-get clean" ]
     IGOR_DISTRO_FAMILY=arch
     [ "$(pkg_install_argv pkg_docker pkg_python)" = "pacman -S --noconfirm docker python" ]
     [ "$(pkg_remove_argv pkg_docker)" = "pacman -R --noconfirm docker" ]
     [ "$(pkg_update_argv)" = "pacman -Syu --noconfirm" ]
     [ "$(pkg_upgrade_argv)" = "pacman -Syu --noconfirm" ]
+    [ "$(pkg_cache_clean_argv)" = "pacman -Sc --noconfirm" ]
 }
 
 @test "Wave D package argv rejects invalid names and unknown families" {
@@ -251,4 +253,62 @@ EOF
     IGOR_DISTRO_FAMILY=unknown
     run svc_restart_argv docker.service
     [ "$status" -eq 2 ]
+}
+
+
+@test "System admin package discovery normalizes Debian update and cleanup candidates" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/apt-get" <<'EOF'
+#!/bin/bash
+if [ "$1 $2" = "-s upgrade" ]; then
+    printf 'Inst curl [1] (2 repo)\nInst openssl [1] (2 repo)\n'
+elif [ "$1 $2" = "-s autoremove" ]; then
+    printf 'Remv old-kernel [1]\nRemv unused-lib [1]\n'
+else
+    exit 2
+fi
+EOF
+    chmod +x "$IGOR_DIR/bin/apt-get"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    IGOR_DISTRO_FAMILY=debian
+    expected_updates="$(printf 'curl\nopenssl\n')"
+    expected_cleanup="$(printf 'old-kernel\nunused-lib\n')"
+    [ "$(pkg_updates_list)" = "$expected_updates" ]
+    [ "$(pkg_cleanup_candidates)" = "$expected_cleanup" ]
+}
+
+@test "System admin package discovery normalizes Arch update and orphan candidates" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/pacman" <<'EOF'
+#!/bin/bash
+case "$1" in
+    -Qu) printf 'curl 1 -> 2\nlinux 1 -> 2\n' ;;
+    -Qdtq) printf 'unused-a\nunused-b\n' ;;
+    *) exit 2 ;;
+esac
+EOF
+    chmod +x "$IGOR_DIR/bin/pacman"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    IGOR_DISTRO_FAMILY=arch
+    expected_updates="$(printf 'curl\nlinux\n')"
+    expected_cleanup="$(printf 'unused-a\nunused-b\n')"
+    [ "$(pkg_updates_list)" = "$expected_updates" ]
+    [ "$(pkg_cleanup_candidates)" = "$expected_cleanup" ]
+}
+
+@test "System admin service listing is a bounded platform query" {
+    source "$REPO_DIR/core/lib/pkg.sh"
+    mkdir -p "$IGOR_DIR/bin"
+    cat > "$IGOR_DIR/bin/systemctl" <<'EOF'
+#!/bin/bash
+[ "$1" = list-units ] || exit 2
+printf 'cron.service loaded active running Cron\nssh.service loaded inactive dead SSH\n'
+EOF
+    chmod +x "$IGOR_DIR/bin/systemctl"
+    export PATH="$IGOR_DIR/bin:$PATH"
+    IGOR_DISTRO_FAMILY=debian
+    expected_services="$(printf 'cron.service\tactive\trunning\nssh.service\tinactive\tdead\n')"
+    [ "$(svc_list_query)" = "$expected_services" ]
 }

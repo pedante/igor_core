@@ -1182,10 +1182,22 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                      [ "$(_ml_json_field "$_record" capability_version)" = 2 ]; then
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="typed_privileged_output_adapter_unavailable"
-                elif [ "$(_ml_json_field "$_record" privilege)" = required ] &&
-                     [ "${_key#capability:}" != system.service.restart ]; then
+                elif [ "$(_ml_json_field "$_record" privilege)" = required ] && ! {
+                    [ "${_key#capability:}" = system.service.restart ] ||
+                    {
+                        [ "$_name" = system ] &&
+                        [ "$(_ml_json_field "$_record" handler)" = system__privileged_marker ] &&
+                        case "${_key#capability:}" in
+                            system.package.upgrade|system.package.cache.clean) true ;;
+                            *) false ;;
+                        esac
+                    }
+                }; then
                     # A required privilege declaration is executable only
-                    # after Core has reviewed the exact argv adapter.
+                    # after Core has reviewed the exact argv adapter. Package
+                    # administration is intentionally restricted to System's
+                    # marker handler; service.restart retains the existing
+                    # provider-neutral reviewed adapter.
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="privileged_adapter_unavailable"
                 elif printf '%s' "$_record" | "$(_ml_python)" -c '
@@ -1201,7 +1213,13 @@ memory_query=(record.get("owner")=="system" and record.get("id") in reviewed and
               record.get("capability_version")==2 and record.get("privilege")=="none" and
               verification=={"kind":"trusted_query","check_id":"system.memory.warning.consumer","required":True} and
               record.get("safety",{}).get("tier")==("CHANGE" if record["id"].endswith("apply") else "READ"))
-unsupported=unsupported or (verification.get("kind") == "trusted_query" and not memory_query)
+package_upgrade_query=(record.get("owner")=="system" and record.get("id")=="system.package.upgrade" and
+              record.get("handler")=="system__privileged_marker" and
+              record.get("capability_version")==1 and record.get("privilege")=="required" and
+              verification=={"kind":"trusted_query","check_id":"system.package.updates.empty","required":True} and
+              record.get("safety",{}).get("tier")=="CHANGE")
+trusted_query=memory_query or package_upgrade_query
+unsupported=unsupported or (verification.get("kind") == "trusted_query" and not trusted_query)
 unsupported=unsupported or (record.get("id") in reviewed and not memory_query)
 raise SystemExit(0 if unsupported else 1)
 '; then

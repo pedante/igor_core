@@ -293,6 +293,602 @@
           "id": "local"
         }
       ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.host.summary",
+      "handler": "system__host_summary",
+      "capability_version": 2,
+      "description": "Show the local host platform summary without changing it.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "distro_id": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "distro_family": {
+            "type": "enum",
+            "enum": [
+              "debian",
+              "arch"
+            ]
+          },
+          "kernel": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "architecture": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "uptime_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "package_manager": {
+            "type": "enum",
+            "enum": [
+              "apt",
+              "pacman"
+            ]
+          }
+        },
+        "required": [
+          "distro_id",
+          "distro_family",
+          "kernel",
+          "architecture",
+          "uptime_seconds",
+          "package_manager"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.updates.list",
+      "handler": "system__package_updates_list",
+      "capability_version": 2,
+      "description": "List packages that the current Debian/Arch package metadata considers upgradable.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "distro_family": {
+            "type": "enum",
+            "enum": [
+              "debian",
+              "arch"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "packages": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "distro_family",
+          "count",
+          "packages",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.cleanup.preview",
+      "handler": "system__package_cleanup_preview",
+      "capability_version": 2,
+      "description": "Preview package cleanup candidates and package-cache usage without deleting anything.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "distro_family": {
+            "type": "enum",
+            "enum": [
+              "debian",
+              "arch"
+            ]
+          },
+          "candidate_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "candidates": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "cache_path": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "cache_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "distro_family",
+          "candidate_count",
+          "candidates",
+          "cache_path",
+          "cache_bytes",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.service.list",
+      "handler": "system__service_list",
+      "capability_version": 2,
+      "description": "List local systemd services and their active/sub states.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "services": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "services",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "systemctl"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.service.status",
+      "handler": "system__service_status",
+      "capability_version": 2,
+      "description": "Read the active state of one systemd service.",
+      "inputs": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "validator": "systemd_unit",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "unit": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "unit",
+          "state",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "service",
+          "input": "unit"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "systemctl"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.logs.summary",
+      "handler": "system__logs_summary",
+      "capability_version": 2,
+      "description": "Summarize recent journal activity without persisting raw log message bodies.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "recent_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "warning_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "error_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "latest_entry_at": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "recent_count",
+          "warning_count",
+          "error_count",
+          "latest_entry_at",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "journalctl"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.service.restart",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Restart one existing systemd service through Igor's reviewed privilege adapter.",
+      "inputs": {
+        "properties": {
+          "unit": {
+            "type": "string",
+            "validator": "systemd_unit",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "service_exists",
+          "input": "unit"
+        }
+      ],
+      "verification": {
+        "kind": "service_state",
+        "input": "unit",
+        "equals": "active",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Service restart has no generic rollback; inspect service state/logs and apply a service-specific recovery if required."
+      },
+      "affects": [
+        {
+          "object": "service",
+          "input": "unit"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ],
+        "bins": [
+          "systemctl"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.upgrade",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Upgrade the local Debian or Arch system through Core-reviewed package-manager commands.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.package.updates.empty",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "There is no generic package downgrade. Use package-manager history, snapshots or host-specific recovery if an upgrade must be reversed."
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.package.cache.clean",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Clean the distro package cache through a fixed Debian/Arch package-manager command.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "irreversible",
+        "description": "Cached package files are deleted and can only be obtained again from package sources or another cache."
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "platform_families": [
+          "debian",
+          "arch"
+        ]
+      }
     }
   ]
 }

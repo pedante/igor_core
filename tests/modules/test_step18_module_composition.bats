@@ -84,7 +84,7 @@ assert provider["descriptor"]["outputs"]["required"]==["observer_id"]
 assert len(candidates)==1
 candidate=candidates[0]
 assert candidate["id"]=="host.basics" and candidate["owner"]=="system"
-assert candidate["source_version"]=="2.2.0" and "# Host basics" in candidate["content"]
+assert candidate["source_version"]=="2.3.0" and "# Host basics" in candidate["content"]
 assert len(schemas)==2 and {field["id"] for row in schemas for field in row["schema"]["fields"]}=={
     "system.composition.note", "system.memory.warning_threshold_mib"}
 assert schemas[0]["source"]=="contracts/host.json"
@@ -97,7 +97,7 @@ assert fixture["schema_owner"]=="system" and fixture["desired"]["status"]=="abse
 assert fixture["resolved"]=={"status":"resolved","value":"fixture","source":"default"}
 assert warning["schema_owner"]=="system" and warning["resolved"]["value"]==150
 assert service.status()["availability"]=="not_created"
-assert view["module"]["api"]==2 and view["module"]["package_version"]=="2.2.0"
+assert view["module"]["api"]==2 and view["module"]["package_version"]=="2.3.0"
 assert view["lifecycle"]["runtime_status"]=="active" and view["lifecycle"]["loaded"] is True
 assert view["capabilities"][0]["owner"]=="system"
 assert view["knowledge"][0]["availability"]=="active"
@@ -108,10 +108,10 @@ selected,routing=assemble({"context_candidates":candidates},{"ids":["host.basics
     active_owners=["core","system"],include_runtime=False)
 item=selected["context_items"][0]
 assert item["kind"]=="module_knowledge" and item["authority_class"]=="reference"
-assert item["owner"]=="system" and item["source_version"]=="2.2.0"
+assert item["owner"]=="system" and item["source_version"]=="2.3.0"
 assert item["provenance"] and routing["items"][0]["id"]=="host.basics"
 # Exercise existing generic panels directly; no module-specific/live panel.
-for key,expected in [("module","2.2.0"),("lifecycle","active"),
+for key,expected in [("module","2.3.0"),("lifecycle","active"),
         ("capabilities","system.host.memory.refresh"),("knowledge","host.basics"),
         ("configuration","system.composition.note"),
         ("configuration","system.memory.warning_threshold_mib")]:
@@ -133,7 +133,7 @@ PY
 
 @test "invalid package version is rejected before source and all composition discovery" {
     _composition_source_marker
-    sed -i 's/version=2.2.0/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
+    sed -i 's/version=2.3.0/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
     _composition_rejected
     [[ "$(igor_module_reason system)" == *version* ]]
 }
@@ -207,7 +207,7 @@ history=json.loads(sys.argv[1]); fact=json.loads(sys.argv[2])
 assert len(history)==1
 row=history[0]
 assert row["capability"]["version"]==2
-assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]=="2.2.0"
+assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]=="2.3.0"
 assert row["outcome"]=="success" and row["verification"]["status"]=="passed"
 assert row["approval"]["result"]=="not_required" and row["privilege"]["result"]=="not_required"
 assert fact["availability"]=="known" and fact["owner"]=="system"
