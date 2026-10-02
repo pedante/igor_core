@@ -343,8 +343,9 @@ assert plan["steps"][0]["inputs"]=={"package":"pkg_docker"}
 assert plan["steps"][0]["provider"]=="system"
 assert plan["steps"][1]["inputs"]=={"unit":"docker.service"}
 assert plan["steps"][2]["inputs"]=={"unit":"docker.service"}
-assert all(step["privilege"]=="required" for step in plan["steps"])
-assert all(step.get("digest") for step in plan["steps"])
+assert all(step["inspection"]["resolution"]=="resolved" for step in plan["steps"])
+assert all(step["inspection"]["selected_provider"]=="system" for step in plan["steps"])
+assert plan.get("digest")
 PY
     [ "$(cat "$ADMIN_PRIVILEGE_TRACE")" = "$before_trace" ]
     [ ! -e "$ADMIN_PACKAGE_STATE" ]
