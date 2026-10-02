@@ -114,7 +114,7 @@ class ModuleContractTests(unittest.TestCase):
             },
         }
         root = self.package(
-            self.valid_manifest(runtime="", entrypoint=""),
+            self.valid_manifest().replace("runtime=bash\n", "").replace("entrypoint=module.sh\n", ""),
             {"contract_version": 1, "contributions": [plan]},
         )
         result = module_contract.validate_module(root)
@@ -158,7 +158,7 @@ class ModuleContractTests(unittest.TestCase):
         ):
             item = {**base, **changes}
             root = self.package(
-                self.valid_manifest(runtime="", entrypoint=""),
+                self.valid_manifest().replace("runtime=bash\n", "").replace("entrypoint=module.sh\n", ""),
                 {"contract_version": 1, "contributions": [item]},
             )
             with self.assertRaises(module_contract.ValidationError):
