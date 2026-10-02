@@ -46,6 +46,33 @@ igor_contribution_records
         self.assertEqual(lines[1][0]["kind"], "observer")
         self.assertEqual(lines[1][0]["owner"], "system")
 
+    def test_snapshot_availability_keeps_dynamic_requirement_failure(self):
+        script = r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+_IGOR_MODULE_CONFIG_LOADED=1
+_IGOR_MODULE_DIRS[docker]="$IGOR_DIR/modules/docker"
+_IGOR_MODULE_API[docker]=2
+_IGOR_MODULE_STATE[docker]=enabled
+_IGOR_MODULE_STATUS[docker]=active
+_IGOR_LOADED_MODULES[docker]=1
+_IGOR_CONTRIBUTIONS["capability:docker.test"]='{"kind":"capability","id":"docker.test","description":"test","inputs":{"properties":{},"required":[],"additionalProperties":false},"safety":{"tier":"READ"},"privilege":"none","preconditions":[],"verification":{"kind":"none","required":false},"recovery":{"class":"not_applicable"},"affects":[],"requires":{"bins":["igor-test-binary-that-does-not-exist"]}}'
+_IGOR_CONTRIBUTION_OWNER["capability:docker.test"]=docker
+_IGOR_CONTRIBUTION_SOURCE["capability:docker.test"]=contracts/docker.json
+_IGOR_CONTRIBUTION_STATE["capability:docker.test"]=active
+igor_contribution_records
+igor_capability_list
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        for rows in lines:
+            row = next(item for item in rows if item["id"] == "docker.test")
+            self.assertEqual(row["availability"], "unavailable")
+            self.assertEqual(
+                row["unavailable_reason"],
+                "required binary igor-test-binary-that-does-not-exist is missing",
+            )
+
     def test_operator_snapshot_projects_existing_registries(self):
         with tempfile.TemporaryDirectory() as runtime:
             stream = Path(runtime) / "events.jsonl"
