@@ -129,7 +129,9 @@ class PtyBoundaryTests(unittest.TestCase):
                         keys = ([("ready", 1)] +
                                 [ord(char) for char in f"mode {mode}\n"] +
                                 [("ready", 2)] +
-                                [ord(char) for char in "check package\nrun\n"])
+                                [ord(char) for char in "check package\n"] +
+                                [("ready", 3)] +
+                                [ord(char) for char in "run\n"])
                     with patch.object(tui.curses, "ACS_HLINE", "-", create=True), \
                             patch.object(tui.curses, "wrapper",
                                          side_effect=lambda callback: callback(Screen(stream, keys))):
