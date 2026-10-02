@@ -129,11 +129,3 @@ print(json.dumps({"status":"ok","result":{
 }},separators=(",",":")))
 PY
 }
-
-docker__install() {
-    _docker_request docker.install >/dev/null || {
-        _docker_error invalid_request "expected docker.install v2 request"
-        return 0
-    }
-    _docker_error delegated "docker.install requires System package/service capabilities; Docker does not own apt, pacman or systemd"
-}
