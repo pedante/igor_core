@@ -15,18 +15,40 @@
       "outputs": {
         "schema_version": 1,
         "properties": {
-          "installed": {"type": "boolean"},
-          "version": {"type": "string", "maxLength": 128},
-          "daemon_accessible": {"type": "boolean"}
+          "installed": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "daemon_accessible": {
+            "type": "boolean"
+          }
         },
-        "required": ["installed", "version", "daemon_accessible"],
+        "required": [
+          "installed",
+          "version",
+          "daemon_accessible"
+        ],
         "additionalProperties": false
       },
-      "safety": {"tier": "READ"},
+      "safety": {
+        "tier": "READ"
+      },
       "privilege": "none",
-      "preconditions": [{"kind": "owner_active"}],
-      "verification": {"kind": "none", "required": false},
-      "recovery": {"class": "not_applicable"},
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
       "affects": []
     },
     {
@@ -43,19 +65,47 @@
       "outputs": {
         "schema_version": 1,
         "properties": {
-          "available": {"type": "boolean"},
-          "count": {"type": "integer", "minimum": 0},
-          "containers": {"type": "string", "maxLength": 4096}
+          "available": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "containers": {
+            "type": "string",
+            "maxLength": 4096
+          }
         },
-        "required": ["available", "count", "containers"],
+        "required": [
+          "available",
+          "count",
+          "containers"
+        ],
         "additionalProperties": false
       },
-      "safety": {"tier": "READ"},
+      "safety": {
+        "tier": "READ"
+      },
       "privilege": "none",
-      "preconditions": [{"kind": "owner_active"}],
-      "verification": {"kind": "none", "required": false},
-      "recovery": {"class": "not_applicable"},
-      "affects": []
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [],
+      "requires": {
+        "bins": [
+          "docker"
+        ]
+      }
     },
     {
       "kind": "capability",
@@ -65,64 +115,170 @@
       "description": "Restart one explicitly named Docker container through Igor's normal approval dispatcher.",
       "inputs": {
         "properties": {
-          "container": {"type": "string", "minLength": 1, "maxLength": 128}
+          "container": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
         },
-        "required": ["container"],
+        "required": [
+          "container"
+        ],
         "additionalProperties": false
       },
       "outputs": {
         "schema_version": 1,
         "properties": {
-          "container": {"type": "string", "maxLength": 128},
-          "result": {"type": "string", "maxLength": 128}
+          "container": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "result": {
+            "type": "string",
+            "maxLength": 128
+          }
         },
-        "required": ["container", "result"],
+        "required": [
+          "container",
+          "result"
+        ],
         "additionalProperties": false
       },
-      "safety": {"tier": "CHANGE"},
+      "safety": {
+        "tier": "CHANGE"
+      },
       "privilege": "none",
-      "preconditions": [{"kind": "owner_active"}],
-      "verification": {"kind": "none", "required": false},
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
       "recovery": {
         "class": "best_effort",
         "description": "The restart itself is transient; inspect container state and logs if recovery is needed."
       },
       "affects": [],
       "requires": {
-        "bins": ["docker"]
+        "bins": [
+          "docker"
+        ]
       }
     },
     {
       "kind": "capability",
       "id": "docker.install",
-      "handler": "docker__install",
-      "capability_version": 2,
-      "description": "Install and activate Docker by composing System-owned package and service capabilities.",
+      "capability_version": 1,
+      "description": "Install and activate Docker through a data-only composition of canonical host capabilities.",
       "inputs": {
         "properties": {},
         "required": [],
         "additionalProperties": false
       },
-      "outputs": {
-        "schema_version": 1,
-        "properties": {
-          "installed": {"type": "boolean"},
-          "version": {"type": "string", "maxLength": 128}
-        },
-        "required": ["installed", "version"],
-        "additionalProperties": false
+      "safety": {
+        "tier": "CHANGE"
       },
-      "safety": {"tier": "CHANGE"},
-      "privilege": "required",
-      "preconditions": [{"kind": "owner_active"}],
-      "verification": {"kind": "none", "required": false},
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
       "recovery": {
         "class": "best_effort",
-        "description": "Removal or rollback must be a separately approved System package/service workflow."
+        "description": "A stopped composition is recorded as partial progress. Removal or rollback is a separately approved capability request."
       },
-      "affects": [{"object": "package", "id": "docker"}],
+      "affects": [
+        {
+          "object": "package",
+          "id": "docker"
+        },
+        {
+          "object": "service",
+          "id": "docker.service"
+        }
+      ],
+      "implementation": {
+        "kind": "composition",
+        "intended_outcome": "Docker Engine is installed and docker.service is enabled, active, and reachable.",
+        "variants": [
+          {
+            "requires": {
+              "platform_families": [
+                "debian"
+              ]
+            },
+            "steps": [
+              {
+                "capability_id": "system.package.install",
+                "inputs": {
+                  "package": "docker.io"
+                }
+              },
+              {
+                "capability_id": "system.service.enable",
+                "inputs": {
+                  "unit": "docker.service"
+                }
+              },
+              {
+                "capability_id": "system.service.start",
+                "inputs": {
+                  "unit": "docker.service"
+                }
+              }
+            ]
+          },
+          {
+            "requires": {
+              "platform_families": [
+                "arch"
+              ]
+            },
+            "steps": [
+              {
+                "capability_id": "system.package.install",
+                "inputs": {
+                  "package": "docker"
+                }
+              },
+              {
+                "capability_id": "system.service.enable",
+                "inputs": {
+                  "unit": "docker.service"
+                }
+              },
+              {
+                "capability_id": "system.service.start",
+                "inputs": {
+                  "unit": "docker.service"
+                }
+              }
+            ]
+          }
+        ],
+        "final_check": {
+          "capability_id": "docker.status",
+          "inputs": {},
+          "expect": {
+            "installed": true,
+            "daemon_accessible": true
+          }
+        }
+      },
       "requires": {
-        "capabilities": ["system.package.install", "system.service.enable"]
+        "capabilities": [
+          "system.package.install",
+          "system.service.enable",
+          "system.service.start"
+        ]
       }
     }
   ]
