@@ -30,11 +30,24 @@ def test_docker_module_validates_as_v2_package():
     assert by_id["docker.container.restart"]["safety"]["tier"] == "CHANGE"
     assert by_id["docker.container.restart"]["requires"]["bins"] == ["docker"]
     assert by_id["docker.install"]["safety"]["tier"] == "CHANGE"
-    assert by_id["docker.install"]["privilege"] == "required"
+    assert by_id["docker.install"]["privilege"] == "none"
+    assert "handler" not in by_id["docker.install"]
+    assert by_id["docker.install"]["implementation"]["kind"] == "composition"
     assert by_id["docker.install"]["requires"]["capabilities"] == [
         "system.package.install",
         "system.service.enable",
+        "system.service.start",
     ]
+    variants = by_id["docker.install"]["implementation"]["variants"]
+    assert variants[0]["requires"]["platform_families"] == ["debian"]
+    assert variants[0]["steps"][0]["inputs"]["package"] == "docker.io"
+    assert variants[1]["requires"]["platform_families"] == ["arch"]
+    assert variants[1]["steps"][0]["inputs"]["package"] == "docker"
+    assert by_id["docker.install"]["implementation"]["final_check"]["capability_id"] == "docker.status"
+    assert by_id["docker.install"]["implementation"]["final_check"]["expect"] == {
+        "installed": True,
+        "daemon_accessible": True,
+    }
 
 
 def test_docker_module_does_not_claim_package_or_service_mechanisms():
