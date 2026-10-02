@@ -1211,7 +1211,7 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                         [ "$_name" = system ] &&
                         [ "$(_ml_json_field "$_record" handler)" = system__privileged_marker ] &&
                         case "${_key#capability:}" in
-                            system.package.upgrade|system.package.cache.clean) true ;;
+                            system.package.install|system.package.upgrade|system.package.cache.clean|system.service.start|system.service.enable) true ;;
                             *) false ;;
                         esac
                     }
@@ -1241,7 +1241,17 @@ package_upgrade_query=(record.get("owner")=="system" and record.get("id")=="syst
               record.get("capability_version")==1 and record.get("privilege")=="required" and
               verification=={"kind":"trusted_query","check_id":"system.package.updates.empty","required":True} and
               record.get("safety",{}).get("tier")=="CHANGE")
-trusted_query=memory_query or package_upgrade_query
+package_install_query=(record.get("owner")=="system" and record.get("id")=="system.package.install" and
+              record.get("handler")=="system__privileged_marker" and
+              record.get("capability_version")==1 and record.get("privilege")=="required" and
+              verification=={"kind":"trusted_query","check_id":"system.package.installed","required":True} and
+              record.get("safety",{}).get("tier")=="CHANGE")
+service_enable_query=(record.get("owner")=="system" and record.get("id")=="system.service.enable" and
+              record.get("handler")=="system__privileged_marker" and
+              record.get("capability_version")==1 and record.get("privilege")=="required" and
+              verification=={"kind":"trusted_query","check_id":"system.service.enabled","required":True} and
+              record.get("safety",{}).get("tier")=="CHANGE")
+trusted_query=memory_query or package_upgrade_query or package_install_query or service_enable_query
 unsupported=unsupported or (verification.get("kind") == "trusted_query" and not trusted_query)
 unsupported=unsupported or (record.get("id") in reviewed and not memory_query)
 raise SystemExit(0 if unsupported else 1)
