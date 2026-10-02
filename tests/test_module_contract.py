@@ -136,6 +136,16 @@ class ModuleContractTests(unittest.TestCase):
                                    "exactly match plan references"):
             module_contract.validate_module(root)
 
+        foreign = json.loads(json.dumps(plan))
+        foreign["id"] = "other.install"
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [foreign]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError,
+                                   "must belong to module fixture"):
+            module_contract.validate_module(root)
+
     def test_plan_rejects_executable_or_unbounded_shape(self):
         base = {
             "kind": "plan",
