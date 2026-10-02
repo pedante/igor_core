@@ -104,6 +104,13 @@ as part of the reviewed operation.
 This avoids the unsafe Arch pattern of treating `pacman -Sy` as equivalent to
 Debian's index-only refresh.
 
+"Distro-neutral" in this experiment means one System contract over Debian-family
+and Arch-family package mechanics. It does **not** yet mean init-system neutral:
+the existing System package already requires `systemctl`, and service/log
+capabilities intentionally target systemd/journald. OpenRC, runit and other init
+systems would require a future Platform service/log abstraction rather than
+conditionals inside the System module.
+
 ## Privilege boundary
 
 Read handlers may call bounded unprivileged platform queries.
