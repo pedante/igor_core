@@ -1,0 +1,129 @@
+{
+  "contract_version": 1,
+  "contributions": [
+    {
+      "kind": "capability",
+      "id": "docker.status",
+      "handler": "docker__status",
+      "capability_version": 2,
+      "description": "Inspect whether the Docker CLI is installed and whether the local daemon is reachable.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "installed": {"type": "boolean"},
+          "version": {"type": "string", "maxLength": 128},
+          "daemon_accessible": {"type": "boolean"}
+        },
+        "required": ["installed", "version", "daemon_accessible"],
+        "additionalProperties": false
+      },
+      "safety": {"tier": "READ"},
+      "privilege": "none",
+      "preconditions": [{"kind": "owner_active"}],
+      "verification": {"kind": "none", "required": false},
+      "recovery": {"class": "not_applicable"},
+      "affects": []
+    },
+    {
+      "kind": "capability",
+      "id": "docker.container.list",
+      "handler": "docker__container_list",
+      "capability_version": 2,
+      "description": "List the local Docker containers without changing them.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "available": {"type": "boolean"},
+          "count": {"type": "integer", "minimum": 0},
+          "containers": {"type": "string", "maxLength": 4096}
+        },
+        "required": ["available", "count", "containers"],
+        "additionalProperties": false
+      },
+      "safety": {"tier": "READ"},
+      "privilege": "none",
+      "preconditions": [{"kind": "owner_active"}],
+      "verification": {"kind": "none", "required": false},
+      "recovery": {"class": "not_applicable"},
+      "affects": []
+    },
+    {
+      "kind": "capability",
+      "id": "docker.container.restart",
+      "handler": "docker__container_restart",
+      "capability_version": 2,
+      "description": "Restart one explicitly named Docker container through Igor's normal approval dispatcher.",
+      "inputs": {
+        "properties": {
+          "container": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "required": ["container"],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "container": {"type": "string", "maxLength": 128},
+          "result": {"type": "string", "maxLength": 128}
+        },
+        "required": ["container", "result"],
+        "additionalProperties": false
+      },
+      "safety": {"tier": "CHANGE"},
+      "privilege": "none",
+      "preconditions": [{"kind": "owner_active"}],
+      "verification": {"kind": "none", "required": false},
+      "recovery": {
+        "class": "best_effort",
+        "description": "The restart itself is transient; inspect container state and logs if recovery is needed."
+      },
+      "affects": [],
+      "requires": {
+        "bins": ["docker"]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "docker.install",
+      "handler": "docker__install",
+      "capability_version": 2,
+      "description": "Install and activate Docker by composing System-owned package and service capabilities.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "installed": {"type": "boolean"},
+          "version": {"type": "string", "maxLength": 128}
+        },
+        "required": ["installed", "version"],
+        "additionalProperties": false
+      },
+      "safety": {"tier": "CHANGE"},
+      "privilege": "required",
+      "preconditions": [{"kind": "owner_active"}],
+      "verification": {"kind": "none", "required": false},
+      "recovery": {
+        "class": "best_effort",
+        "description": "Removal or rollback must be a separately approved System package/service workflow."
+      },
+      "affects": [{"object": "package", "id": "docker"}],
+      "requires": {
+        "capabilities": ["system.package.install", "system.service.enable"]
+      }
+    }
+  ]
+}
