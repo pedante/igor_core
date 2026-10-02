@@ -125,6 +125,44 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["path"], "system.memory.policy")
 
+    def test_plan_contribution_projects_as_generated_leaf_with_availability(self):
+        payload = self.payload()
+        payload["modules"].append({
+            "name": "docker", "display_name": "Docker",
+            "status": "active", "enabled": True, "module_api": 2,
+        })
+        payload["contributions"].append({
+            "id": "docker.install",
+            "kind": "plan",
+            "owner": "docker",
+            "availability": "active",
+            "unavailable_reason": None,
+            "descriptor": {
+                "description": "Install Docker.",
+                "plan_version": 1,
+                "steps": [{"capability_id": "system.package.install",
+                           "inputs": {"package": "pkg_docker"}}],
+            },
+        })
+        surface = build_surface(payload)
+        row = next(item for item in surface["entries"]
+                   if item["target_id"] == "docker.install")
+        self.assertEqual(row["kind"], "plan")
+        self.assertEqual(row["path"], "docker.install")
+        docker = children(surface, "docker")
+        install = next(item for item in docker if item["name"] == "install")
+        self.assertTrue(install["leaf"])
+        self.assertEqual(install["kind"], "plan")
+        self.assertEqual(install["availability"], "active")
+
+        payload["contributions"][-1]["availability"] = "unavailable"
+        payload["contributions"][-1]["unavailable_reason"] = "missing dependency"
+        surface = build_surface(payload)
+        row = next(item for item in surface["entries"]
+                   if item["target_id"] == "docker.install")
+        self.assertEqual(row["availability"], "unavailable")
+        self.assertEqual(row["unavailable_reason"], "missing dependency")
+
     def test_duplicate_capability_providers_remain_explicit(self):
         payload = self.payload()
         duplicate = json.loads(json.dumps(CAP))
