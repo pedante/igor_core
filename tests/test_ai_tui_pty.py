@@ -123,8 +123,8 @@ class PtyBoundaryTests(unittest.TestCase):
                         keys.extend(ord(char) for char in command + "\n")
                         if index + 1 < len(commands) and command != "check package":
                             keys.append(("ready", index + 2))
-                    # The guide-mode "run" is an approval response, so it does
-                    # not wait for a new normal-input-ready boundary.
+                    # In guide mode the third ready event means the fixture has
+                    # entered its approval read after emitting approval_waiting.
                     if mode == "guide":
                         keys = ([("ready", 1)] +
                                 [ord(char) for char in f"mode {mode}\n"] +
