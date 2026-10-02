@@ -73,7 +73,9 @@ _mod_sys_admin_platform() {
     [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
     source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
     source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
-    [ -n "${IGOR_DISTRO_FAMILY:-}" ] || igor_detect_distro
+    if [ -z "${IGOR_DISTRO_FAMILY:-}" ] || [ -z "${IGOR_DISTRO_ID:-}" ]; then
+        igor_detect_distro
+    fi
     case "${IGOR_DISTRO_FAMILY:-unknown}" in
         debian|arch) return 0 ;;
         *) return 1 ;;
