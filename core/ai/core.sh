@@ -3069,11 +3069,6 @@ except: pass
         _ai_poll_fifo || break   # break if end_session was requested
         _ai_update_state         # keep --extra Lens 2 / 4 current
 
-        # Tell structured frontends exactly when stdin is safe for a new command.
-        # Without this boundary, a TUI command can be queued behind an in-flight
-        # model request and appear to have caused the older response.
-        _ai_frontend_event model_status '' 'input_ready'
-
         # [FIX-1] Auto-refresh context if stale (default: every 5 minutes)
         local _now; _now=$(date +%s)
         if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
@@ -3098,6 +3093,9 @@ except: pass
         [ -n "$_steer_name" ] && _ptag+=" · ${YEL}✦ ${_steer_name}" || true
         _ptag+="${NC}"
         echo -e -n "  ${MAG}Igor${NC} [$(echo -e "${_ptag}")] ${MAG}›${NC} "
+        # This is the authoritative frontend boundary: after input_ready the
+        # backend's next blocking operation is the stdin read below.
+        _ai_frontend_event model_status '' 'input_ready'
         local user_input=""
         # Disable all mouse reporting before reading input — tmux `mouse on` routes
         # click/move/scroll events as escape sequences (^[[A ^[[B etc.) into the
