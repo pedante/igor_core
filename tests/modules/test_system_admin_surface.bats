@@ -9,16 +9,26 @@ setup() {
     export IGOR_DISTRO_ID=debian
     export IGOR_DISTRO_FAMILY=debian
     export IGOR_PLATFORM_QUERY_TIMEOUT_SECONDS=5
-    mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config" "$IGOR_DIR/bin"
+    mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config" "$IGOR_DIR/bin" "$IGOR_DIR/runtime"
+    export ADMIN_UPDATE_STATE="$IGOR_DIR/runtime/updates-pending"
+    export ADMIN_PRIVILEGE_TRACE="$IGOR_DIR/runtime/privileged-argv"
+    printf 'pending\n' > "$ADMIN_UPDATE_STATE"
+    : > "$ADMIN_PRIVILEGE_TRACE"
     cp -a "$REPO_DIR/modules/system" "$IGOR_DIR/modules/system"
     printf 'system=enabled\n' > "$IGOR_DIR/config/modules.conf"
 
     cat > "$IGOR_DIR/bin/apt-get" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1 $2" = "-s upgrade" ]; then
-    printf 'Inst curl [1] (2 repo)\nInst openssl [1] (2 repo)\n'
+    [ -e "$ADMIN_UPDATE_STATE" ] && printf 'Inst curl [1] (2 repo)\nInst openssl [1] (2 repo)\n'
 elif [ "$1 $2" = "-s autoremove" ]; then
     printf 'Remv old-kernel [1]\nRemv unused-lib [1]\n'
+elif [ "$1" = update ] && [ "$#" -eq 1 ]; then
+    exit 0
+elif [ "$1 $2" = "upgrade -y" ]; then
+    rm -f "$ADMIN_UPDATE_STATE"
+elif [ "$1" = clean ] && [ "$#" -eq 1 ]; then
+    exit 0
 else
     exit 2
 fi
@@ -26,8 +36,13 @@ EOF
     cat > "$IGOR_DIR/bin/pacman" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
-    -Qu) printf 'curl 1 -> 2\nlinux 1 -> 2\n' ;;
+    -Qu) [ -e "$ADMIN_UPDATE_STATE" ] && printf 'curl 1 -> 2\nlinux 1 -> 2\n' ;;
     -Qdtq) printf 'unused-a\nunused-b\n' ;;
+    -Syu)
+        [ "$2" = --noconfirm ] || exit 2
+        rm -f "$ADMIN_UPDATE_STATE"
+        ;;
+    -Sc) [ "$2" = --noconfirm ] || exit 2 ;;
     *) exit 2 ;;
 esac
 EOF
@@ -54,6 +69,14 @@ EOF
 printf '2026-10-02T12:00:00+0000 host kernel: boot ok\n'
 printf '2026-10-02T12:00:01+0000 host systemd: service ready\n'
 EOF
+    cat > "$IGOR_DIR/bin/sudo" <<'EOF'
+#!/usr/bin/env bash
+printf 'sudo %s\n' "$*" >> "$ADMIN_PRIVILEGE_TRACE"
+[ "$1" = -n ] && [ "$2" = -- ] || exit 2
+shift 2
+exec "$@"
+EOF
+    chmod +x "$IGOR_DIR/bin/sudo"
     chmod +x "$IGOR_DIR/bin/apt-get" "$IGOR_DIR/bin/pacman" "$IGOR_DIR/bin/systemctl" "$IGOR_DIR/bin/journalctl"
     export PATH="$IGOR_DIR/bin:$PATH"
 
@@ -98,6 +121,8 @@ expected={
  "system.host.summary",
  "system.package.updates.list",
  "system.package.cleanup.preview",
+ "system.package.upgrade",
+ "system.package.cache.clean",
  "system.service.list",
  "system.service.status",
  "system.service.restart",
@@ -169,6 +194,36 @@ PY
     [[ "$output" == *'"source":"systemd.journal"'* ]]
     [[ "$output" == *'boot ok'* ]]
     [[ "$output" == *'service ready'* ]]
+}
+
+@test "package upgrade freezes distro-specific argv and verifies the Debian result" {
+    run igor_capability_prepare system.package.upgrade '{}' system 1
+    [ "$status" -eq 0 ]
+    proposal="$output"
+    [[ "$proposal" == *'"privileged_argv":[["sudo","-n","--","apt-get","update"],["sudo","-n","--","apt-get","upgrade","-y"]]'* ]]
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(printf '%s' "$proposal" | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+    IGOR_CAPABILITY_APPROVAL_STATUS=approved
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"execution_status":"succeeded"'* ]]
+    [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"remaining_updates":0'* ]]
+    [ "$(sed -n '1p' "$ADMIN_PRIVILEGE_TRACE")" = 'sudo -n -- apt-get update' ]
+    [ "$(sed -n '2p' "$ADMIN_PRIVILEGE_TRACE")" = 'sudo -n -- apt-get upgrade -y' ]
+}
+
+@test "Arch package upgrade and cache clean freeze different reviewed commands" {
+    IGOR_DISTRO_ID=arch
+    IGOR_DISTRO_FAMILY=arch
+    export IGOR_DISTRO_ID IGOR_DISTRO_FAMILY
+    run igor_capability_prepare system.package.upgrade '{}' system 1
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"privileged_argv":[["sudo","-n","--","pacman","-Syu","--noconfirm"]]'* ]]
+    run igor_capability_prepare system.package.cache.clean '{}' system 1
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"privileged_argv":[["sudo","-n","--","pacman","-Sc","--noconfirm"]]'* ]]
+    [[ "$output" == *'"class":"irreversible"'* ]]
 }
 
 @test "service restart reuses the reviewed exact-argv privilege adapter" {
