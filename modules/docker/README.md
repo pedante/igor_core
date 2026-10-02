@@ -1,7 +1,8 @@
 # Docker Module API v2 experiment
 
-This module probes whether Igor can gain a new application-management domain
-without adding Docker-specific behavior to Core.
+This module probes whether a detachable application domain can expose a
+high-level installation operation without taking ownership of host package,
+service, privilege, or approval mechanisms.
 
 ## What the module owns
 
@@ -10,33 +11,50 @@ Docker-domain meaning and Docker CLI operations:
 - runtime status;
 - container inventory;
 - approved container restart;
-- future images, logs and Compose operations;
-- installation intent.
+- Docker installation intent and platform-specific package identity.
 
-## What Core owns
+## What Core and System own
 
-Igor Core remains authoritative for:
+Core remains authoritative for capability registration, provider resolution,
+policy, approval, privilege, frozen execution, verification and history.
+System supplies generic host capabilities such as package installation and
+service enable/start. Docker contains no apt, pacman, systemctl or sudo logic.
 
-- module discovery/enablement;
-- capability registration and availability;
-- READ/CHANGE/DESTROY policy;
-- user approval;
-- privilege;
-- execution history;
-- cross-domain package/service composition.
+## Composite installation capability
 
-The module therefore does not contain apt/pacman/systemctl installation logic.
+`docker.install` remains a normal capability. Its provider is data-only
+composition rather than a Bash handler.
+
+For Debian it resolves:
+
+```text
+system.package.install(package=docker.io)
+  -> system.service.enable(unit=docker.service)
+  -> system.service.start(unit=docker.service)
+  -> docker.status  [installed=true, daemon_accessible=true]
+```
+
+For Arch the package step uses `docker`. Core resolves the selected variant
+into an immutable internal plan with provider/version/input information and a
+digest. Each mutating child step re-enters the ordinary capability dispatcher,
+so approval, PTY sudo authentication, exact reviewed argv and deterministic
+verification remain unchanged. The final typed READ check verifies the
+Docker-domain outcome.
+
+The resolved plan is an execution artifact, not a separately registered
+operation. AI, TUI and later automation continue to invoke only
+`run_capability` / `docker.install`.
 
 ## Current capabilities
 
-- `docker.status` — READ, works even when Docker is absent.
-- `docker.container.list` — READ, reports unavailable when the daemon cannot be queried.
-- `docker.container.restart` — CHANGE, available only when the Docker CLI exists; execution still goes through Igor's capability approval path.
-- `docker.install` — CHANGE, declared but intentionally unavailable until System exposes the required `system.package.install` and `system.service.enable` composition capabilities.
+- `docker.status` — READ and intentionally available while Docker is absent.
+- `docker.container.list` — READ and available only when the Docker CLI exists.
+- `docker.container.restart` — CHANGE and available only when the Docker CLI exists.
+- `docker.install` — CHANGE composite capability, available when its System
+  package/service providers are available for the current platform.
 
-The unavailable install leaf is intentional: it makes a missing composition
-contract visible instead of embedding distribution-specific package/service
-commands in this module.
+A stopped composition records partial progress and does not silently roll back.
+Recovery is a separate approved capability request.
 
 ## Trying the experiment
 
@@ -47,8 +65,7 @@ bash igor.sh --enable docker
 bash igor.sh --modules
 ```
 
-Restart Igor after enablement, then open the TUI Operator Surface with `:`.
-The expected namespace is:
+Restart after enablement. The Operator Surface remains capability-shaped:
 
 ```text
 docker
@@ -59,14 +76,11 @@ docker
 └── status
 ```
 
-`docker.install` should be shown unavailable until its System composition
-dependencies exist. This is part of the experiment, not a hidden fallback.
-
-Disable it again with:
+Disable it with:
 
 ```bash
 bash igor.sh --disable docker
 ```
 
 After restart, Docker contributions must disappear without affecting System or
-other modules. That is the detachability proof.
+other modules.
