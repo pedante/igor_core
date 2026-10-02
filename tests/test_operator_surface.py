@@ -108,6 +108,23 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(row["path"], "system.runtime.enabled")
 
 
+    def test_configuration_from_contribution_and_declaration_is_not_duplicated(self):
+        payload = self.payload()
+        schema = payload["configurations"][0]["schema"]
+        payload["contributions"].append({
+            "id": "system.memory.preferences",
+            "kind": "configuration",
+            "owner": "system",
+            "availability": "active",
+            "unavailable_reason": None,
+            "descriptor": {"schema": schema},
+        })
+        surface = build_surface(payload)
+        rows = [row for row in surface["entries"]
+                if row["target_id"] == "system.memory.policy"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["path"], "system.memory.policy")
+
     def test_duplicate_capability_providers_remain_explicit(self):
         payload = self.payload()
         duplicate = json.loads(json.dumps(CAP))
