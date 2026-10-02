@@ -297,15 +297,15 @@ system__logs_summary() {
     }
     timeout_seconds="${IGOR_PLATFORM_QUERY_TIMEOUT_SECONDS:-5}"
     [[ "$timeout_seconds" =~ ^[1-9][0-9]?$ ]] || timeout_seconds=5
-    recent="$(timeout "$timeout_seconds" journalctl -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+    recent="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
         _mod_sys_admin_error unavailable "journal query failed or is not permitted"
         return 0
     }
-    warning="$(timeout "$timeout_seconds" journalctl -p warning -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+    warning="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -p warning -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
         _mod_sys_admin_error unavailable "journal warning query failed or is not permitted"
         return 0
     }
-    errors="$(timeout "$timeout_seconds" journalctl -p err -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+    errors="$(LC_ALL=C timeout "$timeout_seconds" journalctl --quiet -p err -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
         _mod_sys_admin_error unavailable "journal error query failed or is not permitted"
         return 0
     }
