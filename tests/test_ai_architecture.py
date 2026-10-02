@@ -254,6 +254,40 @@ class AiArchitectureTests(unittest.TestCase):
             else:
                 self.assertNotIn("fixture-host", combined)
 
+    def test_registered_plans_get_a_bounded_catalog_tool(self):
+        descriptor = {
+            "kind": "plan",
+            "id": "docker.install",
+            "owner": "docker",
+            "description": "Install Docker.",
+            "plan_version": 1,
+            "steps": [{"capability_id": "system.package.install",
+                       "inputs": {"package": "pkg_docker"}}],
+        }
+        data = catalog.build_catalog([
+            ("plan", "docker.install", "docker", "orchestrated",
+             json.dumps({"owner": "docker", "descriptor": descriptor})),
+        ])
+        tool = next(row for row in data["tools"] if row["name"] == "run_plan")
+        self.assertEqual(tool["openai_params"]["id"]["enum"], ["docker.install"])
+        self.assertEqual(tool["required"], ["id"])
+
+        fields = tool_fields(json.dumps({"tool": "run_plan", "id": "docker.install"}))
+        self.assertEqual(fields[0], "run_plan")
+        self.assertEqual(fields[1], "docker.install")
+        with self.assertRaises(ValueError):
+            tool_fields(json.dumps({
+                "tool": "run_plan",
+                "id": "docker.install",
+                "steps": [{"capability_id": "system.invented.root"}],
+            }))
+        with self.assertRaises(ValueError):
+            tool_fields(json.dumps({"tool": "run_plan", "id": "../docker.install"}))
+
+    def test_catalog_does_not_advertise_generic_run_plan_without_registry_rows(self):
+        data = catalog.build_catalog([])
+        self.assertNotIn("run_plan", [tool["name"] for tool in data["tools"]])
+
     def test_catalog_filters_inactive_module_owners_and_denied_actions(self):
         script = """
 source "$REPO/core/ai/control.sh"
