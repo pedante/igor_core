@@ -100,19 +100,34 @@ class OperatorExplorerTests(unittest.TestCase):
         self.assertIn("modules 1", summary)
         self.assertIn("Projection failed for: capabilities", notice)
 
-    def test_ctrl_r_requests_a_fresh_backend_snapshot(self):
+    def test_cached_snapshot_opens_without_backend_request(self):
         state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [capability()])))
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(
+                Screen([27]), 17, Reader([]), state, tui.InputBuffer())
+        self.assertEqual(sent, [])
+        self.assertEqual(state.sequence, 1)
+        self.assertIsNotNone(state.operator_snapshot)
+
+    def test_ctrl_r_refreshes_without_discarding_cached_snapshot(self):
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [capability()])))
         sent = []
         with patch.object(tui, "_send", side_effect=lambda master, text:
                           sent.append((master, text))), \
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._operator_overlay(
                 Screen([18, 27]), 17,
-                Reader([snapshot_event(1, [capability()]),
-                        snapshot_event(2, [capability()])]),
+                Reader([snapshot_event(2, [capability("system.host.summary")])]),
                 state, tui.InputBuffer())
-        self.assertEqual(sent, [(17, "surface snapshot"), (17, "surface snapshot")])
+        self.assertEqual(sent, [(17, "surface snapshot")])
         self.assertEqual(state.sequence, 2)
+        paths = [row["path"] for row in state.operator_snapshot["entries"]]
+        self.assertEqual(paths, ["system.host.summary"])
 
     def test_invoke_command_preserves_provider_only_when_required(self):
         command, needs_input = tui._operator_invoke_command(capability())
