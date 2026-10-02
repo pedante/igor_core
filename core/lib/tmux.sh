@@ -159,32 +159,34 @@ _igor_set_breadcrumb() {
 # pane's text foreground to yellow, causing every post-\033[0m reset to produce yellow
 # text (color bleed throughout the session).
 #
-# Scroll fix: enable mouse capture + bind WheelUpPane to copy-mode so the user
-# can scroll back through the AI conversation. Two-part fix:
-#   1. `tmux set-option mouse on` — without this, many SSH clients/terminals convert
-#      wheel events to ^[[A/^[[B at the client level before tmux sees them.
-#   2. WheelUpPane → copy-mode — tmux's default with `mouse on` converts wheel events
-#      to Up/Down arrows; this binding intercepts them and uses copy-mode instead.
+# Mouse policy: terminal-native text selection/copy is the default in AI mode.
+# Set IGOR_TUI_MOUSE=1 to opt back into tmux/curses mouse navigation and wheel
+# copy-mode. Keyboard scrolling remains available in either mode.
 igor_layout_ai() {
     igor_in_tmux || return 0
 
-    # ── Step 1: Enable mouse capture (must happen BEFORE the bindings fire) ───
-    # Without `mouse on`, tmux never intercepts wheel events — they arrive as raw
-    # ^[[A/^[[B arrow sequences injected by the SSH client or terminal emulator.
-    tmux set-option mouse on 2>/dev/null || true
+    # ── Step 1: Mouse policy ──────────────────────────────────────────────
+    # Default to normal terminal selection/copy.  Opt-in mouse mode preserves
+    # the previous wheel-to-copy-mode behavior for users who prefer it.
+    case "${IGOR_TUI_MOUSE:-}" in
+        1|true|TRUE|yes|YES|on|ON)
+            tmux set-option mouse on 2>/dev/null || true
+            tmux bind-key -T root WheelUpPane \
+                if-shell -F '#{pane_in_mode}' \
+                'send-keys -M' \
+                'copy-mode -e; send-keys -M' 2>/dev/null || true
+            tmux bind-key -T root WheelDownPane \
+                if-shell -F '#{pane_in_mode}' \
+                'send-keys -M' 2>/dev/null || true
+            ;;
+        *)
+            tmux set-option mouse off 2>/dev/null || true
+            tmux unbind-key -T root WheelUpPane   2>/dev/null || true
+            tmux unbind-key -T root WheelDownPane 2>/dev/null || true
+            ;;
+    esac
 
-    # ── Step 2: Scroll bindings (unconditional — no pane required) ────────────
-    # WheelUp  → enter copy-mode and scroll (so user can read conversation history)
-    # WheelDown → scroll within copy-mode; no-op outside copy-mode (avoids arrows)
-    tmux bind-key -T root WheelUpPane \
-        if-shell -F '#{pane_in_mode}' \
-        'send-keys -M' \
-        'copy-mode -e; send-keys -M' 2>/dev/null || true
-    tmux bind-key -T root WheelDownPane \
-        if-shell -F '#{pane_in_mode}' \
-        'send-keys -M' 2>/dev/null || true
-
-    # ── Step 3: Yellow border on the active pane (needs pane target) ─────────
+    # ── Step 2: Yellow border on the active pane (needs pane target) ─────────
     local _tgt="${IGOR_PANE_LEFT:-${IGOR_PANE_MENU:-}}"
     [ -z "$_tgt" ] && return 0
     local _win; _win=$(tmux display-message -t "$_tgt" -p '#{window_id}' 2>/dev/null) || true
