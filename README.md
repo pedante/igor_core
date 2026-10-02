@@ -31,9 +31,10 @@ not stop running services or delete their data. See the
 `--deployments inspect DEPLOYMENT_ID` and `--deployments export` inspect the
 Core-owned deployment identity, bindings, relationships and scoped responsibility
 registry without loading modules, probing applications or creating storage.
-Discovery and resource participation imply no management duty. This first
-foundation exposes internal metadata contracts and read-only inspection; it
-does not adopt an application, provision resources or certify detach. See the
+Discovery and resource participation imply no management duty. The canonical capability path also supports bounded metadata attachment of an
+existing Nextcloud deployment after deterministic inspection and explicit approval.
+It changes no application settings, provisions no resources and cannot certify
+general detach. See the [attachment contract](docs/igor2/ATTACHMENT.md). See the
 [deployment contract](docs/igor2/DEPLOYMENTS.md).
 
 With System active, the chat command `memory-warning 220` proposes, commits,

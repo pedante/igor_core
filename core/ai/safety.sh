@@ -933,6 +933,13 @@ ai_execute_tool() {
     # ── UI tier display ───────────────────────────────────────────────────────
     # In quiet loop mode, suppress display for READ-only commands.
     local _mode; _mode=$(ai_get_mode)
+    local _cap_requires_explicit_approval=false
+    if [ "${T_TOOL:-}" = run_capability ]; then
+        case "${T_CAPABILITY_ID:-}" in
+            core.deployments.initialize|core.deployments.adopt|core.deployments.release)
+                _cap_requires_explicit_approval=true ;;
+        esac
+    fi
     local _ui_quiet=false
     [ "${IGOR_QUIET_LOOP:-false}" = "true" ] && [ "$tier" = "READ" ] && \
         [ "$_mode" != guide ] && _ui_quiet=true
@@ -953,7 +960,8 @@ ai_execute_tool() {
                 fi
                 ;;
             CHANGE)
-                if [ "$_mode" = executive ] && [ "$_raw_shell" = false ]; then
+                if [ "$_mode" = executive ] && [ "$_raw_shell" = false ] &&
+                   [ "$_cap_requires_explicit_approval" = false ]; then
                     echo -e "  ${YEL}── AUTO-RUNNING (policy-approved change) ─────────────────────${NC}" >&2
                 else
                     echo -e "  ${YEL}── NEEDS APPROVAL (modifies system) ──────────────────────────${NC}" >&2
@@ -994,7 +1002,7 @@ ai_execute_tool() {
             fi
             ;;
         CHANGE)
-            if [ "$_mode" = executive ] && [ "$_raw_shell" = false ]; then
+            if [ "$_mode" = executive ] && [ "$_raw_shell" = false ] && [ "$_cap_requires_explicit_approval" = false ]; then
                 approval_mode="executive"
                 echo -e "  ${YEL}Executive mode — auto-running.${NC}" >&2
                 run=true

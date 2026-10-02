@@ -411,13 +411,17 @@ def _private(info, *, directory=False) -> None:
 class DeploymentService:
     """Application-neutral metadata owner; observations and approval are external."""
 
-    def __init__(self, data_dir: Path, *, authorize=None, reference_resolver=None):
+    def __init__(self, data_dir: Path, *, authorize=None, reference_resolver=None,
+                 provider_inspector=None, system_model=None, active_owners=None):
         self.data_dir = Path(data_dir).absolute()
         self.directory = self.data_dir / "deployments"
         self.path = self.directory / "store.sqlite3"
         self.history = OperationalHistory(self.data_dir)
         self.authorize = authorize
         self.reference_resolver = reference_resolver
+        self.provider_inspector = provider_inspector
+        self.system_model = system_model
+        self.active_owners = active_owners
 
     def _authorize(self, request: dict) -> None:
         _check(self.authorize is not None and self.authorize(_copy(request)) is True,
@@ -595,6 +599,44 @@ class DeploymentService:
             _check(row is not None, "deployment record unavailable")
             return self._projection(row, snapshot) if row["record_type"] == "deployment" else copy.deepcopy(row)
 
+    def validate_configuration_target(self, reference: dict, setting_id: str, *,
+                                      provider_available, expected_revision=None,
+                                      expected_state=None) -> dict:
+        """Admit a scoped setting target, never a desired value or execution.
+
+        The caller supplies the current provider registry query. Retained grants
+        cannot authorize a target, and observations are deliberately irrelevant.
+        """
+        reference, setting_id = _ref(reference), _ident(setting_id)
+        with self._store() as db:
+            snapshot = self._snapshot(db)
+            _check(reference["scope_id"] == snapshot["scope_id"], "deployment target scope mismatch")
+            _check(expected_revision is None or expected_revision == snapshot["revision"],
+                   "deployment binding revision conflict")
+            _check(expected_state is None or expected_state == self._token(snapshot),
+                   "deployment binding state conflict")
+            deployment = next((r for r in snapshot["records"] if r["reference"] == reference), None)
+            _check(deployment is not None and deployment["record_type"] == "deployment" and
+                   deployment["lifecycle"] == "known", "deployment target unavailable")
+            related = [r for r in snapshot["records"] if r.get("deployment") == reference]
+            _check(not _claim_conflicts(related), "unresolved deployment claims")
+            grants = [r for r in related if r["record_type"] == "responsibility" and
+                      r["lifecycle"] == "active" and r["duty"] == "configuration" and
+                      r["setting_id"] == setting_id]
+            _check(len(grants) == 1, "setting responsibility missing or ambiguous")
+            grant = grants[0]
+            resource = next((r for r in snapshot["records"] if r["reference"] == grant["subject"]), None)
+            _check(resource is not None and resource["record_type"] == "resource" and
+                   resource["kind"] == "configuration_target" and resource["lifecycle"] == "known",
+                   "configuration resource unavailable")
+            _check(bool(grant["providers"]) and all(provider_available(p) is True for p in grant["providers"]),
+                   "configuration provider unavailable")
+            return {"source": OWNER, "availability": "available", "scope_id": snapshot["scope_id"],
+                    "deployment_id": reference["object_id"], "setting_id": setting_id,
+                    "registry_revision": snapshot["revision"], "state_token": self._token(snapshot),
+                    "resource": copy.deepcopy(resource), "responsibility": copy.deepcopy(grant),
+                    "execution_authority": "separate"}
+
     def _projection(self, deployment, snapshot):
         ref = deployment["reference"]
         related = [row for row in snapshot["records"] if row.get("deployment") == ref]
@@ -606,7 +648,7 @@ class DeploymentService:
         conflicts = [{"claim": claim["reference"], "conflicts_with": [row["reference"] for row in others]}
                      for claim, others in _claim_conflicts(related)]
         grants = [copy.deepcopy(row) for row in related if row["record_type"] == "responsibility"]
-        return {"schema_version": VERSION, "projection": "igor.deployment.inspection", "record_owner": OWNER,
+        result = {"schema_version": VERSION, "projection": "igor.deployment.inspection", "record_owner": OWNER,
                 "availability": "available", "identity": copy.deepcopy(deployment), "registry_revision": snapshot["revision"],
                 "state_token": self._token(snapshot), "resources": resources, "relationships": copy.deepcopy(relationships),
                 "responsibilities": grants, "claims": claims, "conflicts": conflicts,
@@ -618,6 +660,80 @@ class DeploymentService:
                 "verification": {"status": "not_verified", "availability": "not_supplied"},
                 "detach": {"status": "not_certified", "reason": "consumer/job inventories not supplied",
                            "resources_retained": [row["reference"] for row in resources]}}
+        operation_ids = sorted({row["last_change"]["operation_id"] for row in
+                                [deployment, *resources, *related]})
+        episodes, missing = [], []
+        for operation_id in operation_ids:
+            try:
+                episode = self.history.inspect(operation_id)
+            except (HistoryError, OSError):
+                missing.append(operation_id)
+                continue
+            episodes.append(episode)
+        if episodes:
+            result["history"] = {"source": "operational_history", "availability": "partial" if missing else "available",
+                                 "operations": episodes, "unavailable_references": missing}
+            verified = [e for e in episodes if e["capability"]["id"].startswith("core.deployments.")]
+            if verified:
+                result["verification"] = {"source": "operational_history", "availability": "retained",
+                                          "operations": [{"operation_id": e["operation_id"],
+                                                          "status": e["verification"]["status"],
+                                                          "outcome": e["outcome"]} for e in verified]}
+        if episodes and self.provider_inspector is not None:
+            result["providers"] = [{**p, "inspection": self.provider_inspector(copy.deepcopy(p))}
+                                   for p in deployment["providers"]]
+        if self.system_model is not None:
+            result["observations"] = {"source": "system_model", "availability": "available",
+                                      "facts": [fact for resource in resources for fact in
+                                                self.system_model.list_facts(object_id=resource["reference"]["object_id"],
+                                                    state_class="observed", active_owners=self.active_owners)]}
+        if episodes:
+            # These are binding prerequisites, not desired values or proof that
+            # a provider is currently active. Admission queries remain separate.
+            result["configuration"]["binding_prerequisite"] = {"source": OWNER,
+                "targets": [{"scope_id": ref["scope_id"], "deployment_id": ref["object_id"],
+                    "setting_id": g["setting_id"], "subject": g["subject"], "lifecycle": g["lifecycle"]}
+                    for g in grants if g["duty"] == "configuration" and g["setting_id"] is not None]}
+            if self.provider_inspector is not None:
+                from configuration import ConfigurationError, ConfigurationService
+
+                configuration = ConfigurationService(self.data_dir)
+                provider_states = {p["id"]: p["inspection"]["availability"] for p in result["providers"]}
+                targets = []
+                for grant in grants:
+                    if grant["duty"] != "configuration" or grant["setting_id"] is None:
+                        continue
+                    try:
+                        target = configuration.validate_deployment_target(
+                            ref["scope_id"], ref["object_id"], grant["setting_id"], deployment_service=self,
+                            provider_available=lambda ident: provider_states.get(ident) == "active",
+                            expected_revision=snapshot["revision"], expected_state=self._token(snapshot))
+                    except ConfigurationError as exc:
+                        target = {"source": "configuration_service", "availability": "unavailable",
+                                  "setting_id": grant["setting_id"], "reason": str(exc)}
+                    targets.append(target)
+                result["configuration"].update(availability="target_inspection", targets=targets)
+        # Keep the authoritative projection intact. A compact generic assessment
+        # renders first within the frontend's bounded property display.
+        result["assessment"] = {
+            "source": OWNER, "deployment_id": ref["object_id"], "application": deployment["application"],
+            "revision": deployment["revision"], "lifecycle": deployment["lifecycle"],
+            "providers": result.get("providers", deployment["providers"]),
+            "resources": [{"object_id": r["reference"]["object_id"], "kind": r["kind"],
+                           "native_id": r["native"]["native_id"] if r["native"] else None,
+                           "incarnation": r["native"]["incarnation"] if r["native"] else None} for r in resources],
+            "relationships": [{"kind": r["kind"], "role": r["role"], "subject": r["subject"]["object_id"],
+                               "target": r["target"]["object_id"], "lifecycle": r["lifecycle"]} for r in relationships],
+            "responsibilities": [{"duty": g["duty"], "setting_id": g["setting_id"], "lifecycle": g["lifecycle"]} for g in grants],
+            "configuration": result["configuration"]["availability"], "observations": result["observations"]["availability"],
+            "history": result["history"]["availability"], "conflicts": len(conflicts), "detach": result["detach"]}
+        # Structured APIs preserve ordering too; the JSON CLI sorts this key
+        # before verbose records without requiring an application-specific UI.
+        if episodes:
+            result = {"assessment": result.pop("assessment"), **result}
+        else:
+            result.pop("assessment")
+        return result
 
     def export_document(self) -> dict:
         with self._store() as db:
@@ -978,7 +1094,18 @@ def _cli() -> int:
     inspect_parser.add_argument("object_id")
     args = parser.parse_args()
     root = Path(os.environ.get("IGOR_DIR", Path(__file__).resolve().parents[2]))
-    service = DeploymentService(Path(os.environ.get("IGOR_DATA_DIR", root / "data")))
+    def provider_inspector(provider):
+        from module_inspection import InspectionError, inspect_module
+
+        try:
+            module = inspect_module(root, provider["owner"])
+            lifecycle = module["lifecycle"]
+            return {"source": "module_registry", "availability": "disabled" if lifecycle["enabled"] is False else "not_evaluated",
+                    "policy": lifecycle, "package_version": module["module"]["package_version"]}
+        except (InspectionError, OSError) as exc:
+            return {"source": "module_registry", "availability": "unavailable", "reason": str(exc)}
+
+    service = DeploymentService(Path(os.environ.get("IGOR_DATA_DIR", root / "data")), provider_inspector=provider_inspector)
     try:
         result = {"status": service.status, "list": service.list, "export": service.export_document,
                   "inspect": lambda: service.inspect(args.object_id)}[args.action]()
@@ -990,4 +1117,5 @@ def _cli() -> int:
 
 
 if __name__ == "__main__":
+    sys.modules.setdefault("deployments", sys.modules[__name__])
     raise SystemExit(_cli())

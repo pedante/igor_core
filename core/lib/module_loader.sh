@@ -1342,8 +1342,10 @@ for index in range(0, len(raw), 6):
 sys.path.insert(0, sys.argv[1])
 from configuration import capability_records
 result.extend(capability_records(sys.argv[2]=="true"))
+from deployment_attachment import capability_records as deployment_capability_records
+result.extend(deployment_capability_records(sys.argv[3]=="true"))
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)"
+' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)" "$(_ml_owner_active nextcloud_docker && printf true || printf false)"
 }
 
 igor_capability_inspect() {

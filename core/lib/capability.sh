@@ -7,6 +7,8 @@
 source "${_IGOR_LOADER_DIR}/core/lib/operational_history.sh"
 # shellcheck source=core/lib/configuration.sh
 source "${_IGOR_LOADER_DIR}/core/lib/configuration.sh"
+# shellcheck source=core/lib/deployment_attachment.sh
+source "${_IGOR_LOADER_DIR}/core/lib/deployment_attachment.sh"
 
 if [ "${IGOR_CAPABILITY_RESULT_OWNER:-}" != "$$" ] ||
    [ -z "${IGOR_CAPABILITY_RESULT_FILE:-}" ] ||
@@ -293,7 +295,7 @@ PY
 
 _igor_capability_preconditions() {
     _igor_configuration_precondition "$1" || return 1
-    local _proposal="$1" _row _kind _arg _object _property _expected _state _value _root
+    local _proposal="$1" _row _kind _arg _object _property _expected _state _value _root _inputs _request
     while IFS=$'\t' read -r _kind _arg _object _property _expected; do
         [ -n "$_kind" ] || continue
         case "$_kind" in
@@ -326,6 +328,16 @@ PY
             capability_available)
                 _state="$(igor_capability_inspect "$_arg")" || return 1
                 [ "$(_igor_capability_field "$_state" resolution)" = resolved ] || return 1 ;;
+            deployment_proposal_current)
+                _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                _request="$("$(_ml_python)" - "$_inputs" <<'PY'
+import json,sys
+inputs=json.loads(sys.argv[1])
+proposal=inputs.get("proposal", "{}")
+print(json.dumps({"proposal":proposal}, separators=(",", ":")))
+PY
+)" || return 1
+                _igor_attachment_call preflight "$_request" >/dev/null || return 1 ;;
             model_fact)
                 _state="$(igor_model_read "$_object" "$_property" observed)" || return 1
                 [ "$(_igor_capability_field "$_state" availability)" = known ] || return 1
@@ -349,6 +361,10 @@ _igor_capability_invoke_handler() {
         _igor_configuration_invoke "$_proposal"
         return $?
     fi
+    if [ "$_owner" = core ] && [[ "$_id" = core.deployments.* ]]; then
+        _igor_deployment_attachment_invoke "$_proposal"
+        return $?
+    fi
     _key="capability:${_id}"
     [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "$_owner" ] || _key="${_key}@${_owner}"
     [ "$(igor_contribution_state "$_key")" = active ] || return 1
@@ -363,7 +379,7 @@ _igor_capability_invoke_handler() {
 }
 
 _igor_capability_verify() {
-    local _proposal="$1" _kind _observer _fact _attempt _unit _state _expected
+    local _proposal="$1" _domain_result="${2:-null}" _kind _observer _fact _attempt _unit _state _expected
     _kind="$(_igor_capability_field "$_proposal" verification.kind)" || return 1
     case "$_kind" in
         configuration_revision|configuration_restore|ai_verbose_session)
@@ -377,6 +393,17 @@ _igor_capability_verify() {
             [ "$(_igor_capability_field "$_proposal" owner)" = core ] || return 1
             _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
             _igor_configuration_call memory-verify-desired "$_inputs" ;;
+        deployment_metadata_revision)
+            [[ "$(_igor_capability_field "$_proposal" capability_id)" = core.deployments.* ]] || return 1
+            _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+            _inputs="$("$(_ml_python)" - "$_inputs" "$_domain_result" <<'PY'
+import json, sys
+inputs, result = map(json.loads, sys.argv[1:])
+print(json.dumps({"proposal": inputs.get("proposal", "{}"),
+                  "execution_result": result}, separators=(",", ":")))
+PY
+)" || return 1
+            _igor_attachment_call verify "$_inputs" ;;
         trusted_query)
             case "$(_igor_capability_field "$_proposal" verification.check_id)" in
                 system.memory.warning.consumer)
@@ -516,6 +543,9 @@ PY
     else
         if _envelope="$(_igor_capability_invoke_handler "$_fresh")"; then
             _exec=succeeded
+            if [[ "$_id" = core.deployments.* ]]; then
+                _domain_result="$_envelope"
+            fi
             if [ "$_version" = 2 ]; then
                 local _output_request
                 _output_request="$("$(_ml_python)" - "$_fresh" "$_envelope" <<'PY'
@@ -558,7 +588,7 @@ PY
     if [ "$_exec" = succeeded ] && [ "$_output_status" != invalid ]; then
         _tier="$(_igor_capability_field "$_fresh" safety.tier)" || return 1
         if [ "$(_igor_capability_field "$_fresh" verification.kind)" != none ]; then
-            if _evidence="$(_igor_capability_verify "$_fresh")"; then
+            if _evidence="$(_igor_capability_verify "$_fresh" "$_domain_result")"; then
                 _verify=passed
             else
                 _verify=failed

@@ -41,6 +41,15 @@ def _identifier(value: Any) -> bool:
     return isinstance(value, str) and len(value) <= 160 and bool(re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+-]+", value))
 
 
+def _observer_target(descriptor: dict[str, Any]) -> str:
+    if descriptor.get("object_kind") == "host":
+        return "host:local"
+    kind, target = descriptor.get("object_kind"), descriptor.get("object_id")
+    if kind in {"deployment", "resource"} and isinstance(target, str) and re.fullmatch(kind + r":[0-9a-f]{32}", target):
+        return target
+    raise ModelError("unsupported observer target")
+
+
 class ModelError(ValueError):
     pass
 
@@ -169,9 +178,7 @@ class SystemModel:
     def observer_failure(self, descriptor: dict[str, Any], owner: str, observer_id: str,
                          reason: str, *, at: datetime | None = None) -> None:
         time = stamp(at or now())
-        object_id = "host:local" if descriptor["object_kind"] == "host" else None
-        if object_id is None:
-            raise ModelError("unsupported observer target")
+        object_id = _observer_target(descriptor)
         for prop in descriptor["properties"]:
             self.failures[key(object_id, prop["name"], "observed")] = {"reason": reason, "at": time}
         self.attempts[observer_id] = {"owner": owner, "at": time, "status": "error", "reason": reason}
@@ -185,7 +192,7 @@ class SystemModel:
         if not isinstance(result, dict) or set(result) != {"object_id", "facts", "unavailable"}:
             raise ModelError("invalid observer result")
         object_id = result["object_id"]
-        if descriptor.get("object_kind") != "host" or object_id != "host:local":
+        if object_id != _observer_target(descriptor):
             raise ModelError("undeclared observer target")
         if not isinstance(result["facts"], list) or not isinstance(result["unavailable"], list):
             raise ModelError("invalid observation lists")

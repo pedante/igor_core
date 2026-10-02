@@ -5,6 +5,26 @@ This map records the v1 compatibility surfaces that remain live alongside the
 typed host model and canonical capability path. The Wave E contract is in
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+## Step 19 Boundary 2 compatibility boundary
+
+The bounded read-only provider in `modules/nextcloud_docker/lib/attachment.py`
+feeds Core's canonical metadata attachment capabilities. It never calls the old
+migration wizard, installer, Compose generator, OCC helpers or automatic fixes.
+Its metadata binding is the Deployment Service's authority; the v1 package stays
+v1 and is not converted or split.
+
+`lib/install/migrate.sh` remains **temporary compatibility**, not the new
+attachment mechanism: its first-name matches, guessed paths, Compose copying and
+settings/secret writes do not meet metadata-only adoption. No legacy deployment
+or desired setting is automatically imported. Unadopted compatibility behavior is
+preserved. Full adopted-loglevel writer subordination/refusal is a Boundary 3
+gate; Boundary 2 activates no application setting writer.
+
+Scoped release preserves resources and historical identity and never invokes
+legacy management. Consumer/job/legacy-session inventories remain incomplete,
+so it cannot certify general detach. See [ATTACHMENT.md](ATTACHMENT.md) and
+[STATUS.md](STATUS.md) for the implemented path and closure evidence.
+
 ## Step 19 Boundary 1 disposition
 
 [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md) establish the
