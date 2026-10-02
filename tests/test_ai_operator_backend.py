@@ -123,6 +123,30 @@ _ai_emit_operator_snapshot
         self.assertEqual(surface["sources"]["capabilities"],
                          {"status": "error", "count": 0})
 
+    def test_frontend_invoke_control_never_becomes_conversation_input(self):
+        script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+cleared=0
+_ai_pending_choice_clear() { cleared=1; }
+_ai_operator_invoke() { printf 'INVOKE:%s\n' "$1"; }
+_ai_frontend_control 'invoke system.service.list'
+printf 'CLEARED:%s\n' "$cleared"
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("INVOKE:system.service.list", result.stdout)
+        self.assertIn("CLEARED:1", result.stdout)
+
+    def test_non_control_input_is_not_consumed_by_frontend_control(self):
+        script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+_ai_frontend_control 'check the current system state'
+printf 'RC:%s\n' "$?"
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("RC:1", result.stdout)
+
     def test_operator_invoke_only_adapts_into_existing_dispatcher(self):
         script = r'''
 source "$IGOR_DIR/core/ai/core.sh"
