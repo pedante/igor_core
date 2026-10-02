@@ -98,6 +98,28 @@ configuration CLI still exposes the bounded Core `ai.verbose` slice; general
 module writes, binding/resource ownership and application recovery require the
 later workflow proof. See [STATUS.md](STATUS.md) for composition evidence.
 
+## Boundary 3: System memory warning consumer
+
+The first shipped module setting is `system.memory.warning_threshold_mib`,
+owned in meaning by System and stored by Core. Its schema declares default
+150 MiB, range 81–4096 MiB and managed apply/readback capability identities.
+The independent critical boundary remains 80 MiB. There is no import from
+`SYSTEM_RAM_WARN_MB` and no change to other module settings.
+
+A narrow desired CHANGE commit and a separate System CHANGE application both
+use the existing policy/approval/History path. The current Igor process consumes
+the committed revision/state, and independent System READ readback checks the
+same consumer used by `host.memory.health`. Desired persistence verification is
+not runtime verification. Structured inspection exposes the process consumption
+snapshot separately, with provenance and no success inferred from configuration.
+
+Valid installed package schemas can be inspected without activating disabled
+owners; retained desired state remains Core-owned. This does not certify package
+removal or full detach. Explicit recovery submits the prior/default value through
+the same approved path, creating new revisions and episodes; no automatic rollback
+or generic undo is added. See [the workflow](SYSTEM_MEMORY_WORKFLOW.md) and
+[STATUS.md](STATUS.md) for evidence and process-local limitations.
+
 ## Module/Core responsibilities
 
 Modules describe domain meaning, defaults, validation, secret purposes,
@@ -362,8 +384,13 @@ Imports use bounded literal parsers, not arbitrary shell sourcing. Ambiguous
 or executable assignments require explicit resolution.
 Generated exports do not remain competing writable authorities.
 
-Nextcloud, module settings, secrets, activation policy and host thresholds
-remain unchanged. Q012's documented/executed RAM-threshold mismatch stays open.
+Step 17 left Nextcloud, module settings, secrets, activation policy and host
+thresholds unchanged. The owner-approved Boundary 3 exception (D062) introduces
+only `system.memory.warning_threshold_mib`: default 150 MiB, integer range
+81–4096 MiB, with the critical boundary still 80 MiB. The ineffective legacy
+`SYSTEM_RAM_WARN_MB` is not imported; no broad host-threshold migration occurs.
+Desired state, module application and independent runtime verification remain
+separate, with explicit same-path recovery rather than automatic rollback.
 
 ## Completion and deferred work
 

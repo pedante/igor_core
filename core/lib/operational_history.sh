@@ -75,6 +75,7 @@ _igor_capability_publish_result() {
         printf 'operational history: terminal persistence unavailable for %s; canonical result retained\n' "$_id" >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
     fi
     _igor_domain_result_published "$_result" || printf 'domain event: capability result publication failed\n' >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
+    IGOR_CAPABILITY_LAST_RESULT="$_result"
     printf '%s\n' "$_result"
 }
 

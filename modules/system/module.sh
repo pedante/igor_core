@@ -55,43 +55,16 @@ system__refresh_memory() {
 
 # A v2 check receives only Igor's fact snapshot. It does not probe /proc or
 # choose its own check identity, owner, time, approval or execution policy.
-system__check_memory() {
-    local request
+_mod_sys_memory_warning_request() {
+    local action="$1" request package
     IFS= read -r request || return 1
-    "${IGOR_PYTHON:-python3}" - "$request" <<'PY'
-import json
-import sys
-
-try:
-    envelope = json.loads(sys.argv[1])
-    if envelope.get("api_version") != 2 or envelope.get("contribution_id") != "host.memory.health":
-        raise ValueError("wrong check request")
-    fact = envelope["input"]["facts"]["memory.available_bytes"]
-    if not isinstance(fact, dict):
-        raise ValueError("invalid fact")
-    availability = fact.get("availability")
-    used = [{"key": ["host:local", "memory.available_bytes", "observed"],
-             "recorded_at": fact.get("recorded_at"), "availability": availability}]
-    if availability != "known":
-        status, code, message = "UNKNOWN", "memory_unknown", f"Available memory is {availability or 'unknown'}"
-    else:
-        value = fact.get("value")
-        if type(value) is not int or value < 0:
-            raise ValueError("invalid available bytes")
-        mib = value // (1024 * 1024)
-        if value < 80 * 1024 * 1024:
-            status, code, message = "CRITICAL", "low_ram", f"Only {mib}MiB RAM available — critical"
-        elif value < 150 * 1024 * 1024:
-            status, code, message = "WARN", "ram_low", f"Only {mib}MiB RAM available — low"
-        else:
-            status, code, message = "OK", "ram", f"{mib}MiB RAM available"
-    result = {"status": status, "finding_code": code, "message": message,
-              "used_facts": used, "evidence": ["/proc/meminfo:MemAvailable"]}
-    print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
-except (KeyError, ValueError, TypeError) as exc:
-    print(json.dumps({"status": "error", "error": {"code": "invalid_input", "message": str(exc)}}))
-PY
+    package="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    "${IGOR_PYTHON:-python3}" "$package/lib/memory_warning.py" "$action" "$request"
 }
+
+system__check_memory() { _mod_sys_memory_warning_request check; }
+system__apply_memory_warning() { _mod_sys_memory_warning_request apply; }
+system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
 # REQUIRED — called at igor startup
 system__register() {

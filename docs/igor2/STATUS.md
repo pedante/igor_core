@@ -2,6 +2,73 @@
 
 Last updated: 2026-10-02
 
+## Step 18 Boundary 3 — System memory warning configuration workflow
+
+The Project Owner approved [D062](DECISIONS.md): the real System memory health
+consumer, not Nextcloud, is the first reversible module configuration proof.
+`system.memory.warning_threshold_mib` is an integer System schema contribution,
+default 150 MiB and range 81–4096 MiB. Critical stays 80 MiB. The ineffective
+legacy `SYSTEM_RAM_WARN_MB` is neither imported nor made authoritative.
+
+The shipped System 2.2.0 package contributes the schema, typed CHANGE application,
+typed READ readback and host knowledge. Core owns desired persistence and
+revision/state-token validation. A narrow Core desired CHANGE and separate
+System CHANGE both use existing approval/privilege/execution policy. Independent
+READ verifies the shared memory-health consumer in the current process.
+Operational History keeps separate correlated episodes for desired commit,
+application and explicit readback; no new log or System Model configuration fact
+is created. Desired, resolved and process-consumed state remain separate.
+
+Failed application leaves the approved desired revision visible. Failed readback
+is an unverified change, distinguishable from failed execution. Recovery means
+explicitly submitting the prior/default threshold through the same approved
+path, producing new revisions and History. Startup consumes an already-approved
+resolution for active System only, without a verification claim or success
+episode. Disabled owners retain inspectable desired state while the valid schema
+package remains installed; no disabled application is admitted.
+
+The narrow `memory-warning MIB` command uses the existing command registry;
+structured inspection and schema/capability discovery reuse owning-service
+records, operator projection and generic 15UI rendering. No module UI, generic
+settings editor, automatic rollback, AI decision, application migration, full
+detach, sandbox/signing, Step 19 or Step 20 is introduced.
+[The workflow](SYSTEM_MEMORY_WORKFLOW.md) describes use and process-local limits.
+
+The starting checkout was clean `igor2` at `0f48df4`, containing Boundary 1
+`77b2e40` and Boundary 2 `d7da5e8`. A read-only remote query confirmed the same
+`origin/igor2` and unchanged `origin/master=852ce8f`; the prior content
+reconciliation remains applicable. Clean-HEAD Python baseline: 454 passed,
+320 subtests passed and seven failures (four existing Guide/Assist automation
+cases, two merged operator-surface cases and a 20-second startup timeout).
+Full Ruff baseline: 154 existing findings. Validation logs are outside the
+repository under `/tmp/igor18b3-*`; final evidence follows below.
+
+**EXECUTION evidence (2026-10-02):**
+
+| Proof/check | Result |
+|---|---|
+| Contract | The shipped System schema enforces integer 81–4096 MiB, default 150, with a separate 80 MiB critical rule. Focused cases reject invalid/stale desired state and stale application intent. Exact reviewed adapter admission rejects weakened READ safety, omitted verification and required privilege before handler effects. |
+| Vertical slice | `memory-warning 220` crosses canonical proposal/validation, desired CHANGE, separate approved System CHANGE, current-process consumption and independent typed READ. Three successful correlated History episodes preserve Core/System ownership, authority, execution and verification. The outer process consumes 220; desired state alone remains unverified. |
+| Inspection | Real module inspection exposes the shipped schema, desired/resolved and distinct process-consumption provenance. The generic 15UI `panel_rows` renderer consumes this actual structured record. The existing operator projection discovers declarations/capabilities; no custom UI is added. Disabled owners retain data-only inspection while application/readback remain unavailable. |
+| Recovery/migration | No persistent layout or broad value migration. Existing Core configuration coexists with the new System record. Legacy `SYSTEM_RAM_WARN_MB` is not imported. Failed application leaves desired intent visible with prior runtime consumption. Mismatched verification records `unverified_change`; a later mismatched READ records `unverified_result`. Explicit prior/default-value recovery creates a new desired revision, approved application and verified READ without erasing failed evidence. No automatic rollback. |
+| Authority/model integrity | Declining the second CHANGE leaves the already-approved desired commit and prior runtime consumption distinct. Frozen inputs/revisions remain mandatory. The unchanged model bytes in the real workflow prove no configuration-to-fact promotion; independent health cases show the consumed warning policy changes classification while critical remains separate. |
+| Focused validation | 38 existing configuration plus 47 module-contract/capability-runtime/inspection Python cases pass. Eleven workflow cases are proved across bounded focused runs; the final full regression covers the latest actual module-inspection/rendering assertion. All 18 retained Boundary 1/2 BATS cases pass, including the new forged-adapter case. |
+| Python regression/lint | Full Python: 465 passed and 319 subtests passed; all eleven workflow cases, including final actual inspection/rendering assertions, pass. Eight failures remain: the six baseline operator/Guide–Assist automation cases plus startup choices `s` and `f` timing out at 20 seconds. The full baseline had only startup `s` fail; isolated runs reproduce both choices on the unchanged committed baseline export (40.64 seconds) and current checkout (40.88 seconds), establishing existing timing fragility rather than a new independent failure. The full suite is not green. Full Ruff is byte-identical to baseline: 154 existing findings. |
+| Bash regression | `bash tests/run_all.sh` completes all five groups with no failures: 46 legacy Bash cases, 46 rendering tests, 305 Core BATS, 163 module BATS and 40 integration BATS. Two existing Core cases skip because the GPG agent and `hostname -I` are unavailable; the other 506 BATS pass. No external deployment is part of this proof. |
+| Syntax/compilation/lint | Changed shell scripts pass `bash -n`; changed/new Python compilation passes. CI ShellCheck on changed production Bash and BATS shows only six existing warnings: three in `core/ai/core.sh` (SC2174, SC2010, SC2011) and three in `core/ai/safety.sh` (SC2024, two SC2155). Other changed scripts/tests are clean. |
+| Documentation | All 115 local references in changed Markdown resolve. The accepted decision, roadmap, module/configuration docs and legacy map record only this owner-approved System proof and its explicit deferrals. |
+
+Evidence is scoped to the current Igor process. Fresh active sessions consume
+approved desired resolution but do not automatically create verified History.
+Removing a package/schema, general binding/adoption and complete detach remain
+unproven. An isolated complete workflow took approximately 90 seconds in this
+environment; no performance optimization or execution-time guarantee is claimed.
+Boundary 3 is complete within this selected reversible configuration proof.
+Required focused, regression, inspection, recovery and documentation evidence
+is recorded above; existing full-suite failures/skips are explicitly retained.
+Release freeze permits only final scope review and the scoped commit. Step 19,
+Step 20 and broader application/detach work are not started.
+
 ## Step 18 Boundary 2 — module composition prerequisites
 
 The Project Owner authorized a bounded integration proof after Boundary 1 at
@@ -51,7 +118,8 @@ independent readback, desired/observed/consumed distinction, History and declare
 recovery. General bindings/resource ownership, complete detach and Q007 are
 not closed by this integration proof. No Nextcloud rewrite/split, broad module
 migration, marketplace, hot unload, automatic dependency installation or
-external trust system is introduced. Boundary 3 is not started.
+external trust system is introduced. Boundary 3 was not started by this earlier
+result; the owner-authorized System workflow is recorded above.
 
 Boundary 2 is complete within this integration-proof scope. The result stops
 here for Project Owner review; it does not close the whole Step 18 roadmap item

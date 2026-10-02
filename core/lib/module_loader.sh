@@ -504,11 +504,14 @@ print(json.dumps(result,separators=(",", ":")))'
 import json, sys
 sys.path.insert(0,sys.argv[1])
 from pathlib import Path
-from configuration import ConfigurationService
+from configuration import ConfigurationService, installed_schemas
 states, rows, model, schemas = map(json.loads,sys.argv[6:10])
 configuration=[]
 try:
-    service=ConfigurationService(Path(sys.argv[3]), schemas=[(r["owner"],r["schema"]) for r in schemas],
+    retained=installed_schemas(Path(sys.argv[2]))
+    registered={(owner,field["id"]) for owner,schema in retained for field in schema["fields"]}
+    retained.extend((r["owner"],r["schema"]) for r in schemas if r["owner"]!="core" and not all((r["owner"],f["id"]) in registered for f in r["schema"]["fields"]))
+    service=ConfigurationService(Path(sys.argv[3]), schemas=retained,
                                  owner_active=lambda owner: states.get(owner,{}).get("status")=="active")
     for field in service.fields.values():
         if field["owner"] == sys.argv[4]:
@@ -1191,7 +1194,15 @@ record=json.load(sys.stdin)
 preconditions=record.get("preconditions",[])
 verification=record.get("verification",{})
 unsupported=any(p.get("kind") in {"platform_feature","trusted_validator"} for p in preconditions)
-unsupported=unsupported or verification.get("kind") == "trusted_query"
+reviewed={"system.memory.warning.apply":"system__apply_memory_warning",
+          "system.memory.warning.readback":"system__read_memory_warning"}
+memory_query=(record.get("owner")=="system" and record.get("id") in reviewed and
+              record.get("handler")==reviewed[record["id"]] and
+              record.get("capability_version")==2 and record.get("privilege")=="none" and
+              verification=={"kind":"trusted_query","check_id":"system.memory.warning.consumer","required":True} and
+              record.get("safety",{}).get("tier")==("CHANGE" if record["id"].endswith("apply") else "READ"))
+unsupported=unsupported or (verification.get("kind") == "trusted_query" and not memory_query)
+unsupported=unsupported or (record.get("id") in reviewed and not memory_query)
 raise SystemExit(0 if unsupported else 1)
 '; then
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
@@ -1219,6 +1230,10 @@ raise SystemExit(0 if unsupported else 1)
     _IGOR_LOADED_MODULES["$_name"]=1
     _IGOR_MODULE_STATUS["$_name"]="active"
     unset '_IGOR_MODULE_REASON['"$_name"']'
+    if [ "$_name" = system ] && [ -n "${_IGOR_CONTRIBUTIONS[configuration:system.memory.preferences]:-}" ]; then
+        unset IGOR_SYSTEM_MEMORY_WARNING_MIB IGOR_SYSTEM_MEMORY_WARNING_REVISION IGOR_SYSTEM_MEMORY_WARNING_STATE IGOR_SYSTEM_MEMORY_CONSUMER_ID
+        _igor_configuration_memory_warning_load || _ml_log warn "System memory configuration consumption unavailable"
+    fi
     _ml_log ok "Loaded Module API v2: $_name"
     return 0
 }
@@ -1308,9 +1323,9 @@ for index in range(0, len(raw), 6):
                    "unavailable_reason": reason or None, "descriptor": record})
 sys.path.insert(0, sys.argv[1])
 from configuration import capability_records
-result.extend(capability_records())
+result.extend(capability_records(sys.argv[2]=="true"))
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-' "${_IGOR_LOADER_DIR}/core/lib"
+' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)"
 }
 
 igor_capability_inspect() {

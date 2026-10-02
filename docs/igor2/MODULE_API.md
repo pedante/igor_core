@@ -158,11 +158,21 @@ from Core's validated registration. Candidate content remains reference data.
 General bindings/resource ownership and responsibility transfer remain gaps
 to resolve only as required by the selected Boundary 3 workflow. This composition
 proof does not establish deployment authority, certify detach or provide a
-general module configuration write CLI. The first reversible Nextcloud workflow
-is Boundary 3. Broad migration, structural splitting,
+general module configuration write CLI. Boundary 3 uses the owner-approved
+System memory warning policy (D062), not a complex application migration.
+Broad migration, structural splitting,
 marketplaces, signing/isolation, dependency installation and autonomous module
 generation remain outside this boundary. Reviewed local Bash code is trusted
 executable code, not a security sandbox.
+
+Boundary 3 adds one real managed System schema and typed application/readback
+capabilities. Core commits desired state; the reviewed System consumer applies
+only the current-process memory warning policy. Independent readback and Core
+verification keep desired state separate from runtime evidence. Both CHANGE
+operations retain ordinary approval and privilege enforcement; recovery is a new
+explicit same-path operation. [The workflow](SYSTEM_MEMORY_WORKFLOW.md) describes
+the setting, state distinctions and limits. This proof creates no configuration
+facts, generic settings UI or complete detach guarantee.
 
 ## Choice and boundary
 

@@ -329,6 +329,19 @@ _igor_capability_verify() {
             _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
             [ "$_kind" = ai_verbose_session ] && _action=verify-session
             _igor_configuration_call "$_action" "$_inputs" ;;
+        system_memory_configuration_revision)
+            local _inputs
+            [ "$(_igor_capability_field "$_proposal" capability_id)" = core.configuration.system_memory_warning.set ] || return 1
+            [ "$(_igor_capability_field "$_proposal" owner)" = core ] || return 1
+            _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+            _igor_configuration_call memory-verify-desired "$_inputs" ;;
+        trusted_query)
+            [ "$(_igor_capability_field "$_proposal" verification.check_id)" = system.memory.warning.consumer ] || return 1
+            case "$(_igor_capability_field "$_proposal" capability_id):$(_igor_capability_field "$_proposal" descriptor.handler)" in
+                system.memory.warning.apply:system__apply_memory_warning|system.memory.warning.readback:system__read_memory_warning)
+                    _igor_configuration_memory_warning_verify "$_proposal" ;;
+                *) return 1 ;;
+            esac ;;
         observer_fact)
             _observer="$(_igor_capability_field "$_proposal" verification.observer)" || return 1
             _fact="$(igor_model_read "$(_igor_capability_field "$_proposal" verification.object_id)" \
@@ -441,6 +454,10 @@ PY
                         source "${_IGOR_LOADER_DIR}/core/lib/health_runner.sh"
                     igor_health_run_v2_check host.memory.health >/dev/null 2>&1 || true
                 fi
+            fi
+            if [ "$_output_status" = valid ] && [ "$_id" = system.memory.warning.apply ]; then
+                _exec=failed
+                _igor_configuration_memory_warning_apply "$_fresh" "$_domain_result" && _exec=succeeded
             fi
         fi
     fi

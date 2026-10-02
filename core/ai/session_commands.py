@@ -163,6 +163,15 @@ _COMMANDS: tuple[dict[str, Any], ...] = (
         "handler": "settings",
     },
     {
+        "id": "memory-warning",
+        "name": "memory-warning",
+        "aliases": (),
+        "syntax": "memory-warning MIB",
+        "category": "control",
+        "description": "propose, apply and verify the System memory warning threshold",
+        "handler": "memory-warning",
+    },
+    {
         "id": "apikey",
         "name": "apikey",
         "aliases": (),
@@ -317,6 +326,9 @@ def lookup(line: str, state: str | None = None) -> dict[str, Any]:
     elif name == "mode":
         valid = len(args) == 1 and args[0] in {"guide", "assist", "executive"}
         reason = "expected guide, assist, or executive" if not valid else ""
+    elif name == "memory-warning":
+        valid = len(args) == 1 and len(args[0]) <= 4 and args[0].isascii() and args[0].isdigit() and 81 <= int(args[0]) <= 4096
+        reason = "expected 81–4096 MiB" if not valid else ""
     elif name == "replay":
         valid = len(args) == 1 and bool(args[0])
         reason = "expected a session id" if not valid else ""

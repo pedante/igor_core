@@ -541,13 +541,13 @@ three boundaries, stopping with evidence after each:
    for future composition workflows. Q007 and general binding/resource ownership
    remain unresolved; the bounded Step 17 `ai.verbose` slice does not establish a
    complete ownership model.
-3. **First reversible application proof:** one narrow, non-secret Nextcloud
-   configuration workflow crossing brownfield discovery/binding, desired state,
-   approval, execution, independent readback, History and recovery. Select its
-   setting after reviewing existing writers and retain the combined deployment.
-   The proof must include an existing-style configuration source that Igor did
-   not create, with explicit adoption and file + selector provenance when the
-   source is file-backed.
+3. **First reversible module configuration proof:** the owner-selected System
+   memory warning threshold (`system.memory.warning_threshold_mib`, D062),
+   default 150 MiB and range 81–4096 MiB. Desired validation/commit, module
+   application, independent runtime readback, verification, History and explicit
+   same-path recovery prove one real process-local consumer. Critical remains
+   80 MiB; legacy `SYSTEM_RAM_WARN_MB` is not imported. Nextcloud, brownfield
+   deployment/adoption and generic bindings remain later application work.
 
 Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
@@ -562,12 +562,10 @@ authority. Capability leaves re-enter the canonical dispatcher; required inputs
 are never guessed. Rich generated module screens may build on this projection as
 the relevant Step 18 contracts mature.
 
-Use the current `nextcloud_docker` deployment for the first reversible application
-proof **after** the System composition proof and its workflow-specific ownership
-prerequisites are satisfied. The proof must use the existing Operator Surface
-and v2 contracts where applicable, but it does not assume that the Operator
-Surface itself establishes deployment ownership, resource binding or recovery
-semantics.
+Broader application proof may later use the existing `nextcloud_docker`
+deployment after its workflow-specific ownership prerequisites are satisfied.
+It is not part of Boundary 3. The Operator Surface itself does not establish
+deployment ownership, resource binding or recovery semantics.
 
 Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
 

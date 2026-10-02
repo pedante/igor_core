@@ -545,7 +545,7 @@ ai_execute_tool() {
     unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
     IGOR_CAPABILITY_LAST_RESULT=""
     local _operation_id AI_EVENT_NATIVE_ID
-    local IGOR_HISTORY_OPERATION_ID="" IGOR_HISTORY_CORRELATION_ID="" IGOR_CAPABILITY_PRIVILEGE_STATUS=""
+    local IGOR_HISTORY_OPERATION_ID="" IGOR_HISTORY_CORRELATION_ID="${IGOR_HISTORY_CORRELATION_ID:-}" IGOR_CAPABILITY_PRIVILEGE_STATUS=""
     _operation_id="ai_$(date +%s%N 2>/dev/null || date +%s)_$$"
     AI_EVENT_NATIVE_ID=$(printf '%s' "$tool_json" | python3 -c \
         'import json,sys; print(json.load(sys.stdin).get("__native_id", ""))' 2>/dev/null || true)
@@ -840,7 +840,7 @@ ai_execute_tool() {
             }
             # Operational identity is durable before approval, authentication,
             # compatibility backups, or the provider's possible external effect.
-            IGOR_HISTORY_CORRELATION_ID="${IGOR_AI_REQUEST_ID:-$_operation_id}"
+            IGOR_HISTORY_CORRELATION_ID="${IGOR_HISTORY_CORRELATION_ID:-${IGOR_AI_REQUEST_ID:-$_operation_id}}"
             IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_cap_prepared" "$IGOR_HISTORY_CORRELATION_ID" "$(ai_get_mode)")" || {
                 _ai_audit_rejected "$T_TOOL" CHANGE history-unavailable "$tool_json" "$_operation_id"
                 echo "[ERROR: Operational History unavailable; capability not admitted]"
@@ -1184,8 +1184,25 @@ ai_execute_tool() {
                     IGOR_CAPABILITY_PRIVILEGE_STATUS="${_history_privilege_result:-not_required}"
                     export IGOR_CAPABILITY_APPROVED_DIGEST
                     export IGOR_CAPABILITY_APPROVAL_STATUS
-                    output=$(igor_capability_execute "$_cap_prepared" 2>&1)
-                    local exit_code=$?
+                    local exit_code
+                    if [ "$T_CAPABILITY_ID" = system.memory.warning.apply ] &&
+                       [ "$(_igor_capability_field "$_cap_prepared" owner)" = system ] &&
+                       [ "$(_igor_capability_field "$_cap_prepared" descriptor.handler)" = system__apply_memory_warning ] &&
+                       [ "$(_igor_capability_field "$_cap_prepared" capability_version)" = 2 ] &&
+                       [ "$(_igor_capability_field "$_cap_prepared" privilege)" = none ] &&
+                       _igor_configuration_memory_warning_contract "$_cap_prepared"; then
+                        # Exact reviewed process-local consumer: a command
+                        # substitution would apply only to a disposable child.
+                        # The same prepared/approved operation owns execution,
+                        # verification and History in this session process.
+                        IGOR_CAPABILITY_LAST_RESULT=""
+                        igor_capability_execute "$_cap_prepared" >/dev/null
+                        exit_code=$?
+                        output="$IGOR_CAPABILITY_LAST_RESULT"
+                    else
+                        output=$(igor_capability_execute "$_cap_prepared" 2>&1)
+                        exit_code=$?
+                    fi
                     IGOR_CAPABILITY_LAST_RESULT="$output"
                     if [ "$exit_code" -eq 0 ]; then
                         local _cap_outcome _cap_metadata

@@ -36,6 +36,51 @@ CORE_SCHEMA = {"schema_version": 1, "fields": [
      "label": "Verbose", "help": "Show AI reasoning before a command.", "overrides": []},
 ]}
 
+MEMORY_WARNING = "system.memory.warning_threshold_mib"
+MEMORY_TARGET = "module:system"
+
+
+def installed_schemas(root: Path) -> list[tuple[str, dict]]:
+    """Retain validated installed declarations, including disabled owners.
+
+    This reads package data/syntax only. It neither sources code nor activates
+    an owner. Missing/invalid package schemas remain unavailable; this is not a
+    detach or package-removal implementation.
+    """
+    from module_contract import ValidationError, probe_api, validate_module
+
+    schemas = []
+    for package in sorted((root / "modules").glob("*")):
+        if not (package / "module.conf").is_file():
+            continue
+        try:
+            if probe_api(package) != "2":
+                continue
+            registration = validate_module(package)
+        except (ValidationError, OSError):
+            continue
+        for row in registration["contributions"]:
+            if row["kind"] == "configuration" and "schema" in row:
+                schemas.append((row["owner"], row["schema"]))
+    return schemas
+
+
+def _memory_consumption(state: dict) -> dict:
+    """Inspection of a process snapshot; never a claim of verification."""
+    try:
+        value = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_MIB"])
+        revision = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_REVISION"])
+        token = os.environ["IGOR_SYSTEM_MEMORY_WARNING_STATE"]
+        if not 81 <= value <= 4096 or revision < 0 or not re.fullmatch(r"[0-9a-f]{64}", token):
+            raise ValueError("invalid consumer snapshot")
+        return {"status": "consumed_current_process", "value": value, "revision": revision,
+                "state": token, "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID"),
+                "source": "system.host.memory.health.consumer",
+                "matches_desired": value == state["resolved"]["value"] and revision == state["revision"] and token == state["state_token"],
+                "verification": "not_verified"}
+    except (KeyError, ValueError):
+        return {"status": "unavailable", "source": "system.host.memory.health.consumer", "verification": "not_verified"}
+
 
 def decode(text: str) -> Any:
     def unique(pairs):
@@ -363,7 +408,7 @@ class ConfigurationService:
                 history_reference["availability"] = "available"
             except ValueError:
                 pass
-        return {"schema_version": 1, "scope_id": metadata["scope_id"], "target": target, "id": ident,
+        result = {"schema_version": 1, "scope_id": metadata["scope_id"], "target": target, "id": ident,
                 "schema_owner": field["owner"], "declaration": field,
                 "availability": "available" if self.owner_active(field["owner"]) else "owner_inactive",
                 "revision": int(metadata["revision"]), "state_token": state_token, "default": field.get("default"),
@@ -374,6 +419,9 @@ class ConfigurationService:
                 "last_change": {k: row[k] for k in ("revision", "operation_id", "changed_at", "source")} if row else None,
                 "history_reference": history_reference,
                 "compatibility": compatibility if row is None else None}
+        if ident == MEMORY_WARNING:
+            result["runtime_consumption"] = _memory_consumption(result) if self.owner_active("system") else {"status": "owner_inactive", "verification": "not_verified"}
+        return result
 
     def export(self):
         with self._store() as db:
@@ -511,7 +559,7 @@ class ConfigurationService:
         return self.commit(proposals, expected_revision=expected_revision, expected_state=expected_state, operation_id=operation_id, source={"kind": "restore"})
 
 
-def capability_records():
+def capability_records(system_active=False):
     records = []
     for ident, tier, properties, verification, description in [
         ("core.configuration.ai_verbose.set", "CHANGE", {"value": {"type": "boolean"}, "revision": {"type": "integer", "minimum": 0}, "state": {"type": "string", "minLength": 64, "maxLength": 64}},
@@ -528,16 +576,33 @@ def capability_records():
                       "affects": ["installation:local"]}
         records.append({"id": ident, "owner": "core", "provider": "core", "source": "core.configuration.v1",
                         "availability": "active", "unavailable_reason": None, "descriptor": descriptor})
+    properties = {"value": {"type": "integer"}, "revision": {"type": "integer", "minimum": 0},
+                  "state": {"type": "string", "minLength": 64, "maxLength": 64}}
+    records.append({"id": "core.configuration.system_memory_warning.set", "owner": "core", "provider": "core",
+                    "source": "core.configuration.v1", "availability": "active" if system_active else "inactive",
+                    "unavailable_reason": None if system_active else "configuration_owner_inactive",
+                    "descriptor": {"kind": "capability", "id": "core.configuration.system_memory_warning.set",
+                    "handler": "core_configuration_adapter", "capability_version": 1,
+                    "description": "Commit System desired memory warning threshold; application is separate",
+                    "inputs": {"properties": properties, "required": list(properties), "additionalProperties": False},
+                    "safety": {"tier": "CHANGE"}, "privilege": "none", "preconditions": [],
+                    "verification": {"kind": "system_memory_configuration_revision", "required": True},
+                    "recovery": {"class": "reversible"}, "affects": [MEMORY_TARGET]}})
     return records
 
 
 def cli():
     try:
         request = decode(sys.stdin.read())
-        service = ConfigurationService(Path(request["data_dir"]))
+        root = Path(request["igor_dir"])
+        # Runtime callers supply the actual loader-owned activation snapshot.
+        # Standalone inspection admits no module writes without that snapshot.
+        active = set(request.get("active_owners", ["core"]))
+        service = ConfigurationService(Path(request["data_dir"]), schemas=installed_schemas(root),
+                                       owner_active=lambda owner: owner == "core" or owner in active)
         action = sys.argv[1]
         if action == "capabilities":
-            result = capability_records()
+            result = capability_records("system" in active)
         elif action == "declarations":
             result = service.declarations()
         elif action == "status":
@@ -547,20 +612,25 @@ def cli():
         elif action == "managed":
             result = {"ai_verbose": service.inspect()["last_change"] is not None}
         elif action in {"inspect", "list", "resolve"}:
-            state = service.inspect()
-            if state["last_change"] is None:
+            ident = request.get("id", "ai.verbose")
+            target = request.get("target", "installation:local")
+            state = service.inspect(ident, target)
+            if ident == "ai.verbose" and state["last_change"] is None:
                 compatibility = legacy_verbose(Path(request["igor_dir"]), request.get("inherited_verbose"))
                 state = service.inspect(compatibility=compatibility)
-            result = [state] if action == "list" else state
+            result = [state if field["id"] == "ai.verbose" else service.inspect(field["id"], "module:" + field["owner"]) for field in service.fields.values()] if action == "list" else state
         elif action == "validate":
             result = service.validate(request["changes"] if "changes" in request else decode(request["changes_document"]))
         elif action == "prepare":
-            state = service.inspect()
+            memory = request["capability_id"] == "core.configuration.system_memory_warning.set"
+            state = service.inspect(MEMORY_WARNING, MEMORY_TARGET) if memory else service.inspect()
             if (state["revision"] != request["revision"] or
                     (request["capability_id"] != "core.configuration.ai_verbose.verify" and state["state_token"] != request["state"])):
                 raise ConfigurationError("configuration revision conflict")
             capability = request["capability_id"]
-            if capability == "core.configuration.ai_verbose.set":
+            if memory:
+                result = service.validate([{"id": MEMORY_WARNING, "target": MEMORY_TARGET, "value": request["value"]}])
+            elif capability == "core.configuration.ai_verbose.set":
                 result = service.validate([{"id": "ai.verbose", "target": "installation:local", "value": request["value"]}])
                 if state["last_change"] is None:
                     legacy_verbose(Path(request["igor_dir"]), request.get("inherited_verbose"))
@@ -574,6 +644,21 @@ def cli():
             legacy = legacy_verbose(Path(request["igor_dir"]), request.get("inherited_verbose")) if service.inspect()["last_change"] is None else None
             result = service.commit([{"id": "ai.verbose", "target": "installation:local", "value": request["value"]}],
                                     expected_revision=request["revision"], expected_state=request["state"], operation_id=request["operation_id"], legacy=legacy)
+        elif action == "memory-set":
+            result = service.commit([{"id": MEMORY_WARNING, "target": MEMORY_TARGET, "value": request["value"]}],
+                                    expected_revision=request["revision"], expected_state=request["state"], operation_id=request["operation_id"])
+        elif action == "memory-prepare":
+            state = service.inspect(MEMORY_WARNING, MEMORY_TARGET)
+            if (state["availability"] != "available" or state["revision"] != request["revision"] or
+                    state["state_token"] != request["state"] or
+                    ("value" in request and state["resolved"]["value"] != request["value"])):
+                raise ConfigurationError("memory configuration consumption conflict")
+            result = {"revision": state["revision"], "value": state["resolved"]["value"]}
+        elif action == "memory-verify-desired":
+            state = service.inspect(MEMORY_WARNING, MEMORY_TARGET)
+            if state["revision"] != request["revision"] + 1 or state["desired"] != {"status": "value", "value": request["value"]}:
+                raise ConfigurationError("desired memory revision verification failed")
+            result = {"source": "configuration.desired", "revision": state["revision"], "application": "not_verified"}
         elif action == "restore":
             result = service.restore(decode(request["document"]), expected_revision=request["revision"], expected_state=request["state"], operation_id=request["operation_id"])
         elif action == "verify":

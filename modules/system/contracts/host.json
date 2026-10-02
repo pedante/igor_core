@@ -13,7 +13,13 @@
       "output_type": "host.memory",
       "timeout_seconds": 10,
       "object_kind": "host",
-      "properties": [{"name": "memory.available_bytes", "value_type": "integer", "minimum": 0}],
+      "properties": [
+        {
+          "name": "memory.available_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        }
+      ],
       "freshness_seconds": 60,
       "privilege": "none"
     },
@@ -24,13 +30,26 @@
       "output_type": "health.result",
       "timeout_seconds": 10,
       "object_kind": "host",
-      "required_facts": [{"property": "memory.available_bytes", "state_class": "observed", "observer": "host.memory"}]
+      "required_facts": [
+        {
+          "property": "memory.available_bytes",
+          "state_class": "observed",
+          "observer": "host.memory"
+        }
+      ]
     },
     {
       "kind": "automation",
       "id": "system.host.memory.once",
-      "trigger": {"kind": "once_at", "schema_version": 1},
-      "target": {"capability_id": "system.host.memory.refresh", "provider": "system", "inputs": {}}
+      "trigger": {
+        "kind": "once_at",
+        "schema_version": 1
+      },
+      "target": {
+        "capability_id": "system.host.memory.refresh",
+        "provider": "system",
+        "inputs": {}
+      }
     },
     {
       "kind": "capability",
@@ -38,14 +57,242 @@
       "handler": "system__refresh_memory",
       "capability_version": 2,
       "description": "Refresh the local host memory observation.",
-      "inputs": {"properties": {}, "required": [], "additionalProperties": false},
-      "outputs": {"schema_version": 1, "properties": {"observer_id": {"type": "enum", "enum": ["host.memory"]}}, "required": ["observer_id"], "additionalProperties": false},
-      "safety": {"tier": "READ"},
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "observer_id": {
+            "type": "enum",
+            "enum": [
+              "host.memory"
+            ]
+          }
+        },
+        "required": [
+          "observer_id"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
       "privilege": "none",
-      "preconditions": [{"kind": "owner_active"}],
-      "verification": {"kind": "observer_fact", "observer": "host.memory", "object_id": "host:local", "property": "memory.available_bytes", "required": true},
-      "recovery": {"class": "not_applicable"},
-      "affects": [{"object": "host", "id": "local"}]
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "observer_fact",
+        "observer": "host.memory",
+        "object_id": "host:local",
+        "property": "memory.available_bytes",
+        "required": true
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "configuration",
+      "id": "system.memory.preferences",
+      "schema": {
+        "schema_version": 1,
+        "fields": [
+          {
+            "id": "system.memory.warning_threshold_mib",
+            "type": "integer",
+            "scope": "module",
+            "default": 150,
+            "minimum": 81,
+            "maximum": 4096,
+            "label": "Memory warning threshold (MiB)",
+            "help": "Warning boundary for the System memory health consumer. The critical boundary remains 80 MiB. Desired configuration is separate from runtime verification.",
+            "behavior": "managed",
+            "apply": {
+              "capability_id": "system.memory.warning.apply",
+              "verification_capability_id": "system.memory.warning.readback",
+              "restart": "none"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.memory.warning.apply",
+      "handler": "system__apply_memory_warning",
+      "capability_version": 2,
+      "description": "Apply the committed warning threshold to this Igor process.",
+      "inputs": {
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 81,
+            "maximum": 4096
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "value",
+          "revision",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 81,
+            "maximum": 4096
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "value",
+          "revision",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.memory.warning.consumer",
+        "required": true
+      },
+      "recovery": {
+        "class": "reversible",
+        "capability_id": "system.memory.warning.apply",
+        "description": "Explicitly propose and apply the prior or default value through the same approved configuration path."
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.memory.warning.readback",
+      "handler": "system__read_memory_warning",
+      "capability_version": 2,
+      "description": "Read this Igor process memory health consumer independently of desired configuration.",
+      "inputs": {
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "revision",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "value": {
+            "type": "integer",
+            "minimum": 81,
+            "maximum": 4096
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "consumer_id": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "source": {
+            "type": "enum",
+            "enum": [
+              "system.host.memory.health.consumer"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "revision",
+          "state",
+          "consumer_id",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.memory.warning.consumer",
+        "required": true
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
     }
   ]
 }

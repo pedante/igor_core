@@ -27,6 +27,15 @@ in new Igor processes. Restart existing sessions after a policy change. This doe
 not stop running services or delete their data. See the
 [module lifecycle and architecture assessment](docs/module_lifecycle.md).
 
+With System active, the chat command `memory-warning 220` proposes, commits,
+applies and independently verifies a 220 MiB memory warning threshold for the
+current Igor process through normal approval and Operational History. The
+warning default is 150 MiB (valid range 81–4096); critical remains 80 MiB.
+`bash igor.sh --configuration inspect system.memory.warning_threshold_mib`
+inspects Core-owned desired state. See the
+[System workflow](docs/igor2/SYSTEM_MEMORY_WORKFLOW.md) for runtime evidence,
+failure handling and explicit recovery.
+
 > Built on a Raspberry Pi 3. Every design decision exists because something broke
 > first at 3am. Nothing is theoretical.
 

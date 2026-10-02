@@ -84,30 +84,37 @@ assert provider["descriptor"]["outputs"]["required"]==["observer_id"]
 assert len(candidates)==1
 candidate=candidates[0]
 assert candidate["id"]=="host.basics" and candidate["owner"]=="system"
-assert candidate["source_version"]=="2.1.0" and "# Host basics" in candidate["content"]
-assert len(schemas)==1 and schemas[0]["owner"]=="system"
+assert candidate["source_version"]=="2.2.0" and "# Host basics" in candidate["content"]
+assert len(schemas)==2 and {field["id"] for row in schemas for field in row["schema"]["fields"]}=={
+    "system.composition.note", "system.memory.warning_threshold_mib"}
 assert schemas[0]["source"]=="contracts/host.json"
 service=ConfigurationService(Path(sys.argv[2]),schemas=[(row["owner"],row["schema"]) for row in schemas])
-setting=service.inspect("system.composition.note","module:system")
-assert setting["schema_owner"]=="system" and setting["desired"]["status"]=="absent"
-assert setting["resolved"]=={"status":"resolved","value":"fixture","source":"default"}
+settings={field["id"]:service.inspect(field["id"],"module:system")
+    for row in schemas for field in row["schema"]["fields"]}
+fixture=settings["system.composition.note"]
+warning=settings["system.memory.warning_threshold_mib"]
+assert fixture["schema_owner"]=="system" and fixture["desired"]["status"]=="absent"
+assert fixture["resolved"]=={"status":"resolved","value":"fixture","source":"default"}
+assert warning["schema_owner"]=="system" and warning["resolved"]["value"]==150
 assert service.status()["availability"]=="not_created"
-assert view["module"]["api"]==2 and view["module"]["package_version"]=="2.1.0"
+assert view["module"]["api"]==2 and view["module"]["package_version"]=="2.2.0"
 assert view["lifecycle"]["runtime_status"]=="active" and view["lifecycle"]["loaded"] is True
 assert view["capabilities"][0]["owner"]=="system"
 assert view["knowledge"][0]["availability"]=="active"
 assert view["configuration"]["schemas"][0]["owner"]=="system"
-assert view["configuration"]["service"][0]["schema_owner"]=="system"
+service_rows={row["id"]:row for row in view["configuration"]["service"]}
+assert service_rows["system.memory.warning_threshold_mib"]["resolved"]["value"]==150
 selected,routing=assemble({"context_candidates":candidates},{"ids":["host.basics"]},
     active_owners=["core","system"],include_runtime=False)
 item=selected["context_items"][0]
 assert item["kind"]=="module_knowledge" and item["authority_class"]=="reference"
-assert item["owner"]=="system" and item["source_version"]=="2.1.0"
+assert item["owner"]=="system" and item["source_version"]=="2.2.0"
 assert item["provenance"] and routing["items"][0]["id"]=="host.basics"
 # Exercise existing generic panels directly; no module-specific/live panel.
-for key,expected in [("module","2.1.0"),("lifecycle","active"),
+for key,expected in [("module","2.2.0"),("lifecycle","active"),
         ("capabilities","system.host.memory.refresh"),("knowledge","host.basics"),
-        ("configuration","system.composition.note")]:
+        ("configuration","system.composition.note"),
+        ("configuration","system.memory.warning_threshold_mib")]:
     rows=panel_rows({"source":"Core module inspection","data":view[key]})
     assert rows[0]=="Source: Core module inspection"
     assert expected in " ".join(rows),(key,rows)
@@ -126,7 +133,7 @@ PY
 
 @test "invalid package version is rejected before source and all composition discovery" {
     _composition_source_marker
-    sed -i 's/version=2.1.0/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
+    sed -i 's/version=2.2.0/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
     _composition_rejected
     [[ "$(igor_module_reason system)" == *version* ]]
 }
@@ -176,7 +183,8 @@ assert view["lifecycle"]["loaded"] is False
 assert view["lifecycle"]["runtime_enabled"] is False
 assert view["capabilities"] and view["knowledge"] and view["configuration"]["schemas"]
 assert all(row["availability"]=="owner_disabled" for row in view["declarations"])
-assert view["configuration"]["service"]==[]
+assert view["configuration"]["service"]
+assert all(row["availability"]=="owner_inactive" for row in view["configuration"]["service"])
 PY
     [ "$(cat "$IGOR_MODEL_RUNTIME_FILE")" = "$before_model" ]
     [ "$(_composition_files)" = "$before_files" ]
@@ -199,7 +207,7 @@ history=json.loads(sys.argv[1]); fact=json.loads(sys.argv[2])
 assert len(history)==1
 row=history[0]
 assert row["capability"]["version"]==2
-assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]=="2.1.0"
+assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]=="2.2.0"
 assert row["outcome"]=="success" and row["verification"]["status"]=="passed"
 assert row["approval"]["result"]=="not_required" and row["privilege"]["result"]=="not_required"
 assert fact["availability"]=="known" and fact["owner"]=="system"

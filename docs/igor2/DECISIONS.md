@@ -644,6 +644,28 @@ and Step 18 still must implement/prove the binding, adoption and reversible
 application path. No broad discovery engine, module migration or ownership
 transfer is implemented by this documentation change.
 
+### D062 — First reversible module configuration proof uses System memory warning policy
+
+The Project Owner approved Step 18 Boundary 3 using
+`system.memory.warning_threshold_mib`: a System-owned schema declaration with
+Core-owned desired configuration. The default is 150 MiB, the integer range is
+81–4096 MiB, and the independent critical boundary remains 80 MiB.
+`SYSTEM_RAM_WARN_MB` is not imported or made a competing authority.
+
+The bounded lifecycle separates validation and approved authoritative desired
+commit from module application, independent READ runtime readback, verification
+and Operational History. Configuration is not runtime truth. Failed application
+and failed verification remain visible without false success; recovery is an
+explicit new approved change through the same path, with no automatic rollback.
+The proof is process-local System health policy, not OS memory configuration.
+
+This owner-approved workflow replaces the earlier proposed Nextcloud Boundary 3
+selection. It does not establish generic deployment/binding/adoption, complete
+detach, a settings UI, AI decisions or System Model facts from configuration.
+Broader application integration, Steps 19/20 and third-party trust remain deferred.
+Q012 is resolved for this warning setting only; other host thresholds retain
+their existing executed behavior and require separately bounded migration.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
@@ -679,14 +701,10 @@ If remote control is added, which READ/CHANGE/DESTROY operations may execute wit
 
 Decision target: Step 22.
 
-### Q012 — Effective `system` threshold configuration
+### Q012 — Effective `system` threshold configuration — warning setting resolved by D062
 
-`config/variables/system.env` documents `SYSTEM_RAM_WARN_MB=80`, but current
-RAM checks execute hardcoded 80 MiB critical / 150 MiB warning boundaries.
-Wave D preserves those executed boundaries and exposes them as effective
-check metadata. When the Ownership Foundation gives module configuration one
-authoritative validation path, which settings and migration rule should make
-host thresholds configurable without silently changing existing behavior?
-
-Decision target: before making `system.env` RAM settings authoritative; this
-does not block the Wave D memory slice.
+D062 settles the first warning threshold: Core-owned
+`system.memory.warning_threshold_mib`, default 150 MiB, range 81–4096 MiB,
+without importing the ineffective legacy `SYSTEM_RAM_WARN_MB=80`. The 80 MiB
+critical boundary stays separate. Other host threshold configuration and legacy
+names remain outside this bounded proof; no general threshold migration is claimed.

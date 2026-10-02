@@ -29,7 +29,7 @@ teardown() { teardown_igor_tmpdir; }
 import json,sys
 row=json.loads(sys.argv[1])[0]
 assert row["capability"]["version"] == 2
-assert row["provider"]["source"]["module_version"] == "2.1.0"
+assert row["provider"]["source"]["module_version"] == "2.2.0"
 assert row["outcome"] == "success" and row["verification"]["status"] == "passed"
 PY
 }
@@ -139,6 +139,48 @@ PY
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'typed_privileged_output_adapter_unavailable'* ]]
+}
+
+@test "memory apply cannot weaken CHANGE, omit verification, or request privilege" {
+    local contract="$IGOR_DIR/modules/system/contracts/host.json"
+    cp "$contract" "$IGOR_DIR/memory-contract.original.json"
+    cat >> "$IGOR_DIR/modules/system/module.sh" <<'EOF'
+system__apply_memory_warning() { printf 'effect' > "$IGOR_DIR/memory-apply-effect"; return 1; }
+EOF
+    local mutation
+    for mutation in read-tier no-verifier privilege-required; do
+        cp "$IGOR_DIR/memory-contract.original.json" "$contract"
+        python3 - "$contract" "$mutation" <<'PY'
+import json,sys
+from pathlib import Path
+path=Path(sys.argv[1]); data=json.loads(path.read_text())
+cap=next(row for row in data["contributions"]
+         if row.get("id")=="system.memory.warning.apply")
+if sys.argv[2]=="read-tier":
+    cap["safety"]["tier"]="READ"
+elif sys.argv[2]=="no-verifier":
+    cap["verification"]={"kind":"none","required":False}
+else:
+    cap["privilege"]="required"
+path.write_text(json.dumps(data))
+PY
+        run bash -c '
+            source "$1/core/lib/module_loader.sh"
+            _ml_log() { :; }
+            igor_load_all_modules >/dev/null
+            [ "$(igor_module_status system)" = active ] || exit 7
+            inputs="{\"value\":220,\"revision\":0,\"state\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+            if proposal="$(igor_capability_prepare system.memory.warning.apply "$inputs" system 2)"; then
+                IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+                igor_capability_execute "$proposal"
+                exit 8
+            fi
+            printf "not-admitted\\n"
+        ' _ "$REPO_DIR"
+        [ "$status" -eq 0 ]
+        [[ "$output" == *not-admitted* ]]
+        [ ! -e "$IGOR_DIR/memory-apply-effect" ]
+    done
 }
 
 @test "retained capability v1 History remains inspectable after current v2 update" {

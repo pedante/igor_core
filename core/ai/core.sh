@@ -3525,6 +3525,13 @@ PYEOF
                 _ai_configuration_verbose_set false || { echo ""; continue; }
                 _ai_save_settings
                 echo -e "  ${GRN}✔ Verbose mode off.${NC}"; echo ""; continue ;;
+            memory-warning\ *)
+                if _ai_configuration_memory_warning_set "${user_input#memory-warning }"; then
+                    ok "System memory warning threshold verified for this Igor process."
+                else
+                    warn "Memory warning workflow did not complete. Inspect configuration and Operational History before retrying."
+                fi
+                echo ""; continue ;;
             stop)
                 # Fix 6: Soft pause — blocks agentic continuation until resumed
                 _IGOR_PAUSED=true
