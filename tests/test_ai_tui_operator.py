@@ -77,6 +77,18 @@ def capability(path="system.host.memory.refresh", required=(), provider_required
     }
 
 
+def plan_entry(path="docker.install", availability="active"):
+    return {
+        "path": path,
+        "kind": "plan",
+        "owner": "docker",
+        "target_id": path,
+        "availability": availability,
+        "unavailable_reason": None if availability == "active" else "missing dependency",
+        "description": "Install Docker",
+    }
+
+
 class OperatorExplorerTests(unittest.TestCase):
     def test_operator_snapshot_is_metadata_not_activity(self):
         state = tui.EventState()
@@ -234,11 +246,47 @@ class OperatorExplorerTests(unittest.TestCase):
         self.assertTrue(any("Backend busy" in str(args[2])
                             for args in screen.drawn if len(args) > 2))
 
+    def test_plan_leaf_executes_through_backend_control_path(self):
+        entry = plan_entry()
+        keys = [ord(c) for c in "docker"] + [ord(".")] + \
+               [ord(c) for c in "install"] + [10]
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        state.backend_ready = True
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            selected = tui._operator_overlay(
+                Screen(keys), 17, Reader([]), state, tui.InputBuffer())
+        self.assertEqual(selected, "plan docker.install")
+        self.assertEqual(sent, [(17, "plan docker.install")])
+        self.assertFalse(state.backend_ready)
+
+    def test_busy_backend_does_not_queue_plan_leaf(self):
+        entry = plan_entry()
+        keys = [ord(c) for c in "docker"] + [ord(".")] + \
+               [ord(c) for c in "install"] + [10, 27]
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            selected = tui._operator_overlay(
+                Screen(keys), 17, Reader([]), state, tui.InputBuffer())
+        self.assertIsNone(selected)
+        self.assertEqual(sent, [])
+
     def test_operator_selection_is_not_rendered_as_conversation(self):
         state = tui.EventState()
         state.add_operator_input("invoke system.service.list")
         self.assertEqual(tui.render_activity(state, 100),
                          ["Operator: system.service.list"])
+        state = tui.EventState()
+        state.add_operator_input("plan docker.install")
+        self.assertEqual(tui.render_activity(state, 100),
+                         ["Operator: docker.install"])
 
 
 if __name__ == "__main__":
