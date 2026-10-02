@@ -245,6 +245,15 @@ pkg_upgrade_argv() {
     esac
 }
 
+pkg_cache_clean_argv() {
+    [ "$#" -eq 0 ] || return 2
+    case "${IGOR_DISTRO_FAMILY:-unknown}" in
+        debian) printf '%s\n' 'apt-get clean' ;;
+        arch) printf '%s\n' 'pacman -Sc --noconfirm' ;;
+        *) return 2 ;;
+    esac
+}
+
 _svc_validate_name() {
     [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]]
 }
