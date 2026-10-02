@@ -45,7 +45,7 @@ _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "tim
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
                 "verification", "recovery", "affects", "payload_schema", "trigger", "target",
-                "schema", "outputs"}
+                "schema", "outputs", "implementation"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -386,6 +386,100 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
     return {field: item[field] for field in fields}
 
 
+def _validate_composite_implementation(value: Any, where: str,
+                                       parent_inputs: dict[str, Any]) -> dict[str, Any]:
+    impl = _closed_object(value, {"kind", "intended_outcome", "variants", "final_check"},
+                          f"{where}.implementation")
+    if impl.get("kind") != "composition":
+        raise _error(f"{where}.implementation.kind must be composition")
+    intended = impl.get("intended_outcome")
+    if not isinstance(intended, str) or not intended.strip() or len(intended) > 512:
+        raise _error(f"{where}.implementation.intended_outcome must be bounded non-empty text")
+    variants = impl.get("variants")
+    if not isinstance(variants, list) or not 1 <= len(variants) <= 8:
+        raise _error(f"{where}.implementation.variants must contain 1..8 entries")
+
+    parent_props = parent_inputs.get("properties", {})
+    seen_families: set[str] = set()
+
+    def binding(raw: Any, field: str) -> Any:
+        if isinstance(raw, dict) and set(raw) == {"from_input"}:
+            name = raw.get("from_input")
+            if not isinstance(name, str) or name not in parent_props:
+                raise _error(f"{field}.from_input references unknown parent input")
+            return {"from_input": name}
+        try:
+            encoded = json.dumps(raw, sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError) as exc:
+            raise _error(f"{field} must be JSON data") from exc
+        if len(encoded) > 4096:
+            raise _error(f"{field} is too large")
+        return raw
+
+    def step(raw: Any, field: str, *, final: bool = False) -> dict[str, Any]:
+        allowed = {"capability_id", "provider", "inputs", "capability_version"}
+        if final:
+            allowed.add("expect")
+        item = _closed_object(raw, allowed, field)
+        ident = _validate_id(item.get("capability_id"), f"{field}.capability_id")
+        if "." not in ident:
+            raise _error(f"{field}.capability_id must be dotted")
+        if "provider" in item:
+            _validate_id(item["provider"], f"{field}.provider")
+        if "capability_version" in item and (
+                type(item["capability_version"]) is not int or
+                item["capability_version"] not in {1, 2}):
+            raise _error(f"{field}.capability_version is unsupported")
+        inputs = item.get("inputs")
+        if not isinstance(inputs, dict) or len(inputs) > 32:
+            raise _error(f"{field}.inputs must be a bounded object")
+        normalized = {key: binding(value, f"{field}.inputs.{key}") for key, value in inputs.items()}
+        result = {"capability_id": ident, "inputs": normalized}
+        if "provider" in item:
+            result["provider"] = item["provider"]
+        if "capability_version" in item:
+            result["capability_version"] = item["capability_version"]
+        if final:
+            expect = item.get("expect")
+            if not isinstance(expect, dict) or not expect or len(expect) > 32:
+                raise _error(f"{field}.expect must be a non-empty bounded object")
+            result["expect"] = {key: binding(value, f"{field}.expect.{key}") for key, value in expect.items()}
+        return result
+
+    normalized_variants = []
+    for index, raw in enumerate(variants):
+        variant = _closed_object(raw, {"requires", "steps"},
+                                 f"{where}.implementation.variants[{index}]")
+        requires = _closed_object(variant.get("requires"), {"platform_families"},
+                                  f"{where}.implementation.variants[{index}].requires")
+        families = requires.get("platform_families")
+        if (not isinstance(families, list) or not families or
+                any(family not in _PLATFORM_FAMILIES for family in families) or
+                len(families) != len(set(families))):
+            raise _error(f"{where}.implementation.variants[{index}] has invalid platform families")
+        overlap = seen_families & set(families)
+        if overlap:
+            raise _error(f"{where}.implementation variants overlap on {min(overlap)}")
+        seen_families.update(families)
+        steps = variant.get("steps")
+        if not isinstance(steps, list) or not 1 <= len(steps) <= 16:
+            raise _error(f"{where}.implementation.variants[{index}].steps must contain 1..16 entries")
+        normalized_variants.append({
+            "requires": {"platform_families": list(families)},
+            "steps": [step(item, f"{where}.implementation.variants[{index}].steps[{step_index}]")
+                      for step_index, item in enumerate(steps)],
+        })
+
+    final_check = step(impl.get("final_check"), f"{where}.implementation.final_check",
+                       final=True)
+    return {
+        "kind": "composition",
+        "intended_outcome": intended,
+        "variants": normalized_variants,
+        "final_check": final_check,
+    }
+
+
 def _validate_contribution(package: Path, item: Any, index: int, source: str,
                            owner: str) -> dict[str, Any]:
     where = f"{source} contribution {index}"
@@ -459,15 +553,31 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
     elif "payload_schema" in item:
         raise _error(f"{where}.payload_schema is domain_event-only")
     capability_fields = {"capability_version", "description", "inputs", "safety",
-                         "preconditions", "verification", "recovery", "affects", "outputs"}
+                         "preconditions", "verification", "recovery", "affects", "outputs",
+                         "implementation"}
     if kind == "capability":
         if result["id"].count(".") < 1:
             raise _error(f"{where}.id requires at least two dotted segments")
         result.update(_validate_capability_metadata(item, where))
+        if "implementation" in item:
+            result["implementation"] = _validate_composite_implementation(
+                item["implementation"], where, result["inputs"])
     elif set(item) & capability_fields:
         raise _error(f"{where} has capability-only metadata")
     if "requires" in item:
         result["requires"] = _validate_requirement_map(item["requires"], where)
+    if kind == "capability" and "implementation" in result:
+        refs = {
+            step["capability_id"]
+            for variant in result["implementation"]["variants"]
+            for step in variant["steps"]
+            if not step["capability_id"].startswith(owner + ".")
+        }
+        if not result["implementation"]["final_check"]["capability_id"].startswith(owner + "."):
+            refs.add(result["implementation"]["final_check"]["capability_id"])
+        declared = set(result.get("requires", {}).get("capabilities", []))
+        if declared != refs:
+            raise _error(f"{where}.requires.capabilities must exactly match external composition references")
     if "path" in item:
         path = item["path"]
         if not isinstance(path, str):
@@ -481,6 +591,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
         if not isinstance(handler, str) or not _HANDLER_RE.fullmatch(handler):
             raise _error(f"{where}.handler is not a valid Bash handler reference")
         result["handler"] = handler
+    if kind == "capability" and "implementation" in result and "handler" in result:
+        raise _error(f"{where} cannot declare both handler and composite implementation")
     executable_kinds = {"observer", "check", "capability", "configuration", "lifecycle"}
     if kind == "configuration" and "schema" in item:
         try:
@@ -491,7 +603,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
     elif "schema" in item:
         raise _error(f"{where}.schema is configuration-only")
     if kind in executable_kinds and "handler" not in result and not (
-            kind == "configuration" and "schema" in result):
+            kind == "configuration" and "schema" in result) and not (
+            kind == "capability" and "implementation" in result):
         raise _error(f"{where} requires handler")
     if kind == "knowledge" and "path" not in result and "handler" not in result:
         raise _error(f"{where} requires path or handler")
