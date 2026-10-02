@@ -2,6 +2,25 @@
 
 Last updated: 2026-10-02
 
+## Operator Surface refresh/diagnostics follow-up — implementation candidate
+
+The merged Operator Surface already requested a fresh backend snapshot whenever
+`:` opened. The blank-screen failure mode came from observability: collector or
+projection failures could be suppressed, while a valid zero-entry snapshot had
+no distinct empty-state presentation.
+
+This follow-up keeps the same authority boundary and adds no registry, database
+or execution path. Snapshot projection now reports per-source status/counts plus
+`ready`, `empty` or `error`; malformed registry JSON becomes an explicit
+failed source. The TUI shows those counts/states, reports a missing response
+after a bounded wait, and supports `Ctrl+R` to request another snapshot. Capability
+selection still re-enters the canonical dispatcher unchanged.
+
+Focused projection/backend/TUI tests are updated on the branch. Runtime pass
+counts are not claimed here: the current execution environment cannot resolve
+GitHub for a local branch checkout, and the repository Actions workflow does not
+run for pull requests whose base is `igor2`.
+
 ## Step 18 Boundary 3 — System memory warning configuration workflow
 
 The Project Owner approved [D062](DECISIONS.md): the real System memory health
