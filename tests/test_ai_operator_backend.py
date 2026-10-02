@@ -21,6 +21,31 @@ class OperatorBackendTests(unittest.TestCase):
             return subprocess.run(["bash", "-c", body], env=env, text=True,
                                   capture_output=True, timeout=20)
 
+    def test_registry_snapshots_decode_nul_framing(self):
+        script = r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+_IGOR_MODULE_CONFIG_LOADED=1
+_IGOR_MODULE_DIRS[system]="$IGOR_DIR/modules/system"
+_IGOR_MODULE_API[system]=2
+_IGOR_MODULE_STATE[system]=enabled
+_IGOR_MODULE_STATUS[system]=active
+_IGOR_LOADED_MODULES[system]=1
+_IGOR_CONTRIBUTIONS["observer:host.memory"]='{"kind":"observer","id":"host.memory"}'
+_IGOR_CONTRIBUTION_OWNER["observer:host.memory"]=system
+_IGOR_CONTRIBUTION_SOURCE["observer:host.memory"]=contracts/host.json
+_IGOR_CONTRIBUTION_STATE["observer:host.memory"]=active
+igor_module_records
+igor_contribution_records
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        self.assertEqual(lines[0][0]["name"], "system")
+        self.assertEqual(lines[0][0]["module_api"], 2)
+        self.assertEqual(lines[1][0]["id"], "host.memory")
+        self.assertEqual(lines[1][0]["kind"], "observer")
+        self.assertEqual(lines[1][0]["owner"], "system")
+
     def test_operator_snapshot_projects_existing_registries(self):
         with tempfile.TemporaryDirectory() as runtime:
             stream = Path(runtime) / "events.jsonl"
