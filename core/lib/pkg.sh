@@ -342,7 +342,10 @@ pkg_cleanup_candidates() {
 pkg_cache_usage() {
     [ "$#" -eq 0 ] || return 2
     _pkg_wave_d_family || return 2
-    local _path _kb
+    command -v timeout >/dev/null 2>&1 || return 2
+    command -v du >/dev/null 2>&1 || return 2
+    local _path _kb _timeout
+    _timeout="$(_pkg_query_timeout)" || return 2
     case "$IGOR_DISTRO_FAMILY" in
         debian) _path=/var/cache/apt/archives ;;
         arch) _path=/var/cache/pacman/pkg ;;
@@ -351,7 +354,7 @@ pkg_cache_usage() {
         printf '%s\t0\n' "$_path"
         return 0
     }
-    _kb="$(du -sk -- "$_path" 2>/dev/null | awk 'NR==1 { print $1 }')" || return 2
+    _kb="$(LC_ALL=C timeout "$_timeout" du -sk -- "$_path" 2>/dev/null | awk 'NR==1 { print $1 }')" || return 2
     [[ "$_kb" =~ ^[0-9]+$ ]] || return 2
     printf '%s\t%s\n' "$_path" "$((_kb * 1024))"
 }
@@ -361,10 +364,10 @@ svc_list_query() {
     _pkg_wave_d_family || return 2
     command -v systemctl >/dev/null 2>&1 || return 2
     command -v timeout >/dev/null 2>&1 || return 2
-    local _timeout
+    local _timeout _output
     _timeout="$(_pkg_query_timeout)" || return 2
-    LC_ALL=C timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null |
-        awk 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
+    _output="$(LC_ALL=C timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null)" || return 2
+    printf '%s\n' "$_output" | awk 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
 }
 
 # ── pkg_install_docker_post ───────────────────────────────────────────────────
