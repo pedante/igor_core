@@ -185,3 +185,19 @@ CAPS
     [[ "$output" != *"prose_only_action"* ]]
     [[ "$output" == *'"actions": []'* ]]
 }
+
+@test "structured loader output suppresses non-fatal chatter but keeps errors" {
+    run _ml_log warn "optional dependency missing"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"optional dependency missing"* ]]
+
+    IGOR_STRUCTURED_OUTPUT=true
+    run _ml_log warn "optional dependency missing"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+
+    run _ml_log error "contract invalid"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"contract invalid"* ]]
+}
+

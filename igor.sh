@@ -61,6 +61,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             igor_load_config >/dev/null
             case "${2:-status}" in
                 status|tools)
+                    # These are machine-readable inspection interfaces. Module
+                    # availability still affects the catalog, but optional
+                    # dependency/config warnings must not pollute the interface.
+                    IGOR_STRUCTURED_OUTPUT=true
+                    export IGOR_STRUCTURED_OUTPUT
                     igor_load_all_modules >/dev/null
                     igor_load_capabilities >/dev/null
                     if [[ "${2:-status}" == tools ]]; then

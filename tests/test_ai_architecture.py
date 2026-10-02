@@ -293,6 +293,7 @@ ai_catalog_json
             result = subprocess.run(["bash", str(self.root / "igor.sh"), "--ai", mode],
                                     capture_output=True, text=True, check=True)
             data = json.loads(result.stdout)
+            self.assertEqual(result.stderr, "")
             self.assertEqual(data["tools"], [])
             if mode == "status":
                 self.assertFalse(data["enabled"])

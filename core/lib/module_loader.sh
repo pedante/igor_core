@@ -64,11 +64,16 @@ source "${_IGOR_LOADER_DIR}/core/lib/capability.sh"
 
 # ---------------------------------------------------------------------------
 # _ml_log <level> <message>
-#   Internal logging. Writes to stdout (info/ok) or stderr (warn/error).
+#   Internal logging. Human sessions get normal diagnostics. Structured CLI
+#   surfaces suppress non-fatal loader chatter so their output remains a clean
+#   machine interface; fatal loader errors still go to stderr.
 # ---------------------------------------------------------------------------
 _ml_log() {
     local _level="$1"; shift
     local _msg="$*"
+    if [ "${IGOR_STRUCTURED_OUTPUT:-false}" = true ] && [ "$_level" != error ]; then
+        return 0
+    fi
     case "$_level" in
         ok)    printf '  [module_loader] ✔  %s\n' "$_msg" ;;
         info)  printf '  [module_loader]    %s\n' "$_msg" ;;
