@@ -113,7 +113,7 @@ def _validate_value(name: str, value: Any, spec: dict[str, Any]) -> Any:
         validator = spec.get("validator")
         if validator == "systemd_unit" and not re.fullmatch(r"[A-Za-z0-9_.@:-]+", value):
             raise CapabilityError(f"input {name} is not a valid service name")
-        if validator == "package_name" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@/-]*", value):
+        if validator == "package_name" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", value):
             raise CapabilityError(f"input {name} is not a valid package name")
         if "pattern" in spec and (not isinstance(spec["pattern"], str) or not re.fullmatch(spec["pattern"], value)):
             raise CapabilityError(f"input {name} does not match its pattern")
