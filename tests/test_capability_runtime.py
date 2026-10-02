@@ -254,7 +254,7 @@ class CapabilityRuntimeTests(unittest.TestCase):
             "safety": {"tier": "CHANGE"}, "privilege": "none",
             "preconditions": [], "verification": {"kind": "none", "required": False},
             "recovery": {"class": "best_effort"},
-            "affects": [{"object": "package", "id": "fixture"}],
+            "affects": [],
             "implementation": {
                 "kind": "composition", "intended_outcome": "Fixture is ready.",
                 "variants": [
