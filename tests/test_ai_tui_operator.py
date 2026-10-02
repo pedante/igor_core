@@ -164,7 +164,7 @@ class OperatorExplorerTests(unittest.TestCase):
         with patch.object(tui, "_send", side_effect=send), \
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._operator_overlay(
-                Screen([18, 18, 27]), 17, reader, state, tui.InputBuffer())
+                Screen([18, -1, 18, -1, 27]), 17, reader, state, tui.InputBuffer())
 
         self.assertEqual(sent, [(17, "surface snapshot"), (17, "surface snapshot")])
         self.assertEqual(state.sequence, 5)
