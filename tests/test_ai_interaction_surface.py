@@ -67,6 +67,10 @@ class Screen:
 def run_keys(keys, state=None):
     screen = Screen(keys)
     state = state or tui.EventState()
+    # This fixture has no backend process; model the explicit stdin-ready
+    # boundary that a real backend now emits before accepting normal input.
+    if not state.pending_action and not state.privilege_waiting:
+        state.backend_ready = True
 
     def read_events():
         return [] if screen.keys else [{"event_type": "session_finished",
