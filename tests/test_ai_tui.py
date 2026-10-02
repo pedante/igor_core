@@ -4,6 +4,7 @@
 import os
 import sys
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -69,6 +70,91 @@ class EventProjectionTests(unittest.TestCase):
         self.assertEqual(state.model, "small")
         self.assertEqual(tui.render_activity(state, 100)[-1],
                          "Mode: executive")
+
+    def test_backend_readiness_tracks_explicit_input_boundary(self):
+        state = tui.EventState()
+        self.assertFalse(state.backend_ready)
+
+        tui.apply_event(state, event("model_status", 1, status="input_ready"))
+        self.assertTrue(state.backend_ready)
+        self.assertEqual(tui._session_status_label(state), "READY")
+
+        tui.apply_event(state, event("model_status", 2, status="request_started"))
+        self.assertFalse(state.backend_ready)
+        self.assertEqual(tui._session_status_label(state), "THINKING")
+
+        tui.apply_event(state, event("model_status", 3, status="response_received"))
+        self.assertFalse(state.backend_ready)
+        self.assertEqual(tui._session_status_label(state), "PROCESSING")
+
+        tui.apply_event(state, event("model_status", 4, status="input_ready"))
+        self.assertTrue(state.backend_ready)
+
+    def test_mouse_capture_is_disabled_by_default_for_terminal_selection(self):
+        with patch.dict(os.environ, {"IGOR_TUI_MOUSE": ""}), \
+                patch.object(tui.curses, "mousemask") as mousemask, \
+                patch.object(tui.curses, "mouseinterval") as mouseinterval:
+            self.assertFalse(tui._configure_mouse())
+        mousemask.assert_called_once_with(0)
+        mouseinterval.assert_not_called()
+
+    def test_mouse_navigation_can_be_opted_in(self):
+        with patch.dict(os.environ, {"IGOR_TUI_MOUSE": "1"}), \
+                patch.object(tui.curses, "mousemask") as mousemask, \
+                patch.object(tui.curses, "mouseinterval") as mouseinterval:
+            self.assertTrue(tui._configure_mouse())
+        self.assertNotEqual(mousemask.call_args.args[0], 0)
+        mouseinterval.assert_called_once_with(0)
+
+    def test_tmux_ai_layout_defaults_to_copy_friendly_mouse_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "tmux.log"
+            script = r'''
+source "$IGOR_DIR/core/lib/tmux.sh"
+igor_in_tmux() { return 0; }
+tmux() {
+    printf '%s\n' "$*" >> "$TMUX_LOG"
+    if [ "$1" = display-message ]; then printf '@fixture\n'; fi
+}
+IGOR_PANE_LEFT='%1'
+unset IGOR_TUI_MOUSE
+igor_layout_ai
+'''
+            result = subprocess.run(
+                ["bash", "-c", script],
+                env={**os.environ, "IGOR_DIR": str(Path(__file__).resolve().parents[1]),
+                     "TMUX_LOG": str(log)},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = log.read_text()
+            self.assertIn("set-option mouse off", commands)
+            self.assertNotIn("set-option mouse on", commands)
+
+    def test_tmux_ai_layout_mouse_navigation_is_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "tmux.log"
+            script = r'''
+source "$IGOR_DIR/core/lib/tmux.sh"
+igor_in_tmux() { return 0; }
+tmux() {
+    printf '%s\n' "$*" >> "$TMUX_LOG"
+    if [ "$1" = display-message ]; then printf '@fixture\n'; fi
+}
+IGOR_PANE_LEFT='%1'
+IGOR_TUI_MOUSE=1
+igor_layout_ai
+'''
+            result = subprocess.run(
+                ["bash", "-c", script],
+                env={**os.environ, "IGOR_DIR": str(Path(__file__).resolve().parents[1]),
+                     "TMUX_LOG": str(log)},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = log.read_text()
+            self.assertIn("set-option mouse on", commands)
+            self.assertIn("bind-key -T root WheelUpPane", commands)
 
     def test_assistant_message_has_a_clear_speaker_label(self):
         state = tui.EventState()

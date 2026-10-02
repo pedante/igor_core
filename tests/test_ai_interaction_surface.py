@@ -67,6 +67,10 @@ class Screen:
 def run_keys(keys, state=None):
     screen = Screen(keys)
     state = state or tui.EventState()
+    # This fixture has no backend process; model the explicit stdin-ready
+    # boundary that a real backend now emits before accepting normal input.
+    if not state.pending_action and not state.privilege_waiting:
+        state.backend_ready = True
 
     def read_events():
         return [] if screen.keys else [{"event_type": "session_finished",
@@ -327,6 +331,15 @@ class InspectionAuthorityTests(unittest.TestCase):
         send.assert_not_called()
         _screen, send, _ = run_keys([], tui.EventState())
         send.assert_not_called()
+
+    def test_typed_invoke_is_operator_activity_not_conversation(self):
+        state = tui.EventState()
+        command = 'invoke system.service.status {"unit":"ssh.service"}'
+        _screen, send, state = run_keys(list(map(ord, command + "\n")), state)
+        self.assertEqual(send.call_args_list, [unittest.mock.call(17, command)])
+        self.assertIn("Operator: system.service.status", tui.render_activity(state, 120))
+        self.assertFalse(any(line.startswith("You: invoke ")
+                             for line in tui.render_activity(state, 120)))
 
     def test_plain_question_answer_keeps_existing_backend_choice_routing(self):
         _screen, send, _ = run_keys([2, 2, ord("2"), 10])

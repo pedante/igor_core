@@ -25,6 +25,7 @@ def event(kind, **fields):
         output.write(json.dumps({"event_type": kind, "sequence": sequence, **fields}) + "\\n")
 event("session_started", mode=mode, status="ready")
 while True:
+    event("model_status", mode=mode, status="input_ready")
     line = sys.stdin.readline()
     if not line:
         break
@@ -56,8 +57,9 @@ while True:
 
 
 class Screen:
-    def __init__(self, keys):
-        self.keys = iter(keys)
+    def __init__(self, stream, keys):
+        self.stream = stream
+        self.keys = list(keys)
 
     def keypad(self, _value):
         pass
@@ -84,7 +86,23 @@ class Screen:
         pass
 
     def getch(self):
-        return next(self.keys, -1)
+        if not self.keys:
+            return -1
+        item = self.keys[0]
+        if isinstance(item, tuple) and item[0] == "ready":
+            expected = item[1]
+            count = 0
+            if self.stream.exists():
+                count = sum(
+                    1 for line in self.stream.read_text().splitlines()
+                    if json.loads(line).get("event_type") == "model_status"
+                    and json.loads(line).get("status") == "input_ready"
+                )
+            if count < expected:
+                return -1
+            self.keys.pop(0)
+            return -1
+        return self.keys.pop(0)
 
 
 class PtyBoundaryTests(unittest.TestCase):
@@ -100,10 +118,23 @@ class PtyBoundaryTests(unittest.TestCase):
                     commands = [f"mode {mode}", "check package"]
                     if mode == "guide":
                         commands.append("run")
-                    keys = [ord(char) for char in "\n".join(commands) + "\n"]
+                    keys = [("ready", 1)]
+                    for index, command in enumerate(commands):
+                        keys.extend(ord(char) for char in command + "\n")
+                        if index + 1 < len(commands) and command != "check package":
+                            keys.append(("ready", index + 2))
+                    # In guide mode the third ready event means the fixture has
+                    # entered its approval read after emitting approval_waiting.
+                    if mode == "guide":
+                        keys = ([("ready", 1)] +
+                                [ord(char) for char in f"mode {mode}\n"] +
+                                [("ready", 2)] +
+                                [ord(char) for char in "check package\n"] +
+                                [("ready", 3)] +
+                                [ord(char) for char in "run\n"])
                     with patch.object(tui.curses, "ACS_HLINE", "-", create=True), \
                             patch.object(tui.curses, "wrapper",
-                                         side_effect=lambda callback: callback(Screen(keys))):
+                                         side_effect=lambda callback: callback(Screen(stream, keys))):
                         result = tui.run_tui((sys.executable, str(backend), str(log)), stream)
                     events = [json.loads(line) for line in stream.read_text().splitlines()]
                     types = [entry["event_type"] for entry in events]
@@ -126,7 +157,7 @@ sys.exit(2)
             stderr = io.StringIO()
             with patch.object(tui.curses, "ACS_HLINE", "-", create=True), \
                     patch.object(tui.curses, "wrapper",
-                                 side_effect=lambda callback: callback(Screen([]))), \
+                                 side_effect=lambda callback: callback(Screen(root / "events.jsonl", []))), \
                     patch.object(sys, "stderr", stderr):
                 result = tui.run_tui((sys.executable, str(backend)), root / "events.jsonl")
             self.assertEqual(result, 2)

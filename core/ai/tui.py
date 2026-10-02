@@ -94,6 +94,7 @@ class EventState:
     output_action_ids: set[str] = field(default_factory=set)
     collapse_output: bool = False
     command_state: str = "ready"
+    backend_ready: bool = False
     settings_snapshot: dict[str, Any] | None = None
     operator_snapshot: dict[str, Any] | None = None
     session_id: str = ""
@@ -138,6 +139,13 @@ class EventState:
             if isinstance(event.get(key), str):
                 setattr(self, key, event[key])
         event_status = str(event.get("status") or "")
+        if kind == "model_status":
+            if event_status == "input_ready":
+                self.backend_ready = True
+            elif event_status in {"request_started", "response_received"}:
+                self.backend_ready = False
+        if kind == "session_finished":
+            self.backend_ready = False
         if event_status in {"ready", "running", "stopped_by_user", "continuation_limit",
                             "tool_succeeded", "tool_failed", "provider_failed"}:
             self.command_state = event_status
@@ -233,6 +241,13 @@ class EventState:
             if len(self.activity) > 2000:
                 del self.activity[:-2000]
 
+    def add_operator_input(self, text: str) -> None:
+        if text:
+            label = text.removeprefix("invoke ").strip()
+            self.activity.append(Activity("operator", label or text))
+            if len(self.activity) > 2000:
+                del self.activity[:-2000]
+
 
 def apply_event(state: EventState, event: dict[str, Any]) -> bool:
     """Testable event application entry point."""
@@ -260,6 +275,7 @@ def _clean_terminal_output(raw: str) -> str:
 def _activity_text(item: Activity) -> str:
     labels = {
         "user": "You",
+        "operator": "Operator",
         "terminal": "",
         "session_started": "Session",
         "model_status": "Model",
@@ -316,6 +332,8 @@ def activity_color_role(item: Activity) -> str:
     """Return the semantic presentation role for one structured activity."""
     if item.event_type == "user":
         return "user"
+    if item.event_type == "operator":
+        return "action"
     if item.event_type in {"assistant_message", "explanation"}:
         return "assistant"
     if item.event_type in {"action_proposed", "approval_waiting", "action_started",
@@ -1065,6 +1083,20 @@ def _draw_panel(screen: Any, focus: FocusModel, sections: list[dict[str, Any]],
         pass
 
 
+def _session_status_label(state: EventState) -> str:
+    if state.privilege_waiting:
+        return "AUTH"
+    if state.pending_action:
+        return "APPROVAL"
+    if state.backend_ready:
+        return "READY"
+    return {
+        "request_started": "THINKING",
+        "response_received": "PROCESSING",
+        "input_ready": "READY",
+    }.get(state.session_status, state.session_status)
+
+
 def _draw(screen: Any, state: EventState, buffer: InputBuffer,
           scroll: int | ActivityNavigator, focus: FocusModel | None = None,
           sections: list[dict[str, Any]] | None = None) -> None:
@@ -1077,7 +1109,7 @@ def _draw(screen: Any, state: EventState, buffer: InputBuffer,
     scroll_offset = min(max(0, scroll_offset), maximum_scroll)
     if isinstance(scroll, ActivityNavigator):
         scroll.scroll = scroll_offset
-    header = f"Igor  {state.mode.upper()}  {state.session_status}"
+    header = f"Igor  {state.mode.upper()}  {_session_status_label(state)}"
     header += f"  ↑{scroll_offset} Ctrl+F=live" if scroll_offset else "  LIVE"
     if focus is not None:
         header += "  Focus:" + focus.region.upper()
@@ -1242,7 +1274,11 @@ def _palette_overlay(screen: Any, master: int, buffer: InputBuffer,
                 if entry["name"] == "settings":
                     return "settings_view"
                 if entry["syntax"] == entry["name"] and not buffer.text():
+                    if not state.backend_ready:
+                        notice = "Backend busy — wait for READY or press Ctrl+C to stop"
+                        continue
                     _send(master, entry["name"])
+                    state.backend_ready = False
                     return str(entry["name"])
                 buffer.replace(str(entry["name"]) +
                                (" " if entry["syntax"] != entry["name"] else ""))
@@ -1314,11 +1350,16 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
         return None
     prefix, query, selected = "", "", 0
     snapshot = state.operator_snapshot
-    refreshing = not isinstance(snapshot, dict)
-    requested_at = time.monotonic() if refreshing else None
-    notice = "Operator Surface is loading…" if refreshing else ""
-    if refreshing:
+    refreshing = False
+    requested_at = None
+    requested_once = False
+    notice = "Operator Surface is loading…" if not isinstance(snapshot, dict) else ""
+    if not isinstance(snapshot, dict) and state.backend_ready:
+        refreshing = True
+        requested_at = time.monotonic()
+        requested_once = True
         _send(master, "surface snapshot")
+        state.backend_ready = False
     screen.timeout(100)
     try:
         while True:
@@ -1339,6 +1380,14 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                         notice = display
             if state.pending_action or state.privilege_waiting or state.finished:
                 return None
+            if (state.operator_snapshot is None and state.backend_ready and
+                    not refreshing and not requested_once):
+                refreshing = True
+                requested_at = time.monotonic()
+                requested_once = True
+                notice = "Operator Surface is loading…"
+                _send(master, "surface snapshot")
+                state.backend_ready = False
             try:
                 os.read(master, 4096)
             except (BlockingIOError, OSError):
@@ -1393,12 +1442,17 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                               if isinstance(state.operator_snapshot, dict)
                               else "Operator Surface is still loading… · Esc close")
                     continue
+                if not state.backend_ready:
+                    notice = "Backend busy — refresh available when READY"
+                    continue
                 refreshing = True
                 requested_at = time.monotonic()
+                requested_once = True
                 notice = ("Refreshing Operator Surface… · showing current snapshot"
                           if isinstance(state.operator_snapshot, dict)
                           else "Operator Surface is loading…")
                 _send(master, "surface snapshot")
+                state.backend_ready = False
                 continue
             if key in (27, 3):
                 if key == 3:
@@ -1455,7 +1509,11 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     if needs_input:
                         buffer.replace(command + " ")
                         return None
+                    if not state.backend_ready:
+                        notice = "Backend busy — wait for READY or press Ctrl+C to stop current work"
+                        continue
                     _send(master, command)
+                    state.backend_ready = False
                     return command
                 notice = f"{entry.get('kind', 'item')}: {entry.get('target_id', node.get('path'))}"
                 continue
@@ -1482,7 +1540,8 @@ def _help_overlay(screen: Any) -> None:
         "Tab / Shift+Tab focus input, output, open control panel",
         "Ctrl+B toggle panel  Ctrl+F latest output (preserves draft)",
         "Output focus: arrows scroll, Home oldest, End latest",
-        "PageUp/PageDown scroll output or focused panel; wheel over output",
+        "PageUp/PageDown scroll output or focused panel",
+        "Mouse drag selects terminal text for copy; IGOR_TUI_MOUSE=1 enables TUI mouse navigation",
         "Control focus: arrows select section, Enter open/refresh, Esc input",
         "Ctrl+P opens commands · : on empty input explores modules/capabilities",
         "Ctrl+G collapse/expand successful tool output",
@@ -1779,6 +1838,25 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
         investigations.close()
 
 
+def _configure_mouse() -> bool:
+    """Prefer terminal-native selection/copy; TUI mouse navigation is opt-in."""
+    enabled = os.environ.get("IGOR_TUI_MOUSE", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    try:
+        if enabled:
+            curses.mousemask(getattr(curses, "BUTTON4_PRESSED", 0) |
+                             getattr(curses, "BUTTON5_PRESSED", 0) |
+                             getattr(curses, "BUTTON1_CLICKED", 0) |
+                             getattr(curses, "BUTTON1_PRESSED", 0))
+            curses.mouseinterval(0)
+        else:
+            curses.mousemask(0)
+    except curses.error:
+        pass
+    return enabled
+
+
 def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                       state: EventState | None, inspection: HistoryInspection,
                       investigations: InvestigationInspection | None = None) -> int:
@@ -1787,14 +1865,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
     state, buffer = state or EventState(), InputBuffer()
     navigator, history = ActivityNavigator(), InputHistory()
     focus = FocusModel()
-    try:
-        curses.mousemask(getattr(curses, "BUTTON4_PRESSED", 0) |
-                         getattr(curses, "BUTTON5_PRESSED", 0) |
-                         getattr(curses, "BUTTON1_CLICKED", 0) |
-                         getattr(curses, "BUTTON1_PRESSED", 0))
-        curses.mouseinterval(0)
-    except curses.error:
-        pass
+    mouse_navigation_enabled = _configure_mouse()
     commands = registry_commands()
     reader = EventReader(path)
     terminal_decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -1868,7 +1939,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             navigator.latest()
             continue
         page, maximum, before_count = _activity_limits(screen, state, focus)
-        if key == curses.KEY_MOUSE:
+        if key == curses.KEY_MOUSE and mouse_navigation_enabled:
             try:
                 mouse_navigation(curses.getmouse(), focus, navigator, *screen.getmaxyx(),
                                  page, maximum)
@@ -1943,7 +2014,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             selected = _operator_overlay(screen, master, reader, state, buffer)
             if selected:
                 state.end_terminal_capture()
-                state.add_user_input(selected)
+                state.add_operator_input(selected)
                 state.begin_terminal_capture()
                 navigator.latest()
             continue
@@ -1967,8 +2038,14 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 if next_prompt is not None:
                     buffer.replace(next_prompt)
         elif key in (10, 13, curses.KEY_ENTER):
-            submitted = buffer.clear()
             pending = bool(state.pending_action)
+            draft = buffer.text()
+            if not pending and draft.strip() and not state.backend_ready:
+                message = "Backend busy — input kept as draft; wait for READY or press Ctrl+C to stop"
+                if not state.activity or state.activity[-1].event_type != "warning" or state.activity[-1].text != message:
+                    state.activity.append(Activity("warning", message))
+                continue
+            submitted = buffer.clear()
             if pending:
                 submitted = submitted.splitlines()[0] if submitted.splitlines() else ""
             if not pending and submitted.strip() == "settings":
@@ -1976,14 +2053,20 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.latest()
                 continue
             state.end_terminal_capture()
-            local = not pending and registry_is_local(submitted)
+            operator_control = not pending and submitted.strip().startswith("invoke ")
+            local = not pending and (operator_control or registry_is_local(submitted))
             if not local and not pending:
                 history.add(submitted)
             if submitted:
-                state.add_user_input(submitted)
+                if operator_control:
+                    state.add_operator_input(submitted)
+                else:
+                    state.add_user_input(submitted)
             if local:
                 state.begin_terminal_capture()
             _send(master, submitted)
+            if not pending and submitted:
+                state.backend_ready = False
             navigator.latest()
         elif key == 15:
             buffer.insert("\n")

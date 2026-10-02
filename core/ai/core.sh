@@ -229,6 +229,33 @@ PY
     IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool"
 }
 
+# Frontend control messages are not conversational turns. Keep them out of
+# pending-choice resolution, prompt-injection checks, runbook matching, and the
+# model request path. Capability execution still goes through ai_execute_tool.
+_ai_frontend_control() {
+    local _input="${1:-}" _invoke_rc=0
+    case "$_input" in
+        "surface snapshot")
+            _ai_emit_operator_snapshot
+            return 0
+            ;;
+        invoke\ *)
+            declare -f _ai_pending_choice_clear >/dev/null 2>&1 && _ai_pending_choice_clear
+            _ai_operator_invoke "${_input#invoke }"
+            _invoke_rc=$?
+            if [ "$_invoke_rc" -eq 2 ]; then
+                warn "Usage: invoke <capability-id[@provider]> [JSON object]"
+                _ai_frontend_event warning "Invalid capability invocation."
+            fi
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
 # ── Interaction mode authority ───────────────────────────────────────────────
 # The mode is deliberately a single value. executive_mode remains an
 # exported compatibility flag for older callers; policy reads ai_get_mode.
@@ -3093,6 +3120,9 @@ except: pass
         [ -n "$_steer_name" ] && _ptag+=" · ${YEL}✦ ${_steer_name}" || true
         _ptag+="${NC}"
         echo -e -n "  ${MAG}Igor${NC} [$(echo -e "${_ptag}")] ${MAG}›${NC} "
+        # This is the authoritative frontend boundary: after input_ready the
+        # backend's next blocking operation is the stdin read below.
+        _ai_frontend_event model_status '' 'input_ready'
         local user_input=""
         # Disable all mouse reporting before reading input — tmux `mouse on` routes
         # click/move/scroll events as escape sequences (^[[A ^[[B etc.) into the
@@ -3118,6 +3148,12 @@ except: pass
             user_input+=$'\n'"$_extra_line"
         done
         echo ""
+
+        # Operator/TUI control messages are a separate interface, never model input.
+        if _ai_frontend_control "$user_input"; then
+            echo ""
+            continue
+        fi
 
         # ── Input provenance guards (P1-7) ────────────────────────────────────
         # Guard 1: Browser blocklist — silent discard + log
@@ -3330,18 +3366,6 @@ except: print('unknown')
                     _ai_frontend_event warning "Could not update setting '${_setting_key}'."
                 fi
                 echo ""; continue ;;
-            "surface snapshot")
-                _ai_emit_operator_snapshot
-                continue ;;
-            invoke\ *)
-                _ai_operator_invoke "${user_input#invoke }"
-                local _invoke_rc=$?
-                if [ "$_invoke_rc" -eq 2 ]; then
-                    warn "Usage: invoke <capability-id[@provider]> [JSON object]"
-                    _ai_frontend_event warning "Invalid capability invocation."
-                fi
-                echo ""
-                continue ;;
             # ── Undo stack ────────────────────────────────────────────────────
             "undo list")
                 echo ""
@@ -3820,6 +3844,7 @@ END USER STEERING"
         IGOR_RESPONSE_TRUNCATED=false
         _ai_pin_enter
         _ai_pin_update "Igor is thinking..."
+        _ai_frontend_event model_status '' 'request_started'
         ai_begin_request || { warn "AI request identity unavailable."; return 1; }
         if ! _raw_result=$(_nexus_api_call); then
             _ai_set_session_state provider_failed
