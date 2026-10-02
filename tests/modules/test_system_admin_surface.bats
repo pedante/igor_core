@@ -128,6 +128,25 @@ _execute_read() {
     igor_capability_execute "$proposal"
 }
 
+@test "missing systemctl only disables service capabilities, not System package or host domains" {
+    command() {
+        if [ "$1" = -v ] && [ "${2:-}" = systemctl ]; then return 1; fi
+        builtin command "$@"
+    }
+    run igor_module_status system
+    [ "$status" -eq 0 ]
+    [ "$output" = active ]
+    run igor_contribution_state capability:system.host.summary
+    [ "$status" -eq 0 ]
+    [ "$output" = active ]
+    run igor_contribution_state capability:system.package.install
+    [ "$status" -eq 0 ]
+    [ "$output" = active ]
+    run igor_contribution_state capability:system.service.start
+    [ "$status" -eq 0 ]
+    [ "$output" = unavailable ]
+}
+
 @test "reviewed package administration declarations are active only in their exact shape" {
     run igor_capability_inspect system.package.upgrade system
     [ "$status" -eq 0 ]
