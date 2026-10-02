@@ -231,7 +231,7 @@ PY
         _ml_log() { :; }
         igor_load_all_modules >/dev/null
         igor_capability_inspect system.package.install system
-        igor_capability_prepare system.package.install "{"package":"docker.io"}" system 1
+        igor_capability_prepare system.package.install "{\"package\":\"docker.io\"}" system 1
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'trusted_adapter_unavailable'* ]]
@@ -251,7 +251,7 @@ PY
         _ml_log() { :; }
         igor_load_all_modules >/dev/null
         igor_capability_inspect system.service.enable system
-        igor_capability_prepare system.service.enable "{"unit":"docker.service"}" system 1
+        igor_capability_prepare system.service.enable "{\"unit\":\"docker.service\"}" system 1
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'trusted_adapter_unavailable'* ]]
