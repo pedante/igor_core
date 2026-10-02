@@ -1329,7 +1329,14 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     requested_at = None
                     notice = ""
                 elif event.get("event_type") in {"warning", "error"}:
-                    notice = str(event.get("display") or "Operator surface unavailable")
+                    display = str(event.get("display") or "Operator surface unavailable")
+                    if refreshing and "operator surface" in display.casefold():
+                        refreshing = False
+                        requested_at = None
+                        notice = (display + " · showing current snapshot"
+                                  if isinstance(state.operator_snapshot, dict) else display)
+                    else:
+                        notice = display
             if state.pending_action or state.privilege_waiting or state.finished:
                 return None
             try:
