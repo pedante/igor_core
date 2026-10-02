@@ -304,12 +304,12 @@ pkg_updates_list() {
     case "$IGOR_DISTRO_FAMILY" in
         debian)
             command -v apt-get >/dev/null 2>&1 || return 2
-            _output="$(timeout "$_timeout" apt-get -s upgrade 2>/dev/null)" || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" apt-get -s upgrade 2>/dev/null)" || return 2
             printf '%s\n' "$_output" | awk '/^Inst[[:space:]]+/ { print $2 }' | sort -u
             ;;
         arch)
             command -v pacman >/dev/null 2>&1 || return 2
-            _output="$(timeout "$_timeout" pacman -Qu 2>/dev/null)"
+            _output="$(LC_ALL=C timeout "$_timeout" pacman -Qu 2>/dev/null)"
             _rc=$?
             [ "$_rc" -eq 0 ] || [ "$_rc" -eq 1 ] || return 2
             printf '%s\n' "$_output" | awk 'NF { print $1 }' | sort -u
@@ -326,12 +326,12 @@ pkg_cleanup_candidates() {
     case "$IGOR_DISTRO_FAMILY" in
         debian)
             command -v apt-get >/dev/null 2>&1 || return 2
-            _output="$(timeout "$_timeout" apt-get -s autoremove 2>/dev/null)" || return 2
+            _output="$(LC_ALL=C timeout "$_timeout" apt-get -s autoremove 2>/dev/null)" || return 2
             printf '%s\n' "$_output" | awk '/^Remv[[:space:]]+/ { print $2 }' | sort -u
             ;;
         arch)
             command -v pacman >/dev/null 2>&1 || return 2
-            _output="$(timeout "$_timeout" pacman -Qdtq 2>/dev/null)"
+            _output="$(LC_ALL=C timeout "$_timeout" pacman -Qdtq 2>/dev/null)"
             _rc=$?
             [ "$_rc" -eq 0 ] || [ "$_rc" -eq 1 ] || return 2
             printf '%s\n' "$_output" | awk 'NF { print $1 }' | sort -u
@@ -363,7 +363,7 @@ svc_list_query() {
     command -v timeout >/dev/null 2>&1 || return 2
     local _timeout
     _timeout="$(_pkg_query_timeout)" || return 2
-    timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null |
+    LC_ALL=C timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null |
         awk 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
 }
 
