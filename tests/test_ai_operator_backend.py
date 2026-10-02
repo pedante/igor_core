@@ -137,6 +137,38 @@ printf 'CLEARED:%s\n' "$cleared"
         self.assertIn("INVOKE:system.service.list", result.stdout)
         self.assertIn("CLEARED:1", result.stdout)
 
+    def test_frontend_plan_control_never_becomes_conversation_input(self):
+        script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+cleared=0
+_ai_pending_choice_clear() { cleared=1; }
+_ai_operator_plan() { printf 'PLAN:%s\n' "$1"; }
+_ai_frontend_control 'plan docker.install'
+printf 'CLEARED:%s\n' "$cleared"
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PLAN:docker.install", result.stdout)
+        self.assertIn("CLEARED:1", result.stdout)
+
+    def test_operator_plan_only_adapts_registered_id_into_dispatcher(self):
+        script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+ai_execute_tool() { printf '%s\n' "$1"; }
+_ai_operator_plan 'docker.install'
+'''
+        result = self._run(script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        self.assertEqual(payload, {"tool": "run_plan", "id": "docker.install"})
+
+        rejected = self._run(r'''
+source "$IGOR_DIR/core/ai/core.sh"
+ai_execute_tool() { exit 9; }
+_ai_operator_plan '{"steps":[{"capability_id":"system.invented.root"}]}'
+''')
+        self.assertEqual(rejected.returncode, 2)
+
     def test_non_control_input_is_not_consumed_by_frontend_control(self):
         script = r'''
 source "$IGOR_DIR/core/ai/core.sh"
