@@ -58,6 +58,10 @@ def snapshot_event(sequence, entries, *, state_name=None, sources=None):
                         "sources": sources, "entries": entries}}
 
 
+def ready_event(sequence):
+    return {"event_type": "model_status", "sequence": sequence, "status": "input_ready"}
+
+
 def capability(path="system.host.memory.refresh", required=(), provider_required=False):
     return {
         "path": path,
@@ -103,6 +107,7 @@ class OperatorExplorerTests(unittest.TestCase):
     def test_cached_snapshot_opens_without_backend_request(self):
         state = tui.EventState()
         self.assertTrue(tui.apply_event(state, snapshot_event(1, [capability()])))
+        state.backend_ready = True
         sent = []
         with patch.object(tui, "_send", side_effect=lambda master, text:
                           sent.append((master, text))), \
@@ -116,6 +121,7 @@ class OperatorExplorerTests(unittest.TestCase):
     def test_ctrl_r_refreshes_without_discarding_cached_snapshot(self):
         state = tui.EventState()
         self.assertTrue(tui.apply_event(state, snapshot_event(1, [capability()])))
+        state.backend_ready = True
         sent = []
         with patch.object(tui, "_send", side_effect=lambda master, text:
                           sent.append((master, text))), \
@@ -132,6 +138,7 @@ class OperatorExplorerTests(unittest.TestCase):
     def test_failed_refresh_keeps_cache_and_allows_retry(self):
         state = tui.EventState()
         self.assertTrue(tui.apply_event(state, snapshot_event(1, [capability()])))
+        state.backend_ready = True
         reader = Reader([])
         sent = []
 
@@ -140,14 +147,19 @@ class OperatorExplorerTests(unittest.TestCase):
             if text != "surface snapshot":
                 return
             if len(sent) == 1:
-                reader.events.append({
-                    "event_type": "warning",
-                    "sequence": 2,
-                    "display": "Operator surface projection failed. Press Ctrl+R to retry.",
-                })
+                reader.events.extend([
+                    {
+                        "event_type": "warning",
+                        "sequence": 2,
+                        "display": "Operator surface projection failed. Press Ctrl+R to retry.",
+                    },
+                    ready_event(3),
+                ])
             else:
-                reader.events.append(snapshot_event(
-                    3, [capability("system.host.summary")]))
+                reader.events.extend([
+                    snapshot_event(4, [capability("system.host.summary")]),
+                    ready_event(5),
+                ])
 
         with patch.object(tui, "_send", side_effect=send), \
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
@@ -155,7 +167,7 @@ class OperatorExplorerTests(unittest.TestCase):
                 Screen([18, 18, 27]), 17, reader, state, tui.InputBuffer())
 
         self.assertEqual(sent, [(17, "surface snapshot"), (17, "surface snapshot")])
-        self.assertEqual(state.sequence, 3)
+        self.assertEqual(state.sequence, 5)
         self.assertEqual(
             [row["path"] for row in state.operator_snapshot["entries"]],
             ["system.host.summary"],
@@ -176,13 +188,12 @@ class OperatorExplorerTests(unittest.TestCase):
                [ord(c) for c in "refresh"] + [10]
         buffer = tui.InputBuffer()
         state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
         with patch.object(tui, "_send") as send, \
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
-            tui._operator_overlay(Screen(keys), 17, Reader([snapshot_event(1, [entry])]),
-                                  state, buffer)
+            tui._operator_overlay(Screen(keys), 17, Reader([]), state, buffer)
         self.assertEqual(buffer.text(), "invoke system.host.memory.refresh ")
-        self.assertEqual(send.call_args_list[0], unittest.mock.call(17, "surface snapshot"))
-        self.assertEqual(len(send.call_args_list), 1)
+        send.assert_not_called()
 
     def test_dot_navigation_invokes_zero_input_capability_through_backend(self):
         entry = capability()
@@ -191,16 +202,43 @@ class OperatorExplorerTests(unittest.TestCase):
                [ord(c) for c in "memory"] + [ord(".")] + \
                [ord(c) for c in "refresh"] + [10]
         state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        state.backend_ready = True
         sent = []
         with patch.object(tui, "_send", side_effect=lambda master, text:
                           sent.append((master, text))), \
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             selected = tui._operator_overlay(
-                Screen(keys), 17, Reader([snapshot_event(1, [entry])]),
-                state, tui.InputBuffer())
+                Screen(keys), 17, Reader([]), state, tui.InputBuffer())
         self.assertEqual(selected, "invoke system.host.memory.refresh")
-        self.assertEqual(sent, [(17, "surface snapshot"),
-                                (17, "invoke system.host.memory.refresh")])
+        self.assertEqual(sent, [(17, "invoke system.host.memory.refresh")])
+        self.assertFalse(state.backend_ready)
+
+    def test_busy_backend_does_not_queue_operator_invocation(self):
+        entry = capability()
+        keys = [ord(c) for c in "system"] + [ord(".")] + \
+               [ord(c) for c in "host"] + [ord(".")] + \
+               [ord(c) for c in "memory"] + [ord(".")] + \
+               [ord(c) for c in "refresh"] + [10, 27]
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        screen = Screen(keys)
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            selected = tui._operator_overlay(
+                screen, 17, Reader([]), state, tui.InputBuffer())
+        self.assertIsNone(selected)
+        self.assertEqual(sent, [])
+        self.assertTrue(any("Backend busy" in str(args[2])
+                            for args in screen.drawn if len(args) > 2))
+
+    def test_operator_selection_is_not_rendered_as_conversation(self):
+        state = tui.EventState()
+        state.add_operator_input("invoke system.service.list")
+        self.assertEqual(tui.render_activity(state, 100),
+                         ["Operator: system.service.list"])
 
 
 if __name__ == "__main__":
