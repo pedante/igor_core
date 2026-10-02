@@ -17,11 +17,16 @@ section selection; Page Up/Down scrolls section content. Terminal resize and
 panel toggling preserve the composer and backend projection.
 
 Ctrl+P opens the existing local command palette. Typing `:` on an empty draft
-opens the contract-driven operator explorer. The explorer reads an
-`operator_snapshot` projected by the backend from already-loaded module,
+opens the contract-driven operator explorer. The explorer immediately requests a
+fresh `operator_snapshot` projected by the backend from already-loaded module,
 contribution, capability and configuration registries. Type a segment to filter;
-`.` or Enter descends; Backspace/Esc returns toward the root. Browsing performs
-no model call or host probe.
+`.` or Enter descends; Backspace/Esc returns toward the root; `Ctrl+R`
+requests another snapshot without losing the backend authority boundary.
+
+The explorer displays total/source counts and distinguishes a populated
+projection, a genuinely empty set of registered operator contracts, registry
+source failures and a backend that has not returned a snapshot. Browsing and
+refresh perform no model call or host probe.
 
 ## Panel and inspection
 

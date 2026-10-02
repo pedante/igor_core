@@ -120,37 +120,77 @@ PY
 # the canonical capability dispatcher and configuration owners.
 _ai_emit_operator_snapshot() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
-    local _modules='[]' _contributions='[]' _capabilities='[]' _configurations='[]' _payload
-    declare -f igor_module_records >/dev/null 2>&1 &&
-        _modules="$(igor_module_records 2>/dev/null)" || true
-    declare -f igor_contribution_records >/dev/null 2>&1 &&
-        _contributions="$(igor_contribution_records 2>/dev/null)" || true
-    declare -f igor_capability_list >/dev/null 2>&1 &&
-        _capabilities="$(igor_capability_list 2>/dev/null)" || true
-    declare -f igor_configuration_declarations >/dev/null 2>&1 &&
-        _configurations="$(igor_configuration_declarations 2>/dev/null)" || true
+    local _modules='[]' _contributions='[]' _capabilities='[]' _configurations='[]' _payload _sources
+    local _modules_status=missing _contributions_status=missing
+    local _capabilities_status=missing _configurations_status=missing
+
+    if declare -f igor_module_records >/dev/null 2>&1; then
+        _modules_status=ok
+        _modules="$(igor_module_records 2>/dev/null)" || {
+            _modules_status=error
+            _modules='[]'
+        }
+    fi
+    if declare -f igor_contribution_records >/dev/null 2>&1; then
+        _contributions_status=ok
+        _contributions="$(igor_contribution_records 2>/dev/null)" || {
+            _contributions_status=error
+            _contributions='[]'
+        }
+    fi
+    if declare -f igor_capability_list >/dev/null 2>&1; then
+        _capabilities_status=ok
+        _capabilities="$(igor_capability_list 2>/dev/null)" || {
+            _capabilities_status=error
+            _capabilities='[]'
+        }
+    fi
+    if declare -f igor_configuration_declarations >/dev/null 2>&1; then
+        _configurations_status=ok
+        _configurations="$(igor_configuration_declarations 2>/dev/null)" || {
+            _configurations_status=error
+            _configurations='[]'
+        }
+    fi
+
+    _sources=$(printf '{"modules":"%s","contributions":"%s","capabilities":"%s","configurations":"%s"}' \
+        "$_modules_status" "$_contributions_status" "$_capabilities_status" "$_configurations_status")
+
     _payload=$(
-        printf '%s\0%s\0%s\0%s\0' "$_modules" "$_contributions" "$_capabilities" "$_configurations" |
+        printf '%s\0%s\0%s\0%s\0%s\0' "$_modules" "$_contributions" "$_capabilities" "$_configurations" "$_sources" |
             python3 -c '
 import json,sys
 parts=sys.stdin.buffer.read().split(b"\\0")
 if parts[-1:]==[b""]: parts.pop()
-if len(parts)!=4: raise SystemExit(1)
+if len(parts)!=5: raise SystemExit(1)
 names=("modules","contributions","capabilities","configurations")
-payload={}
-for name,raw in zip(names,parts):
-    value=json.loads(raw.decode())
-    if not isinstance(value,list): raise SystemExit(1)
+sources=json.loads(parts[4].decode())
+payload={"sources":sources}
+for name,raw in zip(names,parts[:4]):
+    try:
+        value=json.loads(raw.decode())
+    except (UnicodeDecodeError,ValueError):
+        value=[]
+        sources[name]="error"
+    if not isinstance(value,list):
+        value=[]
+        sources[name]="error"
     payload[name]=value
 print(json.dumps(payload,separators=(",",":")))
 ' | python3 "${IGOR_DIR}/core/lib/operator_surface.py" build
-    ) || return 0
+    ) || {
+        _ai_frontend_event warning "Operator surface projection failed. Press Ctrl+R to retry."
+        return 1
+    }
     _payload=$(printf '%s' "$_payload" | AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 -c '
 import json,os,sys
 surface=json.load(sys.stdin)
 print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
                   "surface":surface},separators=(",",":")))
-') || return 0
+') || {
+        _ai_frontend_event warning "Operator surface response could not be encoded. Press Ctrl+R to retry."
+        return 1
+    }
     _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
 }
 

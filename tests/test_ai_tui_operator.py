@@ -44,10 +44,18 @@ class Reader:
         return [self.events.pop(0)] if self.events else []
 
 
-def snapshot_event(sequence, entries):
+def snapshot_event(sequence, entries, *, state_name=None, sources=None):
+    if state_name is None:
+        state_name = "empty" if not entries else "ready"
+    if sources is None:
+        sources = {
+            name: {"status": "ok", "count": 0}
+            for name in ("modules", "contributions", "capabilities", "configurations")
+        }
     return {"event_type": "operator_snapshot", "sequence": sequence,
             "surface": {"surface_version": 1, "digest": "0" * 64,
-                        "entries": entries}}
+                        "state": state_name, "entry_count": len(entries),
+                        "sources": sources, "entries": entries}}
 
 
 def capability(path="system.host.memory.refresh", required=(), provider_required=False):
@@ -72,6 +80,39 @@ class OperatorExplorerTests(unittest.TestCase):
         self.assertTrue(tui.apply_event(state, event))
         self.assertEqual(state.operator_snapshot["entries"][0]["kind"], "capability")
         self.assertEqual(state.activity, [])
+
+    def test_empty_snapshot_has_actionable_message(self):
+        event = snapshot_event(1, [])
+        summary, notice = tui._operator_surface_summary(event["surface"])
+        self.assertIn("0 entries", summary)
+        self.assertIn("No operator contracts registered", notice)
+        self.assertIn("Ctrl+R", notice)
+
+    def test_failed_source_is_visible_instead_of_looking_empty(self):
+        sources = {
+            "modules": {"status": "ok", "count": 1},
+            "contributions": {"status": "ok", "count": 0},
+            "capabilities": {"status": "error", "count": 0},
+            "configurations": {"status": "ok", "count": 1},
+        }
+        event = snapshot_event(1, [], state_name="error", sources=sources)
+        summary, notice = tui._operator_surface_summary(event["surface"])
+        self.assertIn("modules 1", summary)
+        self.assertIn("Projection failed for: capabilities", notice)
+
+    def test_ctrl_r_requests_a_fresh_backend_snapshot(self):
+        state = tui.EventState()
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(
+                Screen([18, 27]), 17,
+                Reader([snapshot_event(1, [capability()]),
+                        snapshot_event(2, [capability()])]),
+                state, tui.InputBuffer())
+        self.assertEqual(sent, [(17, "surface snapshot"), (17, "surface snapshot")])
+        self.assertEqual(state.sequence, 2)
 
     def test_invoke_command_preserves_provider_only_when_required(self):
         command, needs_input = tui._operator_invoke_command(capability())

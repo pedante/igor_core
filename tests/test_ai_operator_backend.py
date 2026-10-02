@@ -42,11 +42,34 @@ _ai_emit_operator_snapshot
             self.assertEqual(result.returncode, 0, result.stderr)
             events = [json.loads(line) for line in stream.read_text().splitlines()]
         self.assertEqual(events[-1]["event_type"], "operator_snapshot")
+        self.assertEqual(events[-1]["surface"]["state"], "ready")
+        self.assertEqual(events[-1]["surface"]["sources"]["capabilities"]["status"], "ok")
         entries = events[-1]["surface"]["entries"]
         self.assertTrue(any(row["path"] == "system.host.memory.refresh"
                             and row["kind"] == "capability" for row in entries))
         self.assertTrue(any(row["path"] == "system.host.memory"
                             and row["kind"] == "observer" for row in entries))
+
+    def test_malformed_registry_source_emits_visible_error_snapshot(self):
+        with tempfile.TemporaryDirectory() as runtime:
+            stream = Path(runtime) / "events.jsonl"
+            script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+igor_module_records() { printf '%s' '[]'; }
+igor_contribution_records() { printf '%s' '[]'; }
+igor_capability_list() { printf '%s' 'not-json'; }
+igor_configuration_declarations() { printf '%s' '[]'; }
+_ai_emit_operator_snapshot
+'''
+            result = self._run(script, str(stream))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            events = [json.loads(line) for line in stream.read_text().splitlines()]
+        surface = events[-1]["surface"]
+        self.assertEqual(events[-1]["event_type"], "operator_snapshot")
+        self.assertEqual(surface["state"], "error")
+        self.assertEqual(surface["entry_count"], 0)
+        self.assertEqual(surface["sources"]["capabilities"],
+                         {"status": "error", "count": 0})
 
     def test_operator_invoke_only_adapts_into_existing_dispatcher(self):
         script = r'''

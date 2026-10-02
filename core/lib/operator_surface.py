@@ -21,6 +21,8 @@ _KINDS = {
     "automation", "capability", "check", "configuration", "domain_event",
     "knowledge", "lifecycle", "observer", "relationship",
 }
+_SOURCE_NAMES = ("modules", "contributions", "capabilities", "configurations")
+_SOURCE_STATES = {"ok", "missing", "error"}
 
 
 class SurfaceError(ValueError):
@@ -141,12 +143,28 @@ def _configuration_entries(record: dict[str, Any], active_owners: set[str]) -> l
 
 
 def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(payload, dict) or set(payload) - {"modules", "contributions", "capabilities", "configurations"}:
+    allowed = {*_SOURCE_NAMES, "sources"}
+    if not isinstance(payload, dict) or set(payload) - allowed:
         raise SurfaceError("invalid operator surface payload")
     modules = _bounded_list(payload.get("modules", []), "modules", 512)
     contributions = _bounded_list(payload.get("contributions", []), "contributions")
     capabilities = _bounded_list(payload.get("capabilities", []), "capabilities")
     configurations = _bounded_list(payload.get("configurations", []), "configurations", 512)
+    source_rows = {
+        "modules": modules,
+        "contributions": contributions,
+        "capabilities": capabilities,
+        "configurations": configurations,
+    }
+    raw_sources = payload.get("sources", {})
+    if not isinstance(raw_sources, dict) or set(raw_sources) - set(_SOURCE_NAMES):
+        raise SurfaceError("invalid operator surface sources")
+    sources = {}
+    for name in _SOURCE_NAMES:
+        state = raw_sources.get(name, "ok")
+        if state not in _SOURCE_STATES:
+            raise SurfaceError("invalid operator surface source state")
+        sources[name] = {"status": state, "count": len(source_rows[name])}
 
     active_owners = {
         _safe_id(row.get("name"), "module name")
@@ -183,7 +201,16 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
                 entry["provider_required"] = True
 
     entries.sort(key=lambda row: (row["path"], row["kind"], row["owner"]))
-    document = {"surface_version": SURFACE_VERSION, "entries": entries}
+    state = "error" if any(row["status"] == "error" for row in sources.values()) else (
+        "empty" if not entries else "ready"
+    )
+    document = {
+        "surface_version": SURFACE_VERSION,
+        "state": state,
+        "entry_count": len(entries),
+        "sources": sources,
+        "entries": entries,
+    }
     raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     document["digest"] = hashlib.sha256(raw).hexdigest()
     return document
