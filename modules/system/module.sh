@@ -277,14 +277,14 @@ print(json.dumps({"status":"ok","result":{
 PY
 }
 
-system__logs_recent() {
-    local input rows count preview timeout_seconds
-    input="$(_mod_sys_admin_request system.logs.recent)" || {
-        _mod_sys_admin_error invalid_request "expected system.logs.recent v2 request"
+system__logs_summary() {
+    local input recent warning errors latest timeout_seconds
+    input="$(_mod_sys_admin_request system.logs.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.logs.summary v2 request"
         return 0
     }
     [ "$input" = '{}' ] || {
-        _mod_sys_admin_error invalid_request "system.logs.recent takes no inputs"
+        _mod_sys_admin_error invalid_request "system.logs.summary takes no inputs"
         return 0
     }
     command -v journalctl >/dev/null 2>&1 || {
@@ -297,17 +297,29 @@ system__logs_recent() {
     }
     timeout_seconds="${IGOR_PLATFORM_QUERY_TIMEOUT_SECONDS:-5}"
     [[ "$timeout_seconds" =~ ^[1-9][0-9]?$ ]] || timeout_seconds=5
-    rows="$(timeout "$timeout_seconds" journalctl -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+    recent="$(timeout "$timeout_seconds" journalctl -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
         _mod_sys_admin_error unavailable "journal query failed or is not permitted"
         return 0
     }
-    count="$(printf '%s\n' "$rows" | awk 'NF{n++} END{print n+0}')"
-    preview="$(printf '%s\n' "$rows" | tail -40 | tail -c 4096)"
-    ADMIN_COUNT="$count" ADMIN_TEXT="$preview" "${IGOR_PYTHON:-python3}" - <<'PY'
+    warning="$(timeout "$timeout_seconds" journalctl -p warning -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+        _mod_sys_admin_error unavailable "journal warning query failed or is not permitted"
+        return 0
+    }
+    errors="$(timeout "$timeout_seconds" journalctl -p err -n 40 --no-pager --output=short-iso 2>/dev/null)" || {
+        _mod_sys_admin_error unavailable "journal error query failed or is not permitted"
+        return 0
+    }
+    latest="$(printf '%s\n' "$recent" | awk 'NF { stamp=$1 } END { print stamp }' | head -c 128)"
+    ADMIN_RECENT="$(printf '%s\n' "$recent" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_WARNING="$(printf '%s\n' "$warning" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_ERRORS="$(printf '%s\n' "$errors" | awk 'NF{n++} END{print n+0}')" \
+    ADMIN_LATEST="$latest" "${IGOR_PYTHON:-python3}" - <<'PY'
 import json,os
 print(json.dumps({"status":"ok","result":{
-    "count":int(os.environ["ADMIN_COUNT"]),
-    "entries":os.environ.get("ADMIN_TEXT",""),
+    "recent_count":int(os.environ["ADMIN_RECENT"]),
+    "warning_count":int(os.environ["ADMIN_WARNING"]),
+    "error_count":int(os.environ["ADMIN_ERRORS"]),
+    "latest_entry_at":os.environ.get("ADMIN_LATEST","")[:128],
     "source":"systemd.journal",
 }},separators=(",",":")))
 PY
