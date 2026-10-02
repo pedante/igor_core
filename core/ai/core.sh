@@ -5474,7 +5474,6 @@ END USER STEERING"
         IGOR_RESPONSE_TRUNCATED=false
         _ai_pin_enter
         _ai_pin_update "Igor is thinking..."
-        _ai_frontend_event model_status '' 'request_started'
         ai_begin_request || { warn "AI request identity unavailable."; return 1; }
         if ! _raw_result=$(_nexus_api_call); then
             _ai_set_session_state provider_failed
