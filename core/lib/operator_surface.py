@@ -172,6 +172,7 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
         if row.get("status") == "active"
     }
     entries: list[dict[str, Any]] = []
+    configuration_keys: set[tuple[str, str]] = set()
     for row in capabilities:
         entries.append(_capability_entry(row))
     for row in contributions:
@@ -179,14 +180,22 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
             descriptor = row.get("descriptor")
             schema = descriptor.get("schema") if isinstance(descriptor, dict) else None
             if isinstance(schema, dict):
-                entries.extend(_configuration_entries(
-                    {"owner": row.get("owner"), "schema": schema}, active_owners))
+                projected = _configuration_entries(
+                    {"owner": row.get("owner"), "schema": schema}, active_owners)
+                for entry in projected:
+                    configuration_keys.add((entry["owner"], entry["target_id"]))
+                    entries.append(entry)
             continue
         entry = _contribution_entry(row)
         if entry is not None:
             entries.append(entry)
     for record in configurations:
-        entries.extend(_configuration_entries(record, active_owners))
+        for entry in _configuration_entries(record, active_owners):
+            key = (entry["owner"], entry["target_id"])
+            if key in configuration_keys:
+                continue
+            configuration_keys.add(key)
+            entries.append(entry)
 
     # Multiple providers may expose the same capability ID.  Keep their target
     # metadata but make presentation paths deterministic rather than hiding an
