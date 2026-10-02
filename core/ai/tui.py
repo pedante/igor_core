@@ -1313,16 +1313,22 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
     if state.pending_action or state.privilege_waiting or state.finished:
         return None
     prefix, query, selected = "", "", 0
-    notice = "Refreshing operator surface…"
-    state.operator_snapshot = None
-    requested_at = time.monotonic()
-    _send(master, "surface snapshot")
+    snapshot = state.operator_snapshot
+    refreshing = not isinstance(snapshot, dict)
+    requested_at = time.monotonic() if refreshing else None
+    notice = "Operator Surface is loading…" if refreshing else ""
+    if refreshing:
+        _send(master, "surface snapshot")
     screen.timeout(100)
     try:
         while True:
             for event in reader.read():
                 apply_event(state, event)
-                if event.get("event_type") in {"warning", "error"}:
+                if event.get("event_type") == "operator_snapshot":
+                    refreshing = False
+                    requested_at = None
+                    notice = ""
+                elif event.get("event_type") in {"warning", "error"}:
                     notice = str(event.get("display") or "Operator surface unavailable")
             if state.pending_action or state.privilege_waiting or state.finished:
                 return None
@@ -1337,13 +1343,12 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             if needle:
                 nodes = [node for node in nodes if needle in str(node.get("name", "")).casefold()]
             summary, surface_notice = _operator_surface_summary(snapshot)
-            if snapshot is not None and (not notice or notice in {
-                "Refreshing operator surface…",
-                "No operator snapshot received · Ctrl+R retry",
-            }):
+            if snapshot is not None and not refreshing and not notice:
                 notice = surface_notice
-            elif snapshot is None and time.monotonic() - requested_at >= 2.0 and notice == "Refreshing operator surface…":
-                notice = "No operator snapshot received · Ctrl+R retry"
+            elif (snapshot is None and refreshing and requested_at is not None and
+                  time.monotonic() - requested_at >= 2.0 and
+                  notice == "Operator Surface is loading…"):
+                notice = "Operator Surface is still loading… · Esc close"
             if selected >= len(nodes):
                 selected = max(0, len(nodes) - 1)
 
@@ -1375,12 +1380,18 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             screen.refresh()
 
             key = _next_key(screen)
-            if key == 18:  # Ctrl+R: refresh from currently loaded backend registries.
-                state.operator_snapshot = None
-                notice = "Refreshing operator surface…"
+            if key == 18:  # Ctrl+R: refresh without discarding the last good snapshot.
+                if refreshing:
+                    notice = ("Refresh already in progress… · showing current snapshot"
+                              if isinstance(state.operator_snapshot, dict)
+                              else "Operator Surface is still loading… · Esc close")
+                    continue
+                refreshing = True
                 requested_at = time.monotonic()
+                notice = ("Refreshing Operator Surface… · showing current snapshot"
+                          if isinstance(state.operator_snapshot, dict)
+                          else "Operator Surface is loading…")
                 _send(master, "surface snapshot")
-                selected = 0
                 continue
             if key in (27, 3):
                 if key == 3:
