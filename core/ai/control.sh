@@ -82,7 +82,7 @@ ai_catalog_json() {
             # The canonical capability tool is emitted below from the active
             # executable v2 contribution index. Do not advertise an empty
             # generic tool when no provider is available.
-            [ "$name" = run_capability ] && continue
+            case "$name" in run_capability|run_plan) continue ;; esac
             owner=$(ai_tool_owner "$name"); tier=READ
             case "$name" in
                 host|occ) tier=classified ;;
@@ -114,6 +114,23 @@ for row in rows:
             "description": descriptor.get("description", ""),
             "descriptor": descriptor,
         }, sort_keys=True, separators=(",", ":"))))
+'
+        fi
+        if ai_tool_available run_plan &&
+           declare -f igor_contribution_records >/dev/null 2>&1; then
+            igor_contribution_records 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)
+for row in rows:
+    descriptor = row.get("descriptor") or {}
+    if row.get("kind") != "plan" or row.get("availability") != "active":
+        continue
+    sys.stdout.write("plan\0%s\0%s\0orchestrated\0%s\0" % (
+        descriptor.get("id", row.get("id", "")), row.get("owner", ""),
+        json.dumps({"owner": row.get("owner", ""),
+                    "description": descriptor.get("description", ""),
+                    "descriptor": descriptor},
+                   sort_keys=True, separators=(",", ":"))))
 '
         fi
         if declare -p _IGOR_CAPABILITIES >/dev/null 2>&1; then
