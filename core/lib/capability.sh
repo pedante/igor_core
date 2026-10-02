@@ -156,6 +156,7 @@ elif value is not None:
 
 igor_capability_prepare() {
     local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
+    local _family _argv _update_argv _upgrade_argv
     [ -n "$_inputs" ] || _inputs='{}'
     _records="$(igor_capability_list)" || return 1
     _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" <<'PY'
@@ -189,7 +190,6 @@ PY
                     # shellcheck source=core/lib/pkg.sh
                     source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
                 fi
-                local _argv
                 _argv="$(svc_restart_argv "$_unit")" || return 1
                 [ "$_argv" = "systemctl restart $_unit" ] || return 1
                 _spec="$("$(_ml_python)" - "$_unit" <<'PY'
@@ -197,6 +197,43 @@ import json, sys
 print(json.dumps(["sudo", "-n", "--", "systemctl", "restart", sys.argv[1]], separators=(",", ":")))
 PY
 )" || return 1
+                ;;
+            system.package.upgrade|system.package.cache.clean)
+                if ! declare -f pkg_upgrade_argv >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/pkg.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+                fi
+                if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+                    # shellcheck source=core/lib/distro.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+                    igor_detect_distro
+                fi
+                _family="${IGOR_DISTRO_FAMILY:-unknown}"
+                case "$_id:$_family" in
+                    system.package.upgrade:debian)
+                        _update_argv="$(pkg_update_argv)" || return 1
+                        _upgrade_argv="$(pkg_upgrade_argv)" || return 1
+                        [ "$_update_argv" = "apt-get update" ] || return 1
+                        [ "$_upgrade_argv" = "apt-get upgrade -y" ] || return 1
+                        _spec='[["sudo","-n","--","apt-get","update"],["sudo","-n","--","apt-get","upgrade","-y"]]'
+                        ;;
+                    system.package.upgrade:arch)
+                        _upgrade_argv="$(pkg_upgrade_argv)" || return 1
+                        [ "$_upgrade_argv" = "pacman -Syu --noconfirm" ] || return 1
+                        _spec='[["sudo","-n","--","pacman","-Syu","--noconfirm"]]'
+                        ;;
+                    system.package.cache.clean:debian)
+                        _argv="$(pkg_cache_clean_argv)" || return 1
+                        [ "$_argv" = "apt-get clean" ] || return 1
+                        _spec='[["sudo","-n","--","apt-get","clean"]]'
+                        ;;
+                    system.package.cache.clean:arch)
+                        _argv="$(pkg_cache_clean_argv)" || return 1
+                        [ "$_argv" = "pacman -Sc --noconfirm" ] || return 1
+                        _spec='[["sudo","-n","--","pacman","-Sc","--noconfirm"]]'
+                        ;;
+                    *) return 1 ;;
+                esac
                 ;;
             *) return 1 ;;
         esac
@@ -336,10 +373,28 @@ _igor_capability_verify() {
             _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
             _igor_configuration_call memory-verify-desired "$_inputs" ;;
         trusted_query)
-            [ "$(_igor_capability_field "$_proposal" verification.check_id)" = system.memory.warning.consumer ] || return 1
-            case "$(_igor_capability_field "$_proposal" capability_id):$(_igor_capability_field "$_proposal" descriptor.handler)" in
-                system.memory.warning.apply:system__apply_memory_warning|system.memory.warning.readback:system__read_memory_warning)
-                    _igor_configuration_memory_warning_verify "$_proposal" ;;
+            case "$(_igor_capability_field "$_proposal" verification.check_id)" in
+                system.memory.warning.consumer)
+                    case "$(_igor_capability_field "$_proposal" capability_id):$(_igor_capability_field "$_proposal" descriptor.handler)" in
+                        system.memory.warning.apply:system__apply_memory_warning|system.memory.warning.readback:system__read_memory_warning)
+                            _igor_configuration_memory_warning_verify "$_proposal" ;;
+                        *) return 1 ;;
+                    esac
+                    ;;
+                system.package.updates.empty)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.upgrade ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    declare -f pkg_updates_list >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+                    local _updates _count
+                    _updates="$(pkg_updates_list)" || return 1
+                    _count="$(printf '%s\n' "$_updates" | awk 'NF{n++} END{print n+0}')"
+                    "$(_ml_python)" - "$_count" <<'PY'
+import json,sys
+print(json.dumps({"source":"platform.package_updates","check_id":"system.package.updates.empty",
+                  "remaining_updates":int(sys.argv[1])},separators=(",",":")))
+PY
+                    [ "$_count" -eq 0 ]
+                    ;;
                 *) return 1 ;;
             esac ;;
         observer_fact)
@@ -413,14 +468,44 @@ igor_capability_execute() {
     _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
-        # safety.sh; -n prevents a hidden prompt here.
-        if "$(_ml_python)" - "$_spec" <<'PY'
+        # safety.sh; -n prevents a hidden prompt here. Package administration
+        # may freeze a small ordered sequence, but only for named Core adapters.
+        if "$(_ml_python)" - "$_spec" "$_id" "${IGOR_DISTRO_FAMILY:-unknown}" <<'PY'
 import json, subprocess, sys
-argv = json.loads(sys.argv[1])
-if len(argv) != 6 or argv[:5] != ["sudo", "-n", "--", "systemctl", "restart"]:
+spec=json.loads(sys.argv[1])
+ident,family=sys.argv[2:4]
+if ident=="system.service.restart":
+    if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl","restart"]:
+        raise SystemExit(1)
+    commands=[spec]
+elif ident=="system.package.upgrade":
+    expected={
+        "debian":[["sudo","-n","--","apt-get","update"],
+                  ["sudo","-n","--","apt-get","upgrade","-y"]],
+        "arch":[["sudo","-n","--","pacman","-Syu","--noconfirm"]],
+    }.get(family)
+    if spec!=expected:
+        raise SystemExit(1)
+    commands=spec
+elif ident=="system.package.cache.clean":
+    expected={
+        "debian":[["sudo","-n","--","apt-get","clean"]],
+        "arch":[["sudo","-n","--","pacman","-Sc","--noconfirm"]],
+    }.get(family)
+    if spec!=expected:
+        raise SystemExit(1)
+    commands=spec
+else:
     raise SystemExit(1)
-raise SystemExit(subprocess.run(argv, check=False, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+for argv in commands:
+    try:
+        result=subprocess.run(argv,check=False,stdin=subprocess.DEVNULL,
+                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                              timeout=1800)
+    except (OSError,subprocess.TimeoutExpired):
+        raise SystemExit(1)
+    if result.returncode:
+        raise SystemExit(result.returncode)
 PY
         then _exec=succeeded; fi
     else
