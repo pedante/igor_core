@@ -1,6 +1,6 @@
 # Step 19 — Representative Application Workflow / Relationships and Deployment Ownership
 
-Status: **architecture approved; Boundary 1 complete; Boundaries 2/3 pending**.
+Status: **architecture approved; Boundary 1 complete; Boundary 2 implementation under validation; Boundary 3 pending**.
 This owner-scoped Step 19 supersedes the older roadmap numbering of Relationships
 and Deployments as Step 17. It does not authorize the older Self-Healing v2 item.
 
@@ -288,7 +288,7 @@ legacy automatic ownership.
    atomic revisions/idempotency, inspection and versioned export/recovery.
    Prove restart/rename stability, malformed/conflicting rejection, stale
    proposal/restore fencing, read-only CLI/rendering and recovery identity.
-2. **Brownfield attachment and composition prerequisites:** narrow observer
+2. **Brownfield attachment and composition prerequisites:** [implementation contract](ATTACHMENT.md), narrow observer
    target extension, explicit selection/inspection, metadata-only attachment,
    exact configuration locator, deployment-target admission and bounded release.
    Prove unchanged targets/external origin, ambiguity rejection, provider

@@ -19,6 +19,12 @@ _igor_history_begin() {
         READ:guide) _requirement=guide_confirm ;;
         *) _requirement=policy_read ;;
     esac
+    if [ "$_tier" = CHANGE ]; then
+        case "$(_igor_capability_field "$_proposal" capability_id)" in
+            core.deployments.initialize|core.deployments.adopt|core.deployments.release)
+                _requirement=change_confirm ;;
+        esac
+    fi
     _request="$(python3 - "$_proposal" "$_correlation" "$_requirement" "$$" <<'PY'
 import json, os, sys, uuid
 refs = {}

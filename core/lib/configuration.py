@@ -177,6 +177,27 @@ def legacy_verbose(root: Path, inherited: str | None = None) -> dict:
 
 
 class ConfigurationService:
+    def validate_deployment_target(self, scope_id, deployment_id, setting_id, *,
+                                   deployment_service, provider_available,
+                                   expected_revision=None, expected_state=None):
+        """Boundary 2 admission prerequisite; declares/applies no setting.
+
+        Deployment Service is the sole binding/responsibility authority. A
+        successful target check does not enable a schema or application writer.
+        """
+        from deployments import DeploymentError
+
+        try:
+            target = deployment_service.validate_configuration_target(
+                {"scope_id": scope_id, "object_id": deployment_id}, setting_id,
+                provider_available=provider_available, expected_revision=expected_revision,
+                expected_state=expected_state)
+        except DeploymentError as exc:
+            raise ConfigurationError(str(exc)) from exc
+        return {"source": "configuration_service", "availability": "target_validated",
+                "reference": {"scope_id": scope_id, "deployment_id": deployment_id, "setting_id": setting_id},
+                "binding": target, "desired_value": "not_created", "writer": "not_registered"}
+
     def __init__(self, data_dir: Path, *, schemas: list[tuple[str, dict]] | None = None,
                  owner_active=None, secret_service=None, path_roots=None, domain_validator=None):
         self.data_dir = data_dir.absolute()

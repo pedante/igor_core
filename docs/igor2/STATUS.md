@@ -2,6 +2,63 @@
 
 Last updated: 2026-10-02
 
+## Step 19 Boundary 2 — brownfield attachment implementation candidate
+
+This work starts from clean `igor2` at Boundary 1 commit `72552d3`, under the
+already approved [D063](DECISIONS.md). The same two unmatched local-master
+orchestration/documentation commits recorded by Boundary 1 remain; no branch,
+worktree or persistent baseline migration is performed. Boundary 3 is not started.
+
+The [attachment contract](ATTACHMENT.md) adds a read-only deterministic provider
+inside the existing v1 Nextcloud package and an application-neutral Core
+coordinator. Exact daemon/container/image identity, creation incarnation,
+Compose project/service and inspected configuration/storage topology are frozen
+before approval. Zero/multiple candidates fail closed without first-match or
+path fallback. Provider domain metadata flows into the existing Deployment
+Service rather than a second attachment registry.
+
+Canonical capabilities discover/propose, explicitly initialize the private
+registry when needed, adopt metadata and release scoped responsibility. Registry
+revision/state/epoch and fresh provider inspection fence old proposals and
+sessions. Mutation requires a matching running canonical History episode with
+explicit approval; Executive auto-approval cannot accept this responsibility.
+Application state, desired loglevel, Compose files and secrets remain untouched.
+Only selected `nextcloud_docker.loglevel` configuration/readback/recovery duty is
+accepted; no lifecycle, backup, update or general OCC authority is granted.
+
+Configuration Service's deployment-target admission delegates to Deployment
+Service's exact active grant/provider checks and creates no desired value or
+writer. System Model's bounded resource/deployment observer targets retain
+independent provenance and freshness. Generic inspection joins retained canonical
+History and supplied observations, and reports provider policy without loading or
+probing it. Unsupplied authorities remain explicit. Scoped release retains native
+resources, historical identity/relationships and operation references; incomplete
+consumer/job/legacy-session inventories prevent complete-detach certification.
+
+**Closure gate:** Docker, a Docker socket and an isolated existing Nextcloud
+runtime are unavailable in this checkout. Deterministic fixture proofs do not
+replace the approved real application gate. Boundary 2 remains an implementation
+candidate pending that evidence; no Boundary 3 setting workflow or legacy-writer
+cutover is authorized by this entry.
+
+**EXECUTION evidence (2026-10-02):**
+
+| Proof/check | Result |
+|---|---|
+| Contract/focused Python | 85 cases pass across attachment, provider, History, Configuration/System Model prerequisites, Deployment Service and module inspection. Zero/multiple candidates, exact native evidence, inspectable frozen proposals, stale proposal/session/revision rejection, explicit approval, narrow grants, provider disablement and retained release are covered. |
+| Canonical fixture slice | Four new Bash cases pass through the existing capability/approval/History path. Executive initialization still requires approval. Adoption persists four resources and seven typed relationships; the independently verified scoped release retains them. Before/after native inventory and target file hashes are identical. The transport allows only exact read queries and fixed file stat; no application writer, configuration store or secret import is invoked. This is an isolated transport fixture, not a running Nextcloud proof. |
+| Inspection/service prerequisites | Persisted deployment structure renders through generic 15UI. Independent observations retain freshness/provenance and do not erase bindings. Configuration target admission checks Deployment Service's active exact grant, scope, revision and provider; it creates no desired value, schema or writer. Disabled-provider inspection remains meaningful and does not load another provider. |
+| Migration/recovery | Legacy adoption remains compatibility only and is never invoked by the new path. Release retains resources, relationship revisions and History references; old grants/proposals cannot admit a target. Broader detach is explicitly uncertified. Actual loglevel apply/readback/recovery and legacy-writer cutover remain Boundary 3. |
+| Affected Bash regression | All 132 approval, safety/dispatch and Operational History cases pass. |
+| Full Bash regression | `bash tests/run_all.sh`: all five groups pass, zero failed/skipped groups. Counts: 46 legacy Bash checks, 46 rendering tests, 305 Core BATS, 167 module BATS and 40 integration BATS. Two existing Core cases skip for unavailable GPG agent and `hostname -I`; all other cases pass. |
+| Python regression | Full suite: 546 passed, 319 subtests passed, 10 failures. Nine failure entries match Boundary 1's recorded baseline. The additional System configuration workflow times out at 120 seconds in the full concurrent run and passes separately in 108.60 seconds; no implementation change was made for it. The full suite is not green. Logs are retained outside the repository at `/tmp/igor19b2-*`. |
+| Syntax/lint | Changed Bash syntax and Python compilation pass. Full Ruff has the same 154 baseline rules/messages, with only line shifts. CI ShellCheck reports three unchanged warnings in `safety.sh`; the new adapter and fixture have none. |
+| Documentation/diff | All 254 local Markdown references resolve; diff whitespace check passes. |
+| Real application gate | Unavailable: no Docker executable/socket or isolated existing Nextcloud endpoint has been supplied. No application was provisioned to replace the missing brownfield object. |
+
+No completion, release freeze or commit is claimed while the required real
+application evidence remains missing.
+
 ## Step 19 Boundary 1 — deployment identity, relationships and responsibility
 
 The Project Owner approved [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md)
