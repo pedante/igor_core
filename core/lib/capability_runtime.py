@@ -525,7 +525,7 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
         return template.format(**inputs)
     if isinstance(template, dict):
         kind = template.get("object") or template.get("kind")
-        value = inputs.get(template.get("input"))
+        value = template.get("id") if "id" in template else inputs.get(template.get("input"))
         if kind == "service" and value:
             return f"service:systemd:{value}"
         if kind == "package" and value:
