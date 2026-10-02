@@ -105,6 +105,56 @@ class EventProjectionTests(unittest.TestCase):
         self.assertNotEqual(mousemask.call_args.args[0], 0)
         mouseinterval.assert_called_once_with(0)
 
+    def test_tmux_ai_layout_defaults_to_copy_friendly_mouse_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "tmux.log"
+            script = r'''
+source "$IGOR_DIR/core/lib/tmux.sh"
+igor_in_tmux() { return 0; }
+tmux() {
+    printf '%s\n' "$*" >> "$TMUX_LOG"
+    if [ "$1" = display-message ]; then printf '@fixture\n'; fi
+}
+IGOR_PANE_LEFT='%1'
+unset IGOR_TUI_MOUSE
+igor_layout_ai
+'''
+            result = subprocess.run(
+                ["bash", "-c", script],
+                env={**os.environ, "IGOR_DIR": str(Path(__file__).resolve().parents[1]),
+                     "TMUX_LOG": str(log)},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = log.read_text()
+            self.assertIn("set-option mouse off", commands)
+            self.assertNotIn("set-option mouse on", commands)
+
+    def test_tmux_ai_layout_mouse_navigation_is_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "tmux.log"
+            script = r'''
+source "$IGOR_DIR/core/lib/tmux.sh"
+igor_in_tmux() { return 0; }
+tmux() {
+    printf '%s\n' "$*" >> "$TMUX_LOG"
+    if [ "$1" = display-message ]; then printf '@fixture\n'; fi
+}
+IGOR_PANE_LEFT='%1'
+IGOR_TUI_MOUSE=1
+igor_layout_ai
+'''
+            result = subprocess.run(
+                ["bash", "-c", script],
+                env={**os.environ, "IGOR_DIR": str(Path(__file__).resolve().parents[1]),
+                     "TMUX_LOG": str(log)},
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = log.read_text()
+            self.assertIn("set-option mouse on", commands)
+            self.assertIn("bind-key -T root WheelUpPane", commands)
+
     def test_assistant_message_has_a_clear_speaker_label(self):
         state = tui.EventState()
         tui.apply_event(state, event("assistant_message", 1, display="Ready"))
