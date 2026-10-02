@@ -272,8 +272,10 @@ EOF
     chmod +x "$IGOR_DIR/bin/apt-get"
     export PATH="$IGOR_DIR/bin:$PATH"
     IGOR_DISTRO_FAMILY=debian
-    [ "$(pkg_updates_list)" = curl\nopenssl' ]
-    [ "$(pkg_cleanup_candidates)" = old-kernel\nunused-lib' ]
+    expected_updates="$(printf 'curl\nopenssl\n')"
+    expected_cleanup="$(printf 'old-kernel\nunused-lib\n')"
+    [ "$(pkg_updates_list)" = "$expected_updates" ]
+    [ "$(pkg_cleanup_candidates)" = "$expected_cleanup" ]
 }
 
 @test "System admin package discovery normalizes Arch update and orphan candidates" {
@@ -290,8 +292,10 @@ EOF
     chmod +x "$IGOR_DIR/bin/pacman"
     export PATH="$IGOR_DIR/bin:$PATH"
     IGOR_DISTRO_FAMILY=arch
-    [ "$(pkg_updates_list)" = curl\nlinux' ]
-    [ "$(pkg_cleanup_candidates)" = unused-a\nunused-b' ]
+    expected_updates="$(printf 'curl\nlinux\n')"
+    expected_cleanup="$(printf 'unused-a\nunused-b\n')"
+    [ "$(pkg_updates_list)" = "$expected_updates" ]
+    [ "$(pkg_cleanup_candidates)" = "$expected_cleanup" ]
 }
 
 @test "System admin service listing is a bounded platform query" {
@@ -305,5 +309,6 @@ EOF
     chmod +x "$IGOR_DIR/bin/systemctl"
     export PATH="$IGOR_DIR/bin:$PATH"
     IGOR_DISTRO_FAMILY=debian
-    [ "$(svc_list_query)" = cron.service\tactive\trunning\nssh.service\tinactive\tdead' ]
+    expected_services="$(printf 'cron.service\tactive\trunning\nssh.service\tinactive\tdead\n')"
+    [ "$(svc_list_query)" = "$expected_services" ]
 }
