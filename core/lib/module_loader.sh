@@ -583,7 +583,7 @@ igor_contribution_records() {
         done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
     } | "$(_ml_python)" -c '
 import json,sys
-raw=sys.stdin.buffer.read().split(b"\\0")
+raw=sys.stdin.buffer.read().split(b"\0")
 if raw[-1:]==[b""]: raw.pop()
 if len(raw)%6: raise SystemExit("invalid contribution snapshot")
 rows=[]
@@ -613,7 +613,7 @@ igor_module_records() {
         done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
     } | "$(_ml_python)" -c '
 import json,sys
-raw=sys.stdin.buffer.read().split(b"\\0")
+raw=sys.stdin.buffer.read().split(b"\0")
 if raw[-1:]==[b""]: raw.pop()
 if len(raw)%6: raise SystemExit("invalid module snapshot")
 rows=[]
