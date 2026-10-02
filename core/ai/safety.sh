@@ -591,6 +591,33 @@ ai_execute_tool() {
         return 1
     fi
 
+    # Registered plans are orchestration only. They never receive approval or
+    # privilege authority themselves; every frozen step re-enters ai_execute_tool
+    # and therefore its canonical capability policy, approval, sudo and verification.
+    if [ "$T_TOOL" = run_plan ]; then
+        if ! declare -f igor_capability_plan_resolve_registered >/dev/null 2>&1 ||
+           ! declare -f igor_capability_plan_execute >/dev/null 2>&1; then
+            _ai_audit_rejected "$T_TOOL" CHANGE plan-runtime-unavailable "$tool_json" "$_operation_id"
+            echo "[ERROR: Capability plan runtime is unavailable]"
+            return 1
+        fi
+        local _plan_resolved _plan_rc _plan_result
+        _plan_resolved="$(igor_capability_plan_resolve_registered "$T_CMD")" || {
+            _ai_audit_rejected "$T_TOOL" CHANGE plan-unavailable "$tool_json" "$_operation_id"
+            echo "[ERROR: Plan '$T_CMD' is unavailable or invalid]"
+            return 1
+        }
+        _ai_audit_dispatch CLASSIFIED "$T_TOOL" orchestrated not_required admitted 0             "" "$tool_json" "" "$_operation_id"
+        _ai_emit_event continuation "$(_ai_event_payload "$_operation_id" "$T_TOOL" orchestrated not_required running "Plan: $T_CMD" "" "" false)"
+        IGOR_CAPABILITY_PLAN_LAST_RESULT=""
+        igor_capability_plan_execute "$_plan_resolved"
+        _plan_rc=$?
+        _plan_result="${IGOR_CAPABILITY_PLAN_LAST_RESULT:-}"
+        _ai_audit_dispatch RESULT "$T_TOOL" orchestrated not_required             "$([ "$_plan_rc" -eq 0 ] && printf completed || printf failed)" "$_plan_rc"             "" "$tool_json" "$_plan_result" "$_operation_id"
+        [ -n "$_plan_result" ] && printf '%s\n' "$_plan_result"
+        return "$_plan_rc"
+    fi
+
     # These tools are supplied by modules and must remain unavailable when the
     # owning module is disabled.  This check happens before tier classification
     # and approval so a stale/native tool call cannot reach execution.
