@@ -1,0 +1,12 @@
+[
+  {
+    "id": "docker.status",
+    "kind": "observer",
+    "description": "Docker runtime status"
+  },
+  {
+    "id": "docker.containers",
+    "kind": "observer",
+    "description": "Container inventory"
+  }
+]
