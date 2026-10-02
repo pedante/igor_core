@@ -12,10 +12,14 @@ setup() {
     mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config" "$IGOR_DIR/bin" "$IGOR_DIR/runtime"
     export ADMIN_UPDATE_STATE="$IGOR_DIR/runtime/updates-pending"
     export ADMIN_PRIVILEGE_TRACE="$IGOR_DIR/runtime/privileged-argv"
+    export ADMIN_PACKAGE_STATE="$IGOR_DIR/runtime/docker-package-installed"
+    export ADMIN_DOCKER_ENABLED="$IGOR_DIR/runtime/docker-enabled"
+    export ADMIN_DOCKER_ACTIVE="$IGOR_DIR/runtime/docker-active"
     printf 'pending\n' > "$ADMIN_UPDATE_STATE"
     : > "$ADMIN_PRIVILEGE_TRACE"
     cp -a "$REPO_DIR/modules/system" "$IGOR_DIR/modules/system"
-    printf 'system=enabled\n' > "$IGOR_DIR/config/modules.conf"
+    cp -a "$REPO_DIR/modules/docker" "$IGOR_DIR/modules/docker"
+    printf 'system=enabled\ndocker=enabled\n' > "$IGOR_DIR/config/modules.conf"
 
     cat > "$IGOR_DIR/bin/apt-get" <<'EOF'
 #!/usr/bin/env bash
@@ -25,6 +29,8 @@ elif [ "$1 $2" = "-s autoremove" ]; then
     printf 'Remv old-kernel [1]\nRemv unused-lib [1]\n'
 elif [ "$1" = update ] && [ "$#" -eq 1 ]; then
     exit 0
+elif [ "$1 $2 $3" = "install -y docker.io" ]; then
+    : > "$ADMIN_PACKAGE_STATE"
 elif [ "$1 $2" = "upgrade -y" ]; then
     rm -f "$ADMIN_UPDATE_STATE"
 elif [ "$1" = clean ] && [ "$#" -eq 1 ]; then
@@ -32,6 +38,14 @@ elif [ "$1" = clean ] && [ "$#" -eq 1 ]; then
 else
     exit 2
 fi
+EOF
+    cat > "$IGOR_DIR/bin/dpkg-query" <<'EOF'
+#!/usr/bin/env bash
+[ -e "$ADMIN_PACKAGE_STATE" ] || exit 1
+case "$*" in
+    *"-- docker.io") printf 'install ok installed'; exit 0 ;;
+    *) exit 1 ;;
+esac
 EOF
     cat > "$IGOR_DIR/bin/pacman" <<'EOF'
 #!/usr/bin/env bash
@@ -57,8 +71,25 @@ case "$1" in
         case "$3" in
             cron.service) printf 'active\n'; exit 0 ;;
             ssh.service) printf 'inactive\n'; exit 3 ;;
+            docker.service)
+                if [ -e "$ADMIN_DOCKER_ACTIVE" ]; then printf 'active\n'; exit 0
+                else printf 'inactive\n'; exit 3; fi
+                ;;
             *) printf 'unknown\n'; exit 4 ;;
         esac
+        ;;
+    is-enabled)
+        [ "$3" = docker.service ] || exit 2
+        if [ -e "$ADMIN_DOCKER_ENABLED" ]; then printf 'enabled\n'; exit 0
+        else printf 'disabled\n'; exit 1; fi
+        ;;
+    enable)
+        [ "$2" = docker.service ] || exit 2
+        : > "$ADMIN_DOCKER_ENABLED"
+        ;;
+    start)
+        [ "$2" = docker.service ] || exit 2
+        : > "$ADMIN_DOCKER_ACTIVE"
         ;;
     restart) exit 0 ;;
     *) exit 2 ;;
@@ -77,7 +108,7 @@ shift 2
 exec "$@"
 EOF
     chmod +x "$IGOR_DIR/bin/sudo"
-    chmod +x "$IGOR_DIR/bin/apt-get" "$IGOR_DIR/bin/pacman" "$IGOR_DIR/bin/systemctl" "$IGOR_DIR/bin/journalctl"
+    chmod +x "$IGOR_DIR/bin/apt-get" "$IGOR_DIR/bin/dpkg-query" "$IGOR_DIR/bin/pacman" "$IGOR_DIR/bin/systemctl" "$IGOR_DIR/bin/journalctl"
     export PATH="$IGOR_DIR/bin:$PATH"
 
     source "$REPO_DIR/core/lib/module_loader.sh"
@@ -172,9 +203,12 @@ expected={
  "system.host.summary",
  "system.package.updates.list",
  "system.package.cleanup.preview",
+ "system.package.install",
  "system.package.upgrade",
  "system.package.cache.clean",
  "system.service.list",
+ "system.service.enable",
+ "system.service.start",
  "system.service.status",
  "system.service.restart",
  "system.logs.summary",
@@ -249,6 +283,81 @@ PY
     history="$(igor_history_cli recent 1)"
     [[ "$history" != *'boot ok'* ]]
     [[ "$history" != *'service ready'* ]]
+}
+
+@test "generic package install freezes alias-resolved argv and verifies installed state" {
+    run igor_capability_prepare system.package.install '{"package":"pkg_docker"}' system 1
+    [ "$status" -eq 0 ]
+    proposal="$output"
+    [[ "$proposal" == *'"privileged_argv":["sudo","-n","--","apt-get","install","-y","docker.io"]'* ]]
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(printf '%s' "$proposal" | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+    IGOR_CAPABILITY_APPROVAL_STATUS=approved
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"execution_status":"succeeded"'* ]]
+    [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"check_id":"system.package.installed"'* ]]
+    [ -e "$ADMIN_PACKAGE_STATE" ]
+}
+
+@test "generic service enable and start use reviewed argv and deterministic verification" {
+    run igor_capability_prepare system.service.enable '{"unit":"docker.service"}' system 1
+    [ "$status" -eq 0 ]
+    proposal="$output"
+    [[ "$proposal" == *'"privileged_argv":["sudo","-n","--","systemctl","enable","docker.service"]'* ]]
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(printf '%s' "$proposal" | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+    IGOR_CAPABILITY_APPROVAL_STATUS=approved
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"check_id":"system.service.enabled"'* ]]
+    [ -e "$ADMIN_DOCKER_ENABLED" ]
+
+    run igor_capability_prepare system.service.start '{"unit":"docker.service"}' system 1
+    [ "$status" -eq 0 ]
+    proposal="$output"
+    [[ "$proposal" == *'"privileged_argv":["sudo","-n","--","systemctl","start","docker.service"]'* ]]
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(printf '%s' "$proposal" | python3 -c 'import json,sys;print(json.load(sys.stdin)["digest"])')"
+    export IGOR_CAPABILITY_APPROVED_DIGEST
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"verification_status":"passed"'* ]]
+    [[ "$output" == *'"expected":"active"'* ]]
+    [ -e "$ADMIN_DOCKER_ACTIVE" ]
+}
+
+@test "registered Docker install plan resolves to frozen System capabilities without executing" {
+    before_trace="$(cat "$ADMIN_PRIVILEGE_TRACE")"
+    run igor_capability_plan_resolve_registered docker.install
+    [ "$status" -eq 0 ]
+    resolved="$output"
+    python3 - "$resolved" <<'PY'
+import json,sys
+plan=json.loads(sys.argv[1])
+assert plan["intended_outcome"].startswith("Docker Engine is installed")
+assert [step["capability_id"] for step in plan["steps"]]==[
+    "system.package.install","system.service.enable","system.service.start"]
+assert plan["steps"][0]["inputs"]=={"package":"pkg_docker"}
+assert plan["steps"][0]["provider"]=="system"
+assert plan["steps"][1]["inputs"]=={"unit":"docker.service"}
+assert plan["steps"][2]["inputs"]=={"unit":"docker.service"}
+assert all(step["privilege"]=="required" for step in plan["steps"])
+assert all(step.get("digest") for step in plan["steps"])
+PY
+    [ "$(cat "$ADMIN_PRIVILEGE_TRACE")" = "$before_trace" ]
+    [ ! -e "$ADMIN_PACKAGE_STATE" ]
+    [ ! -e "$ADMIN_DOCKER_ENABLED" ]
+    [ ! -e "$ADMIN_DOCKER_ACTIVE" ]
+}
+
+@test "unregistered plan cannot become an execution sequence" {
+    run igor_capability_plan_resolve_registered docker.invented
+    [ "$status" -ne 0 ]
+    [ ! -e "$ADMIN_PACKAGE_STATE" ]
+    [ ! -e "$ADMIN_DOCKER_ENABLED" ]
+    [ ! -e "$ADMIN_DOCKER_ACTIVE" ]
 }
 
 @test "package upgrade freezes distro-specific argv and verifies the Debian result" {
