@@ -77,6 +77,7 @@ def event(kind, **fields):
         output.write(json.dumps({"event_type": kind, "sequence": sequence,
                                  "operation_id": "exact-action", **fields}) + "\\n")
 event("session_started", status="ready")
+event("model_status", status="input_ready")
 action = sys.stdin.readline().strip()
 with commands.open("a") as output:
     output.write(action + "\\n")
@@ -105,6 +106,7 @@ class PrivilegeFrontendTests(unittest.TestCase):
             stream = root / "events.jsonl"
             commands = root / "commands.txt"
             keys: list[int | tuple[str, str]] = (
+                [("wait", "model_status")] +
                 [ord(char) for char in "run\n"] +
                 [("wait", "approval_waiting")] +
                 [ord(char) for char in "yes\n"] +
