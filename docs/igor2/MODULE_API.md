@@ -117,9 +117,11 @@ External child capability IDs must exactly match the capability-level
 privilege because it executes no privileged mechanism itself. Resolution freezes
 each child provider, capability version and validated input before effects,
 derives exact affected objects and whether any child requires privilege, and
-hashes the resulting plan. The parent capability's safety tier is a floor: it
-must be at least as restrictive as every child step or preparation fails.
-Execution then re-enters the canonical capability dispatcher for every child,
+hashes the resulting plan. In this bounded contract the parent capability's
+safety tier must equal the maximum child-step tier; a higher or lower parent
+classification fails preparation because there is deliberately no separate
+plan-wide approval authority yet. Execution then re-enters the canonical
+capability dispatcher for every child,
 preserving ordinary policy, approval, privilege, exact-argv and verification
 behavior. A failed step or final expectation stops the sequence and records
 completed steps; there is no implicit retry or rollback.
