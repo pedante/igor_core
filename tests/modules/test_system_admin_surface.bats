@@ -88,7 +88,8 @@ EOF
 teardown() { teardown_igor_tmpdir; }
 
 _execute_read() {
-    local id="$1" inputs="${2:-{}}" proposal
+    local id="$1" inputs="${2:-}" proposal
+    [ -n "$inputs" ] || inputs='{}'
     proposal="$(igor_capability_prepare "$id" "$inputs" system 2)" || return 1
     IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
     IGOR_CAPABILITY_APPROVAL_STATUS=auto_approved
