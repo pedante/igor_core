@@ -1,0 +1,7 @@
+[
+  {
+    "id": "docker.check.runtime",
+    "kind": "check",
+    "description": "Verify Docker runtime availability"
+  }
+]
