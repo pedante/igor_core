@@ -118,7 +118,7 @@ PY
         fi
         _outcome="$(_igor_capability_field "$_result" outcome 2>/dev/null)" || _outcome=dispatch_failed
         if printf '%s' "$_step" | "$(_ml_python)" -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("_plan_final_check") else 1)'; then
-            if ! "$(_ml_python)" - "$_step" "$_result" <<'PY'
+            if [ "$_dispatch_rc" -ne 0 ] || [ -z "$_result" ] || ! "$(_ml_python)" - "$_step" "$_result" <<'PY'
 import json, sys
 step, result = map(json.loads, sys.argv[1:3])
 expect = step.get("expect", {})
