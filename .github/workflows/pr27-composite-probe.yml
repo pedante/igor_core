@@ -28,4 +28,4 @@ jobs:
       - name: Focused Python tests
         run: pytest -q tests/test_module_contract.py tests/test_docker_module.py
       - name: System composition tests
-        run: bats --tap tests/modules/test_system_admin_surface.bats
+        run: timeout 180 bats --tap tests/modules/test_system_admin_surface.bats
