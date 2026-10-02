@@ -28,6 +28,13 @@ export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 # source its code, run its validators, or create a tmux session first.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --deployments)
+            # Query the owning registry before any module/config startup.
+            source "${IGOR_DIR}/core/lib/deployments.sh"
+            [ "$#" -le 3 ] || exit 2
+            igor_deployment_cli "${2:-status}" "${3:-}"
+            exit $?
+            ;;
         --configuration)
             source "${IGOR_DIR}/core/lib/configuration.sh"
             igor_configuration_cli "${2:-status}" "${3:-}"
@@ -725,6 +732,7 @@ _igor_show_help() {
     printf "  ${Y}%-30s${N} %s\n" "--model [facts|fact|observers|refresh|evaluate|health|summary]" "Inspect or refresh Wave D host facts and checks"
     printf "  ${Y}%-30s${N} %s\n" "--events [types|recent]" "Inspect current-session domain event types or recent events"
     printf "  ${Y}%-30s${N} %s\n" "--history [recent|inspect ID]" "Inspect durable operational episodes"
+    printf "  ${Y}%-30s${N} %s\n" "--deployments [status|list|inspect ID|export]" "Inspect deployment identity, bindings and responsibility"
     printf "  ${Y}%-30s${N} %s\n" "--investigations [list|inspect ID]" "Inspect durable investigations"
     printf "  ${Y}%-30s${N} %s\n" "--automations [list|proposals]" "Inspect configured automations or active proposals"
     printf "  ${Y}%-30s${N} %s\n" "--ai [status|tools|last]" "Inspect AI policy, capabilities, or last operation"

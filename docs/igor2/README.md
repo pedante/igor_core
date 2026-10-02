@@ -24,6 +24,7 @@ For most Igor 2 work:
    - `OPERATOR_SURFACE.md` — initial contract-driven operator projection and `:` namespace explorer over existing module/capability/configuration registries; no parallel execution or menu authority.
    - `CONFIGURATION.md` — accepted D059 Core-owned configuration foundation: versioned schemas, scoped desired values, private persistence, references-only secrets, precedence, inspection and the bounded `ai.verbose` cutover; richer surfaces and deployments remain deferred.
    - `BROWNFIELD_ADOPTION.md` — accepted D061 brownfield discovery/adoption refinement: existing machine resources remain independent of modules, adoption is explicit, and configuration values retain concrete storage/source locators.
+   - `DEPLOYMENTS.md` — accepted D063 owner-scoped Step 19: application-neutral deployment identity, typed relationships, explicit scoped responsibility, private transactional persistence and three separately gated implementation boundaries.
    - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
    - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.

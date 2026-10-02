@@ -1,7 +1,9 @@
 # Brownfield Discovery, Adoption, and Configuration Location
 
 Status: **accepted architecture refinement (D061)**. Runtime implementation is
-pending the Step 17/18 ownership, binding and composition work.
+pending the separately gated attachment/application boundaries of the approved
+owner-scoped [Step 19](DEPLOYMENTS.md) (D063). Boundary 1 supplies the generic
+identity/relationship/responsibility foundation only.
 
 ## Problem
 
@@ -243,15 +245,16 @@ Inspection reports unknowns explicitly.
 
 ## Roadmap consequences
 
-This refines, but does not prematurely implement, Q007 relationship/deployment
-authority.
+This refinement constrained Q007. D063 now resolves its architecture while
+preserving the brownfield runtime proof gates.
 
-Step 17 Relationships & Deployments must support discovered external resources,
+Owner-scoped Step 19 Relationships & Deployments must support external resources,
 source claims, adoption and explicit responsibility transfer.
 
-Step 18 composition prerequisites must carry configuration storage locators and
-must prove that the first reversible Nextcloud workflow can bind to an existing
-configuration source, not only one Igor created.
+Step 18's first reversible module proof uses the System warning threshold
+(D062), not Nextcloud. Step 19 Boundaries 2/3 must carry configuration storage
+locators and prove the selected Nextcloud loglevel workflow can bind to an
+existing configuration source, not only one Igor created.
 
 The eventual proof should include an existing-style fixture that Igor did not
 provision. At minimum it must demonstrate:

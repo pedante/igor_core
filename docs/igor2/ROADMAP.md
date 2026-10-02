@@ -491,10 +491,10 @@ broad environment variables, and adds no generic settings UI, inheritance,
 external secret managers, agents or Steps 18/19/20. It does not close Q007 or
 the whole Ownership Foundation.
 
-The original Relationships & Deployments work below remains future work under
-its own architecture and implementation gate.
+The original Relationships & Deployments outcome below now proceeds under the
+owner-scoped Step 19 architecture and separate implementation gates (D063).
 
-## Step 17 — Relationships & Deployments — FUTURE
+## Original Step 17 — Relationships & Deployments — moved to owner-scoped Step 19
 
 Separate:
 
@@ -512,7 +512,11 @@ retain a concrete file + stable selector locator, while non-file-backed values
 identify their actual storage/source authority. See
 [BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
 
-Define provenance for discovered, configured, installer-created, user-declared and AI-proposed relationships. Relationship storage must preserve source claims/reconciliation instead of relying on unqualified last-write-wins edges. Durable participants use the scoped-reference contract from Step 15A so future local and external machine scopes do not require a new relationship identity model.
+The approved [Step 19 contract](DEPLOYMENTS.md) now defines provenance,
+identity, claims/reconciliation and responsibility. Durable participants reuse
+the scoped-reference contract from Step 15A. Boundary 1 implements only the
+application-neutral foundation; attachment and application proof remain later
+separately gated boundaries.
 
 Installation/configuration workflows use structured plans and leave an
 inspectable deployment/relationship record plus verification outcome, rather
@@ -538,9 +542,10 @@ three boundaries, stopping with evidence after each:
 
    The required ownership/binding, relationship, storage, configuration
    source/target locator, secret and recovery seams remain bounded prerequisites
-   for future composition workflows. Q007 and general binding/resource ownership
-   remain unresolved; the bounded Step 17 `ai.verbose` slice does not establish a
-   complete ownership model.
+   for future composition workflows. D063 now settles Q007's architecture under
+   Step 19; general application binding/adoption still requires its Boundary 2
+   proof. The bounded Step 17 `ai.verbose` slice does not establish a complete
+   ownership model.
 3. **First reversible module configuration proof:** the owner-selected System
    memory warning threshold (`system.memory.warning_threshold_mib`, D062),
    default 150 MiB and range 81–4096 MiB. Desired validation/commit, module
@@ -583,7 +588,38 @@ remain Igor-owned machine configuration/state.
 
 Preserve the working v1 deployment during migration.
 
-## Step 19 — Self-Healing v2 — FUTURE
+## Step 19 — Representative Application Workflow / Relationships and Deployment Ownership
+
+The Project Owner approved [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md)
+after discovery. This owner-scoped step takes the original Relationships and
+Deployments outcome; it does not start self-healing or Step 20.
+
+One application-neutral Core-owned Deployment Service owns opaque scoped
+identity, bindings, the small typed relationship vocabulary and positive,
+explicit scoped responsibility. Its private transactional registry remains
+separate from configuration, current observations, capability execution and
+Operational History. Discovery/binding/observation/provisioned origin implies
+no duty. Metadata-only adoption and resource-retaining release remain separate
+from provisioning and destruction.
+
+Implement three boundaries, stopping with evidence after each:
+
+1. **Identity, relationships and responsibility:** generic registry, exact
+   reference reuse/enrollment, preserved claims, transactional conflicts/CAS,
+   idempotency, inspection and export/recovery. No application semantics.
+2. **Brownfield attachment and composition prerequisites:** deterministic
+   selection/inspection, metadata-only adoption, exact configuration locator,
+   deployment target admission and bounded release/fencing proof.
+3. **Reversible Nextcloud `loglevel` workflow and legacy cutover:** isolated real
+   application proof of configuration, approved capability execution, native
+   readback, History, prior-state recovery and release. Competing Igor writers
+   for that adopted setting delegate or refuse.
+
+Provisioning execution, general destruction, application upgrades, whole-module
+migration, generic workflows, agents, self-healing and Step 20 are excluded.
+See [STATUS.md](STATUS.md) for evidence, not merely architecture acceptance.
+
+## Original Step 19 — Self-Healing v2 — deferred, separately gated
 
 Rebuild self-healing on normal Igor primitives:
 
@@ -592,7 +628,12 @@ observation -> check -> incident -> diagnosis -> capability
             -> policy -> execution -> verification -> history
 ```
 
-Automatic recovery considers safety, confidence, user policy, privilege, retries and prior outcomes. Before Self-Healing may perform unattended CHANGE, Step 19 must accept an explicit unattended-CHANGE authority contract; responsibility, Executive mode, automation eligibility, prior success or learned confidence do not themselves grant that authority.
+Automatic recovery considers safety, confidence, user policy, privilege, retries
+and prior outcomes. Before Self-Healing may perform unattended CHANGE, a future
+self-healing gate must accept an explicit unattended-CHANGE authority contract;
+responsibility, Executive mode, automation eligibility, prior success or learned
+confidence do not themselves grant that authority. Owner-scoped Step 19 does
+not implement or approve that gate.
 
 ## Step 20 — Igor TUI as Default — PARTIAL
 

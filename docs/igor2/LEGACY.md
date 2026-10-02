@@ -5,6 +5,33 @@ This map records the v1 compatibility surfaces that remain live alongside the
 typed host model and canonical capability path. The Wave E contract is in
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+## Step 19 Boundary 1 disposition
+
+[D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md) establish the
+application-neutral deployment authority. The new registry owns explicit
+identity/bindings/relationships/responsibility; it imports no legacy application
+deployment and creates no responsibility from names, paths, observed presence
+or Igor-created origin. Configuration, System Model, capability execution and
+History retain their own authority. The data-only deployment CLI does not load
+modules or probe resources; generic 15UI rendering consumes its inspection.
+
+The combined `nextcloud_docker` package, fixed stack paths/project names, guessed
+adoption paths, prefix-based cleanup, module snapshots, bare Compose/OCC
+operations and saved OCC undo remain **temporary compatibility**. Boundary 1
+does not change their runtime behavior or certify adoption/detach. Boundary 2
+must establish explicit resource bindings; Boundary 3 must subordinate/refuse
+the `nc_loglevel` automatic fix and other overlapping Igor writers for the
+adopted setting. Unadopted workflows retain their scoped compatibility path.
+The template renders a loglevel default but does not currently apply that key;
+the recovery menu suggests config import rather than implementing it.
+
+No legacy file is imported into the registry. Initial private-store creation,
+restart and versioned export/recovery are the Boundary 1 migration proof; old
+application adoption, deployment configuration and actual release remain
+separate later gates. General module detach assessment remains incomplete.
+
+## Existing compatibility map
+
 Wave A / Step 1 audit of the `igor2` tree at `6675ece` (2026-09-26). Local
 `master` (`76f04e3`) is an ancestor. Code and tests establish current behavior;
 the [architecture](ARCHITECTURE.md) sets the target. `KEEP/ADAPT` means preserve

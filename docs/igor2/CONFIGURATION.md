@@ -3,8 +3,9 @@
 Status: **accepted bounded architecture (D059)**. The implementation boundary is
 the foundation and one Core preference, `ai.verbose`. Current implementation,
 validation results and limitations are recorded in [STATUS.md](STATUS.md).
-Deployment/relationship work under the roadmap's original Step 17 remains
-future work.
+Deployment/relationship work under the roadmap's original Step 17 now proceeds
+through the separately approved owner-scoped [Step 19](DEPLOYMENTS.md) (D063).
+Its Boundary 1 does not extend Configuration Service's supported target scopes.
 
 ## Authority and state
 

@@ -2,6 +2,58 @@
 
 Last updated: 2026-10-02
 
+## Step 19 Boundary 1 — deployment identity, relationships and responsibility
+
+The Project Owner approved [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md)
+after the Step 19 discovery proposal. This owner-scoped Step 19 takes the original
+Relationships/Deployments outcome; self-healing and Step 20 remain deferred.
+Execution stops with evidence after each boundary. This entry covers Boundary 1
+only; brownfield attachment/composition and the real Nextcloud loglevel workflow
+remain Boundaries 2 and 3.
+
+The starting checkout was clean `igor2` at `22b0c5f`. A read-only remote query
+confirmed `origin/igor2=22b0c5f` and unchanged `origin/master=852ce8f`. Master is
+not an ancestor; the previously recorded content reconciliation of its two
+unmatched documentation/orchestration commits remains applicable. No checkout,
+worktree or baseline migration was performed.
+
+The application-neutral Core-owned Deployment Service uses opaque scoped
+identities, reuses owning-service object references, preserves relationship
+claims and accepts only positive explicit scoped responsibility. It owns no
+application observations, desired values, capability execution, approval,
+privilege or operational episodes. Private transactional SQLite keeps atomic
+metadata revisions, conflicts, idempotency and versioned export/recovery.
+Trusted internal mutation interfaces deny by default; serialized provenance
+cannot authorize. Public `--deployments` commands are read-only and bypass
+module/configuration startup. Generic 15UI rendering consumes the backend record.
+
+Boundary 1 imports no application and changes no deployment target. It exposes
+no writable attachment or recovery CLI. Metadata responsibility release does
+not certify detach; absent resource/job/session inventories remain unknown.
+No deployment configuration target, observation adapter, provisioning,
+destruction, application update or legacy Nextcloud writer cutover is included.
+
+**EXECUTION evidence (2026-10-02):**
+
+| Proof/check | Result |
+|---|---|
+| Contract | Opaque scoped identities survive rename/reopen and explicit native incarnation replacement. Existing owning-service references retain identity/owner and are revalidated at commit. Four closed relationship types, participation, scoped grants, competing claims and explicit resolution reject malformed/dangling/conflicting changes before effects. Discovery, binding and resource origin confer no duty. Default-deny trusted authorization cannot be supplied by serialized provenance or AI claims. |
+| Vertical slice | The real Core service creates a private registry, prepares and atomically commits generic deployment/resource/relationship metadata, then separately accepts an explicit setting grant. Public CLI reads the persisted record and the real generic 15UI renderer consumes that projection. Model/desired-state sentinel bytes stay unchanged and Operational History remains empty; this metadata proof executes no application capability. The representative real application slice is explicitly reserved for Boundary 3. |
+| Inspection | Read-only status/list/inspect/export bypass module/configuration startup. Absent reads create neither a store nor an installation identity. Actual persisted identity, provenance, resources, claims, conflicts and positive duties are visible. Unsupplied Configuration/System Model/History joins, unverified evidence and uncertified detach remain explicit. Reads preserve the complete private-file byte inventory. Public mutation flags and malformed argument counts fail before storage access. |
+| Migration/recovery | New private storage coexists with existing authorities; no legacy application/configuration import. Versioned same-scope restore validates before writes, saves a recovery point, retains later identities/operation fences and invalidates old proposals. Exact operation retry is idempotent; payload reuse fails. Concurrent commits have one CAS winner; failed batches and failed recovery backup preserve the registry. Unknown/corrupt versions, malformed exports, foreign scope and unsafe filesystem paths fail closed without repair. Metadata release retains resources and does not claim completed detach or resource rollback. |
+| Authority/model integrity | Existing service references are reused rather than copied into a second resource authority. Source claims never authorize acceptance. Shared-setting/deployment-wide grant conflicts are fenced, while unrelated scopes remain usable. Persisted structural validation is stable when environment secrets change; admission screens sensitive metadata. No observations, desired values, execution approval, privilege, application destruction or Operational History episodes are synthesized. |
+| Focused validation | All 47 Core contract cases and three real CLI/15UI integration cases pass. Focused Ruff and compilation of the service and both test files pass. |
+| Python regression/lint | Full Python: 520 passed, 319 subtests passed and nine failures, compared with clean-HEAD baseline 470 passed, 319 subtests passed and the same nine failure entries. All 50 new cases pass; no new failing names. Retained failures are two operator-backend cases, four Guide/Assist automation cases, one operator-projection case and startup choices `s`/`f` timing out at 20 seconds. The full suite is not green. Full Ruff is byte-identical to baseline: 154 existing findings, no new findings. Logs are outside the repository under `/tmp/igor19b1-*`. |
+| Bash regression | `bash tests/run_all.sh` passes all five groups: 46 legacy Bash cases, 46 rendering tests, 305 Core BATS, 163 module BATS and 40 integration BATS. Two existing Core cases skip because the GPG agent and `hostname -I` are unavailable; the other 506 BATS pass. No external deployment is part of this proof. |
+| Syntax/lint | Changed Bash passes `bash -n`. CI ShellCheck finds only two unchanged SC2155 warnings in `igor.sh` (current lines 13 and 1017, HEAD lines 13 and 1009); the new bridge is clean. |
+| Documentation | All 145 local Markdown references resolve. The final diff check passes. The approved decision, service contract, roadmap and legacy map distinguish Boundary 1 from pending attachment/application proof. |
+
+Boundary 1 is complete within its application-neutral metadata contract,
+inspection and recovery scope. Required contract, regression, vertical-slice,
+inspection and migration/recovery evidence is recorded above; baseline failures
+and environment skips remain explicit. Release freeze permits only final scope
+review and the scoped commit. Boundaries 2 and 3 have not started.
+
 ## Operator Surface refresh/diagnostics follow-up — implementation candidate
 
 The merged Operator Surface already requested a fresh backend snapshot whenever

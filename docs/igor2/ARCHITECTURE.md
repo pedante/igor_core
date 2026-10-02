@@ -70,7 +70,9 @@ Reusable package/module content and machine binding are separate concerns.
 A package may carry knowledge, contribution declarations, reviewed handlers,
 compatibility metadata and tests/evals; machine-specific paths, instance
 selection, secret references, deployment relationships and mutable user intent
-remain Igor-owned configuration/System Model state.
+remain in their respective Igor-owned services. Configuration Service owns
+desired values, System Model owns observations, and the Core-owned Deployment
+Service owns durable identity, bindings, relationships and scoped responsibility.
 
 ## Major layers
 
@@ -92,6 +94,7 @@ target internal services/components include:
 - machine memory/System Model;
 - context/AI gateway;
 - provenance/audit;
+- deployment identity, bindings, relationships and responsibility;
 - persistent identity/reference services for scoped durable records.
 
 These may remain in one process/repository. The requirement is explicit
@@ -114,6 +117,27 @@ apply and verify changes; System Model owns observations; Operational History
 records attempts and outcomes. Interfaces render owning-service projections
 and submit typed proposals. The bounded first slice is `ai.verbose`; broader
 module/deployment migration remains separately gated.
+
+### Deployment authority
+
+[D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md) establish one
+application-neutral Core-owned Deployment Service. Opaque scoped identities,
+explicit bindings and the small typed relationship vocabulary connect resources
+without making discovery or participation management authority. Responsibility
+is positive, explicit and scoped; Igor-created origin grants no implicit duty.
+
+The private transactional registry owns only these records and the minimal
+transition state required for consistency. Capability approval, privilege,
+execution, verification and Operational History retain their existing owners.
+Metadata-only adoption, resource-retaining release and explicit destruction
+remain distinct. System Model freshness cannot erase durable ownership, and
+deployment records cannot manufacture observations. Deployment configuration
+targets require the established deployment identity registry.
+
+Implementation stops with evidence after each of the three approved boundaries:
+identity/relationships/responsibility; brownfield attachment/composition; and an
+isolated reversible Nextcloud loglevel workflow with legacy cutover. Boundary 1
+does not attach an application, extend configuration scopes or certify detach.
 
 ### Interfaces
 

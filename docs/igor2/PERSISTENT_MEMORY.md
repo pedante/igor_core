@@ -451,7 +451,8 @@ than copying them into a scheduler-specific model.
 
 ## Deployments and relationships are separate durable state
 
-Step 17 owns current deployment topology and relationship reconciliation.
+The original roadmap assigned deployment topology/reconciliation to Step 17.
+The owner-scoped [Step 19 contract](DEPLOYMENTS.md) now owns this outcome (D063).
 
 Durable participants use scoped ObjectRefs from this contract.
 
@@ -464,9 +465,9 @@ Relationships should be able to retain provenance/source claims such as:
 - external/adapted;
 - AI-proposed reference.
 
-Step 17 decides reconciliation/authority (Q007). Step 15A only ensures its
-identity model can represent those future claims without rewriting local object
-IDs.
+D063 resolves reconciliation/authority (Q007) through explicit approved
+transitions and preserved source claims. Step 15A supplies the scoped identity
+model without rewriting existing local object IDs.
 
 Operational History records that a deployment/relationship changed; it is not
 the current deployment source of truth.
@@ -649,12 +650,12 @@ Inspection has no side effects.
 The following retain their existing roadmap owners:
 
 - Q004 third-party module trust/signing;
-- Q007 relationship/deployment reconciliation;
+- Q007 relationship/deployment reconciliation (subsequently resolved by D063);
 - Q009 integration-rule packaging;
 - Q011 remote approval policy;
 - Step 16 baseline algorithms/retention policy;
-- Step 17 final relationship vocabulary;
-- Step 19 unattended CHANGE policy;
+- final relationship vocabulary (subsequently accepted in owner-scoped Step 19);
+- future self-healing unattended CHANGE policy (excluded from owner-scoped Step 19);
 - post-2.0 capability promotion/marketplace/provider solving.
 
 Step 15A preserves the seams those features need; it does not implement or

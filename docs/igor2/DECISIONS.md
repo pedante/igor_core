@@ -666,6 +666,44 @@ Broader application integration, Steps 19/20 and third-party trust remain deferr
 Q012 is resolved for this warning setting only; other host thresholds retain
 their existing executed behavior and require separately bounded migration.
 
+### D063 — Deployment identity, relationships and scoped responsibility (owner-scoped Step 19)
+
+The Project Owner approved the Step 19 discovery proposal and additional
+constraints, recorded in [DEPLOYMENTS.md](DEPLOYMENTS.md). One Core-owned,
+application-neutral Deployment Service owns durable deployment identity,
+bindings, relationships and explicit responsibility. Version 1 has one
+deployment concept with opaque Igor-owned scoped identity; existing resource
+references are reused rather than duplicated. The relationship vocabulary is
+`includes`, `depends_on`, `uses` and `exposes`.
+
+Responsibility is positive, explicit and scoped. Discovery, knowledge, binding,
+observation and Igor-provisioned origin imply no responsibility. Preserve
+competing claims; accepted bindings change through explicitly authorized,
+revision-checked transitions, never unqualified last-write-wins. Shared-resource
+and setting conflicts remain visible. The private transactional SQLite registry
+has versioned inspection/export/recovery and does not become a generic workflow
+engine. It owns only the minimal transition state needed for its consistency.
+
+Modules remain portable contributors. Configuration owns desired values,
+System Model owns observations, capabilities own deterministic approval,
+privilege, execution and verification, and History owns attempts/outcomes.
+Deployment configuration targets wait for deployment identity. Metadata-only
+adoption, provisioning, release/detach and destruction are distinct; no generic
+rollback is promised. Inspection uses the existing generic backend/15UI model.
+
+Execution proceeds separately through Boundary 1 identity/relationships/
+responsibility, Boundary 2 brownfield attachment/composition, and Boundary 3 an
+isolated reversible Nextcloud `loglevel` workflow with equivalent legacy writers
+subordinated or refused for the adopted setting. Each boundary stops with
+evidence before the next starts. Boundary 1 is application-neutral. Provisioning
+execution, general destruction, application upgrades, whole-Nextcloud migration,
+generic workflows, agents, self-healing and Step 20 remain excluded.
+
+This settles Q007's architecture: provenance-bearing claims are retained;
+deterministic approval/CAS controls accepted topology and responsibility;
+conflict/drift is explicit. It does not claim brownfield/runtime proof before
+Boundaries 2/3. General integration-rule packaging Q009 remains deferred.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
@@ -677,15 +715,13 @@ permissions, isolation and signing policy is needed?
 
 Decision target: before a third-party distribution or marketplace contract.
 
-### Q007 — Relationship/deployment ownership
+### Q007 — Relationship/deployment ownership — architecture resolved by D063
 
-How are competing relationship/deployment claims reconciled among discovery,
-configuration, installers, users and AI proposals once D061's brownfield object,
-explicit-adoption and storage-locator constraints are satisfied? Which source
-wins, when can authority transfer, and how is conflict/drift represented without
-last-write-wins ambiguity?
-
-Decision target: Step 17.
+D063 settles the architecture under owner-scoped Step 19. Preserve source
+claims, require explicitly approved deterministic transitions to accepted
+bindings/grants, and retain conflicts/drift rather than applying source-priority
+or last-write-wins. Runtime brownfield adoption, configuration targeting and
+application cutover remain the separate Boundary 2/3 proof gates.
 
 ### Q009 — Integration-rule packaging
 

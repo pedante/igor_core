@@ -27,6 +27,15 @@ in new Igor processes. Restart existing sessions after a policy change. This doe
 not stop running services or delete their data. See the
 [module lifecycle and architecture assessment](docs/module_lifecycle.md).
 
+`bash igor.sh --deployments status`, `--deployments list`,
+`--deployments inspect DEPLOYMENT_ID` and `--deployments export` inspect the
+Core-owned deployment identity, bindings, relationships and scoped responsibility
+registry without loading modules, probing applications or creating storage.
+Discovery and resource participation imply no management duty. This first
+foundation exposes internal metadata contracts and read-only inspection; it
+does not adopt an application, provision resources or certify detach. See the
+[deployment contract](docs/igor2/DEPLOYMENTS.md).
+
 With System active, the chat command `memory-warning 220` proposes, commits,
 applies and independently verifies a 220 MiB memory warning threshold for the
 current Igor process through normal approval and Operational History. The
