@@ -209,6 +209,11 @@ PY
                     igor_detect_distro
                 fi
                 _family="${IGOR_DISTRO_FAMILY:-unknown}"
+                case "$_family" in
+                    debian) command -v apt-get >/dev/null 2>&1 || return 1 ;;
+                    arch) command -v pacman >/dev/null 2>&1 || return 1 ;;
+                    *) return 1 ;;
+                esac
                 case "$_id:$_family" in
                     system.package.upgrade:debian)
                         _update_argv="$(pkg_update_argv)" || return 1
