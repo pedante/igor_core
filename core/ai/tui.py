@@ -1344,10 +1344,10 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             if needle:
                 nodes = [node for node in nodes if needle in str(node.get("name", "")).casefold()]
             summary, surface_notice = _operator_surface_summary(snapshot)
-            if snapshot is not None and notice in {
+            if snapshot is not None and (not notice or notice in {
                 "Refreshing operator surface…",
                 "No operator snapshot received · Ctrl+R retry",
-            }:
+            }):
                 notice = surface_notice
             elif snapshot is None and time.monotonic() - requested_at >= 2.0 and notice == "Refreshing operator surface…":
                 notice = "No operator snapshot received · Ctrl+R retry"
