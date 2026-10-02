@@ -252,12 +252,85 @@ def _version(value: Any) -> int:
     return value
 
 
+def _validate_composite_implementation(raw: Any, parent_inputs: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(raw, dict) or set(raw) != {"kind", "intended_outcome", "variants", "final_check"}:
+        raise CapabilityError("composite implementation has invalid fields")
+    if raw.get("kind") != "composition":
+        raise CapabilityError("implementation.kind must be composition")
+    intended = raw.get("intended_outcome")
+    if not isinstance(intended, str) or not intended.strip() or len(intended) > 512:
+        raise CapabilityError("composition intended_outcome is invalid")
+    variants = raw.get("variants")
+    if not isinstance(variants, list) or not 1 <= len(variants) <= 8:
+        raise CapabilityError("composition variants must contain 1..8 entries")
+    parent_props = parent_inputs.get("properties", {})
+    seen: set[str] = set()
+
+    def binding(value: Any) -> Any:
+        if isinstance(value, dict) and set(value) == {"from_input"}:
+            name = value.get("from_input")
+            if not isinstance(name, str) or name not in parent_props:
+                raise CapabilityError("composition references unknown parent input")
+        return _json(value)
+
+    def step(value: Any, *, final: bool = False) -> dict[str, Any]:
+        allowed = {"capability_id", "provider", "inputs", "capability_version"} | ({"expect"} if final else set())
+        if not isinstance(value, dict) or set(value) - allowed:
+            raise CapabilityError("composition step has unknown fields")
+        ident = _cap_id(value.get("capability_id"))
+        inputs = value.get("inputs")
+        if not isinstance(inputs, dict) or len(inputs) > 32:
+            raise CapabilityError("composition step inputs are invalid")
+        result = {"capability_id": ident, "inputs": {key: binding(item) for key, item in inputs.items()}}
+        if "provider" in value:
+            if not isinstance(value["provider"], str) or not CAPABILITY_ID.fullmatch(value["provider"]):
+                raise CapabilityError("composition provider is invalid")
+            result["provider"] = value["provider"]
+        if "capability_version" in value:
+            result["capability_version"] = _version(value["capability_version"])
+        if final:
+            expect = value.get("expect")
+            if not isinstance(expect, dict) or not expect or len(expect) > 32:
+                raise CapabilityError("composition final check expectation is invalid")
+            result["expect"] = {key: binding(item) for key, item in expect.items()}
+        return result
+
+    normalized = []
+    for variant in variants:
+        if not isinstance(variant, dict) or set(variant) != {"requires", "steps"}:
+            raise CapabilityError("composition variant has invalid fields")
+        requires = variant.get("requires")
+        if not isinstance(requires, dict) or set(requires) != {"platform_families"}:
+            raise CapabilityError("composition variant requires platform_families")
+        families = requires.get("platform_families")
+        if (not isinstance(families, list) or not families or
+                any(family not in {"debian", "arch"} for family in families) or
+                len(families) != len(set(families))):
+            raise CapabilityError("composition platform families are invalid")
+        if seen & set(families):
+            raise CapabilityError("composition platform variants overlap")
+        seen.update(families)
+        steps = variant.get("steps")
+        if not isinstance(steps, list) or not 1 <= len(steps) <= 16:
+            raise CapabilityError("composition variant requires 1..16 steps")
+        normalized.append({"requires": {"platform_families": list(families)},
+                           "steps": [step(item) for item in steps]})
+    return {"kind": "composition", "intended_outcome": intended,
+            "variants": normalized, "final_check": step(raw.get("final_check"), final=True)}
+
+
+def _bind_composition(value: Any, parent_inputs: dict[str, Any]) -> Any:
+    if isinstance(value, dict) and set(value) == {"from_input"}:
+        return _json(parent_inputs[value["from_input"]])
+    return _json(value)
+
+
 @dataclass
 class CapabilityDescriptor:
     id: str
     owner: str
     provider: str
-    handler: str
+    handler: str | None
     capability_version: int = 1
     description: str = ""
     inputs: dict[str, Any] = field(default_factory=lambda: {"properties": {}, "required": [], "additionalProperties": False})
@@ -272,20 +345,25 @@ class CapabilityDescriptor:
     active: bool = True
     unavailable_reason: str | None = None
     outputs: dict[str, Any] | None = None
+    implementation: dict[str, Any] | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any], *, owner: str | None = None, provider: str | None = None) -> CapabilityDescriptor:
         if not isinstance(raw, dict) or raw.get("kind", "capability") != "capability":
             raise CapabilityError("descriptor kind must be capability")
-        required = {"id", "handler", "capability_version", "description", "inputs", "safety", "privilege", "preconditions", "verification", "recovery", "affects"}
+        required = {"id", "capability_version", "description", "inputs", "safety", "privilege", "preconditions", "verification", "recovery", "affects"}
         missing = required - set(raw)
         if missing:
             raise CapabilityError(f"capability descriptor is incomplete: {min(missing)}")
-        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds", "outputs"})
+        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds", "outputs", "handler", "implementation"})
         if unknown:
             raise CapabilityError(f"capability descriptor has unknown field {min(unknown)}")
         ident = _cap_id(raw["id"])
-        if not isinstance(raw["handler"], str) or not raw["handler"]:
+        handler = raw.get("handler")
+        implementation = raw.get("implementation")
+        if (handler is None) == (implementation is None):
+            raise CapabilityError("capability requires exactly one handler or implementation")
+        if handler is not None and (not isinstance(handler, str) or not handler):
             raise CapabilityError("handler must be a declared adapter name")
         tier = raw["safety"].get("tier") if isinstance(raw["safety"], dict) else None
         if tier not in TIERS:
@@ -306,10 +384,31 @@ class CapabilityDescriptor:
             raise CapabilityError("recovery.class is invalid")
         inputs = raw["inputs"]
         _validate_schema(inputs)
-        return cls(ident, owner or raw.get("owner", "core"), provider or raw.get("provider", owner or "core"), raw["handler"], version, raw["description"], copy.deepcopy(inputs), copy.deepcopy(raw["safety"]), raw["privilege"], copy.deepcopy(raw["preconditions"]), copy.deepcopy(raw["verification"]), copy.deepcopy(recovery), copy.deepcopy(raw["affects"]), raw.get("source", "core"), timeout, raw.get("active", True), raw.get("unavailable_reason"), outputs)
+        normalized_implementation = _validate_composite_implementation(implementation, inputs) if implementation is not None else None
+        return cls(
+            id=ident,
+            owner=owner or raw.get("owner", "core"),
+            provider=provider or raw.get("provider", owner or "core"),
+            handler=handler,
+            capability_version=version,
+            description=raw["description"],
+            inputs=copy.deepcopy(inputs),
+            safety=copy.deepcopy(raw["safety"]),
+            privilege=raw["privilege"],
+            preconditions=copy.deepcopy(raw["preconditions"]),
+            verification=copy.deepcopy(raw["verification"]),
+            recovery=copy.deepcopy(recovery),
+            affects=copy.deepcopy(raw["affects"]),
+            source=raw.get("source", "core"),
+            timeout_seconds=timeout,
+            active=raw.get("active", True),
+            unavailable_reason=raw.get("unavailable_reason"),
+            outputs=outputs,
+            implementation=normalized_implementation,
+        )
 
     def inspect(self) -> dict[str, Any]:
-        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), "handler": self.handler, **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {}), **({"outputs": _json(self.outputs)} if self.outputs is not None else {})}
+        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), **({"handler": self.handler} if self.handler is not None else {}), **({"implementation": _json(self.implementation)} if self.implementation is not None else {}), **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {}), **({"outputs": _json(self.outputs)} if self.outputs is not None else {})}
 
 
 @dataclass(frozen=True)
@@ -372,7 +471,7 @@ class CapabilityRegistry:
         records = self._records.get(ident, [])
         return {"resolution": {"status": resolution.status, "providers": list(resolution.providers), "selected_provider": resolution.selected_provider, "reason": resolution.reason}, "declarations": [d.inspect() for d in records]}
 
-    def prepare(self, capability_id: str, inputs: dict[str, Any] | None = None, *, provider: str | None = None, capability_version: int | None = None) -> dict[str, Any]:
+    def prepare(self, capability_id: str, inputs: dict[str, Any] | None = None, *, provider: str | None = None, capability_version: int | None = None, platform_family: str | None = None) -> dict[str, Any]:
         """Resolve and freeze a proposal without approval or execution."""
         desc = self._selected(capability_id, provider)
         if capability_version is not None and _version(capability_version) != desc.capability_version:
@@ -395,6 +494,28 @@ class CapabilityRegistry:
             "recovery": _json(desc.recovery),
             "affected_objects": [_affected(item, validated) for item in desc.affects if _affected(item, validated)],
         }
+        if desc.implementation is not None:
+            if platform_family not in {"debian", "arch"}:
+                raise CapabilityError("composite capability requires a supported platform family")
+            matches = [variant for variant in desc.implementation["variants"]
+                       if platform_family in variant["requires"]["platform_families"]]
+            if len(matches) != 1:
+                raise CapabilityError("composite capability has no unique platform variant")
+            steps = []
+            for step in matches[0]["steps"]:
+                steps.append({**{key: value for key, value in step.items() if key != "inputs"},
+                              "inputs": {name: _bind_composition(value, validated)
+                                         for name, value in step["inputs"].items()}})
+            final = desc.implementation["final_check"]
+            final_check = {**{key: value for key, value in final.items() if key not in {"inputs", "expect"}},
+                           "inputs": {name: _bind_composition(value, validated)
+                                      for name, value in final["inputs"].items()},
+                           "expect": {name: _bind_composition(value, validated)
+                                      for name, value in final["expect"].items()}}
+            plan = CapabilityPlan(desc.implementation["intended_outcome"], steps,
+                                  objects=proposal["affected_objects"],
+                                  final_check=final_check).resolve(self)
+            proposal["composition_plan"] = plan.inspect()
         proposal["digest"] = hashlib.sha256(json.dumps(proposal, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return proposal
 
@@ -434,17 +555,32 @@ class CapabilityPlan:
             _validate_value("object", object_id, {"type": "object_id"})
 
         def resolve_step(step: dict[str, Any], *, check: bool = False) -> dict[str, Any]:
-            if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs", "capability_version"}:
+            allowed = {"capability_id", "provider", "inputs", "capability_version"} | ({"expect"} if check else set())
+            if not isinstance(step, dict) or set(step) - allowed:
                 raise CapabilityError("plan step has unknown fields")
             ident = _cap_id(step.get("capability_id"))
             desc = registry._selected(ident, step.get("provider"))
+            if desc.implementation is not None:
+                raise CapabilityError("nested composite capabilities are not supported")
             if "capability_version" in step and _version(step["capability_version"]) != desc.capability_version:
                 raise CapabilityError("plan capability_version does not match selected provider")
             args = validate_inputs(desc.inputs, step.get("inputs", {}))
-            if check and (desc.safety.get("tier") != "READ" or desc.verification.get("kind") == "none"):
-                raise CapabilityError("final check must be a verifiable READ capability")
-            return {"capability_id": ident, "capability_version": desc.capability_version, "provider": desc.provider, "inputs": args,
-                    "inspection": registry.inspect(ident, desc.provider)}
+            result = {"capability_id": ident, "capability_version": desc.capability_version,
+                      "provider": desc.provider, "inputs": args,
+                      "inspection": registry.inspect(ident, desc.provider)}
+            if check:
+                if desc.safety.get("tier") != "READ" or desc.outputs is None:
+                    raise CapabilityError("final check must be a typed READ capability")
+                expect = step.get("expect")
+                if not isinstance(expect, dict) or not expect:
+                    raise CapabilityError("final check requires expected typed output")
+                unknown = set(expect) - set(desc.outputs["properties"])
+                if unknown:
+                    raise CapabilityError("final check expects unknown output field")
+                subset_schema = {"properties": {key: desc.outputs["properties"][key] for key in expect},
+                                 "required": list(expect), "additionalProperties": False}
+                result["expect"] = validate_inputs(subset_schema, expect)
+            return result
 
         self.steps = [resolve_step(step) for step in self.steps]
         self.final_check = resolve_step(self.final_check, check=True) if self.final_check is not None else None
@@ -521,7 +657,7 @@ def _cli() -> int:
         if op == "prepare":
             if "capability_version" in request:
                 _version(request["capability_version"])
-            print(json.dumps(registry.prepare(request["id"], request.get("inputs", {}), provider=request.get("provider"), capability_version=request.get("capability_version")), sort_keys=True, separators=(",", ":")))
+            print(json.dumps(registry.prepare(request["id"], request.get("inputs", {}), provider=request.get("provider"), capability_version=request.get("capability_version"), platform_family=request.get("platform_family")), sort_keys=True, separators=(",", ":")))
             return 0
         if op == "result":
             # Result inspection is deliberately a value projection; it never
