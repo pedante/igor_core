@@ -278,6 +278,23 @@ svc_query() {
     esac
 }
 
+svc_enabled_query() {
+    [ "$#" -eq 1 ] && _svc_validate_name "$1" || return 2
+    _pkg_wave_d_family || return 2
+    command -v systemctl >/dev/null 2>&1 || return 2
+    command -v timeout >/dev/null 2>&1 || return 2
+    local _state _rc _timeout
+    _timeout="$(_pkg_query_timeout)" || return 2
+    _state="$(timeout "$_timeout" systemctl is-enabled -- "$1" 2>/dev/null)"
+    _rc=$?
+    [ "$_rc" -eq 124 ] && return 2
+    # is-enabled uses non-zero for deterministic disabled/static states.
+    case "$_rc" in
+        0|1) printf '%s\n' "${_state:-unknown}"; return 0 ;;
+        *) return 2 ;;
+    esac
+}
+
 _svc_argv() {
     local _op="${1:-}" _unit="${2:-}"
     [[ "$_op" =~ ^(start|stop|restart|enable|disable)$ ]] || return 2
