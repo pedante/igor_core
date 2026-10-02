@@ -288,6 +288,60 @@ class AiArchitectureTests(unittest.TestCase):
         data = catalog.build_catalog([])
         self.assertNotIn("run_plan", [tool["name"] for tool in data["tools"]])
 
+    def test_catalog_keeps_install_plan_but_hides_unavailable_docker_admin(self):
+        script = r'''
+source "$REPO/core/ai/control.sh"
+ai_policy_tool_allowed(){ return 0; }
+ai_policy_action_allowed(){ return 0; }
+igor_capability_list(){
+cat <<'JSON'
+[
+ {"id":"docker.status","owner":"docker","provider":"docker","availability":"active",
+  "descriptor":{"kind":"capability","id":"docker.status","handler":"docker__status",
+                "description":"Inspect Docker status.","safety":{"tier":"READ"}}},
+ {"id":"docker.container.list","owner":"docker","provider":"docker",
+  "availability":"unavailable","unavailable_reason":"required binary docker is missing",
+  "descriptor":{"kind":"capability","id":"docker.container.list",
+                "handler":"docker__container_list","description":"List containers.",
+                "safety":{"tier":"READ"}}},
+ {"id":"system.package.install","owner":"system","provider":"system","availability":"active",
+  "descriptor":{"kind":"capability","id":"system.package.install",
+                "handler":"system__privileged_marker","description":"Install package.",
+                "safety":{"tier":"CHANGE"}}}
+]
+JSON
+}
+igor_contribution_records(){
+cat <<'JSON'
+[
+ {"id":"docker.install","kind":"plan","owner":"docker","availability":"active",
+  "unavailable_reason":null,
+  "descriptor":{"kind":"plan","id":"docker.install","owner":"docker",
+                "description":"Install Docker.","plan_version":1,
+                "steps":[{"capability_id":"system.package.install",
+                          "inputs":{"package":"pkg_docker"}}]}}
+]
+JSON
+}
+unset _IGOR_CAPABILITIES
+ai_catalog_json
+'''
+        result = subprocess.run(
+            ["bash", "-c", script],
+            env={**os.environ, "REPO": str(ROOT)},
+            capture_output=True, text=True, check=True,
+        )
+        data = json.loads(result.stdout)
+        tools = {row["name"]: row for row in data["tools"]}
+        self.assertEqual(
+            tools["run_capability"]["openai_params"]["id"]["enum"],
+            ["docker.status", "system.package.install"],
+        )
+        self.assertNotIn("docker.container.list",
+                         tools["run_capability"]["openai_params"]["id"]["enum"])
+        self.assertEqual(tools["run_plan"]["openai_params"]["id"]["enum"],
+                         ["docker.install"])
+
     def test_catalog_filters_inactive_module_owners_and_denied_actions(self):
         script = """
 source "$REPO/core/ai/control.sh"
