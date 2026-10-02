@@ -126,7 +126,7 @@ expected={
  "system.service.list",
  "system.service.status",
  "system.service.restart",
- "system.logs.recent",
+ "system.logs.summary",
 }
 assert expected <= paths,(expected-paths)
 PY
@@ -188,12 +188,16 @@ PY
     [ "$status" -ne 0 ]
 }
 
-@test "recent logs are a bounded READ capability" {
-    run _execute_read system.logs.recent '{}'
+@test "log summary is bounded metadata and never persists raw journal messages" {
+    run _execute_read system.logs.summary '{}'
     [ "$status" -eq 0 ]
     [[ "$output" == *'"source":"systemd.journal"'* ]]
-    [[ "$output" == *'boot ok'* ]]
-    [[ "$output" == *'service ready'* ]]
+    [[ "$output" == *'"recent_count":2'* ]]
+    [[ "$output" != *'boot ok'* ]]
+    [[ "$output" != *'service ready'* ]]
+    history="$(igor_history_cli recent 1)"
+    [[ "$history" != *'boot ok'* ]]
+    [[ "$history" != *'service ready'* ]]
 }
 
 @test "package upgrade freezes distro-specific argv and verifies the Debian result" {
