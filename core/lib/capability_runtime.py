@@ -626,9 +626,63 @@ class CapabilityPlan:
                 "objects": _json(self.objects), "steps": _json(self.steps),
                 "final_check": _json(self.final_check), "digest": self.digest}
 
+def _handler_output_cli(schema_raw: str) -> int:
+    """Validate one raw module-handler envelope and v2 output in one process.
+
+    Exit 2 means provider/handler failure (matching the old handler-envelope
+    validator). Exit 3 means the handler succeeded but its typed domain output
+    is invalid (matching the existing capability output-validation boundary).
+    """
+    import sys
+
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise CapabilityError("duplicate output field")
+            result[key] = value
+        return result
+
+    try:
+        schema = json.loads(schema_raw)
+        raw = sys.stdin.read()
+        envelope = json.loads(raw, object_pairs_hook=unique)
+    except (json.JSONDecodeError, TypeError, CapabilityError):
+        print("module handler: invalid JSON response", file=sys.stderr)
+        return 2
+    if not isinstance(envelope, dict):
+        print("module handler: response must be a JSON object", file=sys.stderr)
+        return 2
+    status = envelope.get("status")
+    if status == "error":
+        error = envelope.get("error")
+        if (set(envelope) != {"status", "error"} or not isinstance(error, dict) or
+                not isinstance(error.get("code"), str) or not isinstance(error.get("message"), str)):
+            print("module handler: invalid error response", file=sys.stderr)
+            return 2
+        print(f"module handler: handler error {error['code']}: {error['message']}", file=sys.stderr)
+        return 2
+    if status != "ok" or set(envelope) != {"status", "result"}:
+        print("module handler: invalid output envelope", file=sys.stderr)
+        return 2
+    try:
+        result = validate_outputs(schema, envelope["result"])
+    except (CapabilityError, TypeError, OverflowError):
+        print("capability runtime: invalid domain output", file=sys.stderr)
+        return 3
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0
+
+
 def _cli() -> int:
     """JSON stdin bridge for shell-owned loaders (resolution only)."""
     import sys
+
+    if len(sys.argv) == 3 and sys.argv[1] == "handler-output":
+        return _handler_output_cli(sys.argv[2])
+    if len(sys.argv) != 1:
+        print("capability runtime: unsupported arguments", file=sys.stderr)
+        return 2
 
     op = None
     try:
