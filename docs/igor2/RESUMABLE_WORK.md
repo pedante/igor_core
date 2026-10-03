@@ -1,5 +1,7 @@
 # Igor 2 resumable work and external dependencies
 
+Status: **accepted design direction; explicit Igor 2 runtime proof still future**.
+
 Status: **design proposal for architectural review; no implementation is implied by this document**.
 
 This document extends structured plans with durable waiting and resumption semantics for work that cannot complete synchronously.
@@ -294,13 +296,21 @@ This design does not require a distributed workflow engine, arbitrary DAG jobs, 
 
 ## Roadmap fit
 
+Resumable Work is now an explicit Igor 2 completion gate rather than an
+unassigned design proposal.
+
 - D030 structured plans provide the base representation.
 - Step 14 Automation can check selected future conditions without owning plan authority.
 - Step 15 history records waits, resumes and outcomes.
-- Step 17 installation/configuration/deployment workflows benefit from continuation.
-- Step 20 TUI surfaces waiting work and resume controls.
+- Step 17 configuration and the Provisioning/Installation gate may need continuation.
+- Step 19 deployment identity/bindings provide stable targets across waits.
+- Step 20 CLI/TUI surfaces waiting work and resume/cancel controls.
 - Step 22 external interfaces may deliver callbacks or remote continuation requests.
 - Step 23 removes subsystem-specific resume markers only after equivalent behavior is proven.
+
+The first runtime slice should be selected from a real workflow with a genuine
+external/user/restart dependency. Do not implement a generic durable workflow
+engine merely to satisfy the roadmap.
 
 ## Proof requirements for implementation
 
