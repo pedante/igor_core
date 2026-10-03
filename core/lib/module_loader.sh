@@ -556,32 +556,28 @@ igor_contribution_state() {
 }
 
 _ml_index_requirement_fields() {
-    local _key="$1" _record="$2" _parsed
-    local _modules _capabilities _features _families _bins _sentinel
+    local _key="$1" _record="$2"
+    local -a _fields=()
     [[ "$_record" = \{* ]] || return 0
-    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
+    mapfile -t _fields < <(printf '%s' "$_record" | "$(_ml_python)" -c '
 import json,sys
 record=json.load(sys.stdin)
 requires=record.get("requires",{})
 if not isinstance(requires,dict):
     raise SystemExit(1)
-keys=("modules","capabilities","platform_features","platform_families","bins")
-values=[]
-for key in keys:
+for key in ("modules","capabilities","platform_features","platform_families","bins"):
     value=requires.get(key,[])
     if not isinstance(value,list) or any(not isinstance(item,str) or not item for item in value):
         raise SystemExit(1)
-    values.append(" ".join(value))
-print("\x1f".join(values+["ok"]))
-')" || return 1
-    IFS=
-igor_contribution_reason() {
-    local _key="${1:-}"
-    if [ -n "${_IGOR_CONTRIBUTION_REASON[$_key]:-}" ]; then
-        printf '%s\n' "${_IGOR_CONTRIBUTION_REASON[$_key]}"
-    else
-        _ml_contribution_dynamic_failure "$_key"
-    fi
+    print(" ".join(value))
+') || return 1
+    [ "${#_fields[@]}" -eq 5 ] || return 1
+    _IGOR_REQ_INDEXED["$_key"]=1
+    _IGOR_REQ_MODULES["$_key"]="${_fields[0]}"
+    _IGOR_REQ_CAPABILITIES["$_key"]="${_fields[1]}"
+    _IGOR_REQ_PLATFORM_FEATURES["$_key"]="${_fields[2]}"
+    _IGOR_REQ_PLATFORM_FAMILIES["$_key"]="${_fields[3]}"
+    _IGOR_REQ_BINS["$_key"]="${_fields[4]}"
 }
 
 igor_contribution_list() {
@@ -1362,8 +1358,10 @@ _ml_capability_resolution_ids() {
     } | "$(_ml_python)" -c '
 import json,sys
 raw=sys.stdin.buffer.read().split(b"\0")
-if raw[-1:]==[b""]: raw.pop()
-if not raw: raise SystemExit(1)
+if raw[-1:]==[b""]:
+    raw.pop()
+if not raw:
+    raise SystemExit(1)
 ids={raw[0].decode()}
 for item in raw[1:]:
     if not item:
@@ -1377,13 +1375,23 @@ for item in raw[1:]:
         for variant in impl.get("variants",[]):
             for step in variant.get("steps",[]):
                 ident=step.get("capability_id")
-                if isinstance(ident,str) and ident: ids.add(ident)
+                if isinstance(ident,str) and ident:
+                    ids.add(ident)
         final=impl.get("final_check")
         if isinstance(final,dict):
             ident=final.get("capability_id")
-            if isinstance(ident,str) and ident: ids.add(ident)
+            if isinstance(ident,str) and ident:
+                ids.add(ident)
 print("\n".join(sorted(ids)))
 '
+}
+
+_ml_capability_filter_contains() {
+    local _filter="$1" _candidate="$2" _item
+    while IFS= read -r _item; do
+        [ "$_item" = "$_candidate" ] && return 0
+    done <<< "$_filter"
+    return 1
 }
 
 igor_capability_list() {
@@ -1397,8 +1405,11 @@ igor_capability_list() {
             else
                 _record_id="${_key#legacy_action:}"
             fi
-            if [ -n "$_filter_ids" ] &&
-               [[             _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+            if [ -n "$_filter_ids" ] && ! _ml_capability_filter_contains "$_filter_ids" "$_record_id"; then
+                continue
+            fi
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
             if [[ "$_key" = legacy_action:* ]]; then
                 local _entry="${_IGOR_CAPABILITIES[${_key##*.}]:-}"
                 _record="$("$(_ml_python)" - "${_key#legacy_action:}" "$_owner" "$_record" "$_entry" <<'PY'
