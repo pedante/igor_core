@@ -459,9 +459,30 @@ for x in p["preconditions"]:
 }
 
 _igor_capability_invoke_handler() {
-    local _proposal="$1" _id _owner _key _handler _timeout _entrypoint _input
-    _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
-    _owner="$(_igor_capability_field "$_proposal" owner)" || return 1
+    local _proposal="$1" _id="${2:-}" _owner="${3:-}" _handler="${4:-}" _timeout="${5:-}" _input="${6:-}" _defer="${7:-0}"
+    local _key _entrypoint _indexed_handler _indexed_timeout _field_text
+    local -a _fields=()
+    if [ -z "$_id" ] || [ -z "$_owner" ] || [ -z "$_input" ]; then
+        _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
+import json,sys
+p=json.loads(sys.argv[1])
+d=p.get("descriptor",{})
+print(p["capability_id"])
+print(p["owner"])
+print(d.get("handler",""))
+print(d.get("timeout_seconds",30))
+print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
+print("ok")
+PY
+)" || return 1
+        mapfile -t _fields <<< "$_field_text"
+        [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 1
+        _id="${_fields[0]}"
+        _owner="${_fields[1]}"
+        _handler="${_fields[2]}"
+        _timeout="${_fields[3]}"
+        _input="${_fields[4]}"
+    fi
     if [ "$_owner" = core ] && [[ "$_id" = core.configuration.* ]]; then
         _igor_configuration_invoke "$_proposal"
         return $?
@@ -473,13 +494,24 @@ _igor_capability_invoke_handler() {
     _key="capability:${_id}"
     [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "$_owner" ] || _key="${_key}@${_owner}"
     [ "$(igor_contribution_state "$_key")" = active ] || return 1
-    _handler="$(_igor_capability_field "$_proposal" descriptor.handler)" || return 1
-    _timeout="$(_igor_capability_field "$_proposal" descriptor.timeout_seconds 2>/dev/null || printf 30)"
-    _entrypoint="$(_ml_v2_query "$_owner" manifest.entrypoint)" || return 1
-    _input="$(_igor_capability_field "$_proposal" inputs)" || return 1
+
+    # Exact handler/timeout fencing remains loader-owned. Static metadata is
+    # compiled once at module load instead of reparsing the descriptor here.
+    _indexed_handler="${_IGOR_HANDLER_FUNCTION[$_key]:-}"
+    _indexed_timeout="${_IGOR_HANDLER_TIMEOUT[$_key]:-30}"
+    [ -n "$_handler" ] && [ "$_handler" = "$_indexed_handler" ] || return 1
+    [ -n "$_timeout" ] && [ "$_timeout" = "$_indexed_timeout" ] || return 1
+    _entrypoint="${_IGOR_MODULE_ENTRYPOINT[$_owner]:-}"
+    [ -n "$_entrypoint" ] || return 1
+
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
-    V2_HANDLER_ENTRYPOINT="$_entrypoint" _ml_bash_handler_invoke \
+    V2_HANDLER_ENTRYPOINT="$_entrypoint" \
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_INPUT_CANONICAL=1 \
+    V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
+    V2_HANDLER_DEFER_RESPONSE_VALIDATION="$_defer" \
+        _ml_bash_handler_invoke \
         "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
 }
 
@@ -596,7 +628,7 @@ PY
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
     local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
-    local _fresh_precondition _fresh_digest _fresh_privilege _field_text
+    local _fresh_precondition _fresh_digest _fresh_privilege _fresh_owner _fresh_handler _fresh_timeout _fresh_outputs _field_text _output_rc
     local -a _proposal_fields=() _fresh_fields=()
     _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
 import json,sys
@@ -629,15 +661,23 @@ print(p["precondition_status"])
 print(p["digest"])
 print(p["privilege"])
 print(json.dumps(p.get("privileged_argv",[]),sort_keys=True,separators=(",",":")))
+print(p["owner"])
+print(p.get("descriptor",{}).get("handler",""))
+print(p.get("descriptor",{}).get("timeout_seconds",30))
+print(json.dumps(p.get("descriptor",{}).get("outputs",{}),sort_keys=True,separators=(",",":")))
 print("ok")
 PY
 )" || return 1
     mapfile -t _fresh_fields <<< "$_field_text"
-    [ "${#_fresh_fields[@]}" -eq 5 ] && [ "${_fresh_fields[4]}" = ok ] || return 1
+    [ "${#_fresh_fields[@]}" -eq 9 ] && [ "${_fresh_fields[8]}" = ok ] || return 1
     _fresh_precondition="${_fresh_fields[0]}"
     _fresh_digest="${_fresh_fields[1]}"
     _fresh_privilege="${_fresh_fields[2]}"
     _spec="${_fresh_fields[3]}"
+    _fresh_owner="${_fresh_fields[4]}"
+    _fresh_handler="${_fresh_fields[5]}"
+    _fresh_timeout="${_fresh_fields[6]}"
+    _fresh_outputs="${_fresh_fields[7]}"
     if [ "$_fresh_precondition" != satisfied ]; then
         # A legitimate precondition change keeps the same proposal content
         # except for its evaluated status. Changed inputs/provider/argv never
@@ -719,29 +759,34 @@ for argv in commands:
 PY
         then _exec=succeeded; fi
     else
-        if _envelope="$(_igor_capability_invoke_handler "$_fresh")"; then
+        if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" = 2 ] && printf 1 || printf 0)")"; then
             _exec=succeeded
             if [[ "$_id" = core.deployments.* ]]; then
                 _domain_result="$_envelope"
             fi
             if [ "$_version" = 2 ]; then
-                local _output_request
-                _output_request="$("$(_ml_python)" - "$_fresh" "$_envelope" <<'PY'
-import json, sys
-p = json.loads(sys.argv[1])
-print(json.dumps({"op": "output", "outputs": p["descriptor"]["outputs"],
-                  "envelope": sys.argv[2]}, separators=(",", ":")))
-PY
-)" || return 1
-                if _domain_result="$(printf '%s' "$_output_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" 2>/dev/null)"; then
-                    _output_status=valid
-                else
-                    _domain_result=null
-                    _output_status=invalid
-                    _verify=unknown
-                    _outcome=invalid_output
-                    _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
-                fi
+                _domain_result="$(printf '%s' "$_envelope" | "$(_ml_python)" \
+                    "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" handler-output "$_fresh_outputs" 2>/dev/null)"
+                _output_rc=$?
+                case "$_output_rc" in
+                    0) _output_status=valid ;;
+                    2)
+                        # Malformed/error handler envelope: provider failed,
+                        # matching the pre-Boundary-C handler validator.
+                        _exec=failed
+                        _domain_result=null
+                        _output_status=not_applicable
+                        ;;
+                    *)
+                        # A valid ok-envelope with an invalid typed result means
+                        # the provider ran, but its domain output is unusable.
+                        _domain_result=null
+                        _output_status=invalid
+                        _verify=unknown
+                        _outcome=invalid_output
+                        _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
+                        ;;
+                esac
             fi
             if [ "$_output_status" != invalid ] && [ "$_id" = system.host.memory.refresh ]; then
                 _exec=failed
