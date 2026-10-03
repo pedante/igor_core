@@ -91,6 +91,27 @@ Provider-dependent operations become unavailable on disablement; metadata and
 historical responsibility remain inspectable. Inspection never silently selects
 another provider. Unsupplied observations and unknown inventories remain explicit.
 
+## Relationship to reusable recognition
+
+This Boundary 2 provider is the first narrow domain-specific discovery slice,
+not a complete generic discovery service.
+
+The reusable direction is documented in
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md): low-level observations and
+exact locators feed a reviewed domain recognizer; recognition returns ephemeral
+evidence-bound candidates; exact deterministic inspection prepares the frozen
+adoption proposal. Deployment Service remains the only owner of accepted
+deployment identity/bindings/responsibility.
+
+The existing `core.deployments.discover` path remains valid for this bounded
+Nextcloud proof. It must not be generalized by adding Core technology-specific
+matching rules. A later reusable coordinator may enumerate eligible domain
+recognizers and accept user hints without changing the adoption authority.
+
+A user may point Igor at an exact full container ID instead of requesting broad
+enumeration. That is a selector/hint only; all existing provider identity,
+layout, ambiguity and freshness checks still apply.
+
 ## Compatibility and completion gate
 
 The old migration wizard in `modules/nextcloud_docker/lib/install/migrate.sh`
