@@ -25,8 +25,11 @@ For most Igor 2 work:
    - `SYSTEM_ADMIN_EXPERIMENT.md` — experimental System 2.3.0 administration surface: distro-neutral host/package/service/log semantics over Debian/Arch platform mechanics and reviewed privileged adapters.
    - `CONFIGURATION.md` — accepted D059 Core-owned configuration foundation: versioned schemas, scoped desired values, private persistence, references-only secrets, precedence, inspection and the bounded `ai.verbose` cutover; richer surfaces and deployments remain deferred.
    - `BROWNFIELD_ADOPTION.md` — accepted D061 brownfield discovery/adoption refinement: existing machine resources remain independent of modules, adoption is explicit, and configuration values retain concrete storage/source locators.
+   - `RESOURCE_RECOGNITION.md` — explicit future seam between low-level observation and adoption: domain recognition, ephemeral evidence-bound candidates, exact user hints and no implicit authority.
    - `ATTACHMENT.md` — Step 19 Boundary 2 deterministic brownfield discovery, metadata attachment, scoped release and service prerequisites.
    - `DEPLOYMENTS.md` — accepted D063 owner-scoped Step 19: application-neutral deployment identity, typed relationships, explicit scoped responsibility, private transactional persistence and three separately gated implementation boundaries.
+   - `PROVISIONING.md` — future Igor 2 greenfield installation/provisioning completion gate over capabilities, Deployment Service, Configuration and History; no workflow-engine authority.
+   - `OPERATOR_INTERFACES.md` — Step 20A/B/C direction for a first-class CLI, completed backend-driven TUI and later default-launch cutover over one shared authority.
    - `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
    - `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
    - `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
@@ -53,7 +56,11 @@ Important current foundations already exist. Igor 2 must **not** recreate them u
 
 Igor is a local AI-assisted operating layer for Linux. It should maintain typed machine memory, discover the host deterministically, distinguish observed state from desired state and responsibilities, gain domain knowledge and abilities through modules, preserve durable investigations, plan installation/configuration work through structured capabilities, execute safely, verify changes deterministically, retain useful operational history and local learning, and let users operate the machine without needing to know the underlying commands.
 
-The Codex-like TUI is the primary human-interface direction. CLI and future external interfaces remain useful, but should use the same backend state/capability engine rather than implement parallel operating logic.
+The Codex-like TUI is the primary interactive-interface direction, while the
+CLI is a first-class headless/operator interface. Natural-language one-shot,
+structured CLI commands, TUI interaction, automation and later external
+interfaces must use the same backend state/capability engine rather than
+implement parallel operating logic.
 
 ## Documentation discipline
 
