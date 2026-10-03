@@ -1110,17 +1110,9 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
     _ai_write_tool_meta "$tier" "$_meta_approval" pending "" ""
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
-    if [ "$T_TOOL" = run_capability ]; then
-        local _history_privilege=not_required
-        [ "$_cap_privilege" = required ] && _history_privilege=not_requested
-        [ "$run" = true ] && [ "$_cap_privilege" = required ] && _history_privilege=required
-        if ! _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "$_meta_approval" "$_history_privilege"; then
-            output="$(_igor_capability_nonexecution_result "$_cap_prepared" history_unavailable "$_meta_approval" "$_history_privilege")"
-            IGOR_CAPABILITY_LAST_RESULT="$output"
-            printf '%s\n' "$output"
-            return 1
-        fi
-    fi
+    # Operational History records one canonical authority transition only after
+    # the final privilege outcome is known. Declined/stopped/auth-failed paths
+    # terminalize directly from admitted with their canonical result.
     if [ "$approval_mode" = "stopped" ]; then
         output="[USER STOPPED] Pending action cancelled: ${display_cmd}"
         if [ "$T_TOOL" = run_capability ]; then
@@ -1170,6 +1162,8 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                 printf '%s\n' "$output"
                 return 1
             fi
+            IGOR_HISTORY_AUTHORITY_RECORDED=1
+            export IGOR_HISTORY_AUTHORITY_RECORDED
         fi
         # Backups and undo-state reads happen only after approval.
         if [ "$_admin_auth_failed" = false ] && [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
@@ -1253,6 +1247,7 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                     fi
                     unset IGOR_CAPABILITY_APPROVED_DIGEST
                     unset IGOR_CAPABILITY_APPROVAL_STATUS
+                    unset IGOR_HISTORY_AUTHORITY_RECORDED
                 fi
             fi
         else
