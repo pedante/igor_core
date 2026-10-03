@@ -103,8 +103,14 @@ Examples:
 - secret: configured/not configured plus authorized-access metadata where
   appropriate, never the value;
 - fact: owner, source, timestamp, freshness and confidence/type;
+- recognition candidate: domain/provider, matched objects, evidence/freshness,
+  ambiguity and missing evidence, never adoption authority;
+- deployment: identity, accepted bindings/relationships, scoped responsibility,
+  conflicts and retained disposition;
 - plan: steps, provider, approval requirement, recovery semantics and
   verification result;
+- resumable work: durable wait reason, prior committed results, readiness
+  condition and current authority status;
 - investigation: question, evidence, hypotheses, findings and status;
 - history: operation/correlation identity, scoped affected objects, provider, authority/privilege, execution, verification and outcome.
 
@@ -233,6 +239,24 @@ applicable:
 
 The AI may propose or explain a plan. Igor remains the authority that resolves
 capabilities, applies policy, executes and verifies.
+
+## Provisioning and recognition discipline
+
+Resource recognition and greenfield provisioning have separate proof burdens.
+
+Recognition is read-only interpretation over deterministic evidence. A candidate
+cannot become a deployment, desired value or management responsibility without a
+separate authoritative transition. Reusable recognition requires ambiguity,
+freshness/provider fencing and at least two materially different domain proofs.
+
+Provisioning changes external reality. Before the first effect it must have
+durable intent/attempt identity sufficient to reconcile uncertainty; after
+effects it binds/validates real native identity at the earliest safe point.
+Unknown effects are read back before another changing request. Provisioned
+origin never implies blanket responsibility or destruction permission.
+
+The detailed roadmap contracts are [RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md)
+and [PROVISIONING.md](PROVISIONING.md).
 
 ## Recovery and rollback discipline
 
