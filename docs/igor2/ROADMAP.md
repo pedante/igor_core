@@ -767,7 +767,7 @@ igor --json deployments list
 ```
 
 Exact syntax is implementation work. Interactive CLI may enter the normal
-approval/PTTY privilege flow; noninteractive use must return approval-required
+approval/PTY privilege flow; noninteractive use must return approval-required
 rather than answer approval/authentication on the user's behalf. CLI/headless
 paths remain available after the TUI becomes default.
 
