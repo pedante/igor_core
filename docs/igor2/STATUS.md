@@ -2,6 +2,38 @@
 
 Last updated: 2026-10-03
 
+## Roadmap completion-gate correction — documentation-only candidate
+
+This branch makes several previously implicit Igor 2 requirements explicit
+without changing runtime/product behavior: reusable Resource Discovery & Domain
+Recognition, greenfield Provisioning/Installation, Configuration & Secrets
+completion, Resumable Work runtime proof, and Step 20A/B/C first-class CLI/TUI
+completion.
+
+New focused architecture documents are
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md),
+[PROVISIONING.md](PROVISIONING.md) and
+[OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md). Existing Architecture,
+Roadmap, Brownfield/Attachment/Deployment, Module API, Configuration, Resumable
+Work, Interaction/Operator Surface, Migration, Execution and Legacy documents
+are reconciled to the same boundaries.
+
+This documentation change does **not**:
+
+- implement a recognizer registry or general scanner;
+- close Step 19 Boundary 2's real Nextcloud evidence gate;
+- begin Step 19 Boundary 3;
+- provision/install an application;
+- migrate secrets/configuration;
+- implement durable waiting;
+- change CLI/TUI runtime behavior or default launch;
+- change capability, approval, privilege, deployment or History authority;
+- broaden the reviewed validation baseline or resolve the currently blocked
+  validation release gate below.
+
+No decision number is assigned by this roadmap correction. Each new runtime
+contract still requires its own owner-approved implementation gate and evidence.
+
 ## Validation & Integration Harness Hardening — Boundary C candidate, release gate blocked
 
 Developer infrastructure only; Igor product behavior, D064 semantics, runtime
