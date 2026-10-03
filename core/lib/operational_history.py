@@ -651,7 +651,19 @@ class OperationalHistory:
     def recover(self) -> list[dict[str, Any]]:
         with self._store(write=True) as db:
             recovered = []
-            for (ident,) in db.execute("SELECT id FROM episodes").fetchall():
+            # Runtime ownership exists only for unfinished attempts. Previously
+            # recovery decoded every terminal episode on every new admission.
+            # Interrupted/unreconciled rows have no owner, so include only that
+            # narrow JSON shape for reconciliation without re-reading terminal
+            # history in Python.
+            candidates = db.execute(
+                """SELECT id FROM episodes
+                   WHERE owner IS NOT NULL
+                      OR (owner IS NULL
+                          AND instr(record, '"lifecycle":"interrupted"') > 0
+                          AND instr(record, '"reconciliation":null') > 0)"""
+            ).fetchall()
+            for (ident,) in candidates:
                 row, owner = self._read(db, ident)
                 if owner and not _alive(owner) and row["lifecycle"] in {"admitted", "running", "provider_complete"}:
                     row = _interrupted(row)
@@ -755,7 +767,10 @@ def _cli() -> int:
     args = parser.parse_args()
     try:
         request = _decode(sys.stdin.read())
-        service = OperationalHistory(Path(request["data_dir"]))
+        data_dir = request.pop("data_dir", None) or os.environ.get("IGOR_HISTORY_DATA_DIR")
+        if not data_dir:
+            raise HistoryError("history data directory is unavailable")
+        service = OperationalHistory(Path(data_dir))
         action = args.action
         result: Any = None
         if action == "prepare":
