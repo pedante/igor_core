@@ -56,6 +56,7 @@ class Activity:
     repeats: int = 1
     show_result_output: bool = True
     exit_code: int | None = None
+    duration_ms: int | None = None
     requires_admin_auth: bool = False
 
 
@@ -77,6 +78,7 @@ class EventState:
     collapse_output: bool = False
     command_state: str = "ready"
     settings_snapshot: dict[str, Any] | None = None
+    verbose: bool = False
 
     def accept(self, event: dict[str, Any]) -> bool:
         """Apply one event if it is valid and newer than the current stream."""
@@ -111,6 +113,9 @@ class EventState:
                 self.mode = str(snapshot.get("mode") or self.mode)
                 self.provider = str(snapshot.get("provider") or self.provider)
                 self.model = str(snapshot.get("model") or self.model)
+                self.verbose = str(snapshot.get("verbose") or "").lower() in {
+                    "true", "on", "1", "yes",
+                }
             return True
         if kind == "approval_waiting":
             self.pending_action = dict(event)
@@ -153,6 +158,7 @@ class EventState:
             status=str(event.get("status") or ""),
             result=result if isinstance(result, dict) else None,
             exit_code=event.get("exit_code") if isinstance(event.get("exit_code"), int) else None,
+            duration_ms=event.get("duration_ms") if isinstance(event.get("duration_ms"), int) else None,
             requires_admin_auth=event.get("requires_admin_auth") is True,
             show_result_output=not (kind == "action_result" and
                                     (bool(action_ids & self.output_action_ids) or
@@ -212,6 +218,16 @@ def _clean_terminal_output(raw: str) -> str:
     return "\n".join(lines).rstrip("\n")
 
 
+_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \\r\\n]+ EXIT:\\d+(?:\\\\n|\\n)OUTPUT:(?:\\\\n|\\n)?")
+
+
+def _display_result_output(value: Any) -> str:
+    """Remove the provider transport envelope from a locally rendered result."""
+    text = str(value or "")
+    match = _TOOL_ENVELOPE.match(text)
+    return text[match.end():] if match else text
+
+
 def _activity_text(item: Activity) -> str:
     labels = {
         "user": "You",
@@ -247,15 +263,19 @@ def _activity_text(item: Activity) -> str:
         status = item.status or (item.result or {}).get("execution_status") or "complete"
         exit_code = (item.result or {}).get("exit_code")
         suffix = f" (exit {exit_code})" if exit_code is not None else ""
-        output = (item.result or {}).get("combined_output") or (item.result or {}).get("output")
+        output = _display_result_output(
+            (item.result or {}).get("combined_output") or (item.result or {}).get("output"))
         if item.show_result_output and output:
             return f"Result: {status}{suffix}\n{output}"
         return f"Result: {status}{suffix}"
     if not item.text and item.result:
         result_status = item.result.get("execution_status") or item.result.get("status") or "complete"
-        result_output = item.result.get("combined_output") or item.result.get("output") or ""
+        result_output = _display_result_output(
+            item.result.get("combined_output") or item.result.get("output") or "")
         item_text = f"{result_status}: {result_output}" if result_output else str(result_status)
         return f"{prefix}: {item_text}"
+    if item.event_type == "action_output" and item.duration_ms is not None:
+        prefix = f"{prefix} ({item.duration_ms} ms)"
     message = (item.text if item.text.lower().startswith(f"{prefix.lower()}: ") else
                f"{prefix}: {item.text}" if item.text else prefix)
     return f"{message} (×{item.repeats})" if item.repeats > 1 else message
@@ -291,10 +311,19 @@ def _activity_rows(state: EventState, width: int) -> list[tuple[str, str]]:
     width = max(1, width)
     rows: list[tuple[str, str]] = []
     for item in state.activity:
+        if not state.verbose:
+            if item.event_type in {"action_proposed", "action_started"}:
+                continue
+            if item.event_type == "action_result":
+                status = item.status or (item.result or {}).get("execution_status") or ""
+                if status == "tool_succeeded" and not item.show_result_output:
+                    continue
         if (state.collapse_output and item.event_type == "action_output" and
                 item.exit_code == 0):
             line_count = len(item.text.splitlines())
             text = f"Output: {line_count} lines collapsed (Ctrl+G expands)"
+        elif item.event_type == "action_output" and not state.verbose:
+            text = item.text
         else:
             text = _activity_text(item)
         if not text:
