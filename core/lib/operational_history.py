@@ -767,6 +767,8 @@ def _cli() -> int:
     args = parser.parse_args()
     try:
         request = _decode(sys.stdin.read())
+        if type(request) is not dict:
+            raise HistoryError("history request must be an object")
         data_dir = request.pop("data_dir", None) or os.environ.get("IGOR_HISTORY_DATA_DIR")
         if not data_dir:
             raise HistoryError("history data directory is unavailable")
