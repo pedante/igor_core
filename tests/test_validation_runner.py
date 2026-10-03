@@ -20,6 +20,7 @@ class ValidationRunnerTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.write("tests/validation_baseline.json", json.dumps({"schema_version": 1, "source_commit": "a" * 40, "entries": []}))
 
     def write(self, name, text):
         path = self.root / name
@@ -156,9 +157,8 @@ class ValidationRunnerTests(unittest.TestCase):
         self.write("bad.json", "{")
         code, summary = self.run_main("focused")
         self.assertEqual(code, 1)
-        self.assertEqual(summary["counts"]["FAIL"], 1)
-        self.assertEqual(summary["baseline_comparison"], "not_implemented")
-        self.assertEqual(summary["count_unit"], "validation_groups")
+        self.assertEqual(summary["counts"]["FAIL_NEW"], 1)
+        self.assertEqual(summary["count_unit"], "test_identities_and_check_groups")
         self.assertTrue(Path(summary["groups"][0]["log"]).is_file())
 
     def test_summary_pass(self):
@@ -172,6 +172,25 @@ class ValidationRunnerTests(unittest.TestCase):
         code, summary = self.run_main("focused", "--base", "missing-ref")
         self.assertEqual(code, 1)
         self.assertEqual(summary["counts"]["ERROR"], 1)
+
+    def test_malformed_baseline_reports_error_before_any_tests(self):
+        self.init_git()
+        self.write("tests/validation_baseline.json", '{"schema_version":999}')
+        code, summary = self.run_main("focused")
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["counts"]["ERROR"], 1)
+        self.assertEqual(len(summary["groups"]), 1)
+
+    def test_accepted_failure_has_success_exit_and_raw_failed_group(self):
+        self.write("tests/test_example.py", "def test_failure(): assert False\n")
+        self.write("tests/validation_baseline.json", json.dumps({"schema_version": 1, "source_commit": "a" * 40,
+                   "entries": [{"suite": "pytest", "identity": "tests/test_example.py::test_failure",
+                                "classification": "FAIL", "reason": "reproduced fixture"}]}))
+        self.init_git()
+        code, summary = self.run_main("focused", "--test", "tests/test_example.py")
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["counts"]["FAIL_BASELINE"], 1)
+        self.assertEqual(summary["groups"][-1]["status"], "FAIL")
 
     def test_paths_outside_repository_fail_closed(self):
         with self.assertRaises(ValueError):

@@ -1,4 +1,4 @@
-"""Bounded developer validation. Boundary A deliberately accepts no baselines.
+"""Bounded developer validation with explicit reviewed baseline comparison.
 
 Usage: tests/validate.sh focused|affected|full [--base REF] [--test FILE::NODE]
 Git selection includes committed changes since the local merge base and all
@@ -16,16 +16,17 @@ and 180s/BATS test. These are ceilings, not expected durations. No full run is
 ever triggered by focused/affected. Existing runners and CI remain unchanged.
 
 Raw output and summary.json live in a unique temporary directory by default;
---output-dir must name a new directory. Summary counts refer to groups, not
-cases. Any failed/timed-out group or missing required tool makes exit nonzero.
-Native BATS skips are retained as runner_skip_count, without environmental or
-baseline acceptance policy. Host Docker/systemd availability is never probed.
+--output-dir must name a new directory. Summary counts refer to test identities
+and structural/tool groups. Raw group outcomes remain in groups. A new failure,
+new timeout, error or unavailable required tool makes exit nonzero. Only exact
+reviewed failure/timeout identities can match validation_baseline.json. Only
+explicit test-level skip permissions can produce ENV_SKIP; host Docker/systemd
+availability is never probed. No baseline is generated or updated by a run.
 Markdown checks verify inline local file links, excluding fenced examples;
 anchors, reference-style links and external URLs remain outside this check.
 """
 
 import argparse
-import collections
 import json
 import math
 import os
@@ -39,9 +40,11 @@ import time
 from pathlib import Path
 
 from validation_domains import affected_tests
+from validation_environment import PERMITTED_SKIPS
+from validation_reports import bats_observations, group_observation, pytest_observations
+from validation_results import compare_results, load_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
-STATUSES = ("PASS", "FAIL", "TIMEOUT", "TOOL_UNAVAILABLE", "ERROR")
 SHELLCHECK_FLAGS = ["--severity=warning", "--exclude=SC2086,SC1090,SC1091,SC2034", "--shell=bash"]
 
 
@@ -220,10 +223,14 @@ def run_group(group, root, output_dir, index, args):
         "bats-count": [args.bats, "--count", *files],
         "bash": ["bash", *files],
         "bats": [args.bats, "--tap", "--timing", *files],
-        "pytest": [args.python, "-m", "pytest", "-q", *files],
+        "pytest": [args.python, "-m", "pytest", "-p", "validation_pytest", "-q", *files],
         "module-contract": [args.python, "core/lib/module_contract.py", "validate", *files],
     }
     env = {**os.environ, "IGOR_DIR": str(root), "BATS_TEST_TIMEOUT": str(args.bats_timeout)}
+    report_path = output_dir / f"{index:03d}-pytest.jsonl"
+    if kind == "pytest":
+        env["IGOR_VALIDATION_REPORT"] = str(report_path)
+        env["PYTHONPATH"] = str(Path(__file__).parent) + os.pathsep + env.get("PYTHONPATH", "")
     seconds = args.group_timeout
     if any("test_system_configuration_workflow.py" in name for name in files):
         seconds = args.slow_timeout
@@ -238,7 +245,16 @@ def run_group(group, root, output_dir, index, args):
         result["runner_skip_count"] = len(re.findall(r"^ok .* # skip", content, re.MULTILINE | re.IGNORECASE))
         if result["native_timeout_count"] and result["status"] == "FAIL":
             result["status"] = "TIMEOUT"
-    return {**group, **result}
+    combined = {**group, **result}
+    try:
+        if kind == "pytest":
+            combined["report"] = str(report_path)
+            combined["observations"] = pytest_observations(combined, report_path)
+        elif kind == "bats":
+            combined["observations"] = bats_observations(combined)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        combined["observations"] = [group_observation(combined, "ERROR", f"Invalid runner report: {error}")]
+    return combined
 
 
 def positive_seconds(value):
@@ -255,6 +271,8 @@ def main(argv=None):
     parser.add_argument("--test", action="append", default=[], help="explicit Python node/file or BATS file")
     parser.add_argument("--changed-file", action="append", default=[], help="add paths to Git selection")
     parser.add_argument("--output-dir", type=Path, help="new directory for logs and summary.json")
+    parser.add_argument("--baseline", type=Path, default=ROOT / "tests/validation_baseline.json",
+                        help="reviewed JSON baseline; never written by this runner")
     parser.add_argument("--dry-run", action="store_true", help="print JSON plan; execute nothing")
     parser.add_argument("--group-timeout", type=positive_seconds, default=600)
     parser.add_argument("--slow-timeout", type=positive_seconds, default=1200)
@@ -270,10 +288,12 @@ def main(argv=None):
     output_dir = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix="igor-validation-"))
     if args.output_dir:
         output_dir.mkdir(parents=True, exist_ok=False)
-    summary = {"schema_version": 1, "mode": args.mode, "base": args.base,
-               "baseline_comparison": "not_implemented", "count_unit": "validation_groups",
+    summary = {"schema_version": 2, "mode": args.mode, "base": args.base,
+               "baseline": str(args.baseline), "count_unit": "test_identities_and_check_groups",
                "changed_files": [], "domains": [], "groups": []}
+    baseline = []
     try:
+        baseline = load_baseline(args.baseline, ROOT)
         changed = sorted(set(changed_files(ROOT, args.base)) | set(args.changed_file))
         for name in changed:
             local_path(ROOT, name)
@@ -291,15 +311,21 @@ def main(argv=None):
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         summary["groups"].append({"id": "runner", "status": "ERROR", "detail": str(error),
                                   "elapsed_seconds": 0})
-    counts = collections.Counter(group["status"] for group in summary["groups"])
-    summary["counts"] = {status: counts[status] for status in STATUSES}
+    observations = []
+    for group in summary["groups"]:
+        observations.extend(group.get("observations", [group_observation(group)]))
+    summary.update(compare_results(observations, baseline, PERMITTED_SKIPS))
     summary["elapsed_seconds"] = round(time.monotonic() - started, 3)
-    summary["exit_code"] = int(any(group["status"] != "PASS" for group in summary["groups"]))
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    print(f"\nValidation: {args.mode} (counts are groups, not test cases)")
+    print(f"\nValidation: {args.mode} (test identities and check groups)")
     for status, count in summary["counts"].items():
         print(f"{status:18} {count}")
-    print("Baseline comparison: not implemented; no failure is accepted as baseline.")
+    regressions = summary["counts"]["FAIL_NEW"] + summary["counts"]["TIMEOUT_NEW"]
+    print(f"New regressions: {regressions or 'none'}")
+    for result in summary["results"]:
+        if result["classification"] != "PASS":
+            print(f"  {result['classification']}: {result['suite']} {result['identity']} ({result.get('log', 'no log')})")
+    print(f"Baseline entries not exercised: {len(summary['unexercised_baseline'])}")
     print(f"Elapsed: {summary['elapsed_seconds']}s; evidence: {output_dir / 'summary.json'}")
     return summary["exit_code"]
 

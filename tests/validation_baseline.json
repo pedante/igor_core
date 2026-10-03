@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "source_commit": "525cc76ea556bae199fecfaaa6bd931d01a9f6ea",
+  "entries": [
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_architecture.py::AiArchitectureTests::test_cli_status_tools_and_last_without_api_key_or_active_modules",
+      "classification": "FAIL",
+      "reason": "CLI status/tools fixture fails its expected exit-status assertion.",
+      "reference": "tests/validation_baseline_evidence.md#python-assertions"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_interaction_surface.py::InspectionAuthorityTests::test_typed_invoke_is_operator_activity_not_conversation",
+      "classification": "FAIL",
+      "reason": "Operator activity rendering does not match the fixture assertion.",
+      "reference": "tests/validation_baseline_evidence.md#python-assertions"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_operator_surface.py::OperatorSurfaceTests::test_surface_projects_existing_contracts_without_execution_data",
+      "classification": "FAIL",
+      "reason": "Operator projection differs from the expected configuration fixture.",
+      "reference": "tests/validation_baseline_evidence.md#python-assertions"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_architecture.bats::AI architecture Python boundary tests pass",
+      "classification": "FAIL",
+      "reason": "The canonical architecture wrapper reproduces the Python assertion failure.",
+      "reference": "tests/validation_baseline_evidence.md#bats-assertions"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_events.bats::events have stable envelope fields and preserve order",
+      "classification": "FAIL",
+      "reason": "The fixture's expected event list differs from current declarations.",
+      "reference": "tests/validation_baseline_evidence.md#bats-assertions"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_step18_module_contract.bats::v2 privileged declarations remain unavailable without typed Core adapter",
+      "classification": "FAIL",
+      "reason": "The privileged declaration fixture expects a different unavailability reason.",
+      "reference": "tests/validation_baseline_evidence.md#bats-assertions"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::system administration contracts project into the generic operator namespace",
+      "classification": "FAIL",
+      "reason": "The generic operator projection fixture cannot parse its combined JSON output.",
+      "reference": "tests/validation_baseline_evidence.md#bats-assertions"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::package upgrade freezes distro-specific argv and verifies the Debian result",
+      "classification": "FAIL",
+      "reason": "The package-upgrade fixture does not obtain its expected passed verification.",
+      "reference": "tests/validation_baseline_evidence.md#bats-assertions"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"s\"}}]",
+      "classification": "TIMEOUT",
+      "reason": "Startup choice s exceeded the test's internal 20-second subprocess deadline in two isolated runs.",
+      "reference": "tests/validation_baseline_evidence.md#startup-timeouts"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"f\"}}]",
+      "classification": "TIMEOUT",
+      "reason": "Startup choice f exceeded the test's internal 20-second subprocess deadline in two isolated runs.",
+      "reference": "tests/validation_baseline_evidence.md#startup-timeouts"
+    }
+  ]
+}
