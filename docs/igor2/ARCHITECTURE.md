@@ -141,14 +141,19 @@ does not attach an application, extend configuration scopes or certify detach.
 
 ### Interfaces
 
-Human and external entry points:
+Human and external entry points share one backend authority
+([OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md)):
 
-- Codex-like TUI — primary human interface.
-- CLI/subcommands — scripting, recovery, testing and headless use.
+- first-class CLI — natural-language one-shot, structured commands, scripting,
+  recovery, testing and versioned machine-readable output;
+- Codex-like TUI — primary interactive interface after Step 20 completion;
 - Optional future remote interfaces such as authenticated email/API/webhooks.
 - Notification transports — outbound delivery.
 
-Interfaces translate requests/results; they do not own domain operations.
+Interactive CLI/TUI may present the same canonical approval and PTY privilege
+flow. Noninteractive clients never answer approval/authentication on the user's
+behalf. Interfaces translate requests/results; they do not own domain
+operations, truth, policy, privilege or verification.
 
 ### Agent
 
@@ -313,6 +318,23 @@ probes.
 
 Checks evaluate structured state and produce reusable results. Diagnose, health, healing, notifications and AI reasoning should consume those results rather than independently rediscovering the same facts.
 
+### Resource recognition
+
+Observation answers **what exists/is true**. Domain recognition answers **what
+those observed or explicitly targeted resources represent**. Adoption answers
+**which concrete interpretation Igor deliberately binds and what responsibility
+it accepts**.
+
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md) keeps those stages separate.
+A reviewed domain provider may produce ephemeral evidence-bound candidates and
+inspect an exact user hint. Candidates are not System Model desired state,
+Deployment Service identity/responsibility or execution authority. Core may
+coordinate/validate candidate envelopes without embedding domain vocabulary.
+
+The first useful discovery mode may be targeted ("this container is my
+Nextcloud") or domain-bounded ("find Nextcloud"); Igor 2 does not require a
+universal machine-wide/background scanner before recognition becomes useful.
+
 ### Investigations
 
 [Step 15C](INVESTIGATIONS.md) (D056) owns bounded durable knowledge organization:
@@ -367,8 +389,19 @@ objects, approval/privilege points, recovery semantics and verification. The AI
 may propose the plan; Igor resolves providers, applies policy, executes and
 verifies it.
 
-Successful installation/configuration updates the System Model and operational
-history so Igor understands what was created/configured and why.
+[PROVISIONING.md](PROVISIONING.md) gives greenfield creation an explicit
+completion gate: preflight/freeze, durable pre-effect intent, canonical effects,
+native identity binding, configuration, independent verification and retained
+History. Provisioned origin does not grant blanket responsibility. Unknown
+effects reconcile before another changing request; long waits use the separate
+Resumable Work contract rather than expanding composite capabilities into a
+workflow engine.
+
+Successful installation/configuration updates the appropriate owning services
+so Igor understands what was created/configured and why. System Model records
+observations, Deployment Service records accepted bindings/responsibility,
+Configuration owns desired values and Operational History records attempts and
+verification.
 
 ### Events and automation
 
@@ -424,11 +457,19 @@ Integration-specific rules may cover behavior that only exists at a domain bound
 
 ## User experience
 
-The TUI is simple by default and transparent on demand.
+The TUI is simple by default and transparent on demand. The CLI is a first-class
+headless/operator interface, not merely a collection of legacy maintenance
+flags.
 
-Natural language, palette commands, settings and structured activity all route to the same backend authority. Underlying commands, outputs, approvals and evidence remain inspectable.
+Natural language, structured CLI commands, palette commands, settings and
+structured activity all route to the same backend authority. User text, Igor
+conversation, capability activity, command/tool output, verification results,
+warnings/errors and approval/privilege prompts should be distinguishable while
+remaining inspectable.
 
-Long-term, `./igor.sh` should launch the primary TUI by default. `--ai-tui` remains the explicit entry point during migration.
+Long-term, `./igor.sh` should launch the primary TUI by default after the Step
+20A/B operator-interface proof. CLI/headless use remains supported; `--ai-tui`
+remains the explicit migration entry point until default cutover is proven.
 
 ## Mail and notifications
 

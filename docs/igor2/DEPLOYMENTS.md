@@ -104,9 +104,13 @@ merely because a record can represent their names.
 
 ## Attach, provision, release and destroy
 
-Brownfield attachment follows discovery, explicit candidate selection,
-deterministic inspection, proposed relationships/duties, validation, owner
-approval, durable binding and independent verification. Freeze selected
+Brownfield attachment consumes the recognition boundary defined in
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md): deterministic low-level
+evidence plus a reviewed domain interpretation produce an ephemeral candidate.
+A bounded domain search or an exact user hint may select the target; neither is
+authority. Attachment then follows exact candidate selection, deterministic
+inspection, proposed relationships/duties, validation, owner approval, durable
+binding and independent verification. Freeze selected
 references, native evidence and expected revision; changed/ambiguous targets
 invalidate the proposal. Adoption modifies Igor metadata only. It does not copy
 Compose files, add labels, restart services or alter target configuration.
@@ -114,8 +118,10 @@ Configuration import is a separate approved transition; target preparation is a
 separate capability-backed operation. Failed verification remains visible.
 
 Module installation/enablement registers domain knowledge and contracts.
-Provisioning creates external resources through capabilities/plans, with durable
-deployment intent/resource slots and History attempt identity before effects.
+Provisioning creates external resources through capabilities/plans under the
+separate [Provisioning/Installation](PROVISIONING.md) completion gate, with
+durable deployment intent/resource slots and History attempt identity before
+effects.
 Native identities are bound and verified at the earliest safe point. Missing
 post-effect identity is unresolved, never permission to blindly create again.
 Provisioning execution is deferred.
@@ -291,6 +297,9 @@ legacy automatic ownership.
 2. **Brownfield attachment and composition prerequisites:** [implementation contract](ATTACHMENT.md), narrow observer
    target extension, explicit selection/inspection, metadata-only attachment,
    exact configuration locator, deployment-target admission and bounded release.
+   The current Nextcloud provider is the first narrow recognition slice; the
+   reusable candidate/recognizer contract is a cross-cutting gate before this
+   pattern is expanded to additional domains.
    Prove unchanged targets/external origin, ambiguity rejection, provider
    disablement, stale-session fencing and incomplete-inventory refusal.
 3. **Reversible application workflow and legacy cutover:** one loglevel schema,

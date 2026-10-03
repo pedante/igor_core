@@ -113,7 +113,10 @@ their owning backend contracts mature.
 
 The namespace explorer is the first generic consumer of the operator projection.
 It establishes the missing bridge between v2 contracts and human
-discoverability without restoring module-owned menus.
+discoverability without restoring module-owned menus. The completed operator
+experience is defined in [OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md): the
+same projection/backends must be consumable from first-class CLI and generated
+TUI surfaces.
 
 A later generated module view can group the exact same records into sections
 such as:
@@ -206,3 +209,7 @@ Nextcloud-style screen. Deferred pieces include:
 
 Those should extend this projection rather than introduce module-owned UI logic
 or another command/permission system.
+
+Resource-recognition candidates are another future projection source. The
+operator surface may browse/select them, but candidate selection never becomes
+recognition proof, adoption authority or capability approval.

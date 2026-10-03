@@ -36,6 +36,13 @@ existing green baseline remains part of every later wave's regression gate.
 
 Recent work means Waves B and parts of C/D/E already have substantial foundations. The roadmap must preserve and generalize them rather than create parallel systems.
 
+Several **cross-cutting completion gates** now sit between the stable numbered
+steps without renumbering them: Resource Discovery & Domain Recognition,
+Configuration & Secrets completion, Provisioning & Installation, Resumable Work
+runtime implementation, and the Step 20A/B/C operator-interface cutover. These
+make previously implicit Igor 2 requirements explicit while preserving the
+existing step references.
+
 ## Cross-cutting Ownership Foundation
 
 Before broad Module v2 migration, Igor must establish one authoritative
@@ -78,6 +85,14 @@ Igor 2 should preserve source provenance, keep portable package content separate
 from machine binding/configuration, accept Agent Skills-style knowledge as a
 bounded input, and give module developer tooling a normal import/normalize/
 validate path.
+
+Igor 2.0 also requires explicit closure for the reusable
+[Resource Recognition](RESOURCE_RECOGNITION.md) seam, one real
+[Provisioning/Installation](PROVISIONING.md) workflow, the owned
+configuration/secret migration gate, a bounded
+[Resumable Work](RESUMABLE_WORK.md) runtime slice, and the shared
+[CLI/TUI operator interface](OPERATOR_INTERFACES.md). These are completion gates,
+not new authorities or permission systems.
 
 A full public marketplace/registry, third-party signing infrastructure,
 sophisticated dependency solving, hot unload, a second handler-language adapter
@@ -588,6 +603,36 @@ remain Igor-owned machine configuration/state.
 
 Preserve the working v1 deployment during migration.
 
+## Resource Discovery & Domain Recognition — FUTURE FOUNDATION GATE
+
+The current Observer Framework establishes typed low-level facts, and Step 19's
+Nextcloud attachment provider proves one narrow deterministic discovery path.
+What is still missing is a reusable middle layer between observation and
+adoption.
+
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md) defines the direction:
+
+```text
+observation -> domain recognition -> ephemeral candidate
+            -> deterministic inspection -> frozen adoption proposal
+```
+
+A domain module/provider knows how to recognize the technologies it understands;
+Core validates/co-ordinates candidates but does not hard-code what "looks like"
+Nextcloud, Samba, Caddy, SSH tunnels or similar domains. A user may either ask
+Igor to find a domain or point Igor at an exact candidate. A user hint narrows
+selection; it is not machine truth or authorization.
+
+This gate explicitly does **not** require a universal background scanner,
+network-wide discovery, a persistent candidate database or AI-only recognition.
+Start with targeted/user-hinted and bounded domain discovery. Inventory/event
+driven recognition can grow later.
+
+The existing Nextcloud B2 provider remains a valid narrow slice. Before that
+shape becomes the template for additional domains, prove a reusable candidate
+contract with Nextcloud plus one materially different resource/domain. Recognition
+creates no deployment, desired state, responsibility or execution authority.
+
 ## Step 19 — Representative Application Workflow / Relationships and Deployment Ownership
 
 The Project Owner approved [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md)
@@ -619,6 +664,69 @@ Provisioning execution, general destruction, application upgrades, whole-module
 migration, generic workflows, agents, self-healing and Step 20 are excluded.
 See [STATUS.md](STATUS.md) for evidence, not merely architecture acceptance.
 
+## Provisioning & Installation — FUTURE COMPLETION GATE
+
+Brownfield adoption proves Igor can understand/manage selected parts of something
+that already exists. Igor 2 must also have an explicit greenfield path for
+creating external resources.
+
+[PROVISIONING.md](PROVISIONING.md) owns this missing roadmap outcome:
+
+```text
+request -> preflight/frozen proposal -> approval
+        -> canonical capability effects -> bind real native identities
+        -> configure -> independently verify -> record deployment/history
+```
+
+Reviewed composite capabilities may implement bounded synchronous portions, but
+provisioning is not a new workflow engine and does not add blind retry,
+automatic rollback or a public executable plan API. Unknown effects reconcile
+before another changing request. External waits use Resumable Work.
+
+Provisioning follows the real Step 19 brownfield/application proof rather than
+preceding it. The first provisioning vertical slice is separately selected and
+must prove durable pre-effect intent, identity binding, verification, failure/
+interruption reconciliation and explicit responsibility.
+
+## Configuration & Secrets completion — FUTURE COMPLETION GATE
+
+Step 17 established the correct Configuration Service architecture and bounded
+real settings, but it deliberately did not migrate all module/application
+configuration, secrets or legacy mutable sources.
+
+Before Igor 2 consolidation, close the Ownership Foundation with evidence for:
+
+- canonical configuration/source ownership across migrated Core/module settings;
+- explicit source/target locators for application-backed values;
+- secret references rather than secret values in ordinary configuration,
+  context, History and UI;
+- one real secret import/store/update/access/redaction/audit vertical slice;
+- migration/cutover from selected existing secret/config sources without leaving
+  competing writable authorities;
+- inspectable desired/resolved/applied/observed distinctions;
+- explicit reset/recovery behavior.
+
+External secret-manager integrations are not required for Igor 2. The core
+requirement is one authoritative local contract and safe migration.
+
+## Resumable Work — FUTURE IMPLEMENTATION GATE
+
+[RESUMABLE_WORK.md](RESUMABLE_WORK.md) already defines the architecture for
+legitimate waits such as reboot, OAuth/device authorization, DNS propagation,
+external readiness and user action. It still lacks a runtime proof.
+
+This is separate from composite capabilities:
+
+```text
+composite capability = bounded operation happening now
+resumable work       = durable work whose next step legitimately happens later
+```
+
+Implement one bounded vertical slice only after a real workflow needs it.
+Persistent waiting state cannot grant future approval/privilege, replay unknown
+effects or become a generic scheduler. Resume always revalidates dependencies,
+providers, bindings and current policy.
+
 ## Original Step 19 — Self-Healing v2 — deferred, separately gated
 
 Rebuild self-healing on normal Igor primitives:
@@ -635,26 +743,62 @@ responsibility, Executive mode, automation eligibility, prior success or learned
 confidence do not themselves grant that authority. Owner-scoped Step 19 does
 not implement or approve that gate.
 
-## Step 20 — Igor TUI as Default — PARTIAL
+## Step 20 — Operator Interfaces / Igor TUI as Default — PARTIAL
 
-The full-screen Codex-like TUI is already a strong interface.
+The full-screen Codex-like TUI is already a strong interface, but Step 20 must
+finish the operator experience rather than merely flip the default launcher.
+[OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md) defines one backend contract
+shared by CLI, TUI, automation and later APIs.
 
-Once normal system/module workflows use the shared backend foundations, make `./igor.sh` launch it by default.
+### Step 20A — First-class CLI
 
-The TUI consolidates inspection surfaces already introduced with modules,
-configuration, facts, capabilities, plans, investigations, events and history;
-Wave G is not the first point at which those systems become observable.
-Step 15UI establishes the reusable scrolling, focus, selection, control-panel
-and schema-driven rendering primitives earlier. The Operator Surface adds a
-contract-driven discovery projection and `:` namespace navigation without
-restoring module-owned menus. Step 20 is the later default-launch/consolidation
-cutover, including richer generated module views over those same contracts, not
-the first usability work.
-The proposed configuration-surface contract can let the TUI temporarily enter
-a bounded setup workflow and return to the originating session, while resumable
-work lets long external waits survive without keeping that UI open.
+Make Igor usable directly from the command line without creating a parallel
+command/permission system.
 
-Keep CLI/headless paths for scripting, recovery, tests and automation. Preserve `--ai-tui` as a migration alias until removal is clearly safe.
+Target shapes include natural-language one-shot use, structured commands and
+machine-readable output, for example:
+
+```bash
+igor "check why Nextcloud is slow"
+igor discover nextcloud
+igor deployments list
+igor capability inspect docker.install
+igor --json deployments list
+```
+
+Exact syntax is implementation work. Interactive CLI may enter the normal
+approval/PTY privilege flow; noninteractive use must return approval-required
+rather than answer approval/authentication on the user's behalf. CLI/headless
+paths remain available after the TUI becomes default.
+
+### Step 20B — TUI completion
+
+Consolidate mature backend surfaces for:
+
+- conversation plus clearly distinct capability/tool/activity/result output;
+- pending questions, approval and privilege state;
+- System facts/health;
+- modules and availability;
+- discovery/recognition candidates and ambiguity;
+- deployments/relationships/responsibility;
+- configuration with source/desired/applied/observed distinctions;
+- capabilities/proposals;
+- History and Investigations;
+- resumable waiting work when implemented.
+
+Color/style may distinguish user input, Igor text, commands/actions, results and
+warnings, but meaning must not depend on color alone. Generated module/domain
+views consume shared backend contracts; modules do not regain custom menu/UI
+authority. Empty, stale, unavailable, failed-refresh and permission-required
+states must be visibly different.
+
+### Step 20C — Default-launch cutover
+
+Only once representative system/module/application workflows use those shared
+backend contracts should `./igor.sh` launch the full-screen TUI by default.
+
+Preserve `--ai-tui` as a migration alias until safe removal. Keep CLI/headless
+paths for scripting, recovery, tests and automation.
 
 ## Step 21 — Integration Rules — FUTURE
 
@@ -718,6 +862,19 @@ Before declaring Igor 2 complete:
   the secret-service/audit contract;
 - confirm irreversible/best-effort recovery semantics are surfaced rather than
   hidden behind a generic rollback promise.
+
+Additional Igor 2 completion evidence must also:
+
+- prove reusable recognition/candidate selection without conflating it with
+  adoption, using at least two materially different domains;
+- prove one real provisioning/install path creates/binds/verifies resources
+  without treating origin as blanket responsibility;
+- prove one secret-consuming workflow keeps values outside ordinary
+  context/History/UI while preserving inspectable references/audit;
+- prove one durable wait/resume workflow across process restart without replaying
+  a committed effect or reusing stale authority;
+- prove the first-class CLI and default TUI use the same backend/capability
+  semantics, including noninteractive approval refusal and structured output.
 
 No compatibility path survives indefinitely without an explicit reason.
 

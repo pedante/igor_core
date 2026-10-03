@@ -53,6 +53,33 @@ keyword tables. AI receives eligible knowledge and capability descriptions and
 may propose typed intent; Core resolves it. Module-provided prose cannot change
 model roles, policy, ownership or available tools.
 
+## Future resource-recognition contribution seam
+
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md) identifies a missing
+cross-cutting contract between observers and Deployment Service adoption.
+
+A domain package should eventually be able to contribute deterministic,
+read-only recognition/inspection semantics for technologies it understands.
+This keeps vocabulary such as Nextcloud, Samba, Caddy or tunnel providers out of
+Core while allowing Core to validate a common candidate envelope and route exact
+user hints.
+
+This document does **not** add a new accepted `kind=recognizer` contribution
+yet. The implementation gate must first prove the smallest reusable shape with
+the existing Nextcloud slice and one materially different domain. Until then:
+
+- observers remain the authoritative source of typed System Model facts;
+- the current Step 19 Nextcloud attachment provider remains a bounded special
+  slice;
+- recognition candidates remain reference data and cannot create bindings,
+  desired values, responsibility or execution authority;
+- no module may claim active v2 recognizer registration merely from this
+  roadmap direction.
+
+If a recognizer kind is later accepted, it must use the existing owner-aware
+registration/handler envelope, active-owner filtering, bounded timeout,
+provenance and strict validation rather than introduce a second plugin runtime.
+
 ## Capability output and compatibility contract (Boundary 1)
 
 Package version, Module API version, contribution-envelope version, capability

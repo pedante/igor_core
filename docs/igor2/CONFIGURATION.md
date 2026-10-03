@@ -393,6 +393,28 @@ only `system.memory.warning_threshold_mib`: default 150 MiB, integer range
 Desired state, module application and independent runtime verification remain
 separate, with explicit same-path recovery rather than automatic rollback.
 
+## Igor 2 configuration and secrets completion gate
+
+The bounded Step 17 implementation proves the authority split, not the complete
+Igor 2 migration.
+
+Before Step 23 consolidation, configuration/secrets must additionally prove:
+
+- selected legacy/Core/module settings migrate to one authoritative desired
+  source without leaving competing writable paths;
+- deployment/application settings retain exact storage/source locators and
+  independent application readback;
+- secret-bearing settings store references only in Configuration Service;
+- one real secret workflow covers import/store/update, authorized access,
+  redacted inspection/context/History, audit evidence and recovery/rotation;
+- removing/disabling a module cannot expose secret values or make retained
+  desired state executable without an active valid binding;
+- UI/CLI surfaces can inspect a secret reference/status without revealing the
+  secret material.
+
+This does not require an external vault product. External secret managers remain
+optional adapters over the same reference/access boundary.
+
 ## Completion and deferred work
 
 [EXECUTION.md](EXECUTION.md) requires contract, regression, a real vertical
@@ -400,8 +422,10 @@ slice, inspection and migration/recovery proof. [STATUS.md](STATUS.md) records
 actual validation, failures, skips and unavailable checks. The foundation does
 not close the entire Ownership Foundation.
 
-Deferred: deployments/relationships, inheritance, cascades, generic settings
-or setup UI, richer 15UI size/path controls, module migrations, external secret
-managers, live privileged secret-consuming adapters, resumable workflows,
-agents, new AI features, self-healing and Steps 18/19/20. The original broader
+Deferred: inheritance/cascades, broad generic settings/setup UI, richer 15UI
+size/path controls, remaining module/application migrations, external secret
+manager adapters, additional privileged secret-consuming providers, agents, new
+AI features and self-healing. Deployment targeting, the Igor 2 secret proof,
+Resumable Work and Step 20 operator surfaces now have explicit roadmap
+completion gates rather than remaining implicit deferrals. The original broader
 configuration-surface ideas remain future design work, not schema-v1 authority.
