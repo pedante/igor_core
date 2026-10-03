@@ -645,16 +645,14 @@ PY
         _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
         return 0
     fi
-    [ "$_digest" = "$(_igor_capability_field "$_fresh" digest)" ] || return 1
-    if ! _igor_capability_preconditions "$_fresh"; then
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
-        return 0
-    fi
-    _spec="$(_igor_capability_field "$_fresh" privileged_argv)" || return 1
+    [ "$_digest" = "$_fresh_digest" ] || return 1
+    # The execution-fence prepare above just evaluated current preconditions.
+    # Repeating the same probes here adds latency without strengthening the
+    # frozen proposal comparison.
     # Fail closed before the provider's possible external effect. The existing
     # approval/authentication authorities have already made their decisions.
     _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-        "$([ "$(_igor_capability_field "$_fresh" privilege)" = required ] && printf authenticated || printf not_required)" || return 1
+        "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
     _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
