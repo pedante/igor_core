@@ -653,10 +653,14 @@ PY
     # The execution-fence prepare above just evaluated current preconditions.
     # Repeating the same probes here adds latency without strengthening the
     # frozen proposal comparison.
-    # Fail closed before the provider's possible external effect. The existing
-    # approval/authentication authorities have already made their decisions.
-    _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-        "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
+    # Direct/non-AI capability callers still need a durable authority boundary.
+    # The AI dispatcher records final approval+privilege once before entering
+    # this function and exports the marker so the same transition is not
+    # persisted a second time.
+    if [ "${IGOR_HISTORY_AUTHORITY_RECORDED:-0}" != 1 ]; then
+        _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+            "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
+    fi
     _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
