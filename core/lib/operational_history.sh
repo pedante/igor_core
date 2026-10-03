@@ -50,14 +50,15 @@ PY
 }
 
 _igor_history_update() {
-    local _action="$1" _id="$2" _first="${3:-}" _second="${4:-}" _fields
+    local _action="$1" _id="$2" _first="${3:-}" _second="${4:-}" _third="${5:-}" _fields
     case "$_action" in
         authority)
             printf -v _fields '{"operation_id":"%s","approval":"%s","privilege":"%s"}' \
                 "$_id" "$_first" "$_second"
             ;;
         running)
-            printf -v _fields '{"operation_id":"%s","proposal":%s}' "$_id" "$_first"
+            printf -v _fields '{"operation_id":"%s","proposal":%s,"approval":"%s","privilege":"%s"}' \
+                "$_id" "$_first" "$_second" "$_third"
             ;;
         provider-complete)
             printf -v _fields '{"operation_id":"%s","execution_status":"%s"}' "$_id" "$_first"
