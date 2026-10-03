@@ -44,7 +44,7 @@ PY
 )" || return 1
     # New execution admission also reconciles abandoned prior-process claims.
     # History inspection never enters this path.
-    igor_history_recover >/dev/null || return 1
+    igor_history_recover "" false >/dev/null || return 1
     _record="$(_igor_history_call prepare "$_request")" || return 1
     _igor_capability_field "$_record" operation_id
 }
@@ -90,7 +90,7 @@ _igor_capability_publish_result() {
 }
 
 igor_history_recover() {
-    local _only="${1:-}" _episodes _episode _id _proposal _inputs _capability _provider _version _kind _matches _evidence _status
+    local _only="${1:-}" _summary="${2:-true}" _episodes _episode _id _proposal _inputs _capability _provider _version _kind _matches _evidence _status
     _episodes="$(_igor_history_call recover)" || return 1
     while IFS= read -r -d '' _episode; do
         _id="$(_igor_capability_field "$_episode" operation_id)" || return 1
@@ -130,7 +130,7 @@ PY
         fi
         _igor_history_update reconcile "$_id" "$_status" "$_evidence" || return 1
     done < <(printf '%s' "$_episodes" | python3 -c 'import json,sys; [sys.stdout.buffer.write(json.dumps(r,separators=(",", ":")).encode()+b"\0") for r in json.load(sys.stdin)]')
-    _igor_history_call recent
+    [ "$_summary" = false ] || _igor_history_call recent
 }
 
 _igor_history_restore_document() {
