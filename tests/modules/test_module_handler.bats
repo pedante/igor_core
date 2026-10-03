@@ -30,6 +30,45 @@ EOF
     [[ "$output" == *'"answer": 42'* ]]
 }
 
+@test "canonical capability bridge skips duplicate Python and syntax validation" {
+    write_handler
+    local real_python wrapper counter
+    real_python="$(command -v python3)"
+    wrapper="$IGOR_DIR/counting-python"
+    counter="$IGOR_DIR/python-count"
+    : > "$counter"
+    cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+printf '.\n' >> "$counter"
+exec "$real_python" "\$@"
+EOF
+    chmod 700 "$wrapper"
+
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_INPUT_CANONICAL=1 \
+    V2_HANDLER_DOMAIN_EVENTS=0 \
+    V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
+    IGOR_PYTHON="$wrapper" \
+        run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{"answer":42}'
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"status":"ok"'* ]]
+    [ ! -s "$counter" ]
+}
+
+@test "canonical capability bridge still enforces entrypoint containment" {
+    write_handler
+    printf 'system__observe() { printf "%s\\n" '"'"'{"status":"ok","result":{}}'"'"'; }\n' > "$IGOR_DIR/outside.sh"
+    V2_HANDLER_ENTRYPOINT='../outside.sh' \
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_INPUT_CANONICAL=1 \
+    V2_HANDLER_DOMAIN_EVENTS=0 \
+    V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
+        run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"escapes module package"* ]]
+}
+
 @test "Bash adapter rejects a handler outside the owner namespace" {
     write_handler
     run _ml_bash_handler_invoke "$IGOR_DIR/module" system other__observe host.memory 5 '{}'
