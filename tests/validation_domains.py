@@ -1,0 +1,184 @@
+"""Small, explicit mapping from changed paths to regression test domains.
+
+This is intentionally a reviewable list rather than a dependency graph. When a
+change does not match a known domain, callers receive the complete test set.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+_DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
+    "capability": (
+        "tests/test_module_contract.py",
+        "tests/test_capability_runtime.py",
+        "tests/core/test_safety.bats",
+        "tests/core/test_safety_dispatch.bats",
+        "tests/core/test_ai_approval.bats",
+        "tests/core/test_ai_privilege.bats",
+        "tests/core/test_ai_transactions.bats",
+        "tests/test_operational_history.py",
+        "tests/modules/test_operational_history_dispatch.bats",
+        "tests/modules/test_wave_e_capability_dispatch.bats",
+        "tests/modules/test_step18_module_contract.bats",
+        "tests/modules/test_step18_module_composition.bats",
+        "tests/modules/test_module_contracts.bats",
+        "tests/modules/test_loader_regressions.bats",
+        "tests/modules/test_system_admin_surface.bats",
+        "tests/test_docker_module.py",
+    ),
+    "history": (
+        "tests/test_operational_history.py",
+        "tests/test_deployment_history.py",
+        "tests/core/test_ai_events.bats",
+        "tests/core/test_ai_event_integration.bats",
+        "tests/core/test_ai_safety_events.bats",
+        "tests/modules/test_operational_history_dispatch.bats",
+    ),
+    "module": (
+        "tests/test_module_contract.py",
+        "tests/test_module_inspection.py",
+        "tests/modules/test_module_contracts.bats",
+        "tests/modules/test_loader_regressions.bats",
+        "tests/modules/test_module_v2.bats",
+        "tests/modules/test_step18_module_contract.bats",
+        "tests/modules/test_step18_module_composition.bats",
+        "tests/modules/test_module_conf.bats",
+        "tests/modules/test_module_state.bats",
+        "tests/modules/test_subsystem_activation.bats",
+    ),
+    "configuration": (
+        "tests/test_configuration.py",
+        "tests/test_system_configuration_workflow.py",
+        "tests/test_secret_refs.py",
+        "tests/core/test_config.bats",
+    ),
+    "tui": (
+        "tests/test_ai_tui.py",
+        "tests/test_ai_tui_colors.py",
+        "tests/test_ai_tui_operator.py",
+        "tests/test_ai_tui_pty.py",
+        "tests/test_ai_tui_privilege.py",
+        "tests/test_ai_tui_settings.py",
+        "tests/test_ai_tui_step7.py",
+        "tests/test_ai_render.py",
+        "tests/test_ai_operator_backend.py",
+        "tests/test_ai_settings_backend.py",
+        "tests/core/test_ai_tui_backend.bats",
+    ),
+    "deployment": (
+        "tests/test_deployments.py",
+        "tests/test_deployment_attachment.py",
+        "tests/test_deployment_history.py",
+        "tests/test_deployment_inspection.py",
+        "tests/test_deployment_prerequisites.py",
+        "tests/modules/test_deployment_attachment.bats",
+    ),
+    "events": (
+        "tests/test_domain_event.py",
+        "tests/core/test_ai_events.bats",
+        "tests/core/test_ai_event_integration.bats",
+        "tests/modules/test_domain_event_bus.bats",
+    ),
+    "automation": (
+        "tests/test_automation_registry.py",
+        "tests/modules/test_healing_activation.bats",
+        "tests/integration/test_healing_patterns.bats",
+    ),
+    "context": (
+        "tests/test_context_engine.py",
+        "tests/test_context_routing_integration.py",
+        "tests/core/test_ai_context_refresh.bats",
+        "tests/core/test_ai_host_context.bats",
+    ),
+    "investigations": (
+        "tests/test_investigations.py",
+        "tests/test_investigation_inspection.py",
+    ),
+    "system": (
+        "tests/core/test_system_model.py",
+        "tests/modules/test_system_storage.bats",
+        "tests/modules/test_system_admin_surface.bats",
+        "tests/modules/test_step18_module_composition.bats",
+        "tests/test_docker_module.py",
+    ),
+}
+
+_PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("capability", "capabilities", "approval", "safety", "privilege", "package", "core/lib/pkg.sh", "service_admission", "modules/docker/", "modules/system/"), "capability"),
+    (("operational_history", "history"), "history"),
+    (("module_contract", "module_loader", "module_contracts", "module_v2", "modules/"), "module"),
+    (("config", "secret", "variables"), "configuration"),
+    (("tui", "frontend", "operator_backend", "ai_render", "ai_settings"), "tui"),
+    (("deployment", "deployments", "nextcloud_docker/lib/attachment"), "deployment"),
+    (("domain_event", "event_bus", "ai_events"), "events"),
+    (("automation", "healing", "judgment"), "automation"),
+    (("context", "host_context"), "context"),
+    (("investigation", "investigations"), "investigations"),
+    (("system_model", "modules/system", "modules/docker", "docker"), "system"),
+)
+
+
+def _all_tests(root: Path) -> set[str]:
+    tests = root / "tests"
+    return {
+        path.relative_to(root).as_posix()
+        for pattern in ("test_*.py", "test_*.bats")
+        for path in tests.rglob(pattern)
+        if path.is_file()
+    }
+
+
+def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
+    """Return sorted domain labels and test paths relevant to changed paths."""
+    root = root.resolve()
+    domains: set[str] = set()
+    selected: set[str] = set()
+    all_tests = _all_tests(root)
+
+    for raw_path in paths:
+        path = Path(raw_path)
+        if path.is_absolute():
+            try:
+                relative = path.resolve().relative_to(root).as_posix()
+            except ValueError:
+                domains.add("all")
+                selected.update(all_tests)
+                continue
+        else:
+            relative = path.as_posix().removeprefix("./")
+
+        if relative.startswith("docs/") or relative.endswith((".md", ".rst")):
+            domains.add("documentation")
+            continue
+
+        if relative.startswith("tests/") and Path(relative).name.startswith("test_"):
+            if relative in all_tests:
+                selected.add(relative)
+                domains.add("validation" if "validation_" in Path(relative).name else "tests")
+            continue
+
+        if relative.startswith("tests/helpers/") or relative == "tests/run_all.sh":
+            domains.add("all")
+            selected.update(all_tests)
+            continue
+
+        if relative == "tests/validate.sh" or (relative.startswith("tests/") and "validation" in Path(relative).name):
+            domains.add("validation")
+            selected.update(p for p in all_tests if p.startswith("tests/test_validation_"))
+            continue
+
+        matches = [domain for tokens, domain in _PATH_DOMAINS if any(token in relative.lower() for token in tokens)]
+        if matches:
+            for domain in matches:
+                domains.add(domain)
+                selected.update(_DOMAIN_TESTS[domain])
+            continue
+
+        # Unknown implementation changes receive broad coverage. This is the
+        # deliberate safe fallback until an explicit domain is added.
+        domains.add("all")
+        selected.update(all_tests)
+
+    selected.intersection_update(all_tests)
+    return sorted(domains), sorted(selected)
