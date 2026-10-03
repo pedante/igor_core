@@ -765,9 +765,12 @@ PY
                 _domain_result="$_envelope"
             fi
             if [ "$_version" = 2 ]; then
-                _domain_result="$(printf '%s' "$_envelope" | "$(_ml_python)" \
-                    "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" handler-output "$_fresh_outputs" 2>/dev/null)"
-                _output_rc=$?
+                if _domain_result="$(printf '%s' "$_envelope" | "$(_ml_python)" \
+                    "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" handler-output "$_fresh_outputs" 2>/dev/null)"; then
+                    _output_rc=0
+                else
+                    _output_rc=$?
+                fi
                 case "$_output_rc" in
                     0) _output_status=valid ;;
                     2)
