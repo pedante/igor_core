@@ -547,10 +547,25 @@ class OperationalHistory:
                 row["provider"]["source"].get("module_version") != proposal.get("provider_source_module_version")):
             raise HistoryError("durable attempt differs from current approved operation")
 
-    def running(self, ident: str, proposal: dict[str, Any] | None = None) -> None:
+    def running(self, ident: str, proposal: dict[str, Any] | None = None,
+                *, approval: str | None = None, privilege: str | None = None) -> None:
         with self._store(write=True) as db:
             row, owner = self._read(db, ident)
-            if row["lifecycle"] != "admitted" or row["approval"]["result"] not in {"approved", "auto_approved", "not_required"} or (row["privilege"]["requirement"] == "required" and row["privilege"]["result"] != "authenticated"):
+            if row["lifecycle"] != "admitted":
+                raise HistoryError("cannot record running attempt")
+            if row["approval"]["result"] == "pending":
+                if approval is None or privilege is None:
+                    raise HistoryError("running direct caller lacks final authority")
+                row["approval"]["result"] = approval
+                row["privilege"]["result"] = privilege
+                _transition(row, "authority")
+            else:
+                if approval is not None and approval != row["approval"]["result"]:
+                    raise HistoryError("running authority differs from durable approval")
+                if privilege is not None and privilege != row["privilege"]["result"]:
+                    raise HistoryError("running authority differs from durable privilege")
+            if (row["approval"]["result"] not in {"approved", "auto_approved", "not_required"} or
+                    (row["privilege"]["requirement"] == "required" and row["privilege"]["result"] != "authenticated")):
                 raise HistoryError("cannot record running attempt")
             if proposal is not None:
                 self._assert_binding(row, proposal)
@@ -780,7 +795,8 @@ def _cli() -> int:
         elif action == "authority":
             service.authority(request["operation_id"], request["approval"], request["privilege"])
         elif action == "running":
-            service.running(request["operation_id"], request.get("proposal"))
+            service.running(request["operation_id"], request.get("proposal"),
+                            approval=request.get("approval"), privilege=request.get("privilege"))
         elif action == "provider-complete":
             service.provider_complete(request["operation_id"], request["execution_status"])
         elif action == "finish":
