@@ -543,5 +543,48 @@ class InputAndRenderingTests(unittest.TestCase):
         self.assertTrue(any(call[0] == "move" for call in screen.calls))
 
 
+class TimingPresentationTests(unittest.TestCase):
+    def test_event_timestamp_is_visible_when_runtime_enables_timestamps(self):
+        state = tui.EventState(show_timestamps=True)
+        tui.apply_event(state, event(
+            "action_started", 1,
+            timestamp="2026-10-03T21:15:08.241000+00:00",
+            display="capability: system.service.list",
+        ))
+        rendered = tui.render_activity(state, 120)
+        self.assertEqual(len(rendered), 1)
+        self.assertRegex(
+            rendered[0],
+            r"^\[\d{2}:\d{2}:\d{2}\.241\] Started: capability: system\.service\.list$",
+        )
+
+    def test_action_duration_is_visible_in_normal_rendering(self):
+        state = tui.EventState()
+        tui.apply_event(state, event(
+            "action_output", 1,
+            display="svc.service\tactive\trunning",
+            duration_ms=1250,
+            exit_code=0,
+        ))
+        self.assertEqual(
+            tui.render_activity(state, 120),
+            ["Output (1.25 s): svc.service\tactive\trunning"],
+        )
+
+    def test_local_result_strips_provider_transport_envelope(self):
+        state = tui.EventState()
+        tui.apply_event(state, event(
+            "action_result", 1,
+            result={
+                "execution_status": "tool_failed",
+                "combined_output": "TOOL:run_capability EXIT:1\\nOUTPUT:\\nfailure detail",
+            },
+        ))
+        rendered = "\n".join(tui.render_activity(state, 120))
+        self.assertIn("failure detail", rendered)
+        self.assertNotIn("TOOL:run_capability", rendered)
+        self.assertNotIn("OUTPUT:", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()

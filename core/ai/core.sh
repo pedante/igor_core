@@ -35,9 +35,9 @@ source "${IGOR_DIR}/core/lib/configuration.sh"
 _ai_frontend_event() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local _kind="$1" _display="${2:-}" _status="${3:-}" _payload
-    if [ -n "$_display" ]; then
-        _display=$(ai_scrub_outbound "$_display" 2>/dev/null) || _display='[display unavailable]'
-    fi
+    # The frontend stream is a private local presentation boundary (0600).
+    # Provider/audit payloads are scrubbed separately; re-scrubbing here both
+    # costs time and corrupts legitimate host identifiers such as systemd units.
     _payload=$(AI_EVENT_DISPLAY="$_display" AI_EVENT_STATUS="$_status" \
         AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" \
         AI_EVENT_MODE="$(ai_get_mode)" AI_EVENT_PROVIDER="${provider:-}" \
@@ -59,9 +59,8 @@ PY
 
 _ai_frontend_action_result() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
-    local _safe_result _payload
-    _safe_result=$(ai_scrub_outbound "$1" 2>/dev/null) || return 0
-    _payload=$(AI_EVENT_RESULT="$_safe_result" \
+    local _payload
+    _payload=$(AI_EVENT_RESULT="$1" \
         AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 - <<'PY'
 import json
 import os
@@ -75,6 +74,25 @@ print(json.dumps({"session_id": os.environ["AI_EVENT_SESSION_ID"],
 PY
     ) || return 0
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
+}
+
+# Cheap diagnostic timing. These observations never influence authority.
+_ai_now_ms() {
+    date +%s%3N 2>/dev/null || printf '0'
+}
+
+_ai_record_timing() {
+    local _stage="${1:-unknown}" _started="${2:-0}" _ended _elapsed=""
+    _ended=$(_ai_now_ms)
+    if [[ "$_started" =~ ^[0-9]+$ && "$_ended" =~ ^[0-9]+$ ]] &&
+       [ "$_ended" -ge "$_started" ]; then
+        _elapsed=$((_ended - _started))
+        [ -n "${session_file:-}" ] &&
+            printf '[TIMING] %s=%sms\n' "$_stage" "$_elapsed" >> "$session_file"
+        [ "${IGOR_VERBOSE:-false}" = true ] &&
+            printf 'DEBUG: timing %s=%sms\n' "$_stage" "$_elapsed" >&2
+    fi
+    printf '%s' "$_elapsed"
 }
 
 # Publish the current editable session settings for structured frontends.  The
@@ -3846,12 +3864,15 @@ END USER STEERING"
         _ai_pin_update "Igor is thinking..."
         _ai_frontend_event model_status '' 'request_started'
         ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+        local _provider_started_ms; _provider_started_ms=$(_ai_now_ms)
         if ! _raw_result=$(_nexus_api_call); then
+            _ai_record_timing provider.initial "$_provider_started_ms" >/dev/null
             _ai_set_session_state provider_failed
             _ai_pin_exit
             warn "AI request could not be sent."
             continue
         fi
+        _ai_record_timing provider.initial "$_provider_started_ms" >/dev/null
         _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt _ev_rejected _ev_injection_initial _validation_json
         ai_add_cost "$_in_tok" "$_out_tok"
         local reply="$_reply"
@@ -4237,12 +4258,15 @@ END UNTRUSTED RUNBOOK REFERENCE DATA"
             conversation=$(_nexus_compress_conv "$conversation")
             export NEXUS_CONV="$conversation"
             ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+            local _followup_started_ms; _followup_started_ms=$(_ai_now_ms)
             if ! _fu_raw=$(_nexus_api_call); then
+                _ai_record_timing provider.followup "$_followup_started_ms" >/dev/null
                 _loop_stop_reason="provider_failed"
                 _ai_set_session_state provider_failed
                 warn "Provider request could not be sent; tool history was preserved."
                 break
             fi
+            _ai_record_timing provider.followup "$_followup_started_ms" >/dev/null
             _nexus_parse_result "$_fu_raw" _fu_reply _fu_cmds _fu_in _fu_out _fu_explain _fu_think _fu_scratchpad _fu_asst_msg _fu_tconv_fmt
             if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
                 _loop_stop_reason="$(_ai_error_state)"
