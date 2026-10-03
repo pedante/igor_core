@@ -352,6 +352,40 @@ PY
     [ "$status" -ne 0 ]
 }
 
+@test "targeted preparation evaluates only the selected capability requirement path" {
+    local trace="$IGOR_DIR/runtime/dynamic-requirements"
+    : > "$trace"
+    eval "$(declare -f _ml_contribution_dynamic_failure | sed '1s/_ml_contribution_dynamic_failure/_original_dynamic_failure/')"
+    _ml_contribution_dynamic_failure() {
+        printf '%s\n' "$1" >> "$trace"
+        _original_dynamic_failure "$@"
+    }
+
+    run igor_capability_prepare system.service.list '{}' system 2
+    [ "$status" -eq 0 ]
+    [ "$(cat "$trace")" = "capability:system.service.list" ]
+}
+
+@test "service-list prepare stays below a bounded Python process budget" {
+    local real_python counter wrapper count
+    real_python="$(command -v python3)"
+    counter="$IGOR_DIR/runtime/python-invocations"
+    wrapper="$IGOR_DIR/bin/counting-python"
+    : > "$counter"
+    cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+printf '.\n' >> "$counter"
+exec "$real_python" "\$@"
+EOF
+    chmod +x "$wrapper"
+    export IGOR_PYTHON="$wrapper"
+
+    run igor_capability_prepare system.service.list '{}' system 2
+    [ "$status" -eq 0 ]
+    count="$(wc -l < "$counter")"
+    [ "$count" -le 20 ]
+}
+
 @test "log summary is bounded metadata and never persists raw journal messages" {
     run _execute_read system.logs.summary '{}'
     [ "$status" -eq 0 ]
