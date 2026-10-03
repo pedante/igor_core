@@ -122,8 +122,32 @@ assert row["lifecycle"] == "terminal"
 assert row["execution_status"] == "succeeded"
 assert row["verification"]["status"] == "passed"
 assert row["outcome"] == "success"
+assert [item["state"] for item in row["transitions"]] == [
+    "admitted", "authority", "running", "provider_complete", "terminal"
+]
 PY
     [ "$(grep -c '^restart$' "$FIXTURE_TRACE")" -eq 1 ]
+}
+
+@test "hot History transition invokes one Python service process" {
+    local proposal operation real_python wrapper counter count
+    proposal="$(igor_capability_prepare system.service.restart '{"unit":"igor-step15b-fixture.service"}' fixture_service 1)"
+    operation="$(_igor_history_begin "$proposal" corr-process-budget assist)"
+    real_python="$(command -v python3)"
+    counter="$IGOR_DIR/runtime/history-python-count"
+    wrapper="$IGOR_DIR/bin/python3"
+    : > "$counter"
+    cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+printf '.\n' >> "$counter"
+exec "$real_python" "\$@"
+EOF
+    chmod 700 "$wrapper"
+
+    run _igor_history_update authority "$operation" approved authenticated
+    [ "$status" -eq 0 ]
+    count="$(wc -l < "$counter")"
+    [ "$count" -eq 1 ]
 }
 
 @test "provider failure and failed verification are distinct durable terminal outcomes" {
