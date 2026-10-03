@@ -386,6 +386,26 @@ EOF
     [ "$count" -le 20 ]
 }
 
+
+@test "execution fence evaluates current preconditions exactly once" {
+    local proposal trace
+    proposal="$(igor_capability_prepare system.service.list '{}' system 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_CAPABILITY_APPROVAL_STATUS=approved
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
+    trace="$IGOR_DIR/runtime/precondition-calls"
+    : > "$trace"
+    eval "$(declare -f _igor_capability_preconditions | sed '1s/_igor_capability_preconditions/_original_capability_preconditions/')"
+    _igor_capability_preconditions() {
+        printf '.\n' >> "$trace"
+        _original_capability_preconditions "$@"
+    }
+
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [ "$(wc -l < "$trace")" -eq 1 ]
+}
+
 @test "log summary is bounded metadata and never persists raw journal messages" {
     run _execute_read system.logs.summary '{}'
     [ "$status" -eq 0 ]
