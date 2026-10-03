@@ -660,7 +660,11 @@ def _cli() -> int:
             # Loader rows may carry a normalized descriptor under descriptor;
             # inactive rows remain inspectable but cannot be prepared.
             descriptor = dict(item.get("descriptor", item))
-            if op in {"prepare", "resolve"} and request.get("id") and descriptor.get("id") != request["id"]:
+            # Shell preparation already supplies the selected capability plus
+            # its bounded dependency closure. Keep those child/final-check
+            # descriptors available for composite resolution. Resolve-only
+            # inspection may still filter to one identity.
+            if op == "resolve" and request.get("id") and descriptor.get("id") != request["id"]:
                 continue
             if descriptor.get("kind", "capability") != "capability":
                 continue
