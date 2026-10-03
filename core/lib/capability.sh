@@ -607,7 +607,7 @@ print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
 print(p["capability_version"])
 print(p["digest"])
 PY
-) || return 1
+)
     [ "${#_proposal_fields[@]}" -eq 5 ] || return 1
     _id="${_proposal_fields[0]}"
     _provider="${_proposal_fields[1]}"
@@ -628,7 +628,7 @@ print(p["digest"])
 print(p["privilege"])
 print(json.dumps(p.get("privileged_argv",[]),sort_keys=True,separators=(",",":")))
 PY
-) || return 1
+)
     [ "${#_fresh_fields[@]}" -eq 4 ] || return 1
     _fresh_precondition="${_fresh_fields[0]}"
     _fresh_digest="${_fresh_fields[1]}"
@@ -653,183 +653,6 @@ PY
     # approval/authentication authorities have already made their decisions.
     _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
         "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
-    _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
-    if [ "$_spec" != '[]' ]; then
-        # Exact reviewed argv. Authentication has already been handled by
-        # safety.sh; -n prevents a hidden prompt here. Package administration
-        # may freeze a small ordered sequence, but only for named Core adapters.
-        if "$(_ml_python)" - "$_spec" "$_id" "${IGOR_DISTRO_FAMILY:-unknown}" <<'PY'
-import json, subprocess, sys
-spec=json.loads(sys.argv[1])
-ident,family=sys.argv[2:4]
-if ident in {"system.service.restart","system.service.start","system.service.enable"}:
-    operation={
-        "system.service.restart":"restart",
-        "system.service.start":"start",
-        "system.service.enable":"enable",
-    }[ident]
-    if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl",operation]:
-        raise SystemExit(1)
-    commands=[spec]
-elif ident=="system.package.install":
-    if (not isinstance(spec,list) or len(spec)!=7 or
-            not isinstance(spec[-1],str) or
-            not __import__("re").fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", spec[-1])):
-        raise SystemExit(1)
-    expected_prefix={
-        "debian":["sudo","-n","--","apt-get","install","-y"],
-        "arch":["sudo","-n","--","pacman","-S","--noconfirm"],
-    }.get(family)
-    if expected_prefix is None or spec[:-1]!=expected_prefix:
-        raise SystemExit(1)
-    commands=[spec]
-elif ident=="system.package.upgrade":
-    expected={
-        "debian":[["sudo","-n","--","apt-get","update"],
-                  ["sudo","-n","--","apt-get","upgrade","-y"]],
-        "arch":[["sudo","-n","--","pacman","-Syu","--noconfirm"]],
-    }.get(family)
-    if spec!=expected:
-        raise SystemExit(1)
-    commands=spec
-elif ident=="system.package.cache.clean":
-    expected={
-        "debian":[["sudo","-n","--","apt-get","clean"]],
-        "arch":[["sudo","-n","--","pacman","-Sc","--noconfirm"]],
-    }.get(family)
-    if spec!=expected:
-        raise SystemExit(1)
-    commands=spec
-else:
-    raise SystemExit(1)
-for argv in commands:
-    try:
-        result=subprocess.run(argv,check=False,stdin=subprocess.DEVNULL,
-                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                              timeout=1800)
-    except (OSError,subprocess.TimeoutExpired):
-        raise SystemExit(1)
-    if result.returncode:
-        raise SystemExit(result.returncode)
-PY
-        then _exec=succeeded; fi
-    else
-        if _envelope="$(_igor_capability_invoke_handler "$_fresh")"; then
-            _exec=succeeded
-            if [[ "$_id" = core.deployments.* ]]; then
-                _domain_result="$_envelope"
-            fi
-            if [ "$_version" = 2 ]; then
-                local _output_request
-                _output_request="$("$(_ml_python)" - "$_fresh" "$_envelope" <<'PY'
-import json, sys
-p = json.loads(sys.argv[1])
-print(json.dumps({"op": "output", "outputs": p["descriptor"]["outputs"],
-                  "envelope": sys.argv[2]}, separators=(",", ":")))
-PY
-)" || return 1
-                if _domain_result="$(printf '%s' "$_output_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" 2>/dev/null)"; then
-                    _output_status=valid
-                else
-                    _domain_result=null
-                    _output_status=invalid
-                    _verify=unknown
-                    _outcome=invalid_output
-                    _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
-                fi
-            fi
-            if [ "$_output_status" != invalid ] && [ "$_id" = system.host.memory.refresh ]; then
-                _exec=failed
-                [ "$(_igor_capability_field "$_envelope" result.observer_id)" = host.memory ] &&
-                    igor_observer_refresh host.memory host:local && _exec=succeeded
-                if [ "$_exec" = succeeded ]; then
-                    declare -f igor_health_run_v2_check >/dev/null 2>&1 ||
-                        source "${_IGOR_LOADER_DIR}/core/lib/health_runner.sh"
-                    igor_health_run_v2_check host.memory.health >/dev/null 2>&1 || true
-                fi
-            fi
-            if [ "$_output_status" = valid ] && [ "$_id" = system.memory.warning.apply ]; then
-                _exec=failed
-                _igor_configuration_memory_warning_apply "$_fresh" "$_domain_result" && _exec=succeeded
-            fi
-        fi
-    fi
-    # Failure here is diagnostic after an effect: never rewrite the provider
-    # result, and retain running/unknown on disk if completion cannot persist.
-    _igor_history_update provider-complete "$IGOR_HISTORY_OPERATION_ID" "$_exec" 2>/dev/null ||
-        printf 'operational history: provider completion unavailable for %s\n' "$IGOR_HISTORY_OPERATION_ID" >> "$IGOR_DOMAIN_EVENT_DIAGNOSTICS_FILE"
-    if [ "$_exec" = succeeded ] && [ "$_output_status" != invalid ]; then
-        _tier="$(_igor_capability_field "$_fresh" safety.tier)" || return 1
-        if [ "$(_igor_capability_field "$_fresh" verification.kind)" != none ]; then
-            if _evidence="$(_igor_capability_verify "$_fresh" "$_domain_result")"; then
-                _verify=passed
-            else
-                _verify=failed
-                if [ "$_tier" = READ ]; then _outcome=unverified_result; else _outcome=unverified_change; fi
-            fi
-        elif [ "$_tier" != READ ]; then
-            _verify=unavailable
-            _outcome=unverified_change
-        fi
-        [ "$_outcome" = failed ] && _outcome=success
-    fi
-    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" "$_output_status" "$_domain_result" <<'PY'
-import json, sys
-from datetime import datetime, timezone
-proposal = json.loads(sys.argv[1])
-execution, verification, outcome = sys.argv[2:5]
-try:
-    evidence = json.loads(sys.argv[5])
-except ValueError:
-    evidence = {"reason": "verification_failed"}
-result = {"operation_id": sys.argv[7], "capability_id": proposal["capability_id"],
-          "capability_version": proposal["capability_version"],
-          "provider": proposal["provider"], "owner": proposal["owner"], "approval_status": sys.argv[6],
-          "precondition_status": proposal["precondition_status"],
-          "execution_status": execution, "verification_status": verification, "outcome": outcome,
-          "privilege": proposal["privilege"],
-          "privilege_status": "authenticated" if proposal["privilege"] == "required" else "not_required",
-          "safety": proposal["safety"],
-          "affected_objects": proposal["affected_objects"], "recovery": proposal["recovery"],
-          "verification_evidence": [evidence] if evidence else [],
-          "recorded_at": datetime.now(timezone.utc).isoformat()}
-if proposal["capability_version"] == 2:
-    result["output_status"] = sys.argv[8]
-    result["result"] = json.loads(sys.argv[9])
-print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-PY
-    )" || return 1
-    _igor_capability_publish_result "$_result"
-}
-\x1f' read -r _id _provider _inputs _version _digest _result <<< "$_proposal_fields"
-    [ "$_result" = ok ] || return 1
-    _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider" "$_version")" || return 1
-    [ -n "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" ] &&
-        [ "$IGOR_CAPABILITY_APPROVED_DIGEST" = "$_digest" ] || return 1
-    if [ -z "$IGOR_HISTORY_OPERATION_ID" ]; then
-        IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_proposal" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
-    fi
-    if [ "$(_igor_capability_field "$_fresh" precondition_status)" != satisfied ]; then
-        # A legitimate precondition change keeps the same proposal content
-        # except for its evaluated status. Changed inputs/provider/argv never
-        # become a new approved operation.
-        local _pending_without_status _fresh_without_status
-        _pending_without_status="$(printf '%s' "$_proposal" | "$(_ml_python)" -c 'import json,sys; p=json.load(sys.stdin); p.pop("digest",None); p.pop("precondition_status",None); print(json.dumps(p,sort_keys=True))')" || return 1
-        _fresh_without_status="$(printf '%s' "$_fresh" | "$(_ml_python)" -c 'import json,sys; p=json.load(sys.stdin); p.pop("digest",None); p.pop("precondition_status",None); print(json.dumps(p,sort_keys=True))')" || return 1
-        [ "$_pending_without_status" = "$_fresh_without_status" ] || return 1
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
-        return 0
-    fi
-    [ "$_digest" = "$(_igor_capability_field "$_fresh" digest)" ] || return 1
-    if ! _igor_capability_preconditions "$_fresh"; then
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
-        return 0
-    fi
-    _spec="$(_igor_capability_field "$_fresh" privileged_argv)" || return 1
-    # Fail closed before the provider's possible external effect. The existing
-    # approval/authentication authorities have already made their decisions.
-    _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-        "$([ "$(_igor_capability_field "$_fresh" privilege)" = required ] && printf authenticated || printf not_required)" || return 1
     _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
