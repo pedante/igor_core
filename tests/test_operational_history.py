@@ -375,6 +375,24 @@ print(row["operation_id"])
         self.assertEqual(row["outcome"], "interrupted_unknown")
         self.assertEqual(row["verification"]["reconciliation"]["status"], "passed")
 
+    def test_recover_does_not_decode_terminal_history(self):
+        terminal_ids = {
+            self.record_terminal(tier="READ", privilege="not_required")["operation_id"]
+            for _ in range(12)
+        }
+        original_read = OperationalHistory._read
+        calls = []
+
+        def recording_read(db, ident):
+            calls.append(ident)
+            return original_read(db, ident)
+
+        with patch.object(OperationalHistory, "_read", side_effect=recording_read):
+            self.assertEqual(self.history.recover(), [])
+
+        self.assertTrue(terminal_ids)
+        self.assertEqual(calls, [])
+
     def test_export_restore_is_idempotent_and_unknown_versions_fail_closed(self):
         row = self.record_terminal(tier="READ", privilege="not_required")
         export = self.history.export()
