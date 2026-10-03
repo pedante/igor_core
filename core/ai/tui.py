@@ -291,7 +291,7 @@ def _format_duration(duration_ms: int | None) -> str:
     return f"{duration_ms / 1000:.2f} s"
 
 
-_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \\r\\n]+ EXIT:\\d+(?:\\\\n|\\n)OUTPUT:(?:\\\\n|\\n)?")
+_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \r\n]+ EXIT:\d+(?:\\n|\n)OUTPUT:(?:\\n|\n)?")
 
 
 def _display_result_output(value: Any) -> str:
