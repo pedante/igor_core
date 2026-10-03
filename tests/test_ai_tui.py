@@ -138,7 +138,7 @@ class InputAndRenderingTests(unittest.TestCase):
                                      display="first line\nsecond line\nthird line"))
         self.assertEqual(len(state.activity), 1)
         self.assertEqual(tui.render_activity(state, 80),
-                         ["Output: first line", "second line", "third line"])
+                         ["first line", "second line", "third line"])
 
     def test_structured_output_prevents_duplicate_result_body(self):
         state = tui.EventState()
@@ -150,13 +150,14 @@ class InputAndRenderingTests(unittest.TestCase):
                                              "exit_code": 0, "combined_output": output}))
         rendered = "\n".join(tui.render_activity(state, 80))
         self.assertEqual(rendered.count(output), 1)
-        self.assertIn("Result: tool_succeeded (exit 0)", rendered)
+        self.assertNotIn("Result: tool_succeeded", rendered)
 
     def test_result_without_output_event_still_shows_canonical_output(self):
         state = tui.EventState()
         tui.apply_event(state, event("action_result", 1, action_id="call-1",
                                      result={"execution_status": "tool_failed",
-                                             "combined_output": "failure detail"}))
+                                             "combined_output":
+                                             "TOOL:host EXIT:1\\nOUTPUT:\\nfailure detail"}))
         self.assertEqual(tui.render_activity(state, 80),
                          ["Result: tool_failed", "failure detail"])
 
@@ -215,9 +216,38 @@ class InputAndRenderingTests(unittest.TestCase):
         tui.apply_event(state, event("assistant_message", 3, display="After"))
         self.assertEqual(tui.render_activity(state, 80), [
             "Igor: Before", "Second sentence", "",
-            "Output: tool line one", "tool line two", "",
+            "tool line one", "tool line two", "",
             "Igor: After",
         ])
+
+    def test_normal_mode_hides_success_lifecycle_chatter(self):
+        state = tui.EventState()
+        tui.apply_event(state, event("action_proposed", 1, operation_id="op-1",
+                                     classification="READ", display="list services"))
+        tui.apply_event(state, event("action_started", 2, operation_id="op-1",
+                                     display="list services"))
+        tui.apply_event(state, event("action_output", 3, operation_id="op-1",
+                                     display="svc.service\tactive\trunning",
+                                     exit_code=0, duration_ms=37))
+        tui.apply_event(state, event("action_result", 4, operation_id="op-1",
+                                     result={"execution_status": "tool_succeeded",
+                                             "exit_code": 0}))
+        self.assertEqual(tui.render_activity(state, 100),
+                         ["svc.service\tactive\trunning"])
+
+    def test_verbose_mode_keeps_lifecycle_and_timing(self):
+        state = tui.EventState(verbose=True)
+        tui.apply_event(state, event("action_proposed", 1, operation_id="op-1",
+                                     classification="READ", display="list services"))
+        tui.apply_event(state, event("action_started", 2, operation_id="op-1",
+                                     display="list services"))
+        tui.apply_event(state, event("action_output", 3, operation_id="op-1",
+                                     display="svc.service\tactive\trunning",
+                                     exit_code=0, duration_ms=37))
+        rendered = tui.render_activity(state, 100)
+        self.assertIn("Action [READ]: list services", rendered)
+        self.assertIn("Started: list services", rendered)
+        self.assertIn("Output (37 ms): svc.service\tactive\trunning", rendered)
 
     def test_multiline_input_is_independent_from_activity_history(self):
         state = tui.EventState()
@@ -271,8 +301,6 @@ class InputAndRenderingTests(unittest.TestCase):
         state.add_terminal_output("backend line 3\n")
         lines = tui.render_activity(state, 100)
         self.assertEqual(lines, [
-            "Started: running",
-            "",
             "backend line 1",
             "backend line 2",
             "backend line 3",
