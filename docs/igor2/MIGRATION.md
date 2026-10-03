@@ -80,11 +80,19 @@ During Wave C:
 - use a small part of `system` as the mixed v1/v2 reference;
 - keep `nextcloud_docker` on v1 to prove compatibility.
 
-After Wave C is green, use one narrow Nextcloud workflow as the first broader
-slice across ownership/configuration, module contribution, capability,
-approval/privilege, execution, deterministic verification and history.
+After Wave C is green, use bounded real slices rather than migrate every domain.
 
-Generalize only after that slice proves the contracts compose correctly.
+The current Nextcloud direction first proves brownfield recognition/attachment
+and one reversible adopted setting across ownership/configuration, module
+contribution, capability, approval/privilege, execution, deterministic
+verification and history. The reusable recognition contract should then be
+proved with a second materially different domain before its shape becomes a
+general Core assumption.
+
+Greenfield provisioning comes after the brownfield/application proof and uses
+the same capabilities, Configuration Service, Deployment Service, verification
+and History boundaries. Generalize only after each slice proves the contracts
+compose correctly.
 
 ## Ownership Foundation gate
 
