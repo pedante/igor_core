@@ -596,9 +596,9 @@ PY
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
     local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
-    local _fresh_precondition _fresh_digest _fresh_privilege
+    local _fresh_precondition _fresh_digest _fresh_privilege _field_text
     local -a _proposal_fields=() _fresh_fields=()
-    mapfile -t _proposal_fields < <("$(_ml_python)" - "$_proposal" <<'PY'
+    _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
 import json,sys
 p=json.loads(sys.argv[1])
 print(p["capability_id"])
@@ -606,9 +606,11 @@ print(p["provider"])
 print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
 print(p["capability_version"])
 print(p["digest"])
+print("ok")
 PY
-)
-    [ "${#_proposal_fields[@]}" -eq 5 ] || return 1
+)" || return 1
+    mapfile -t _proposal_fields <<< "$_field_text"
+    [ "${#_proposal_fields[@]}" -eq 6 ] && [ "${_proposal_fields[5]}" = ok ] || return 1
     _id="${_proposal_fields[0]}"
     _provider="${_proposal_fields[1]}"
     _inputs="${_proposal_fields[2]}"
@@ -620,16 +622,18 @@ PY
     if [ -z "$IGOR_HISTORY_OPERATION_ID" ]; then
         IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_proposal" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
     fi
-    mapfile -t _fresh_fields < <("$(_ml_python)" - "$_fresh" <<'PY'
+    _field_text="$("$(_ml_python)" - "$_fresh" <<'PY'
 import json,sys
 p=json.loads(sys.argv[1])
 print(p["precondition_status"])
 print(p["digest"])
 print(p["privilege"])
 print(json.dumps(p.get("privileged_argv",[]),sort_keys=True,separators=(",",":")))
+print("ok")
 PY
-)
-    [ "${#_fresh_fields[@]}" -eq 4 ] || return 1
+)" || return 1
+    mapfile -t _fresh_fields <<< "$_field_text"
+    [ "${#_fresh_fields[@]}" -eq 5 ] && [ "${_fresh_fields[4]}" = ok ] || return 1
     _fresh_precondition="${_fresh_fields[0]}"
     _fresh_digest="${_fresh_fields[1]}"
     _fresh_privilege="${_fresh_fields[2]}"
