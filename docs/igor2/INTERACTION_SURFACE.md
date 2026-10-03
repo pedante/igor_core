@@ -405,10 +405,20 @@ The operator can distinguish:
 
 15UI is not Step 20 moved earlier.
 
+[OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md) now makes the Step 20 hand-off
+concrete:
+
+- **20A:** first-class CLI over the same backend;
+- **20B:** TUI completion with clear conversation/activity/result/approval
+  presentation and generated discovery/deployment/configuration/history/
+  investigation surfaces;
+- **20C:** default-launch cutover.
+
 15UI builds the reusable interaction primitives while Step 15 is still being
-implemented. Step 20 later makes the full-screen TUI the default and
-consolidates mature subsystem surfaces after normal workflows use shared
-backend contracts.
+implemented. Step 20 consumes those primitives after normal workflows use
+shared backend contracts. Color/style may distinguish user input, Igor text,
+actions/output and warnings, but semantics cannot depend on color alone.
 
 That distinction lets Igor improve day-to-day usability now without coupling
-architecture progress to a final UI rewrite.
+architecture progress to a final UI rewrite or creating a second CLI/TUI
+authority.
