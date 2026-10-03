@@ -150,6 +150,28 @@ EOF
     [ "$count" -eq 1 ]
 }
 
+@test "direct capability execution retains one pre-effect authority transition" {
+    local proposal digest recent
+    proposal="$(igor_capability_prepare system.service.restart '{"unit":"igor-step15b-fixture.service"}' fixture_service 1)"
+    digest="$(_igor_capability_field "$proposal" digest)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$digest"
+    IGOR_CAPABILITY_APPROVAL_STATUS=approved
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
+
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    recent="$(igor_history_cli recent 1)"
+    python3 - "$recent" <<'PY'
+import json,sys
+row=json.loads(sys.argv[1])[0]
+assert [item["state"] for item in row["transitions"]] == [
+    "admitted", "authority", "running", "provider_complete", "terminal"
+]
+assert row["approval"]["result"] == "approved"
+assert row["privilege"]["result"] == "authenticated"
+PY
+}
+
 @test "provider failure and failed verification are distinct durable terminal outcomes" {
     ai_mode=executive
     export FIXTURE_FAIL_EXEC=1
