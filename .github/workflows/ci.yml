@@ -2,9 +2,21 @@ name: CI
 
 on:
   push:
-    branches: ["master", "main"]
+    branches: ["master", "main", "igor2"]
   pull_request:
-    branches: ["master", "main"]
+    branches: ["master", "main", "igor2"]
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validation mode (full is the explicit release gate)
+        type: choice
+        options: [focused, affected, full]
+        default: affected
+      base:
+        description: Local comparison ref
+        default: igor2
+        type: string
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -75,42 +87,39 @@ jobs:
         run: ruff check .
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Job 3: tests — run all test suites
+  # Job 3: shared local/CI runner; ordinary events never select full.
   # ────────────────────────────────────────────────────────────────────────────
   tests:
-    name: Tests (BATS + bash + pytest)
+    name: Validation (${{ inputs.mode || 'affected' }})
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install Python test deps
-        run: pip install pytest
-
-      - name: Install bats-core
+      - name: Install validation tools
         run: |
+          pip install 'pytest>=9,<10' ruff
+          npm install -g bats@1.13.0
           sudo apt-get update -qq
-          sudo apt-get install -y bats
+          sudo apt-get install -y shellcheck
 
-      # ── Existing bash tests ────────────────────────────────────────────────
-      - name: Run test_igor_core.sh
-        run: bash tests/test_igor_core.sh
+      - name: Run shared validation harness
+        env:
+          VALIDATION_MODE: ${{ inputs.mode || 'affected' }}
+          VALIDATION_BASE: ${{ github.event.pull_request.base.sha || inputs.base || github.event.before }}
+        run: |
+          tests/validate.sh "$VALIDATION_MODE" --base "$VALIDATION_BASE" --output-dir validation-results
 
-      # ── Existing Python tests ──────────────────────────────────────────────
-      - name: Run test_ai_render.py
-        run: pytest tests/test_ai_render.py -v
-
-      # ── BATS: core/ ───────────────────────────────────────────────────────
-      - name: BATS — core/
-        run: bats --tap tests/core/
-
-      # ── BATS: modules/ ────────────────────────────────────────────────────
-      - name: BATS — modules/
-        run: bats --tap tests/modules/
-
-      # ── BATS: integration/ ────────────────────────────────────────────────
-      - name: BATS — integration/
-        run: bats --tap tests/integration/
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ inputs.mode || 'affected' }}
+          path: validation-results/
+          if-no-files-found: warn

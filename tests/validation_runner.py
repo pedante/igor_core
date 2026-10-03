@@ -11,9 +11,9 @@ Full mirrors the canonical run_all.sh groups (legacy Bash, rendering, Core,
 module and integration BATS) and additionally discovers every test_*.py under
 tests. Each test file is a bounded subprocess. BATS uses its native per-test
 watchdog and continuation; a Python file timeout moves on to the next file.
-Limits default to 600s/file, 1200s for System configuration vertical slices,
+Limits default to 600s/file, 1200s for System configuration/administration vertical slices,
 and 180s/BATS test. These are ceilings, not expected durations. No full run is
-ever triggered by focused/affected. Existing runners and CI remain unchanged.
+ever triggered by focused/affected. CI and local validation share this entry point.
 
 Raw output and summary.json live in a unique temporary directory by default;
 --output-dir must name a new directory. Summary counts refer to test identities
@@ -232,7 +232,8 @@ def run_group(group, root, output_dir, index, args):
         env["IGOR_VALIDATION_REPORT"] = str(report_path)
         env["PYTHONPATH"] = str(Path(__file__).parent) + os.pathsep + env.get("PYTHONPATH", "")
     seconds = args.group_timeout
-    if any("test_system_configuration_workflow.py" in name for name in files):
+    if any(Path(name.split("::", 1)[0]).name in ("test_system_configuration_workflow.py",
+                                                   "test_system_admin_surface.bats") for name in files):
         seconds = args.slow_timeout
     result = execute(commands[kind], root, log, seconds, env)
     content = log.read_text(encoding="utf-8", errors="replace")

@@ -1,6 +1,113 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-02
+Last updated: 2026-10-03
+
+## Validation & Integration Harness Hardening — Boundary C candidate, release gate blocked
+
+Developer infrastructure only; Igor product behavior, D064 semantics, runtime
+authority and Step 19 sequencing are unchanged. The
+[validation guide](VALIDATION.md) defines focused → affected → stabilization →
+full once → release freeze. The canonical Bash/rendering/BATS groups and the
+complete Python suite remain the explicit full gate, never an automatic
+follow-up to focused/affected.
+
+Boundary A (`8ab0e4b`) introduced local Git selection, explicit domain mapping,
+process bounds, logs and JSON/human summaries. Harness tests: 24 pass in 4.41s;
+representative focused/affected runs: 5.59s/5.83s. Boundary B (`6f3c321`) added
+stable identities and strict reviewed comparison: 45 harness tests pass in
+9.61s; focused/affected 12.04s/12.84s.
+
+The [reviewed baseline](../../tests/validation_baseline.json) remains ten
+entries: eight assertion failures and two startup subtest timeouts. Candidates
+were reproduced individually against an unchanged archive of `525cc76`, with
+all 391 tracked files rehashed and zero changes. Startup timing outcomes were
+reproduced twice. [Evidence](../../tests/validation_baseline_evidence.md) records
+methodology and identities. Historical automation assertions passed isolated
+reproduction; inconclusive automation budgets, TUI palette hangs, concurrent
+configuration timing and STATUS-only conditions were intentionally not
+accepted. The baseline remains incomplete; new/unreviewed outcomes block.
+
+Boundary C shares the harness with CI: ordinary push/PR feedback is affected;
+manual dispatch offers the explicit full gate. PR coverage now includes
+`igor2`; existing repository lint jobs retain their policy. Raw logs and JSON
+are uploaded on failure. CI configuration parses successfully.
+
+BATS 1.13.0's watchdog delay reproduces outside the harness: an immediate
+failure takes 3–4s with a 3s native bound and 5s with a 5s bound, versus immediate
+exit without the watchdog. This explains the three approximately 180s probes;
+it is not an accepted product timeout. No external runner/product fixture was
+patched. Native and outer bounds remain, failures stay visible/nonzero, and
+TAP completion is not used to truncate suite finalization. Process cleanup
+covers the subprocess group; deliberately detached sessions remain a fixture
+responsibility. Markdown checks cover inline local file links only.
+
+Boundary C initially passed 46 harness tests in 7.94s; focused 29 identities/checks
+in 7.04s and affected 48 in 15.52s. Two concrete harness defects exposed by the
+single full run were corrected narrowly: the progressing twenty-case System
+administration file exhausted its 600s aggregate budget, so it now uses the
+existing 1200s slow-slice bound; a passing NaN subtest was incorrectly reported
+as ERROR, so nonliteral passing subtests use their stable parent node while
+unrepresentable failing subtests remain fail-closed. Tiny fixtures prove both;
+all 48 final harness tests pass across the full-run file invocations (15.23s
+combined). Focused correction validation: 51 identities/checks pass in 15.83s.
+
+**Single full gate:** 6327.10s (105.45 minutes), exit 1. No full rerun was made.
+Raw logs and original JSON remain unchanged at `/tmp/igor-validation-c-full/`.
+The corrected administration file alone completed all twenty cases in 1135.00s,
+with two baseline assertions and one unaccepted assertion, no timeout. The exact
+NaN-containing product-test node passes under the corrected adapter. Supplemental
+JSON is retained at `/tmp/igor-validation-c-admin-correction/` and
+`/tmp/igor-validation-c-report-correction/`; an explicitly derived comparison is
+`/tmp/igor-validation-c-release-review.json`. It records which original outcomes
+were superseded and why; it is evidence, not baseline metadata or another full run.
+
+| Classification | Original full | With scoped correction evidence |
+|---|---:|---:|
+| PASS | 1369 | 1377 |
+| FAIL_BASELINE | 7 | 8 |
+| TIMEOUT_BASELINE | 2 | 2 |
+| BASELINE_FIXED | 0 | 0 |
+| ENV_SKIP | 2 | 2 |
+| FAIL_NEW | 6 | 7 |
+| TIMEOUT_NEW | 4 | 3 |
+| TOOL_UNAVAILABLE | 0 | 0 |
+| ERROR | 1 | 0 |
+
+The original file-budget timeout left one baseline entry unexercised; the
+corrected file exercises it, so all ten reviewed entries reproduce and none
+is fixed. Environmental skips are the existing encrypted-snapshot GPG-agent
+guard and LAN-address guard; no Docker/systemd fixture was skipped.
+
+**Unaccepted evidence / Owner decision required:**
+
+- `test_module_conf.bats::system module.conf: required_bins includes systemctl`
+  fails on unchanged `525cc76` (0.82s).
+- `test_system_admin_surface.bats::Docker install composite capability resolves
+  a frozen platform plan without executing` fails on that source (38.50s).
+- `test_ai_tui_step7.py::Step7PaletteTests::test_palette_query_filters_before_invocation`
+  fails on that source (1.48s).
+- Palette-send and Step7 selection-route nodes reach the current 600s file
+  deadlines and separate 90s source-probe bounds. Those shorter single probes
+  are not accepted repeatable timeout baselines.
+- Four `AutomationRegistryTests` assertions remain new: canonical precondition,
+  real condition-read, real one-time dispatch/restart and real periodic refresh.
+  Exact source probes pass the precondition/condition/periodic cases
+  (39.91s/67.29s/90.40s); one-time dispatch reaches a 300s probe bound without
+  reproducing its assertion. Current isolated precondition also fails. These
+  discrepancies do not establish accepted assertion identities.
+- `test_system_configuration_workflow.py::test_approved_change_applies_module_consumer_and_records_independent_readback`
+  reproduces its fixture-owned 120s timeout on the source (121.99s total), not
+  the 180s outer probe bound. This timing candidate is not accepted.
+
+Source integrity after the probes: all 391 tracked files match `525cc76` blobs.
+Baseline metadata is unchanged. Seven unreviewed failures and three unreviewed
+timeouts still block closure; the suite is neither green nor baseline-equivalent.
+No product file or product test was changed. Hosted CI execution was not performed;
+its configuration and shared local entry point were validated here. Some targeted
+source probes overlapped the full run, so timings are representative observations,
+not serial benchmarks. History BATS took 592.61s against its 600s file ceiling;
+that narrow margin and BATS watchdog cleanup remain explicit limitations.
+
 
 ## System 2.3.0 administration surface — experimental candidate
 

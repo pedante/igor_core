@@ -51,6 +51,23 @@ class TestSubtests(unittest.TestCase):
             self.assertEqual(statuses[identity], "TIMEOUT")
         self.assertEqual(compare_results(result["observations"], [], {})["exit_code"], 1)
 
+    def test_nonliteral_passing_subtest_uses_parent_but_failure_stays_closed(self):
+        (self.root / "tests/test_fixture.py").write_text("""import unittest
+class TestValues(unittest.TestCase):
+    def test_pass(self):
+        with self.subTest(schema={"value": float("nan")}):
+            self.assertTrue(True)
+    def test_fail(self):
+        with self.subTest(schema={"value": float("nan")}):
+            self.assertTrue(False)
+""")
+        result = run_group({"id": "pytest:fixture", "kind": "pytest", "files": ["tests/test_fixture.py"]},
+                           self.root, self.root, 0, self.args)
+        statuses = {row["identity"]: row["status"] for row in result["observations"]}
+        self.assertEqual(statuses["tests/test_fixture.py::TestValues::test_pass"], "PASS")
+        self.assertEqual(statuses["tests/test_fixture.py::TestValues::test_fail"], "ERROR")
+        self.assertEqual(compare_results(result["observations"], [], {})["exit_code"], 1)
+
     def test_outer_deadline_reports_active_node_not_unexecuted_siblings(self):
         (self.root / "tests/test_fixture.py").write_text("import time\ndef test_slow(): time.sleep(20)\ndef test_after(): pass\n")
         self.args.group_timeout = 2

@@ -210,6 +210,25 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertEqual(result["runner_skip_count"], 1)
         self.assertIn("ok 2 after", Path(result["log"]).read_text())
 
+    def test_system_administration_slice_uses_larger_file_budget(self):
+        args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",
+                                 "shellcheck": "shellcheck", "bats_timeout": 180,
+                                 "group_timeout": 600, "slow_timeout": 1200})()
+
+        def fake_execute(command, root, log, seconds, env):
+            log.write_text("1..1\nok 1 fixture in 1ms\n")
+            return {"status": "PASS", "returncode": 0, "elapsed_seconds": 0, "log": str(log)}
+
+        with patch.object(runner, "execute", side_effect=fake_execute) as execute:
+            runner.run_group({"id": "fixture", "kind": "bats",
+                              "files": ["tests/modules/test_system_admin_surface.bats"]},
+                             self.root, self.root, 0, args)
+            self.assertEqual(execute.call_args.args[3], 1200)
+            self.assertEqual(execute.call_args.args[4]["BATS_TEST_TIMEOUT"], "180")
+            runner.run_group({"id": "fixture", "kind": "bats", "files": ["tests/test_other.bats"]},
+                             self.root, self.root, 1, args)
+            self.assertEqual(execute.call_args.args[3], 600)
+
     def test_missing_pytest_fails_distinctly(self):
         python = self.write("python-without-pytest", "#!/bin/sh\necho 'No module named pytest' >&2\nexit 1\n")
         python.chmod(0o755)

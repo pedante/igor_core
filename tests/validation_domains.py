@@ -163,7 +163,7 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
             selected.update(all_tests)
             continue
 
-        if relative == "tests/validate.sh" or (relative.startswith("tests/") and "validation" in Path(relative).name):
+        if relative == ".github/workflows/ci.yml" or relative == "tests/validate.sh" or (relative.startswith("tests/") and "validation" in Path(relative).name):
             domains.add("validation")
             selected.update(p for p in all_tests if p.startswith("tests/test_validation_"))
             continue

@@ -63,6 +63,12 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertIn("tests/test_validation_domains.py", harness_tests)
         self.assertEqual(affected_tests(["tests/validate.sh"], ROOT)[0], ["validation"])
 
+    def test_shared_ci_change_selects_harness_contracts(self):
+        domains, tests = affected_tests([".github/workflows/ci.yml"], ROOT)
+        self.assertEqual(domains, ["validation"])
+        self.assertTrue(tests)
+        self.assertTrue(all(path.startswith("tests/test_validation_") for path in tests))
+
     def test_mapping_outputs_sorted_relative_existing_paths(self):
         domains, tests = affected_tests(["core/lib/operational_history.py"], ROOT)
         self.assertEqual(domains, sorted(domains))

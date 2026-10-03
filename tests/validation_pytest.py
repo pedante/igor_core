@@ -46,8 +46,12 @@ def pytest_runtest_logreport(report):
             suffix = json.dumps({"msg": context.msg, "params": params}, sort_keys=True,
                                 separators=(",", ":"), allow_nan=False)
         except (TypeError, ValueError, SyntaxError):
-            emit({"event": "result", "identity": identity, "status": "ERROR",
-                  "detail": "Subtest parameters are not stable JSON values"})
+            # A successful subtest needs no failure identity. Preserve its
+            # pass under the declared parent node; never invent an unstable
+            # suffix or turn a healthy negative-input test into a runner error.
+            emit({"event": "result", "identity": identity,
+                  "status": "PASS" if report.passed else "ERROR",
+                  "detail": "Subtest parameters are not stable JSON values; reported under parent node"})
             return
         identity += f"::subtest[{suffix}]"
     status = "PASS"
