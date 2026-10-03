@@ -3,10 +3,10 @@
 # material; recovery queries only current registered deterministic verifiers.
 
 _igor_history_call() {
-    local _action="$1" _fields="${2:-}" _request
+    local _action="$1" _fields="${2:-}"
     [ -n "$_fields" ] || _fields='{}'
-    _request="$(printf '%s' "$_fields" | python3 -c 'import json,sys; r=json.load(sys.stdin); r["data_dir"]=sys.argv[1]; print(json.dumps(r,separators=(",",":")))' "${IGOR_DATA_DIR:-${IGOR_DIR}/data}")" || return 1
-    printf '%s' "$_request" | python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/operational_history.py" "$_action"
+    printf '%s' "$_fields" | IGOR_HISTORY_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/operational_history.py" "$_action"
 }
 
 _igor_history_begin() {
@@ -44,30 +44,35 @@ PY
 )" || return 1
     # New execution admission also reconciles abandoned prior-process claims.
     # History inspection never enters this path.
-    igor_history_recover >/dev/null || return 1
+    igor_history_recover "" false >/dev/null || return 1
     _record="$(_igor_history_call prepare "$_request")" || return 1
     _igor_capability_field "$_record" operation_id
 }
 
 _igor_history_update() {
-    local _action="$1" _id="$2" _first="${3:-}" _second="${4:-}" _fields
-    _fields="$(python3 - "$_action" "$_id" "$_first" "$_second" <<'PY'
-import json, sys
-act, ident, first, second = sys.argv[1:]
-request = {"operation_id": ident}
-if act == "authority":
-    request.update(approval=first, privilege=second)
-elif act == "running":
-    request["proposal"] = json.loads(first)
-elif act == "provider-complete":
-    request["execution_status"] = first
-elif act == "finish":
-    request["result"] = json.loads(first)
-elif act == "reconcile":
-    request.update(verification_status=first, evidence=json.loads(second or "{}"))
-print(json.dumps(request,separators=(",", ":")))
-PY
-)" || return 1
+    local _action="$1" _id="$2" _first="${3:-}" _second="${4:-}" _third="${5:-}" _fields
+    case "$_action" in
+        authority)
+            printf -v _fields '{"operation_id":"%s","approval":"%s","privilege":"%s"}' \
+                "$_id" "$_first" "$_second"
+            ;;
+        running)
+            printf -v _fields '{"operation_id":"%s","proposal":%s,"approval":"%s","privilege":"%s"}' \
+                "$_id" "$_first" "$_second" "$_third"
+            ;;
+        provider-complete)
+            printf -v _fields '{"operation_id":"%s","execution_status":"%s"}' "$_id" "$_first"
+            ;;
+        finish)
+            printf -v _fields '{"operation_id":"%s","result":%s}' "$_id" "$_first"
+            ;;
+        reconcile)
+            [ -n "$_second" ] || _second='{}'
+            printf -v _fields '{"operation_id":"%s","verification_status":"%s","evidence":%s}' \
+                "$_id" "$_first" "$_second"
+            ;;
+        *) return 2 ;;
+    esac
     _igor_history_call "$_action" "$_fields" >/dev/null
 }
 
@@ -86,7 +91,7 @@ _igor_capability_publish_result() {
 }
 
 igor_history_recover() {
-    local _only="${1:-}" _episodes _episode _id _proposal _inputs _capability _provider _version _kind _matches _evidence _status
+    local _only="${1:-}" _summary="${2:-true}" _episodes _episode _id _proposal _inputs _capability _provider _version _kind _matches _evidence _status
     _episodes="$(_igor_history_call recover)" || return 1
     while IFS= read -r -d '' _episode; do
         _id="$(_igor_capability_field "$_episode" operation_id)" || return 1
@@ -126,7 +131,7 @@ PY
         fi
         _igor_history_update reconcile "$_id" "$_status" "$_evidence" || return 1
     done < <(printf '%s' "$_episodes" | python3 -c 'import json,sys; [sys.stdout.buffer.write(json.dumps(r,separators=(",", ":")).encode()+b"\0") for r in json.load(sys.stdin)]')
-    _igor_history_call recent
+    [ "$_summary" = false ] || _igor_history_call recent
 }
 
 _igor_history_restore_document() {

@@ -547,10 +547,25 @@ class OperationalHistory:
                 row["provider"]["source"].get("module_version") != proposal.get("provider_source_module_version")):
             raise HistoryError("durable attempt differs from current approved operation")
 
-    def running(self, ident: str, proposal: dict[str, Any] | None = None) -> None:
+    def running(self, ident: str, proposal: dict[str, Any] | None = None,
+                *, approval: str | None = None, privilege: str | None = None) -> None:
         with self._store(write=True) as db:
             row, owner = self._read(db, ident)
-            if row["lifecycle"] != "admitted" or row["approval"]["result"] not in {"approved", "auto_approved", "not_required"} or (row["privilege"]["requirement"] == "required" and row["privilege"]["result"] != "authenticated"):
+            if row["lifecycle"] != "admitted":
+                raise HistoryError("cannot record running attempt")
+            if row["approval"]["result"] == "pending":
+                if approval is None or privilege is None:
+                    raise HistoryError("running direct caller lacks final authority")
+                row["approval"]["result"] = approval
+                row["privilege"]["result"] = privilege
+                _transition(row, "authority")
+            else:
+                if approval is not None and approval != row["approval"]["result"]:
+                    raise HistoryError("running authority differs from durable approval")
+                if privilege is not None and privilege != row["privilege"]["result"]:
+                    raise HistoryError("running authority differs from durable privilege")
+            if (row["approval"]["result"] not in {"approved", "auto_approved", "not_required"} or
+                    (row["privilege"]["requirement"] == "required" and row["privilege"]["result"] != "authenticated")):
                 raise HistoryError("cannot record running attempt")
             if proposal is not None:
                 self._assert_binding(row, proposal)
@@ -651,7 +666,19 @@ class OperationalHistory:
     def recover(self) -> list[dict[str, Any]]:
         with self._store(write=True) as db:
             recovered = []
-            for (ident,) in db.execute("SELECT id FROM episodes").fetchall():
+            # Runtime ownership exists only for unfinished attempts. Previously
+            # recovery decoded every terminal episode on every new admission.
+            # Interrupted/unreconciled rows have no owner, so include only that
+            # narrow JSON shape for reconciliation without re-reading terminal
+            # history in Python.
+            candidates = db.execute(
+                """SELECT id FROM episodes
+                   WHERE owner IS NOT NULL
+                      OR (owner IS NULL
+                          AND instr(record, '"lifecycle":"interrupted"') > 0
+                          AND instr(record, '"reconciliation":null') > 0)"""
+            ).fetchall()
+            for (ident,) in candidates:
                 row, owner = self._read(db, ident)
                 if owner and not _alive(owner) and row["lifecycle"] in {"admitted", "running", "provider_complete"}:
                     row = _interrupted(row)
@@ -755,7 +782,12 @@ def _cli() -> int:
     args = parser.parse_args()
     try:
         request = _decode(sys.stdin.read())
-        service = OperationalHistory(Path(request["data_dir"]))
+        if type(request) is not dict:
+            raise HistoryError("history request must be an object")
+        data_dir = request.pop("data_dir", None) or os.environ.get("IGOR_HISTORY_DATA_DIR")
+        if not data_dir:
+            raise HistoryError("history data directory is unavailable")
+        service = OperationalHistory(Path(data_dir))
         action = args.action
         result: Any = None
         if action == "prepare":
@@ -763,7 +795,8 @@ def _cli() -> int:
         elif action == "authority":
             service.authority(request["operation_id"], request["approval"], request["privilege"])
         elif action == "running":
-            service.running(request["operation_id"], request.get("proposal"))
+            service.running(request["operation_id"], request.get("proposal"),
+                            approval=request.get("approval"), privilege=request.get("privilege"))
         elif action == "provider-complete":
             service.provider_complete(request["operation_id"], request["execution_status"])
         elif action == "finish":

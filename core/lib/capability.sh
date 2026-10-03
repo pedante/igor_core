@@ -653,11 +653,12 @@ PY
     # The execution-fence prepare above just evaluated current preconditions.
     # Repeating the same probes here adds latency without strengthening the
     # frozen proposal comparison.
-    # Fail closed before the provider's possible external effect. The existing
-    # approval/authentication authorities have already made their decisions.
-    _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+    # The AI dispatcher has already persisted final approval+privilege. For
+    # direct callers, History atomically records that authority together with
+    # running before any provider effect. No caller-controlled marker is trusted.
+    _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" \
+        "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
         "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
-    _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
         # safety.sh; -n prevents a hidden prompt here. Package administration
