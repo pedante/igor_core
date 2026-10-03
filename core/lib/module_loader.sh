@@ -49,6 +49,12 @@ declare -gA _IGOR_CONTRIBUTION_STATE 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_REASON 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_OWNER 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_SOURCE 2>/dev/null || true
+declare -gA _IGOR_REQ_INDEXED 2>/dev/null || true
+declare -gA _IGOR_REQ_MODULES 2>/dev/null || true
+declare -gA _IGOR_REQ_CAPABILITIES 2>/dev/null || true
+declare -gA _IGOR_REQ_PLATFORM_FEATURES 2>/dev/null || true
+declare -gA _IGOR_REQ_PLATFORM_FAMILIES 2>/dev/null || true
+declare -gA _IGOR_REQ_BINS 2>/dev/null || true
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
 declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
@@ -545,11 +551,87 @@ igor_contribution_state() {
     else printf 'active\n'; fi
 }
 
+_ml_index_requirement_fields() {
+    local _key="$1" _record="$2" _parsed
+    local -a _fields=()
+    [[ "$_record" = \{* ]] || return 0
+    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+requires=record.get("requires",{})
+if not isinstance(requires,dict):
+    raise SystemExit(1)
+for key in ("modules","capabilities","platform_features","platform_families","bins"):
+    value=requires.get(key,[])
+    if not isinstance(value,list) or any(not isinstance(item,str) or not item for item in value):
+        raise SystemExit(1)
+    print(" ".join(value))
+print("ok")
+')" || return 1
+    mapfile -t _fields <<< "$_parsed"
+    [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 1
+    _IGOR_REQ_INDEXED["$_key"]=1
+    _IGOR_REQ_MODULES["$_key"]="${_fields[0]}"
+    _IGOR_REQ_CAPABILITIES["$_key"]="${_fields[1]}"
+    _IGOR_REQ_PLATFORM_FEATURES["$_key"]="${_fields[2]}"
+    _IGOR_REQ_PLATFORM_FAMILIES["$_key"]="${_fields[3]}"
+    _IGOR_REQ_BINS["$_key"]="${_fields[4]}"
+}
+
+_ml_indexed_requirement_failure() {
+    local _key="$1" _item _family
+    local -a _items=()
+    read -r -a _items <<< "${_IGOR_REQ_MODULES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        if ! igor_has_module "$_item"; then
+            printf 'required module %s is %s%s' "$_item" \
+                "${_IGOR_MODULE_STATUS[$_item]:-missing}" \
+                "${_IGOR_MODULE_REASON[$_item]:+ (${_IGOR_MODULE_REASON[$_item]})}"
+            return 1
+        fi
+    done
+    read -r -a _items <<< "${_IGOR_REQ_CAPABILITIES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        _ml_v2_capability_reason "$_item" || return 1
+    done
+    if [ -n "${_IGOR_REQ_PLATFORM_FEATURES[$_key]:-}" ]; then
+        printf 'unsupported platform feature requirement: %s' "${_IGOR_REQ_PLATFORM_FEATURES[$_key]// /, }"
+        return 1
+    fi
+    if [ -n "${_IGOR_REQ_PLATFORM_FAMILIES[$_key]:-}" ]; then
+        if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+            source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+            igor_detect_distro
+        fi
+        _family="${IGOR_DISTRO_FAMILY:-unknown}"
+        case " ${_IGOR_REQ_PLATFORM_FAMILIES[$_key]} " in
+            *" $_family "*) ;;
+            *)
+                printf 'platform family %s is outside allowed set %s' "$_family" "${_IGOR_REQ_PLATFORM_FAMILIES[$_key]// /, }"
+                return 1
+                ;;
+        esac
+    fi
+    read -r -a _items <<< "${_IGOR_REQ_BINS[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        if ! command -v "$_item" >/dev/null 2>&1; then
+            printf 'required binary %s is missing' "$_item"
+            return 1
+        fi
+    done
+    return 0
+}
+
 _ml_contribution_dynamic_failure() {
     local _key="$1" _record="${_IGOR_CONTRIBUTIONS[$1]:-}" _requires
     [[ "$_record" = \{* ]] || return 0
-    # Most contributions have no dynamic requirements. Avoid spawning Python
-    # for those records on every Operator Surface snapshot.
+    if [ "${_IGOR_REQ_INDEXED[$_key]:-0}" = 1 ]; then
+        _ml_indexed_requirement_failure "$_key" || true
+        return 0
+    fi
     [[ "$_record" == *'"requires"'* ]] || return 0
     _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 0
     _ml_v2_requirement_failure "$_requires" || true
@@ -1177,6 +1259,7 @@ _ml_load_v2() {
             _index_key="${_key}@${_name}"
         fi
         _ml_index_contribution "$_key" "$_name" "$_source" "$_record" || return 1
+        _ml_index_requirement_fields "$_index_key" "$_record" || return 1
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
         case "$_key" in
@@ -1326,11 +1409,66 @@ print(json.dumps(rows, sort_keys=True, separators=(",", ":")))
 # The same owner-stamped contribution index backs active dispatch and
 # read-only inspection. Duplicate providers retain their @owner index keys;
 # selection is deliberately left to the capability resolver.
+_ml_capability_resolution_ids() {
+    local _id="${1:-}" _key
+    [ -n "$_id" ] || return 2
+    {
+        printf '%s\0' "$_id"
+        while IFS= read -r _key; do
+            case "$_key" in
+                "capability:$_id"|"capability:$_id@"*)
+                    printf '%s\0' "${_IGOR_CONTRIBUTIONS[$_key]:-}"
+                    ;;
+            esac
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | "$(_ml_python)" -c '
+import json,sys
+raw=sys.stdin.buffer.read().split(b"\0")
+if raw[-1:]==[b""]: raw.pop()
+if not raw: raise SystemExit(1)
+ids={raw[0].decode()}
+for item in raw[1:]:
+    if not item: continue
+    record=json.loads(item)
+    req=record.get("requires",{})
+    if isinstance(req,dict):
+        ids.update(x for x in req.get("capabilities",[]) if isinstance(x,str) and x)
+    impl=record.get("implementation")
+    if isinstance(impl,dict) and impl.get("kind")=="composition":
+        for variant in impl.get("variants",[]):
+            for step in variant.get("steps",[]):
+                ident=step.get("capability_id")
+                if isinstance(ident,str) and ident: ids.add(ident)
+        final=impl.get("final_check")
+        if isinstance(final,dict):
+            ident=final.get("capability_id")
+            if isinstance(ident,str) and ident: ids.add(ident)
+print("\n".join(sorted(ids)))
+'
+}
+
+_ml_capability_filter_contains() {
+    local _filter="$1" _candidate="$2" _item
+    while IFS= read -r _item; do
+        [ "$_item" = "$_candidate" ] && return 0
+    done <<< "$_filter"
+    return 1
+}
+
 igor_capability_list() {
-    local _key _owner _record _state _reason _dynamic _base_state _owner_active
+    local _filter_ids="${1:-}" _key _record_id _owner _record _state _reason _dynamic _base_state _owner_active
     {
         while IFS= read -r _key; do
             case "$_key" in capability:*|legacy_action:*) ;; *) continue ;; esac
+            if [[ "$_key" = capability:* ]]; then
+                _record_id="${_key#capability:}"
+                _record_id="${_record_id%%@*}"
+            else
+                _record_id="${_key#legacy_action:}"
+            fi
+            if [ -n "$_filter_ids" ] && ! _ml_capability_filter_contains "$_filter_ids" "$_record_id"; then
+                continue
+            fi
             _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
             _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
             if [[ "$_key" = legacy_action:* ]]; then
@@ -1376,10 +1514,8 @@ PY
     } | "$(_ml_python)" -c '
 import json, sys
 raw = sys.stdin.buffer.read().split(b"\0")
-if raw[-1:] == [b""]:
-    raw.pop()
-if len(raw) % 6:
-    raise SystemExit("invalid contribution records")
+if raw[-1:] == [b""]: raw.pop()
+if len(raw) % 6: raise SystemExit("invalid contribution records")
 result = []
 for index in range(0, len(raw), 6):
     key, owner, source, state, reason, record = (item.decode() for item in raw[index:index + 6])
@@ -1388,17 +1524,23 @@ for index in range(0, len(raw), 6):
                    "provider": owner, "source": source, "availability": state,
                    "unavailable_reason": reason or None, "descriptor": record})
 sys.path.insert(0, sys.argv[1])
+wanted=set(sys.argv[4].splitlines()) if sys.argv[4] else None
 from configuration import capability_records
-result.extend(capability_records(sys.argv[2]=="true"))
+core_rows=capability_records(sys.argv[2]=="true")
 from deployment_attachment import capability_records as deployment_capability_records
-result.extend(deployment_capability_records(sys.argv[3]=="true"))
+core_rows.extend(deployment_capability_records(sys.argv[3]=="true"))
+if wanted is not None:
+    core_rows=[row for row in core_rows if row.get("id") in wanted]
+result.extend(core_rows)
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)" "$(_ml_owner_active nextcloud_docker && printf true || printf false)"
+' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)" "$(_ml_owner_active nextcloud_docker && printf true || printf false)" "$_filter_ids"
 }
 
+
 igor_capability_inspect() {
-    local _id="${1:-}" _provider="${2:-}"
-    igor_capability_list | "$(_ml_python)" -c '
+    local _id="${1:-}" _provider="${2:-}" _resolution_ids
+    _resolution_ids="$(_ml_capability_resolution_ids "$_id")" || return 1
+    igor_capability_list "$_resolution_ids" | "$(_ml_python)" -c '
 import json, sys
 capability_id, provider = sys.argv[1:]
 rows = [r for r in json.load(sys.stdin) if r["id"] == capability_id]

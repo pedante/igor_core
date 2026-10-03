@@ -1,6 +1,46 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
+
+## Capability Runtime Performance — Boundary A candidate
+
+A real `system.service.list` trace localized the dominant generic runtime cost:
+the native `systemctl list-units` query completed in about 41 ms, while the
+execution-fence reprepare/revalidation path consumed about 10.6s before the
+provider could enter `running`.
+
+Boundary A changes implementation cost without changing capability authority:
+
+- Module API v2 `requires` lists are compiled into Core-owned in-memory indexes
+  at module load; current module/platform/binary state is still checked at use
+  time.
+- prepare/inspect resolve only the requested capability plus its bounded
+  declared/composite dependency closure rather than dynamically reevaluating
+  unrelated capabilities.
+- composite preparation retains its leaf and final-check descriptors.
+- execution still reprepares immediately before the provider and compares the
+  approved digest, but the fresh preconditions are not executed a second time.
+- proposal/fresh execution-fence fields are parsed in batched, fail-closed
+  operations instead of one Python interpreter per field.
+
+Focused proof on the exact runtime/test content used by this candidate passed:
+`tests/test_capability_runtime.py` **20/20** in 0.42s and **6/6** selected System
+administration/composite BATS tests. The BATS proof includes the actual
+service-list/status path, selected-only dynamic requirement evaluation, a
+bounded Python-process budget, exactly one execution-fence precondition
+evaluation, Docker composite resolution and child-unavailability fencing.
+Shell/Python syntax checks also passed.
+
+The shared affected CI job could only be exercised by temporarily correcting
+the hosted runner's existing global BATS install permission issue; that
+workflow-only change was removed after the focused evidence. Whole-repository
+Ruff remains red on its existing backlog. No full regression was run for this
+boundary.
+
+Boundary A deliberately does **not** alter Operational History transitions or
+recovery scanning, module-handler isolation/startup, Domain Event/Automation
+post-completion work, event-stream sequencing, approval/privilege rules or
+verification/recovery semantics. Those remain separate optimization boundaries.
 
 ## Roadmap completion-gate correction — documentation-only candidate
 

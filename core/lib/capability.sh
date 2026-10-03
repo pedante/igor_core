@@ -212,10 +212,11 @@ elif value is not None:
 }
 
 igor_capability_prepare() {
-    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
+    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _resolution_ids _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
     local _family _argv _update_argv _upgrade_argv _package _resolved_package _op
     [ -n "$_inputs" ] || _inputs='{}'
-    _records="$(igor_capability_list)" || return 1
+    _resolution_ids="$(_ml_capability_resolution_ids "$_id")" || return 1
+    _records="$(igor_capability_list "$_resolution_ids")" || return 1
     if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
         # shellcheck source=core/lib/distro.sh
         source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
@@ -595,18 +596,49 @@ PY
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
     local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
-    _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
-    _provider="$(_igor_capability_field "$_proposal" provider)" || return 1
-    _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
-    _version="$(_igor_capability_field "$_proposal" capability_version)" || return 1
+    local _fresh_precondition _fresh_digest _fresh_privilege _field_text
+    local -a _proposal_fields=() _fresh_fields=()
+    _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
+import json,sys
+p=json.loads(sys.argv[1])
+print(p["capability_id"])
+print(p["provider"])
+print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
+print(p["capability_version"])
+print(p["digest"])
+print("ok")
+PY
+)" || return 1
+    mapfile -t _proposal_fields <<< "$_field_text"
+    [ "${#_proposal_fields[@]}" -eq 6 ] && [ "${_proposal_fields[5]}" = ok ] || return 1
+    _id="${_proposal_fields[0]}"
+    _provider="${_proposal_fields[1]}"
+    _inputs="${_proposal_fields[2]}"
+    _version="${_proposal_fields[3]}"
+    _digest="${_proposal_fields[4]}"
     _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider" "$_version")" || return 1
-    _digest="$(_igor_capability_field "$_proposal" digest)" || return 1
     [ -n "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" ] &&
         [ "$IGOR_CAPABILITY_APPROVED_DIGEST" = "$_digest" ] || return 1
     if [ -z "$IGOR_HISTORY_OPERATION_ID" ]; then
         IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$_proposal" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
     fi
-    if [ "$(_igor_capability_field "$_fresh" precondition_status)" != satisfied ]; then
+    _field_text="$("$(_ml_python)" - "$_fresh" <<'PY'
+import json,sys
+p=json.loads(sys.argv[1])
+print(p["precondition_status"])
+print(p["digest"])
+print(p["privilege"])
+print(json.dumps(p.get("privileged_argv",[]),sort_keys=True,separators=(",",":")))
+print("ok")
+PY
+)" || return 1
+    mapfile -t _fresh_fields <<< "$_field_text"
+    [ "${#_fresh_fields[@]}" -eq 5 ] && [ "${_fresh_fields[4]}" = ok ] || return 1
+    _fresh_precondition="${_fresh_fields[0]}"
+    _fresh_digest="${_fresh_fields[1]}"
+    _fresh_privilege="${_fresh_fields[2]}"
+    _spec="${_fresh_fields[3]}"
+    if [ "$_fresh_precondition" != satisfied ]; then
         # A legitimate precondition change keeps the same proposal content
         # except for its evaluated status. Changed inputs/provider/argv never
         # become a new approved operation.
@@ -617,16 +649,14 @@ igor_capability_execute() {
         _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
         return 0
     fi
-    [ "$_digest" = "$(_igor_capability_field "$_fresh" digest)" ] || return 1
-    if ! _igor_capability_preconditions "$_fresh"; then
-        _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
-        return 0
-    fi
-    _spec="$(_igor_capability_field "$_fresh" privileged_argv)" || return 1
+    [ "$_digest" = "$_fresh_digest" ] || return 1
+    # The execution-fence prepare above just evaluated current preconditions.
+    # Repeating the same probes here adds latency without strengthening the
+    # frozen proposal comparison.
     # Fail closed before the provider's possible external effect. The existing
     # approval/authentication authorities have already made their decisions.
     _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-        "$([ "$(_igor_capability_field "$_fresh" privilege)" = required ] && printf authenticated || printf not_required)" || return 1
+        "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
     _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" || return 1
     if [ "$_spec" != '[]' ]; then
         # Exact reviewed argv. Authentication has already been handled by
