@@ -56,6 +56,20 @@ EOF
     [ ! -s "$counter" ]
 }
 
+@test "canonical capability bridge still fails closed if validated source becomes invalid" {
+    cat > "$IGOR_DIR/module/module.sh" <<'EOF'
+system__observe() {
+    printf '{"status":"ok","result":{}}'
+# missing closing brace
+EOF
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_INPUT_CANONICAL=1 \
+    V2_HANDLER_DOMAIN_EVENTS=0 \
+    V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
+        run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
+    [ "$status" -ne 0 ]
+}
+
 @test "canonical capability bridge still enforces entrypoint containment" {
     write_handler
     printf 'system__observe() { printf "%s\\n" '"'"'{"status":"ok","result":{}}'"'"'; }\n' > "$IGOR_DIR/outside.sh"
