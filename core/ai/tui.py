@@ -218,7 +218,7 @@ def _clean_terminal_output(raw: str) -> str:
     return "\n".join(lines).rstrip("\n")
 
 
-_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \\r\\n]+ EXIT:\\d+(?:\\\\n|\\n)OUTPUT:(?:\\\\n|\\n)?")
+_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \r\n]+ EXIT:\d+(?:\\n|\n)OUTPUT:(?:\\n|\n)?")
 
 
 def _display_result_output(value: Any) -> str:
