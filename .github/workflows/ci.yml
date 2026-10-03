@@ -123,3 +123,31 @@ jobs:
           name: validation-${{ inputs.mode || 'affected' }}
           path: validation-results/
           if-no-files-found: warn
+
+
+  # Temporary focused proof for Provider Runtime Boundary C; removed after evidence.
+  boundary_c:
+    name: Provider Runtime Boundary C
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install focused tools
+        run: |
+          pip install 'pytest>=9,<10'
+          sudo npm install -g bats@1.13.0
+      - name: Syntax
+        run: |
+          bash -n core/lib/module_loader.sh
+          bash -n core/lib/module_handler.sh
+          bash -n core/lib/capability.sh
+          python -m py_compile core/lib/capability_runtime.py
+      - name: Capability runtime contract
+        run: python -m pytest -q tests/test_capability_runtime.py
+      - name: Module handler contract
+        run: bats tests/modules/test_module_handler.bats
+      - name: System v2 provider bridge regressions
+        run: |
+          bats --filter 'service inventory and status|service-list provider bridge metadata|targeted preparation|execution fence'             tests/modules/test_system_admin_surface.bats
