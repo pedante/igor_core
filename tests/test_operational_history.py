@@ -172,6 +172,21 @@ class OperationalHistoryTests(unittest.TestCase):
                 with self.assertRaises(HistoryError):
                     service.inspect(row["operation_id"] if field == "correlation" else "op-" + "0" * 32)
 
+    def test_running_can_atomically_record_direct_caller_authority(self):
+        candidate = proposal(tier="READ")
+        row = prepare(self.history, source=candidate, tier="READ")
+        self.history.running(
+            row["operation_id"], proposal=candidate,
+            approval="auto_approved", privilege="not_required",
+        )
+        inspected = self.history.inspect(row["operation_id"])
+        self.assertEqual(inspected["approval"]["result"], "auto_approved")
+        self.assertEqual(inspected["privilege"]["result"], "not_required")
+        self.assertEqual(
+            [item["state"] for item in inspected["transitions"]],
+            ["admitted", "authority", "running"],
+        )
+
     def test_invalid_authority_execution_and_terminal_combinations_are_rejected(self):
         row = prepare(self.history)
         with self.assertRaises(HistoryError):
