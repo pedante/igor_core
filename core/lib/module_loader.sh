@@ -556,10 +556,10 @@ igor_contribution_state() {
 }
 
 _ml_index_requirement_fields() {
-    local _key="$1" _record="$2"
+    local _key="$1" _record="$2" _parsed
     local -a _fields=()
     [[ "$_record" = \{* ]] || return 0
-    mapfile -t _fields < <(printf '%s' "$_record" | "$(_ml_python)" -c '
+    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
 import json,sys
 record=json.load(sys.stdin)
 requires=record.get("requires",{})
@@ -570,8 +570,10 @@ for key in ("modules","capabilities","platform_features","platform_families","bi
     if not isinstance(value,list) or any(not isinstance(item,str) or not item for item in value):
         raise SystemExit(1)
     print(" ".join(value))
-') || return 1
-    [ "${#_fields[@]}" -eq 5 ] || return 1
+print("ok")
+')" || return 1
+    mapfile -t _fields <<< "$_parsed"
+    [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 1
     _IGOR_REQ_INDEXED["$_key"]=1
     _IGOR_REQ_MODULES["$_key"]="${_fields[0]}"
     _IGOR_REQ_CAPABILITIES["$_key"]="${_fields[1]}"
@@ -1478,8 +1480,9 @@ print(json.dumps(result, sort_keys=True, separators=(",", ":")))
 }
 
 igor_capability_inspect() {
-    local _id="${1:-}" _provider="${2:-}"
-    igor_capability_list | "$(_ml_python)" -c '
+    local _id="${1:-}" _provider="${2:-}" _resolution_ids
+    _resolution_ids="$(_ml_capability_resolution_ids "$_id")" || return 1
+    igor_capability_list "$_resolution_ids" | "$(_ml_python)" -c '
 import json, sys
 capability_id, provider = sys.argv[1:]
 rows = [r for r in json.load(sys.stdin) if r["id"] == capability_id]
@@ -1957,7 +1960,10 @@ igor_load_capabilities() {
 
 _ml_indexed_requirement_failure() {
     local _key="$1" _item _family
-    for _item in ${_IGOR_REQ_MODULES[$_key]:-}; do
+    local -a _items=()
+    read -r -a _items <<< "${_IGOR_REQ_MODULES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
         if ! igor_has_module "$_item"; then
             printf 'required module %s is %s%s' "$_item" \
                 "${_IGOR_MODULE_STATUS[$_item]:-missing}" \
@@ -1965,7 +1971,9 @@ _ml_indexed_requirement_failure() {
             return 1
         fi
     done
-    for _item in ${_IGOR_REQ_CAPABILITIES[$_key]:-}; do
+    read -r -a _items <<< "${_IGOR_REQ_CAPABILITIES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
         _ml_v2_capability_reason "$_item" || return 1
     done
     if [ -n "${_IGOR_REQ_PLATFORM_FEATURES[$_key]:-}" ]; then
@@ -1989,7 +1997,9 @@ _ml_indexed_requirement_failure() {
                 ;;
         esac
     fi
-    for _item in ${_IGOR_REQ_BINS[$_key]:-}; do
+    read -r -a _items <<< "${_IGOR_REQ_BINS[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
         if ! command -v "$_item" >/dev/null 2>&1; then
             printf 'required binary %s is missing' "$_item"
             return 1
