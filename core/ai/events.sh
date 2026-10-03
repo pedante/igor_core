@@ -4,6 +4,10 @@
 # This file deliberately has no policy or execution responsibilities.  The
 # dispatcher emits JSON payloads through _ai_event_emit; terminal and future
 # frontends consume the resulting ordered JSONL stream.
+#
+# The stream is a local presentation boundary and may contain unsanitized host
+# identifiers or command output. It is owner-only (0600) and must never be
+# reused as provider/export payload without the outbound scrub boundary.
 
 AI_EVENT_TYPES='session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot operator_snapshot session_finished'
 
