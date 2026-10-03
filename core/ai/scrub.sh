@@ -35,10 +35,9 @@
 #      • Email addresses       → [IGOR:EMAIL]
 #      • Service URLs          → [IGOR:SERVICE_URL]
 #      • External IPs          → [IGOR:EXTERNAL_IP]
-#      • Container names       → [IGOR:CONTAINER_NAME]
-#
+##
 #    Tier 3 — SAFE TO SEND AS-IS:
-#      Container names (web/app/db/redis), Cloudflare IPs (public),
+#      Container names (operational identifiers), Cloudflare IPs (public),
 #      OS info, RAM/CPU/load, NC version, HTTP status codes, occ keys/values
 #      (after domain/user tokens applied), error messages (paths already tokenised)
 #
@@ -130,9 +129,15 @@ _scrub_sorted_indexes() {
 # ── Enhanced: detect and scrub sensitive patterns ───────────────────────────────
 _scrub_sensitive_patterns() {
     local text="$1"
-    
+    local systemd_at_sentinel="__IGOR_SYSTEMD_AT__"
+
+    # systemd instance units such as user@1000.service look like email
+    # addresses to generic privacy regexes. Protect their @ while applying
+    # unknown-value fallbacks, then restore it below.
+    text=$(printf '%s\n' "$text" | sed -E 's/([a-zA-Z0-9_.:+-]+)@([a-zA-Z0-9_.:+-]+\.(service|socket|target|timer|mount|path|slice|scope|device|automount|swap))([[:space:]]|$)/\1__IGOR_SYSTEMD_AT__\2\4/g')
+
     # Enhanced email detection and scrubbing
-    text=$(echo "$text" | sed -E 's/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[IGOR:EMAIL]/g')
+    text=$(printf '%s\n' "$text" | sed -E 's/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/[IGOR:EMAIL]/g')
     
     # Enhanced URL detection and scrubbing
     text=$(echo "$text" | sed -E 's|https?://[^[:space:]]+|[IGOR:SERVICE_URL]|g')
@@ -150,8 +155,9 @@ _scrub_sensitive_patterns() {
     text=$(echo "$text" | sed -E 's/[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}/[IGOR:MAC_ADDRESS]/g')
     
     # Basic auth scrubbing
-    text=$(echo "$text" | sed -E 's/[a-zA-Z0-9._%+-]+:[^[:space:]]+@[a-zA-Z0-9.-]+/[IGOR:BASIC_AUTH]/g')
-    
+    text=$(printf '%s\n' "$text" | sed -E 's/[a-zA-Z0-9._%+-]+:[^[:space:]]+@[a-zA-Z0-9.-]+/[IGOR:BASIC_AUTH]/g')
+
+    text="${text//${systemd_at_sentinel}/@}"
     printf '%s\n' "$text"
 }
 
@@ -285,12 +291,9 @@ ai_scrub_build_table() {
     _scrub_add "$data_path" "[IGOR:DATA_PATH]"
     _scrub_add "$hd_mount"  "[IGOR:HD_MOUNT]"
     
-    # Container names from security config
-    local container_names
-    container_names="$IGOR_CONTAINER_WEB $IGOR_CONTAINER_APP $IGOR_CONTAINER_DB $IGOR_CONTAINER_CACHE $IGOR_CONTAINER_CRON"
-    for container in $container_names; do
-        [ -n "$container" ] && _scrub_add "$container" "[IGOR:CONTAINER_NAME]"
-    done
+    # Container names are operational identifiers, not credentials. Avoid
+    # literal substring mappings here: a short configured name can otherwise
+    # corrupt unrelated unit/package names before the model sees them.
     
     # Enhanced Docker network configuration
     local docker_subnet docker_gw docker_network_name
