@@ -2,6 +2,65 @@
 
 Last updated: 2026-10-04
 
+## Operational History Performance — Boundary B candidate
+
+Boundary A reduced the measured `system.service.list` execution-fence
+revalidation interval from **10.622s to 2.095s**, but the real host trace still
+showed multiple durable authority writes and roughly 0.6–0.9s around individual
+History transitions. Boundary B is the next bounded generic-runtime
+optimization.
+
+The public Operational History episode/export contract and SQLite backend
+version remain unchanged. The hot path now:
+
+- records one canonical authority transition after final approval/privilege is
+  known instead of overlapping approval/authentication/execution writes;
+- preserves direct/non-AI execution without trusting an environment marker:
+  History can atomically record `authority -> running` for a direct caller in
+  the same pre-effect transaction;
+- constructs simple transition requests in shell and enters one
+  `operational_history.py` service process instead of using separate Python
+  request-builder and data-directory injector processes;
+- passes the private History data directory through an internal environment
+  boundary while retaining compatibility with explicit `data_dir` requests;
+- limits recovery decoding to runtime-owned unfinished attempts plus
+  interrupted/unreconciled attempts rather than decoding every terminal
+  episode;
+- skips the discarded `recent` History query during admission recovery.
+
+Successful AI-dispatched operations now have the intended durable sequence:
+
+```text
+admitted -> authority -> running -> provider_complete -> terminal
+```
+
+Declined, stopped and failed-authentication paths still terminalize without
+provider execution. Final authority is durable before any provider effect.
+Direct execution still obtains an authority boundary before effect, and
+interrupted/unknown recovery semantics are unchanged.
+
+Focused proof on the exact runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_operational_history.py`: **24 passed + 16 subtests** in 4.89s;
+- `tests/modules/test_operational_history_dispatch.bats`: **13/13 passed**,
+  including durable-before-effect CHANGE, one-Python hot transition, direct
+  authority fallback, provider/verification failure separation, declined
+  approval, failed sudo authentication, real READ persistence, interrupted
+  CHANGE reconciliation/no replay, unavailable reconciliation, corruption
+  blocking, post-effect History failure behavior, legacy-journal suppression,
+  headless inspection and composite plan references.
+
+A temporary branch-only CI proof job and hosted-runner BATS install correction
+were removed after evidence capture. Whole-repository Ruff remains red on its
+pre-existing lint backlog. No full regression was run for this bounded
+performance milestone.
+
+Boundary B does **not** optimize module-handler startup, typed output validation,
+Domain Event/Automation post-completion work, event-stream sequencing or the
+remaining targeted prepare work. Real-host timing should be repeated with the
+same `system.service.list` trace before claiming the wall-clock improvement.
+
 ## Capability Runtime Performance — Boundary A candidate
 
 A real `system.service.list` trace localized the dominant generic runtime cost:
