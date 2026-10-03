@@ -164,20 +164,16 @@ _ai_event_payload() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local operation_id="$1" tool="$2" tier="$3" approval="$4" status="$5"
     local text_value="${6:-}" output_value="${7:-}" exit_value="${8:-}"
-    local admin_required="${9:-false}"
-    local scrubbed_text scrubbed_output
-    if declare -f ai_scrub_outbound >/dev/null 2>&1; then
-        scrubbed_text=$(ai_scrub_outbound "$text_value") || scrubbed_text=""
-        scrubbed_output=$(ai_scrub_outbound "$output_value") || scrubbed_output=""
-    else
-        scrubbed_text=""
-        scrubbed_output=""
-    fi
+    local admin_required="${9:-false}" duration_value="${10:-}"
+    # Frontend events stay on the local, owner-only 0600 event stream. Keep
+    # them faithful to machine state; provider/audit boundaries scrub
+    # independently before anything can leave the host.
     AI_EVENT_OPERATION="$operation_id" AI_EVENT_NATIVE_ID="${AI_EVENT_NATIVE_ID:-}" \
         AI_EVENT_TOOL="$tool" \
         AI_EVENT_TIER="$tier" AI_EVENT_APPROVAL="$approval" \
-        AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$scrubbed_text" \
-        AI_EVENT_OUTPUT="$scrubbed_output" AI_EVENT_EXIT="$exit_value" \
+        AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$text_value" \
+        AI_EVENT_OUTPUT="$output_value" AI_EVENT_EXIT="$exit_value" \
+        AI_EVENT_DURATION="$duration_value" \
         AI_EVENT_MODE="$(ai_get_mode 2>/dev/null || printf '%s' assist)" \
         AI_EVENT_ADMIN_REQUIRED="$admin_required" \
         python3 - <<'PY'
@@ -204,6 +200,9 @@ if output:
 exit_code = os.environ.get("AI_EVENT_EXIT", "")
 if exit_code.isdigit():
     payload["exit_code"] = int(exit_code)
+duration = os.environ.get("AI_EVENT_DURATION", "")
+if duration.isdigit():
+    payload["duration_ms"] = int(duration)
 print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 PY
 }
@@ -983,6 +982,8 @@ ai_execute_tool() {
         (( AI_CMD_BLOCKED++ )) || true
     elif $run; then
         local exit_code=0
+        local _action_started_ms=""
+        _action_started_ms=$(date +%s%3N 2>/dev/null || true)
         _ai_emit_event action_started "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" started "$display_cmd" "" "" "$_requires_admin")"
         local _admin_auth_failed=false
         if [ "$_requires_admin" = true ]; then
@@ -1085,6 +1086,16 @@ ${tail_out}"
 [... truncated at 2500 chars ...]"
         fi
 
+        # Keep a presentation copy before adding the provider transport
+        # envelope. The frontend should see real newlines/tabs and the actual
+        # command result, never TOOL:...\\nOUTPUT:... protocol text.
+        local _display_output="$output" _duration_ms="" _action_finished_ms=""
+        _action_finished_ms=$(date +%s%3N 2>/dev/null || true)
+        if [[ "$_action_started_ms" =~ ^[0-9]+$ && "$_action_finished_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_action_finished_ms" -ge "$_action_started_ms" ]; then
+            _duration_ms=$((_action_finished_ms - _action_started_ms))
+        fi
+
         if [ "$_ui_quiet" = "false" ]; then
             echo -e "  ${CYAN}── OUTPUT ────────────────────────────────────────────────────${NC}" >&2
             while IFS= read -r _oline; do echo "  $_oline" >&2; done <<< "$output"
@@ -1102,7 +1113,7 @@ ${tail_out}"
         _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "$approval_mode" \
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
-        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code" "$_requires_admin")"
+        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$_display_output" "$_display_output" "$exit_code" "$_requires_admin" "$_duration_ms")"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
             [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
