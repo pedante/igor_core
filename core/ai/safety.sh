@@ -1162,8 +1162,6 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                 printf '%s\n' "$output"
                 return 1
             fi
-            IGOR_HISTORY_AUTHORITY_RECORDED=1
-            export IGOR_HISTORY_AUTHORITY_RECORDED
         fi
         # Backups and undo-state reads happen only after approval.
         if [ "$_admin_auth_failed" = false ] && [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]]; then
@@ -1247,7 +1245,6 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                     fi
                     unset IGOR_CAPABILITY_APPROVED_DIGEST
                     unset IGOR_CAPABILITY_APPROVAL_STATUS
-                    unset IGOR_HISTORY_AUTHORITY_RECORDED
                 fi
             fi
         else
