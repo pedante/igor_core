@@ -63,7 +63,7 @@ PY
     [ ! -e skipped ] && [ ! -e stopped ]
 }
 
-@test "output event is ordered before the transaction result and scrubbed" {
+@test "local output event is ordered, faithful, and transport-free" {
     ai_scrub_outbound() { printf '%s' "$1" | sed 's/SECRET/[REDACTED]/g'; }
     : > "$TEST_ROOT/bin/SECRET"
     chmod +x "$TEST_ROOT/bin/SECRET"
@@ -78,8 +78,12 @@ events = [json.loads(line) for line in open(sys.argv[1])]
 assert [e["event_type"] for e in events] == [
     "action_proposed", "action_started", "action_output", "action_result"
 ]
-assert "[REDACTED]" in events[2]["output"]
-assert "SECRET" not in open(sys.argv[1]).read()
+output = events[2]["output"]
+assert "SECRET" in output
+assert "[REDACTED]" not in output
+assert not output.startswith("TOOL:")
+assert "\\nOUTPUT:" not in output
+assert isinstance(events[2].get("duration_ms"), int)
 PY
     [ "$status" -eq 0 ]
 }
