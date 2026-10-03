@@ -97,6 +97,45 @@ version-2 success result requires valid typed output, not merely a zero command
 exit. Retained version-1 History stays inspectable; recovery cannot silently
 verify it through the current version-2 contract.
 
+## Composite capability providers
+
+A capability may be implemented either by one declared handler or by one
+data-only `implementation.kind=composition`; it cannot declare both. Composition
+does not add another contribution kind, tool namespace or execution engine.
+The capability ID remains the public operational contract while Core resolves
+its implementation into the existing immutable plan value.
+
+The bounded composition contract contains platform variants, an ordered list of
+canonical child capability requests and one typed READ final check with expected
+output fields. Variant selection is deterministic and exactly one supported
+platform family must match. Child inputs are literal JSON data or direct parent
+input references; arbitrary expressions, shell, loops, branching, step-output
+chaining, parallelism and nested composite capabilities are not admitted.
+
+External child capability IDs must exactly match the capability-level
+`requires.capabilities` declaration. A composite provider declares no direct
+privilege because it executes no privileged mechanism itself. Resolution freezes
+each child provider, capability version and validated input before effects,
+derives exact affected objects and whether any child requires privilege, and
+hashes the resulting plan. In this bounded contract the parent capability's
+safety tier must equal the maximum child-step tier; a higher or lower parent
+classification fails preparation because there is deliberately no separate
+plan-wide approval authority yet. Execution then re-enters the canonical
+capability dispatcher for every child,
+preserving ordinary policy, approval, privilege, exact-argv and verification
+behavior. A failed step or final expectation stops the sequence and records
+completed steps; there is no implicit retry or rollback.
+
+The final check must resolve to a capability-version-2 READ provider with typed
+outputs. Its expected fields are validated against that output schema and are
+compared deterministically after the child invocation. This allows a domain
+capability to verify its intended outcome without treating process exit or AI
+interpretation as proof.
+
+A resolved plan is therefore an execution artifact of a composite capability,
+not a separately registered operation. Interfaces continue to invoke the same
+canonical capability API.
+
 ## Inspection and detach accounting contract (Boundary 1)
 
 One structured projection combines manifest/registry metadata with owning-service

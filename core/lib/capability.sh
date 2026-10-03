@@ -54,7 +54,7 @@ for step in steps:
     if not isinstance(step, dict) or set(step) - {"capability_id", "provider", "inputs", "capability_version"}:
         raise SystemExit(1)
 final_check = plan.get("final_check")
-if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs", "capability_version"}):
+if final_check is not None and (not isinstance(final_check, dict) or set(final_check) - {"capability_id", "provider", "inputs", "capability_version", "expect"}):
     raise SystemExit(1)
 print(json.dumps({"op": "plan", "records": records, "plan_version": 1,
                   "intended_outcome": plan["intended_outcome"], "objects": plan.get("objects", []),
@@ -78,7 +78,10 @@ igor_capability_plan_execute() {
 import json, sys
 p = json.loads(sys.argv[1])
 def original(s):
-    return {"capability_id": s["capability_id"], "capability_version": s["capability_version"], "provider": s["provider"], "inputs": s["inputs"]}
+    value = {"capability_id": s["capability_id"], "capability_version": s["capability_version"], "provider": s["provider"], "inputs": s["inputs"]}
+    if "expect" in s:
+        value["expect"] = s["expect"]
+    return value
 print(json.dumps({"plan_version": p["plan_version"], "intended_outcome": p["intended_outcome"],
                   "objects": p.get("objects", []), "steps": [original(s) for s in p["steps"]],
                   "final_check": original(p["final_check"]) if p.get("final_check") else None},
@@ -114,6 +117,21 @@ PY
 )" || return 1
         fi
         _outcome="$(_igor_capability_field "$_result" outcome 2>/dev/null)" || _outcome=dispatch_failed
+        if printf '%s' "$_step" | "$(_ml_python)" -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("_plan_final_check") else 1)'; then
+            if [ "$_dispatch_rc" -ne 0 ] || [ -z "$_result" ] || ! "$(_ml_python)" - "$_step" "$_result" <<'PY'
+import json, sys
+step, result = map(json.loads, sys.argv[1:3])
+expect = step.get("expect", {})
+actual = result.get("result")
+if not isinstance(expect, dict) or not isinstance(actual, dict):
+    raise SystemExit(1)
+raise SystemExit(0 if all(key in actual and actual[key] == value for key, value in expect.items()) else 1)
+PY
+            then
+                _dispatch_rc=1
+                _outcome=final_check_failed
+            fi
+        fi
         if [ "$_dispatch_rc" -ne 0 ] || [ "$_outcome" != success ]; then
             _igor_capability_plan_finish "$_resolved" "$_completed" stopped "$_outcome"
             return 1
@@ -121,10 +139,47 @@ PY
     done 3< <(printf '%s' "$_resolved" | "$(_ml_python)" -c '
 import json,sys
 plan = json.load(sys.stdin)
-for step in plan["steps"] + ([plan["final_check"]] if plan.get("final_check") else []):
-    sys.stdout.buffer.write(json.dumps(step,separators=(",", ":")).encode()+b"\0")
+for step in plan["steps"]:
+    row = dict(step)
+    row["_plan_final_check"] = False
+    sys.stdout.buffer.write(json.dumps(row,separators=(",", ":")).encode()+b"\0")
+if plan.get("final_check"):
+    row = dict(plan["final_check"])
+    row["_plan_final_check"] = True
+    sys.stdout.buffer.write(json.dumps(row,separators=(",", ":")).encode()+b"\0")
 ')
     _igor_capability_plan_finish "$_resolved" "$_completed" success ""
+}
+
+igor_capability_composite_execute() {
+    local _proposal="${1:-}" _plan _plan_result _rc _wrapped
+    _plan="$(_igor_capability_field "$_proposal" composition_plan)" || return 1
+    IGOR_CAPABILITY_PLAN_LAST_RESULT=""
+    igor_capability_plan_execute "$_plan" >/dev/null
+    _rc=$?
+    _plan_result="${IGOR_CAPABILITY_PLAN_LAST_RESULT:-}"
+    _wrapped="$("$(_ml_python)" - "$_proposal" "$_plan_result" "$_rc" <<'PY'
+import json, sys
+proposal = json.loads(sys.argv[1])
+plan = json.loads(sys.argv[2]) if sys.argv[2] else {}
+rc = int(sys.argv[3])
+print(json.dumps({
+    "capability_id": proposal["capability_id"],
+    "capability_version": proposal["capability_version"],
+    "provider": proposal["provider"],
+    "owner": proposal["owner"],
+    "execution_status": "succeeded" if rc == 0 else "failed",
+    "verification_status": "passed" if rc == 0 else "failed",
+    "outcome": "success" if rc == 0 else "partial_failure",
+    "affected_objects": proposal.get("affected_objects", []),
+    "recovery": proposal.get("recovery", {}),
+    "composition": plan,
+}, sort_keys=True, separators=(",", ":")))
+PY
+)" || return 1
+    IGOR_CAPABILITY_LAST_RESULT="$_wrapped"
+    printf '%s\n' "$_wrapped"
+    return "$_rc"
 }
 
 _igor_capability_plan_finish() {
@@ -158,15 +213,21 @@ elif value is not None:
 
 igor_capability_prepare() {
     local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
-    local _family _argv _update_argv _upgrade_argv
+    local _family _argv _update_argv _upgrade_argv _package _resolved_package _op
     [ -n "$_inputs" ] || _inputs='{}'
     _records="$(igor_capability_list)" || return 1
-    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" <<'PY'
+    if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+        # shellcheck source=core/lib/distro.sh
+        source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+        igor_detect_distro >/dev/null 2>&1 || true
+    fi
+    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" "${IGOR_DISTRO_FAMILY:-}" <<'PY'
 import json, sys
 try:
     request = {"op": "prepare", "records": json.loads(sys.argv[1]),
                       "id": sys.argv[2], "inputs": json.loads(sys.argv[3]),
-                      "provider": sys.argv[4] or None}
+                      "provider": sys.argv[4] or None,
+                      "platform_family": sys.argv[6] or None}
     if sys.argv[5]:
         if sys.argv[5] not in {"1", "2"}:
             raise ValueError("unsupported capability version")
@@ -185,18 +246,61 @@ PY
         # replace argv after approval. Additional privileged operations need a
         # reviewed adapter here before becoming available.
         case "$_id" in
-            system.service.restart)
+            system.service.restart|system.service.start|system.service.enable)
                 _unit="$(_igor_capability_field "$_proposal" inputs.unit)" || return 1
                 [[ "$_unit" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]] || return 1
                 if ! declare -f svc_restart_argv >/dev/null 2>&1; then
                     # shellcheck source=core/lib/pkg.sh
                     source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
                 fi
-                _argv="$(svc_restart_argv "$_unit")" || return 1
-                [ "$_argv" = "systemctl restart $_unit" ] || return 1
-                _spec="$("$(_ml_python)" - "$_unit" <<'PY'
+                case "$_id" in
+                    system.service.restart) _op=restart; _argv="$(svc_restart_argv "$_unit")" ;;
+                    system.service.start) _op=start; _argv="$(svc_start_argv "$_unit")" ;;
+                    system.service.enable) _op=enable; _argv="$(svc_enable_argv "$_unit")" ;;
+                esac
+                [ "$_argv" = "systemctl $_op $_unit" ] || return 1
+                _spec="$("$(_ml_python)" - "$_op" "$_unit" <<'PY'
 import json, sys
-print(json.dumps(["sudo", "-n", "--", "systemctl", "restart", sys.argv[1]], separators=(",", ":")))
+print(json.dumps(["sudo", "-n", "--", "systemctl", sys.argv[1], sys.argv[2]],
+                 separators=(",", ":")))
+PY
+)" || return 1
+                ;;
+            system.package.install)
+                _package="$(_igor_capability_field "$_proposal" inputs.package)" || return 1
+                if ! declare -f pkg_install_argv >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/pkg.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+                fi
+                _pkg_validate_name "$_package" || return 1
+                if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+                    # shellcheck source=core/lib/distro.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+                    igor_detect_distro
+                fi
+                _family="${IGOR_DISTRO_FAMILY:-unknown}"
+                _resolved_package="$(_pkg_resolve "$_package")" || return 1
+                _pkg_validate_name "$_resolved_package" || return 1
+                _argv="$(pkg_install_argv "$_package")" || return 1
+                case "$_family" in
+                    debian)
+                        command -v apt-get >/dev/null 2>&1 || return 1
+                        [ "$_argv" = "apt-get install -y $_resolved_package" ] || return 1
+                        ;;
+                    arch)
+                        command -v pacman >/dev/null 2>&1 || return 1
+                        [ "$_argv" = "pacman -S --noconfirm $_resolved_package" ] || return 1
+                        ;;
+                    *) return 1 ;;
+                esac
+                _spec="$("$(_ml_python)" - "$_family" "$_resolved_package" <<'PY'
+import json, sys
+family, package = sys.argv[1:]
+prefix = (["apt-get", "install", "-y"] if family == "debian"
+          else ["pacman", "-S", "--noconfirm"] if family == "arch" else None)
+if prefix is None:
+    raise SystemExit(1)
+print(json.dumps(["sudo", "-n", "--", *prefix, package], separators=(",", ":")))
 PY
 )" || return 1
                 ;;
@@ -413,6 +517,32 @@ PY
                         *) return 1 ;;
                     esac
                     ;;
+                system.package.installed)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.install ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    _package="$(_igor_capability_field "$_proposal" inputs.package)" || return 1
+                    declare -f pkg_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+                    pkg_query "$_package" >/dev/null || return 1
+                    "$(_ml_python)" - "$_package" <<'PY'
+import json,sys
+print(json.dumps({"source":"platform.package_query","check_id":"system.package.installed",
+                  "package":sys.argv[1],"installed":True},separators=(",",":")))
+PY
+                    ;;
+                system.service.enabled)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.service.enable ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    _unit="$(_igor_capability_field "$_proposal" inputs.unit)" || return 1
+                    declare -f svc_enabled_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
+                    _state="$(svc_enabled_query "$_unit")" || return 1
+                    "$(_ml_python)" - "$_unit" "$_state" <<'PY'
+import json,sys
+print(json.dumps({"source":"platform.service_query","check_id":"system.service.enabled",
+                  "unit":sys.argv[1],"observed":sys.argv[2],"expected":"enabled"},
+                 separators=(",",":")))
+PY
+                    [ "$_state" = enabled ]
+                    ;;
                 system.package.updates.empty)
                     [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.upgrade ] || return 1
                     [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
@@ -506,8 +636,25 @@ igor_capability_execute() {
 import json, subprocess, sys
 spec=json.loads(sys.argv[1])
 ident,family=sys.argv[2:4]
-if ident=="system.service.restart":
-    if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl","restart"]:
+if ident in {"system.service.restart","system.service.start","system.service.enable"}:
+    operation={
+        "system.service.restart":"restart",
+        "system.service.start":"start",
+        "system.service.enable":"enable",
+    }[ident]
+    if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl",operation]:
+        raise SystemExit(1)
+    commands=[spec]
+elif ident=="system.package.install":
+    if (not isinstance(spec,list) or len(spec)!=7 or
+            not isinstance(spec[-1],str) or
+            not __import__("re").fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", spec[-1])):
+        raise SystemExit(1)
+    expected_prefix={
+        "debian":["sudo","-n","--","apt-get","install","-y"],
+        "arch":["sudo","-n","--","pacman","-S","--noconfirm"],
+    }.get(family)
+    if expected_prefix is None or spec[:-1]!=expected_prefix:
         raise SystemExit(1)
     commands=[spec]
 elif ident=="system.package.upgrade":

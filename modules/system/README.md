@@ -26,9 +26,13 @@ The module declares meaning and contracts:
 
 ```
 system.package.updates.list
+system.package.install
 system.package.upgrade
 system.service.list
 system.service.status
+system.service.enable
+system.service.start
+system.service.restart
 system.logs.summary
 system.host.summary
 ```
@@ -66,13 +70,14 @@ Implemented:
 - cleanup preview
 - service inspection
 - journal summary
+- reviewed package install/upgrade/cache-clean adapters
+- reviewed service enable/start/restart adapters
+- deterministic verification for package installation and service state
 
 Still experimental:
 
-- package upgrade execution
-- generic cleanup execution
-- service restart execution
+- generic orphan cleanup execution
 - richer health facts
-- generated operator pages
+- broader platform providers
 
 The purpose is to validate that system administration can be built using the same contracts, capabilities and operator surface as application modules.
