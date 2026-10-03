@@ -109,6 +109,34 @@ facts supplied by independent sources. Facts whose only valid source was that
 module follow the ordinary source-withdrawal/staleness rules; Igor does not
 pretend they remain actively known.
 
+## Recognition candidates and user hints
+
+[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md) makes the interpretation
+stage explicit.
+
+A low-level observation such as a Docker container, systemd unit, mount or
+configuration source remains a System Model fact/object. A domain provider may
+interpret one or more such observations as an **ephemeral recognition
+candidate**. That candidate is reference data for selection/inspection; it does
+not create a deployment, relationship, desired value or responsibility.
+
+Discovery may begin either direction:
+
+```text
+bounded domain search -> candidate(s) -> exact selection -> inspection
+
+user hint ("this container is Nextcloud")
+                     -> exact inspection -> candidate/proposal
+```
+
+A user hint narrows the target but does not establish truth. The domain provider
+must deterministically inspect the exact target. Zero matches are a nondecision;
+multiple matches remain ambiguous until the operator selects one.
+
+Candidates are initially recomputable rather than a new persistent inventory.
+When selected for adoption, the existing proposal path freezes the relevant
+provider/evidence/revisions and stale evidence invalidates the proposal.
+
 ## Configuration location and provenance
 
 Every configuration value must be traceable to where its authoritative or
@@ -249,7 +277,9 @@ This refinement constrained Q007. D063 now resolves its architecture while
 preserving the brownfield runtime proof gates.
 
 Owner-scoped Step 19 Relationships & Deployments must support external resources,
-source claims, adoption and explicit responsibility transfer.
+source claims, adoption and explicit responsibility transfer. The reusable
+Resource Discovery & Domain Recognition gate sits before treating the current
+Nextcloud-specific discovery shape as a general multi-domain mechanism.
 
 Step 18's first reversible module proof uses the System warning threshold
 (D062), not Nextcloud. Step 19 Boundaries 2/3 must carry configuration storage
@@ -257,7 +287,11 @@ locators and prove the selected Nextcloud loglevel workflow can bind to an
 existing configuration source, not only one Igor created.
 
 The eventual proof should include an existing-style fixture that Igor did not
-provision. At minimum it must demonstrate:
+provision. A disposable brownfield lab may create that fixture outside Igor,
+record external provenance and leave it running; the lab is not an Igor
+installer or discovery authority.
+
+At minimum the proof must demonstrate:
 
 1. generic resources are discovered and stored outside module packages;
 2. a domain module can enrich those resources without becoming their owner;
