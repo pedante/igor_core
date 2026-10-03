@@ -105,7 +105,7 @@ jobs:
       - name: Install validation tools
         run: |
           pip install 'pytest>=9,<10' ruff
-          sudo npm install -g bats@1.13.0
+          npm install -g bats@1.13.0
           sudo apt-get update -qq
           sudo apt-get install -y shellcheck
 
@@ -123,29 +123,3 @@ jobs:
           name: validation-${{ inputs.mode || 'affected' }}
           path: validation-results/
           if-no-files-found: warn
-
-
-  # Temporary focused proof for Operational History Boundary B; removed after evidence.
-  # Triggered only while this stacked PR is temporarily based on igor2.
-  boundary_b:
-    name: Operational History Boundary B
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install focused tools
-        run: |
-          pip install 'pytest>=9,<10'
-          sudo npm install -g bats@1.13.0
-      - name: Syntax
-        run: |
-          bash -n core/lib/operational_history.sh
-          bash -n core/lib/capability.sh
-          bash -n core/ai/safety.sh
-          python -m py_compile core/lib/operational_history.py
-      - name: Operational History unit contract
-        run: python -m pytest -q tests/test_operational_history.py
-      - name: Canonical dispatcher History contract
-        run: bats tests/modules/test_operational_history_dispatch.bats
