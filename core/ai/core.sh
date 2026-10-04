@@ -2275,18 +2275,31 @@ except (ValueError,TypeError):
 menu_ai() {
     local _AI_SESSION_STATE="" conversation="" session_file="" _fifo_path=""
     local _ai_tui_phase_started_ms="" _ai_tui_phase_ended_ms=""
+    local _ai_pre_phase_started_ms="" _ai_pre_phase_ended_ms=""
     if [ "${IGOR_TUI_MODE:-false}" = true ]; then
         if [[ "${_IGOR_TUI_AI_SOURCE_ENDED_MS:-}" =~ ^[0-9]+$ ]]; then
             _ai_tui_phase_started_ms="$_IGOR_TUI_AI_SOURCE_ENDED_MS"
         else
             _ai_tui_phase_started_ms=$(_ai_now_ms)
         fi
+        _ai_pre_phase_started_ms="$_ai_tui_phase_started_ms"
     fi
     if [ "${IGOR_AI_ENABLED:-true}" != "true" ]; then
         _ai_startup_fail configuration 1 "AI assistant is disabled."
         return $?
     fi
-    header
+    # The classic header is a presentation surface: it gathers host/domain,
+    # health, status hooks and pending menu state solely to paint the shell UI.
+    # The standalone curses frontend owns its own header and structured state,
+    # so none of this work belongs on its READY critical path.
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        header
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_HEADER_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # Guard: ensure cost functions are available even if cost.sh failed to source
     declare -f ai_add_cost    &>/dev/null || ai_add_cost()    { :; }
@@ -2354,6 +2367,11 @@ menu_ai() {
 
     command -v python3 &>/dev/null || { _ai_startup_fail dependency 1 "python3 is required for AI assistant."; return $?; }
     command -v curl    &>/dev/null || { _ai_startup_fail dependency 1 "curl is required for AI assistant."; return $?; }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_KEYS_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # ── Settings ───────────────────────────────────────────────────────────────
     local AI_SETTINGS_FILE="${IGOR_DIR}/config/variables/ai_settings.env"
@@ -2409,7 +2427,17 @@ menu_ai() {
         [ -n "$sv_ol_host"  ] && IGOR_OLLAMA_HOST="$sv_ol_host" && export IGOR_OLLAMA_HOST
         [ -n "$sv_ol_model" ] && IGOR_OLLAMA_DEFAULT_MODEL="$sv_ol_model" && export IGOR_OLLAMA_DEFAULT_MODEL
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_SETTINGS_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
     _ai_configuration_verbose_load || { _ai_startup_fail configuration 1 "ai.verbose configuration is unavailable; inspect configuration before retrying."; return $?; }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_CONFIGURATION_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
     # Normalize model for active provider
     model=$(_ai_model_for_provider "$model" "$provider")
     export provider ai_mode executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
@@ -2419,6 +2447,11 @@ menu_ai() {
     }
 
     ai_set_cost_rates "$model"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_MODEL_COST_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # ── Pre-flight: validate key then render info to right pane ──────────────────
     local _el _prov_label _key_status _or_balance="" _provider_preflight_deferred=false
@@ -2537,6 +2570,11 @@ menu_ai() {
             fi
         fi
         echo ""
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_PROVIDER_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
     fi
 
     local preflight
@@ -2991,7 +3029,9 @@ except: pass
     # ── Session initialisation ─────────────────────────────────────────────────
     [ "$preflight" = "s" ] || [ "$preflight" = "S" ] || return 0
     if [ "${IGOR_TUI_MODE:-false}" = true ]; then
-        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_SELECTION_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_tui_phase_ended_ms="$_ai_pre_phase_ended_ms"
         if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
            [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
            [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
@@ -3060,6 +3100,20 @@ except: pass
             printf '[TIMING] tui.backend_dispatch=%sms\n' "$_IGOR_TUI_BACKEND_DISPATCH_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_SOURCE_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.ai_source=%sms\n' "$_IGOR_TUI_AI_SOURCE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_HEADER_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_header=%sms\n' "$_IGOR_TUI_AI_PRE_HEADER_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_KEYS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_keys=%sms\n' "$_IGOR_TUI_AI_PRE_KEYS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SETTINGS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_settings=%sms\n' "$_IGOR_TUI_AI_PRE_SETTINGS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_CONFIGURATION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_configuration=%sms\n' "$_IGOR_TUI_AI_PRE_CONFIGURATION_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_MODEL_COST_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_model_cost=%sms\n' "$_IGOR_TUI_AI_PRE_MODEL_COST_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_PROVIDER_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_provider=%sms\n' "$_IGOR_TUI_AI_PRE_PROVIDER_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SELECTION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_selection=%sms\n' "$_IGOR_TUI_AI_PRE_SELECTION_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_PRE_SESSION_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.ai_pre_session=%sms\n' "$_IGOR_TUI_AI_PRE_SESSION_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_SESSION_RUNTIME_MS:-}" =~ ^[0-9]+$ ]] &&
