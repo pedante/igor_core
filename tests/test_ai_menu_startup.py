@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class AIMenuStartupTests(unittest.TestCase):
     def run_menu(self, selection, *, failure="", input_text="q\nx", fallback=False,
-                 runtime_case="absent"):
+                 runtime_case="absent", tui=False):
         shell = r'''
 source "$IGOR_DIR/core/ai/core.sh"
 header(){ :; }
@@ -21,11 +21,17 @@ igor_fzf_pick(){
     if [ "$TEST_FALLBACK" = true ]; then return 2; fi
     printf '%s' "$TEST_SELECTION"
 }
-_nexus_validate_or_key(){ [ "$TEST_FAILURE" != key ]; }
+_nexus_validate_or_key(){
+    [ -z "$TEST_PROVIDER_MARKER" ] || printf 'validated\n' >> "$TEST_PROVIDER_MARKER"
+    [ "$TEST_FAILURE" != key ]
+}
 _nexus_get_or_balance(){ :; }
 ai_knowledge_load(){ printf 'knowledge'; }
 ai_knowledge_show_status(){ :; }
-ai_gather_context(){ printf 'fixture context'; }
+ai_gather_context(){
+    [ -z "$TEST_CONTEXT_MARKER" ] || printf 'gathered\n' >> "$TEST_CONTEXT_MARKER"
+    printf 'fixture context'
+}
 ai_scrub_build_table(){ :; }
 _ai_scrub_context_for_display(){
     if [ "$TEST_FAILURE" = scrub ]; then return 1; fi
@@ -76,24 +82,43 @@ printf '\nMENU_RETURN=%s\n' "$?"
                 raise ValueError(runtime_case)
             tmptrap = root / "tmptrap"
             tmptrap.mkdir()
+            provider_marker = root / "provider.marker"
+            context_marker = root / "context.marker"
             env = {**os.environ, "IGOR_DIR": temp,
                    "IGOR_RUNTIME_DIR": str(runtime),
                    "TMPDIR": str(tmptrap),
                    "OPENROUTER_API_KEY": "fixture-key", "provider": "openrouter",
                    "TEST_SELECTION": selection, "TEST_FAILURE": failure,
                    "TEST_FALLBACK": str(fallback).lower(),
+                   "TEST_PROVIDER_MARKER": str(provider_marker),
+                   "TEST_CONTEXT_MARKER": str(context_marker),
                    "TERM": "dumb", "IGOR_AI_ENABLED": "true"}
+            if tui:
+                env["IGOR_TUI_MODE"] = "true"
+                env["AI_SKIP_INTERSTITIAL"] = "true"
             result = subprocess.run(["bash", "-c", shell], input=input_text,
                                     text=True, capture_output=True, env=env, timeout=15)
             state = runtime / "state.env"
             logs = list((root / "data" / "sessions").glob("session_*.log"))
             trace = logs[0].read_text() if logs else ""
+            event_rows = []
+            if runtime.is_dir():
+                for event_file in runtime.glob("frontend-*.jsonl"):
+                    for line in event_file.read_text().splitlines():
+                        try:
+                            import json
+                            event_rows.append(json.loads(line))
+                        except (OSError, ValueError):
+                            pass
             runtime_info = {"path": str(runtime), "exists": runtime.is_dir(),
                             "symlink": runtime.is_symlink(),
                             "mode": runtime.stat().st_mode & 0o777 if runtime.is_dir() else None,
                             "tmp_entries": list(tmptrap.iterdir()),
                             "target_mode": (root / "runtime-target").stat().st_mode & 0o777
-                            if (root / "runtime-target").exists() else None}
+                            if (root / "runtime-target").exists() else None,
+                            "provider_validated": provider_marker.exists(),
+                            "context_gathered": context_marker.exists(),
+                            "events": event_rows}
             return result, state.read_text() if state.is_file() else "", trace, runtime_info
 
     def test_start_and_fast_enter_same_chat_loop_until_explicit_exit(self):
@@ -159,6 +184,61 @@ printf '\nMENU_RETURN=%s\n' "$?"
         self.assertIn("MENU_RETURN=0", cancelled.stdout)
         self.assertIn("AI_SESSION_STATE=user_exited", state)
         self.assertNotIn("AI session initialization failed", cancelled.stderr)
+
+
+    def test_tui_reaches_input_ready_before_provider_or_context_preflight(self):
+        result, state, trace, runtime = self.run_menu("s", tui=True, input_text="q\nx")
+        self.assertIn("MENU_RETURN=0", result.stdout)
+        self.assertIn("AI_SESSION_STATE=user_exited", state)
+        self.assertFalse(runtime["provider_validated"])
+        self.assertFalse(runtime["context_gathered"])
+        self.assertTrue(any(row.get("event_type") == "model_status" and
+                            row.get("status") == "input_ready"
+                            for row in runtime["events"]))
+        self.assertNotIn("[TIMING] provider.preflight=", trace)
+        self.assertNotIn("[TIMING] context.first_request=", trace)
+
+    def test_deferred_request_preparation_runs_provider_before_context_once(self):
+        shell = r"""
+source "$IGOR_DIR/core/ai/core.sh"
+provider=openrouter
+or_api_key=fixture-key
+knowledge_block=knowledge
+system_prompt='placeholder prompt'
+system_context='placeholder context'
+scrubbed_context='placeholder context'
+_provider_preflight_deferred=true
+_context_deferred=true
+_context_captured_at=0
+_context_refresh_interval=300
+_key_status='deferred'
+_order=''
+_nexus_validate_or_key(){ _order+="provider "; return 0; }
+ai_gather_context(){ _order+="context "; printf 'fresh context'; }
+ai_scrub_build_table(){ :; }
+_ai_scrub_context_for_display(){ cat; }
+_ai_build_system_prompt(){ printf 'fresh prompt'; }
+
+_ai_prepare_deferred_request_runtime || exit 11
+printf 'order=%s\n' "$_order"
+printf 'provider_deferred=%s\n' "$_provider_preflight_deferred"
+printf 'context_deferred=%s\n' "$_context_deferred"
+printf 'prompt=%s\n' "$system_prompt"
+_ai_prepare_deferred_request_runtime || exit 12
+printf 'order_after_second=%s\n' "$_order"
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "core").symlink_to(ROOT / "core", target_is_directory=True)
+            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb"}
+            result = subprocess.run(["bash", "-c", shell], text=True,
+                                    capture_output=True, env=env, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("order=provider context ", result.stdout)
+        self.assertIn("provider_deferred=false", result.stdout)
+        self.assertIn("context_deferred=false", result.stdout)
+        self.assertIn("prompt=fresh prompt", result.stdout)
+        self.assertIn("order_after_second=provider context ", result.stdout)
 
     def test_input_eof_is_not_a_user_exit(self):
         result, state, _, _ = self.run_menu("f", input_text="")
