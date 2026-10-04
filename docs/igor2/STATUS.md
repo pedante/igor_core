@@ -2,6 +2,58 @@
 
 Last updated: 2026-10-04
 
+## Execution Fence Performance — Boundary D candidate
+
+The post-Boundary-C real-host `system.service.list` trace measured
+`authority -> running` at **2.070s**. Boundary D keeps the same fresh
+execution-fence proof and removes repeated serialization/process work around it.
+
+The runtime now:
+
+- invokes the same `CapabilityRegistry.prepare` path through a direct
+  `prepare-shell` bridge instead of starting a separate Python process just to
+  construct the JSON prepare request;
+- compiles static `requires.capabilities` and composite leaf/final-check
+  dependency IDs at module load, so execution-time resolution closure assembly
+  is pure Bash while current provider availability is still reevaluated;
+- batches the freshly prepared base proposal fields needed by Core
+  (privilege/version/owner/canonical inputs) instead of reparsing each field in
+  a separate Python process;
+- reuses the already-known capability id, owner and canonical inputs for the
+  configuration/owner-active precondition path;
+- binds the source module version from the already-validated in-memory Module
+  API manifest rather than reparsing that manifest at each prepare.
+
+No precondition result is cached. The selected capability is still rebuilt from
+current loader state after approval, dynamic requirements are checked, current
+preconditions are evaluated exactly once, privileged argv remains reviewed and
+frozen, source version remains digest-bound, and the newly reconstructed digest
+must match the approved digest before the provider can enter `running`.
+
+Focused proof on the exact Boundary D runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_capability_runtime.py`: **22/22 passed** in 0.95s;
+- selected `tests/modules/test_system_admin_surface.bats`: **9/9 passed**,
+  covering real service inventory/status, compiled provider metadata,
+  selected-only dynamic requirements, service-list prepare bounded to
+  **<=6 Python processes**, zero-Python dependency-closure discovery, exactly
+  one execution-fence precondition evaluation, Docker composite
+  leaf/final-check resolution, child-unavailability fencing, and the reviewed
+  privileged service-restart adapter.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected CI job again failed before repository tests at the known
+hosted-runner global BATS install `EACCES`; whole-repository Ruff remains red
+on its existing backlog and reported no new errors in Boundary D files. No full
+regression was run for this bounded performance milestone.
+
+Boundary D does **not** change approval, privilege, History durability,
+provider isolation, typed output verification, Domain Event/Automation
+follow-up or frontend publication. Real-host timing should be repeated with the
+same timestamped `system.service.list` trace before claiming wall-clock
+improvement.
+
 ## Provider Runtime Performance — Boundary C candidate
 
 The post-Boundary-B real-host `system.service.list` trace measured

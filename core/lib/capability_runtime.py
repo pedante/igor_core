@@ -680,13 +680,31 @@ def _cli() -> int:
 
     if len(sys.argv) == 3 and sys.argv[1] == "handler-output":
         return _handler_output_cli(sys.argv[2])
-    if len(sys.argv) != 1:
+
+    shell_prepare = len(sys.argv) == 7 and sys.argv[1] == "prepare-shell"
+    if not shell_prepare and len(sys.argv) != 1:
         print("capability runtime: unsupported arguments", file=sys.stderr)
         return 2
 
     op = None
     try:
-        request = json.load(sys.stdin)
+        if shell_prepare:
+            records = json.load(sys.stdin)
+            ident, inputs_raw, provider, version_raw, family = sys.argv[2:]
+            request = {
+                "op": "prepare",
+                "records": records,
+                "id": ident,
+                "inputs": json.loads(inputs_raw),
+                "provider": provider or None,
+                "platform_family": family or None,
+            }
+            if version_raw:
+                if version_raw not in {"1", "2"}:
+                    raise CapabilityError("unsupported capability_version")
+                request["capability_version"] = int(version_raw)
+        else:
+            request = json.load(sys.stdin)
         op = request.get("op")
         if op == "output":
             def unique(pairs):

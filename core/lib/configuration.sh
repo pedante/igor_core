@@ -25,9 +25,9 @@ igor_configuration_declarations() {
 }
 
 _igor_configuration_precondition() {
-    local _proposal="$1" _inputs _id
-    _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
-    _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+    local _proposal="$1" _id="${2:-}" _inputs="${3:-}"
+    [ -n "$_id" ] || _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
+    [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
     case "$_id" in
         system.memory.warning.apply|system.memory.warning.readback)
             _igor_configuration_memory_warning_contract "$_proposal" || return 1
