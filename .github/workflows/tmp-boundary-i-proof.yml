@@ -15,4 +15,4 @@ jobs:
           python -m py_compile tests/test_ai_menu_startup.py core/ai/tui.py
       - name: Boundary I startup timing contract
         run: |
-          python -m pytest -q tests/test_ai_menu_startup.py
+          python tests/test_ai_menu_startup.py
