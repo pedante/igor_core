@@ -49,6 +49,13 @@ must not be added again when reconciling the sequential top-level phases.
 Boundary I changes no approval, privilege, execution, module, provider, context
 or readiness semantics.
 
+Focused branch proof passed on the instrumented runtime content: Bash syntax for
+`igor.sh` and `core/ai/core.sh`, Python compilation for the affected startup
+test/TUI files, and the full AI startup lifecycle suite (**13/13 passed in
+6.975s**). The regression requires every Boundary I phase owned by `core.sh`
+plus the upstream `igor.sh` timing contract to be published in the session log.
+The temporary branch-only proof workflow is removed after evidence capture.
+
 A real-host Boundary I run is required to close this candidate and choose the
 next optimization from measured evidence rather than inference.
 
