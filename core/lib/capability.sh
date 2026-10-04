@@ -514,6 +514,23 @@ PY
     _entrypoint="${_IGOR_MODULE_ENTRYPOINT[$_owner]:-}"
     [ -n "$_entrypoint" ] || return 1
 
+    # Boundary O defers the expensive global configuration proof during normal
+    # System startup. An explicit memory-warning readback acquires that proof
+    # just in time inside this invocation shell, so the isolated handler
+    # inherits it without turning module registration back into a global
+    # configuration inspection.
+    if [ "$_id" = system.memory.warning.readback ] &&
+       [ "$_owner" = system ] &&
+       [ "$_handler" = system__read_memory_warning ]; then
+        local _memory_revision _memory_state
+        _memory_revision="$(_igor_capability_field "$_proposal" inputs.revision)" || return 1
+        _memory_state="$(_igor_capability_field "$_proposal" inputs.state)" || return 1
+        if [ "${IGOR_SYSTEM_MEMORY_WARNING_REVISION:-}" != "$_memory_revision" ] ||
+           [ "${IGOR_SYSTEM_MEMORY_WARNING_STATE:-}" != "$_memory_state" ]; then
+            _igor_configuration_memory_warning_load "$_memory_revision" "$_memory_state" || return 1
+        fi
+    fi
+
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
     V2_HANDLER_ENTRYPOINT="$_entrypoint" \
