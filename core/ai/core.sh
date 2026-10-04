@@ -141,30 +141,62 @@ _ai_emit_operator_snapshot() {
     local _surface_started
     _surface_started="$(_ai_now_ms)"
 
-    # Normal startup uses a compiled structural namespace. The seed comes only
-    # from loader-validated registrations/base lifecycle state; it performs no
-    # dynamic requirement probes. The derived cache survives frontend sessions
-    # and is invalidated automatically when that structural seed changes.
+    # Normal startup uses a compiled structural namespace. Boundary M asks the
+    # loader for a cheap generation key first. On a warm hit the cached surface
+    # is read directly; the full structural seed is only materialized on miss.
+    # The key covers the same loader-owned structural frames plus the Core
+    # projection implementation. It performs no dynamic requirement probes.
     if declare -f igor_operator_surface_seed >/dev/null 2>&1 &&
        declare -p _IGOR_MODULE_DIRS >/dev/null 2>&1 &&
        [ "${#_IGOR_MODULE_DIRS[@]}" -gt 0 ]; then
-        local _compiled _cache
+        local _compiled="" _cache _generation="" _generation_started=""
+        local _cache_started="" _cache_rc=0 _rebuild_started=""
+        local _session_id="${IGOR_AI_EVENT_SESSION_ID:-}"
         _cache="${IGOR_OPERATOR_SURFACE_CACHE:-${IGOR_DATA_DIR:-${IGOR_DIR}/data}/cache/operator-surface-v1.json}"
-        _compiled="$(igor_operator_surface_seed |
-            python3 "${IGOR_DIR}/core/lib/operator_surface.py" cached-build "$_cache")" || {
-            _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
-            return 1
-        }
-        _compiled="$(printf '%s' "$_compiled" |
-            AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 -c '
+
+        if declare -f igor_operator_surface_generation >/dev/null 2>&1; then
+            _generation_started="$(_ai_now_ms)"
+            _generation="$(igor_operator_surface_generation 2>/dev/null)" || _generation=""
+            _ai_record_timing operator_surface.generation "$_generation_started" >/dev/null
+        fi
+
+        if [[ "$_generation" =~ ^[0-9a-f]{64}$ ]]; then
+            _cache_started="$(_ai_now_ms)"
+            _compiled="$(python3 "${IGOR_DIR}/core/lib/operator_surface.py" \
+                cached-read-envelope "$_cache" "$_generation" "$_session_id" 2>/dev/null)"
+            _cache_rc=$?
+            _ai_record_timing operator_surface.cache_read "$_cache_started" >/dev/null
+
+            if [ "$_cache_rc" -ne 0 ]; then
+                _rebuild_started="$(_ai_now_ms)"
+                _compiled="$(igor_operator_surface_seed |
+                    python3 "${IGOR_DIR}/core/lib/operator_surface.py" \
+                        cached-build-keyed-envelope "$_cache" "$_generation" "$_session_id")" || {
+                    _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
+                    return 1
+                }
+                _ai_record_timing operator_surface.rebuild "$_rebuild_started" >/dev/null
+            fi
+        else
+            # Compatibility fallback if the loader cannot provide a generation
+            # key (for example on a platform without sha256sum).
+            _compiled="$(igor_operator_surface_seed |
+                python3 "${IGOR_DIR}/core/lib/operator_surface.py" cached-build "$_cache")" || {
+                _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
+                return 1
+            }
+            _compiled="$(printf '%s' "$_compiled" |
+                AI_EVENT_SESSION_ID="$_session_id" python3 -c '
 import json,os,sys
 surface=json.load(sys.stdin)
 print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
                   "surface":surface},separators=(",",":")))
 ')" || {
-            _ai_frontend_event warning "Operator surface response could not be encoded. Press Ctrl+R to retry."
-            return 1
-        }
+                _ai_frontend_event warning "Operator surface response could not be encoded. Press Ctrl+R to retry."
+                return 1
+            }
+        fi
+
         _ai_event_emit operator_snapshot "$_compiled" >/dev/null 2>&1 || true
         _ai_record_timing operator_surface "$_surface_started" >/dev/null
         return 0
