@@ -23,7 +23,8 @@ jobs:
   # Job 1: shellcheck — lint all shell scripts and BATS files
   # ────────────────────────────────────────────────────────────────────────────
   shellcheck:
-    name: ShellCheck
+    name: ShellCheck (repository audit)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'full' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +72,8 @@ jobs:
   # Job 2: ruff — lint Python files
   # ────────────────────────────────────────────────────────────────────────────
   ruff:
-    name: Ruff (Python lint)
+    name: Ruff (repository audit)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'full' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +89,9 @@ jobs:
         run: ruff check .
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Job 3: shared local/CI runner; ordinary events never select full.
+  # Job 3: shared local/CI runner. Ordinary events use affected validation,
+  # which already lints every changed Python/shell file. Whole-repository lint
+  # above is reserved for an explicit manual full audit.
   # ────────────────────────────────────────────────────────────────────────────
   tests:
     name: Validation (${{ inputs.mode || 'affected' }})
