@@ -2,7 +2,55 @@
 
 Last updated: 2026-10-04
 
-## TUI Local Setup Fast Path — Boundary J candidate
+## AI Pre-Session Fast Path — Boundary K candidate
+
+Boundary J reduced the measured local-setup bottleneck from **1.932s** to
+**97ms** and the same-host standalone-TUI path reached `input_ready` in
+**3.595s**:
+
+```text
+[TIMING] tui.ai_pre_session=743ms
+[TIMING] tui.ai_session_runtime=257ms
+[TIMING] tui.ai_local_setup=97ms
+[TIMING] tui.ai_operator_snapshot=440ms
+[TIMING] tui.ai_ready_finalize=533ms
+[TIMING] tui.startup_to_input_ready=3595ms
+```
+
+The Boundary J top-level phases still reconcile closely to the end-to-end timer
+(about 3.583s of 3.595s), so `tui.ai_pre_session` is now the largest
+unexplained AI-local phase. Boundary K keeps its authority-bearing work intact
+and first attributes that 743ms internally.
+
+One presentation-only cost is removed immediately: the standalone TUI no longer
+calls the classic `header()` at AI-session entry. That function gathers
+domain/IP/hostname, health state, module status hooks and pending-menu state only
+to render the shell header; the curses frontend owns its own structured header
+and does not consume that output.
+
+Boundary K adds nested pre-session timings:
+
+```text
+[TIMING] tui.ai_pre_header=<ms>
+[TIMING] tui.ai_pre_keys=<ms>
+[TIMING] tui.ai_pre_settings=<ms>
+[TIMING] tui.ai_pre_configuration=<ms>
+[TIMING] tui.ai_pre_model_cost=<ms>
+[TIMING] tui.ai_pre_provider=<ms>
+[TIMING] tui.ai_pre_selection=<ms>
+```
+
+These phases partition the existing `tui.ai_pre_session` interval. Key loading
+and permission checks, authoritative `ai.verbose` configuration resolution,
+model/provider normalization, cost-rate setup and local deferred-provider state
+remain unchanged. Boundary K does not cache or bypass configuration authority.
+
+Focused branch proof is required before this candidate is opened. Real-host
+closure then compares `tui.ai_pre_session` and the nested phases against the
+743ms Boundary J baseline; only the dominant measured authority-safe subphase
+should become the next optimization target.
+
+## TUI Local Setup Fast Path — Boundary J
 
 Boundary I closed the remaining startup-attribution gap on the measured Igor
 host. Its sequential top-level phases accounted for about **5.052s** of the
@@ -67,10 +115,10 @@ render, and without classic tmux/right-pane presentation; the classic path still
 renders its normal prompt/presentation. A separate regression proves mode
 changes cannot defeat deferred prompt preparation.
 
-No post-Boundary-J real-host speed claim is made yet. Closure requires the same
-TUI startup measurement on the Igor host and comparison of
-`tui.ai_local_setup`, its nested timings, and
-`tui.startup_to_input_ready` against the 1.932s / 5.063s Boundary I baseline.
+The same-host real run closed Boundary J with
+`tui.ai_local_setup=97ms` and `tui.startup_to_input_ready=3595ms`, down from
+1.932s and 5.063s respectively. The nested local-setup timings were all small;
+`tui.ai_pre_session=743ms` became the next measured AI-local target.
 
 ## TUI Startup Critical Path — Boundary I
 
