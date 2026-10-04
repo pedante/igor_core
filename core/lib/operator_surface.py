@@ -252,7 +252,8 @@ def build_seed(raw: bytes, lib_dir: Path) -> dict[str, Any]:
 
     sys.path.insert(0, str(lib_dir))
     try:
-        from configuration import CORE_SCHEMA, capability_records as configuration_capabilities
+        from configuration import CORE_SCHEMA
+        from configuration import capability_records as configuration_capabilities
         from deployment_attachment import capability_records as deployment_capabilities
     except ImportError as exc:
         raise SurfaceError("operator surface core registry unavailable") from exc
