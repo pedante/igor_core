@@ -1,0 +1,17 @@
+name: tmp-boundary-m-cross-process
+on:
+  push:
+    branches:
+      - perf/operator-surface-warm-fast-path-boundary-m
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: |
+          bash -n core/lib/module_loader.sh
+          bash -n core/ai/core.sh
+          python -m py_compile core/lib/operator_surface.py tests/test_ai_operator_backend.py
+      - name: Cross-process operator cache
+        run: python tests/test_ai_operator_backend.py
