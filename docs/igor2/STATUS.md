@@ -2,12 +2,88 @@
 
 Last updated: 2026-10-04
 
-## Module Registration Critical Path — Boundary N candidate
+## System Configuration Consumer Fast Path — Boundary O candidate
+
+Boundary N closed the remaining module-registration attribution gap on the
+measured Igor host:
+
+```text
+[TIMING] tui.bootstrap_modules=885ms
+[TIMING] module.discovery=48ms
+[TIMING] module.v2_registry=176ms
+[TIMING] module.sort=35ms
+[TIMING] module.registration.system.v2.configuration=452ms
+[TIMING] module.registration.system.v2.consumer=456ms
+[TIMING] module.registration.docker=28ms
+[TIMING] module.registration.nextcloud_docker=96ms
+[TIMING] module.registration.reconcile=2ms
+[TIMING] module.registration.derived=626ms
+[TIMING] operator_surface=279ms
+[TIMING] tui.startup_to_input_ready=2808ms
+```
+
+System's configuration consumption alone accounted for **452ms**, about 72% of
+the derived registration interval. Docker and the complete legacy Nextcloud v1
+path were only 28ms and 96ms respectively. The N diagnostic
+`module.registration.unattributed=500ms` was not a second hidden bottleneck:
+the System per-module wrapper observation was missing, and
+626 - 28 - 96 - 2 = 500ms. Boundary O also makes completed v2 modules publish
+their own total so this residual reconciles correctly.
+
+The expensive System startup path used the full Configuration Service
+`inspect` contract. That operation correctly computes a global state token by
+validating the complete desired configuration namespace, but the ordinary
+memory health consumer only needs the authoritative warning threshold and the
+current revision. Boundary O separates those responsibilities:
+
+- System's already-validated
+  `configuration:system.memory.preferences` record is taken from the canonical
+  loader contribution registry after v2 registration;
+- Configuration Service revalidates that single owner-stamped schema and reads
+  the same owner-private SQLite desired store;
+- startup resolves only
+  `system.memory.warning_threshold_mib` plus the current global revision;
+- the narrow startup resolver does not call `installed_schemas`, scan unrelated
+  module configuration declarations, enumerate all desired records or compute a
+  global state token;
+- the health consumer can run with value/revision only; its evidence continues
+  to identify the exact consumed threshold and revision;
+- runtime inspection can report this consumed current-process value/revision
+  without pretending that a global state proof was acquired;
+- the existing full configuration loader remains unchanged for explicit
+  apply/readback workflows;
+- an explicit `system.memory.warning.readback` acquires the full validated
+  revision/state token just in time inside the actual invocation shell if it is
+  not already present, so the isolated System handler still reports a proven
+  state token;
+- configuration writes, compare-and-swap admission, stale proposal rejection,
+  desired-state verification and Operational History retain their existing
+  global state-token contracts.
+
+This is not a configuration cache. The startup value is read fresh from the
+Configuration Service SQLite authority on every process start, and the module
+schema remains owned by System rather than duplicated in Core.
+
+Focused proof covers both sides of the authority split: startup must load the
+default/current threshold while leaving
+`IGOR_SYSTEM_MEMORY_WARNING_STATE` absent, and an explicit readback must still
+return the exact full state token obtained from Configuration Service. The
+existing stale apply, approved apply, readback mismatch and recovery workflows
+remain in the test suite.
+
+Because Boundary O changes `module_loader_fast.sh` and
+`configuration.py`, the first host launch may legitimately rebuild the Module
+API v2 and operator-surface derived caches. Real-host closure therefore uses a
+second unchanged launch and compares
+`module.registration.system.v2.configuration`,
+`tui.bootstrap_modules` and `tui.startup_to_input_ready` against the
+452ms / 885ms / 2.808s Boundary N baseline.
+
+## Module Registration Critical Path — Boundary N
 
 Boundary M is closed on the measured host. A true warm second launch showed:
 
 ```text
-[TIMING] module.registration=588ms
 [TIMING] module.registration=588ms
 [TIMING] operator_surface.generation=50ms
 [TIMING] operator_surface.cache_read=136ms
@@ -97,8 +173,14 @@ branches and is unrelated to module-registration authority.
 
 The tightened branch re-passed the mixed timing contract (**1/1**), complete AI
 startup lifecycle (**14/14**) and operator backend/warm-cache regressions
-(**12/12**). Real-host closure now requires one more unchanged N measurement.
-The dominant measured subphase becomes the next optimization boundary.
+(**12/12**).
+
+The second same-host N run closed the boundary: System configuration consumption
+was **452ms** and its enclosing consumer phase was **456ms**; Docker was 28ms,
+legacy Nextcloud was 96ms and reconciliation was 2ms. The derived registration
+interval was 626ms. This proves the next optimization target is the overly
+strong Configuration Service read inside System registration, not legacy module
+loading or v2 contribution indexing. Boundary O addresses that consumer.
 
 ## Operator Surface Warm Fast Path — Boundary M
 
