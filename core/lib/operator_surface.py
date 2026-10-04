@@ -544,6 +544,7 @@ def cached_read_surface(cache_path: Path, source_digest: str) -> dict[str, Any] 
     """
     if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
         raise SurfaceError("invalid operator surface source digest")
+    _cache_directory(cache_path)
     return _read_cache(cache_path, source_digest)
 
 
