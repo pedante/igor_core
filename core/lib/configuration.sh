@@ -18,6 +18,17 @@ print(json.dumps(r,separators=(",", ":")))
     printf '%s' "$_request" | python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" "$_action"
 }
 
+# Startup-only Core consumer.  Configuration Service remains authoritative: the
+# Python process reads the current private SQLite store and compatibility source,
+# but does not discover module schemas or compute a global state token because
+# this consumer needs only ai.verbose plus the current global revision.
+_igor_configuration_ai_verbose_resolve() {
+    IGOR_CONFIGURATION_ROOT="$IGOR_DIR" \
+    IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+    IGOR_CONFIGURATION_INHERITED_VERBOSE="${verbose:-}" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" resolve-ai-verbose
+}
+
 # Read-only schema projection for generic frontends. This creates no store and
 # exposes no desired/secret values.
 igor_configuration_declarations() {
@@ -181,10 +192,62 @@ PY
 # Consume only the current authoritative resolution. This records no observed
 # fact and never treats a desired commit as proof of application.
 _ai_configuration_verbose_load() {
-    local _state _value _revision
-    _state="$(_igor_configuration_call resolve)" || return 1
-    _value="$(printf '%s' "$_state" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["resolved"]["value"] else "false")')" || return 1
+    local _state _decoded _value _revision _started="" _ended=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && declare -f _ai_now_ms >/dev/null 2>&1; then
+        _started="$(_ai_now_ms)"
+    fi
+    _state="$(_igor_configuration_ai_verbose_resolve)" || return 1
+    if [[ "$_started" =~ ^[0-9]+$ ]]; then
+        _ended="$(_ai_now_ms)"
+        if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
+            _IGOR_TUI_CONFIGURATION_SERVICE_MS=$((_ended - _started))
+        fi
+        _started="$_ended"
+    fi
+    _decoded="$(printf '%s' "$_state" | python3 -c '
+import json,sys
+state=json.load(sys.stdin)
+value=state["resolved"]["value"]
+revision=state["revision"]
+if type(value) is not bool or type(revision) is not int or revision < 0:
+    raise SystemExit(1)
+print(("true" if value else "false") + "\t" + str(revision))
+')" || return 1
+    IFS=
+
+_ai_configuration_verbose_set() {
+    local _value="$1" _state _revision _token _payload _committed
+    case "$_value" in true|false) ;; *) return 2 ;; esac
+    declare -f igor_capability_prepare >/dev/null 2>&1 || {
+        # The loader already sources this adapter; avoid recursive lint loading.
+        # shellcheck source=/dev/null
+        source "${IGOR_DIR}/core/lib/module_loader.sh"
+    }
+    _state="$(_igor_configuration_call inspect)" || return 1
     _revision="$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')" || return 1
+    _token="$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["state_token"])')" || return 1
+    _payload="$(python3 -c 'import json,sys; print(json.dumps({"tool":"run_capability","id":"core.configuration.ai_verbose.set","provider":"core","inputs":{"value":sys.argv[1]=="true","revision":int(sys.argv[2]),"state":sys.argv[3]}}))' "$_value" "$_revision" "$_token")" || return 1
+    local IGOR_HISTORY_INTERFACE=ai_settings
+    export IGOR_HISTORY_INTERFACE
+    IGOR_CAPABILITY_LAST_RESULT=""
+    ai_execute_tool "$_payload" || return 1
+    [ "$(printf '%s' "$IGOR_CAPABILITY_LAST_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')" = success ] || return 1
+    _committed="$(( _revision + 1 ))"
+    _state="$(_igor_configuration_call inspect)" || return 1
+    [ "$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')" = "$_committed" ] || return 1
+    _ai_configuration_verbose_load "$_committed" || return 1
+    _payload="$(python3 -c 'import json,sys; print(json.dumps({"tool":"run_capability","id":"core.configuration.ai_verbose.verify","provider":"core","inputs":{"revision":int(sys.argv[1])}}))' "$_committed")" || return 1
+    # Independent READ verification of this session's consumption, not global
+    # application success. Guide still owns its normal READ confirmation.
+    ai_execute_tool "$_payload"
+}
+\t' read -r _value _revision <<< "$_decoded"
+    if [[ "$_started" =~ ^[0-9]+$ ]]; then
+        _ended="$(_ai_now_ms)"
+        if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
+            _IGOR_TUI_CONFIGURATION_DECODE_MS=$((_ended - _started))
+        fi
+    fi
     [ -z "${1:-}" ] || [ "$_revision" = "$1" ] || return 1
     IGOR_VERBOSE="$_value"
     IGOR_VERBOSE_REVISION="$_revision"
