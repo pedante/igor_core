@@ -444,6 +444,45 @@ class ConfigurationService:
             result["runtime_consumption"] = _memory_consumption(result) if self.owner_active("system") else {"status": "owner_inactive", "verification": "not_verified"}
         return result
 
+    def resolve_ai_verbose(self, *, compatibility_loader=None):
+        """Resolve the Core-owned startup setting without claiming global state.
+
+        The AI session only needs the current value plus the store revision.
+        Computing the normal inspection state token would validate every desired
+        record and therefore requires every installed module configuration
+        schema.  This narrow consumer reads only the Core-owned row from the
+        same authoritative store.  It deliberately returns no state token and
+        cannot be used for configuration writes or compare-and-swap admission.
+        """
+        field = self._field("ai.verbose", "installation:local")
+        with self._store() as db:
+            metadata = self._metadata(db)
+            row = None
+            if db:
+                raw = db.execute(
+                    "SELECT record FROM desired WHERE target=? AND id=?",
+                    ("installation:local", "ai.verbose"),
+                ).fetchone()
+                if raw is not None:
+                    row = self._record(decode(raw[0]))
+        if row is not None:
+            value = field.get("default") if row["unset"] else row["value"]
+            source = "default" if row["unset"] else "desired"
+        else:
+            value = field.get("default")
+            source = "default"
+            if compatibility_loader is not None:
+                compatibility = compatibility_loader()
+                value = validate_value(field, compatibility["value"])
+                source = "compatibility"
+        return {
+            "schema_version": 1,
+            "id": "ai.verbose",
+            "target": "installation:local",
+            "revision": int(metadata["revision"]),
+            "resolved": {"status": "resolved", "value": value, "source": source},
+        }
+
     def export(self):
         with self._store() as db:
             metadata = self._metadata(db)
@@ -614,15 +653,33 @@ def capability_records(system_active=False):
 
 def cli():
     try:
-        request = decode(sys.stdin.read())
+        action = sys.argv[1]
+        if action == "resolve-ai-verbose":
+            # Dedicated startup consumer: arguments arrive as environment data
+            # rather than paying for a separate Python JSON-builder process.
+            # This path is Core-only and intentionally has no module activation
+            # or state-token authority.
+            request = {
+                "igor_dir": os.environ["IGOR_CONFIGURATION_ROOT"],
+                "data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"],
+                "inherited_verbose": os.environ.get("IGOR_CONFIGURATION_INHERITED_VERBOSE") or None,
+            }
+        else:
+            request = decode(sys.stdin.read())
         root = Path(request["igor_dir"])
         # Runtime callers supply the actual loader-owned activation snapshot.
         # Standalone inspection admits no module writes without that snapshot.
         active = set(request.get("active_owners", ["core"]))
-        service = ConfigurationService(Path(request["data_dir"]), schemas=installed_schemas(root),
+        schemas = [] if action == "resolve-ai-verbose" else installed_schemas(root)
+        service = ConfigurationService(Path(request["data_dir"]), schemas=schemas,
                                        owner_active=lambda owner: owner == "core" or owner in active)
-        action = sys.argv[1]
-        if action == "capabilities":
+        if action == "resolve-ai-verbose":
+            result = service.resolve_ai_verbose(
+                compatibility_loader=lambda: legacy_verbose(
+                    root, request.get("inherited_verbose")
+                )
+            )
+        elif action == "capabilities":
             result = capability_records("system" in active)
         elif action == "declarations":
             result = service.declarations()
