@@ -211,37 +211,9 @@ value=state["resolved"]["value"]
 revision=state["revision"]
 if type(value) is not bool or type(revision) is not int or revision < 0:
     raise SystemExit(1)
-print(("true" if value else "false") + "\t" + str(revision))
+print(("true" if value else "false") + ":" + str(revision))
 ')" || return 1
-    IFS=
-
-_ai_configuration_verbose_set() {
-    local _value="$1" _state _revision _token _payload _committed
-    case "$_value" in true|false) ;; *) return 2 ;; esac
-    declare -f igor_capability_prepare >/dev/null 2>&1 || {
-        # The loader already sources this adapter; avoid recursive lint loading.
-        # shellcheck source=/dev/null
-        source "${IGOR_DIR}/core/lib/module_loader.sh"
-    }
-    _state="$(_igor_configuration_call inspect)" || return 1
-    _revision="$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')" || return 1
-    _token="$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["state_token"])')" || return 1
-    _payload="$(python3 -c 'import json,sys; print(json.dumps({"tool":"run_capability","id":"core.configuration.ai_verbose.set","provider":"core","inputs":{"value":sys.argv[1]=="true","revision":int(sys.argv[2]),"state":sys.argv[3]}}))' "$_value" "$_revision" "$_token")" || return 1
-    local IGOR_HISTORY_INTERFACE=ai_settings
-    export IGOR_HISTORY_INTERFACE
-    IGOR_CAPABILITY_LAST_RESULT=""
-    ai_execute_tool "$_payload" || return 1
-    [ "$(printf '%s' "$IGOR_CAPABILITY_LAST_RESULT" | python3 -c 'import json,sys; print(json.load(sys.stdin)["outcome"])')" = success ] || return 1
-    _committed="$(( _revision + 1 ))"
-    _state="$(_igor_configuration_call inspect)" || return 1
-    [ "$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')" = "$_committed" ] || return 1
-    _ai_configuration_verbose_load "$_committed" || return 1
-    _payload="$(python3 -c 'import json,sys; print(json.dumps({"tool":"run_capability","id":"core.configuration.ai_verbose.verify","provider":"core","inputs":{"revision":int(sys.argv[1])}}))' "$_committed")" || return 1
-    # Independent READ verification of this session's consumption, not global
-    # application success. Guide still owns its normal READ confirmation.
-    ai_execute_tool "$_payload"
-}
-\t' read -r _value _revision <<< "$_decoded"
+    IFS=: read -r _value _revision <<< "$_decoded"
     if [[ "$_started" =~ ^[0-9]+$ ]]; then
         _ended="$(_ai_now_ms)"
         if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
