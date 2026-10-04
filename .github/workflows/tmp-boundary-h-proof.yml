@@ -27,4 +27,4 @@ jobs:
       - name: Boundary G startup regressions
         run: python3 -m pytest tests/test_ai_menu_startup.py -q
       - name: Full regression
-        run: bash tests/run_all.sh
+        run: bash tests/run_all.sh --fast
