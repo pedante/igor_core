@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -97,6 +98,20 @@ printf '\nMENU_RETURN=%s\n' "$?"
             if tui:
                 env["IGOR_TUI_MODE"] = "true"
                 env["AI_SKIP_INTERSTITIAL"] = "true"
+                env["IGOR_TUI_STARTED_MS"] = str(int(time.time() * 1000))
+                # core.sh is sourced directly in this fixture, so seed the
+                # upstream Boundary I observations that igor.sh normally owns.
+                env.update({
+                    "_IGOR_TUI_BACKEND_SPAWN_MS": "1",
+                    "_IGOR_TUI_BACKEND_PREBOOTSTRAP_MS": "2",
+                    "_IGOR_TUI_BOOTSTRAP_CONFIG_MS": "3",
+                    "_IGOR_TUI_BOOTSTRAP_MODULES_MS": "4",
+                    "_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS": "5",
+                    "_IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS": "6",
+                    "_IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS": "7",
+                    "_IGOR_TUI_BACKEND_DISPATCH_MS": "8",
+                    "_IGOR_TUI_AI_SOURCE_MS": "9",
+                })
             result = subprocess.run(["bash", "-c", shell], input=input_text,
                                     text=True, capture_output=True, env=env, timeout=15)
             state = runtime / "state.env"
@@ -197,6 +212,24 @@ printf '\nMENU_RETURN=%s\n' "$?"
                             for row in runtime["events"]))
         self.assertNotIn("[TIMING] provider.preflight=", trace)
         self.assertNotIn("[TIMING] context.first_request=", trace)
+        for stage in (
+            "tui.backend_spawn",
+            "tui.backend_prebootstrap",
+            "tui.bootstrap_config",
+            "tui.bootstrap_modules",
+            "tui.bootstrap_module_config",
+            "tui.bootstrap_aux_sources",
+            "tui.bootstrap_config_hooks",
+            "tui.backend_dispatch",
+            "tui.ai_source",
+            "tui.ai_pre_session",
+            "tui.ai_session_runtime",
+            "tui.ai_local_setup",
+            "tui.ai_operator_snapshot",
+            "tui.ai_ready_finalize",
+            "tui.startup_to_input_ready",
+        ):
+            self.assertIn(f"[TIMING] {stage}=", trace)
 
     def test_deferred_request_preparation_runs_provider_before_context_once(self):
         shell = r"""
