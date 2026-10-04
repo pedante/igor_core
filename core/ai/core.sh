@@ -3010,6 +3010,14 @@ except: pass
         _ai_startup_fail session_log 1 "Could not create a private AI session log. Check data/sessions ownership and permissions."
         return $?
     }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        [[ "${_IGOR_TUI_BOOTSTRAP_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_CONFIG_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_MODULES_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_modules=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULES_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_module_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS" >> "$session_file"
+    fi
     local session_id; session_id=$(basename "$session_file" .log)
     IGOR_AI_EVENT_SESSION_ID="$session_id"
     export IGOR_AI_EVENT_SESSION_ID
