@@ -348,6 +348,8 @@ _ml_fast_index_compiled_fields() {
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source
     local _entrypoint _kind _compiled_key _static_reason
+    local _phase_started=""
+    [ "${IGOR_TUI_MODE:-false}" = true ] && _phase_started="$(_ml_now_ms)"
 
     if [ "${_IGOR_V2_COMPILED_READY:-0}" -ne 1 ] ||
        [ -z "${_IGOR_V2_DATA[$_name]:-}" ] ||
@@ -391,6 +393,10 @@ _ml_load_v2() {
             esac
         fi
     done < <(_ml_v2_rows "$_name")
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v2.preflight" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     if [ "${_IGOR_V2_V1_HOOKS_COMPILED[$_name]:-false}" = true ]; then
         local _register_fn
@@ -420,6 +426,10 @@ _ml_load_v2() {
         fi
         _IGOR_REGISTERING_MODULE=""
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v2.compat" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     while IFS= read -r _key; do
         [ -n "$_key" ] || continue
@@ -444,6 +454,10 @@ _ml_load_v2() {
             _IGOR_CONTRIBUTION_REASON["$_index_key"]="$_static_reason"
         fi
     done < <(_ml_v2_rows "$_name")
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v2.contributions" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     _IGOR_LOADED_MODULES["$_name"]=1
     _IGOR_MODULE_STATUS["$_name"]="active"
@@ -455,6 +469,8 @@ _ml_load_v2() {
             _ml_log warn "System memory configuration consumption unavailable"
     fi
     _ml_log ok "Loaded Module API v2: $_name"
+    [ "${IGOR_TUI_MODE:-false}" = true ] &&
+        _ml_tui_phase_record "$_name.v2.consumer" "$_phase_started"
     return 0
 }
 
@@ -498,12 +514,32 @@ igor_load_all_modules() {
     fi
 
     local _name _seen=" " _edges
+    local _registration_started="$_started" _module_started="" _module_ended=""
+    local _reconcile_started=""
+    if [ "$_timed" = true ]; then
+        _IGOR_TUI_MODULE_REGISTRATION_ORDER=""
+        _IGOR_TUI_MODULE_REGISTRATION_BY_NAME=()
+        _IGOR_TUI_MODULE_PHASE_MS=()
+    fi
     while IFS= read -r _name; do
         [ -n "$_name" ] || continue
         _seen+="$_name "
+        if [ "$_timed" = true ]; then
+            _module_started="$(_ml_now_ms)"
+            _IGOR_TUI_MODULE_REGISTRATION_ORDER+="${_IGOR_TUI_MODULE_REGISTRATION_ORDER:+ }$_name"
+        fi
         igor_load_module "$_name" || true
+        if [ "$_timed" = true ]; then
+            _module_ended="$(_ml_now_ms)"
+            if [[ "$_module_started" =~ ^[0-9]+$ ]] &&
+               [[ "$_module_ended" =~ ^[0-9]+$ ]] &&
+               [ "$_module_ended" -ge "$_module_started" ]; then
+                _IGOR_TUI_MODULE_REGISTRATION_BY_NAME["$_name"]=$((_module_ended - _module_started))
+            fi
+        fi
     done <<< "$_sorted_list"
 
+    [ "$_timed" = true ] && _reconcile_started="$(_ml_now_ms)"
     for _name in "${_names[@]}"; do
         if [[ "$_seen" != *" $_name "* ]] &&
            [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
@@ -521,8 +557,12 @@ igor_load_all_modules() {
     done
 
     if [ "$_timed" = true ]; then
-        _ended=$(date +%s%3N)
-        _IGOR_TUI_MODULE_REGISTRATION_MS=$((_ended - _started))
+        _ended="$(_ml_now_ms)"
+        if [[ "$_reconcile_started" =~ ^[0-9]+$ ]] &&
+           [ "$_ended" -ge "$_reconcile_started" ]; then
+            _IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS=$((_ended - _reconcile_started))
+        fi
+        _IGOR_TUI_MODULE_REGISTRATION_MS=$((_ended - _registration_started))
     fi
     return 0
 }
