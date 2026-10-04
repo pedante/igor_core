@@ -1,0 +1,23 @@
+name: Boundary G proof
+
+on:
+  push:
+    branches:
+      - perf/tui-readiness-boundary-g
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install 'pytest>=9,<10'
+      - name: Syntax
+        run: |
+          bash -n core/ai/core.sh
+          python -m py_compile core/ai/tui.py tests/test_ai_menu_startup.py tests/test_ai_tui.py
+      - name: Focused startup and TUI contracts
+        run: |
+          python -m pytest -q             tests/test_ai_menu_startup.py             tests/test_ai_tui.py             tests/test_ai_operator_backend.py             tests/test_ai_tui_operator.py
