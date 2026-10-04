@@ -120,8 +120,27 @@ _IGOR_V2_DATA[system]='{"manifest":{"display_name":"System","name":"system"},"co
 igor_contribution_records() { touch "$MARKER"; return 9; }
 igor_capability_list() { touch "$MARKER"; return 9; }
 igor_configuration_declarations() { touch "$MARKER"; return 9; }
+
+real_python="$(command -v python3)"
+mkdir -p "$IGOR_RUNTIME_DIR/bin"
+cat > "$IGOR_RUNTIME_DIR/bin/python3" <<EOF
+#!/usr/bin/env bash
+printf '.\\n' >> "$PY_COUNT"
+exec "$real_python" "\\$@"
+EOF
+chmod 700 "$IGOR_RUNTIME_DIR/bin/python3"
+export PATH="$IGOR_RUNTIME_DIR/bin:$PATH"
+unset IGOR_PYTHON
+
+: > "$PY_COUNT"
 _ai_emit_operator_snapshot
+cold_count="$(wc -l < "$PY_COUNT")"
+[ "$cold_count" -le 4 ]
+
+: > "$PY_COUNT"
 _ai_emit_operator_snapshot
+warm_count="$(wc -l < "$PY_COUNT")"
+[ "$warm_count" -le 4 ]
 [ ! -e "$MARKER" ]
 '''
             result = subprocess.run(
@@ -131,7 +150,8 @@ _ai_emit_operator_snapshot
                      "IGOR_RUNTIME_DIR": runtime,
                      "IGOR_DATA_DIR": str(data_dir),
                      "IGOR_AI_EVENT_STREAM": str(stream),
-                     "MARKER": str(marker)},
+                     "MARKER": str(marker),
+                     "PY_COUNT": str(Path(runtime) / "python-count")},
                 text=True, capture_output=True, timeout=20,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
