@@ -19,9 +19,15 @@ The curses frontend also skips the classic backend presentation path before
 READY: it does not render the classic system/header status block, enter the tmux
 AI layout, print the classic banner, or build the classic right-pane command
 reference. Those are presentation-only surfaces owned by the classic UI; the
-standalone TUI already owns its screen, header and command palette. Local
-commands, settings/navigation and the operator surface remain usable before the
-first provider request.
+standalone TUI already owns its screen, header and command palette.
+
+The startup read of Core-owned `ai.verbose` still comes from Configuration
+Service's current private SQLite authority on every session, but it uses a
+narrow consumer that returns only the resolved value and global revision. It
+does not compute a global configuration state token or rediscover module
+configuration schemas; full inspection/write interfaces keep those stronger
+namespace/state-token contracts. Local commands, settings/navigation and the
+operator surface remain usable before the first provider request.
 
 ## Focus and navigation
 
