@@ -99,6 +99,32 @@ configuration CLI still exposes the bounded Core `ai.verbose` slice; general
 module writes, binding/resource ownership and application recovery require the
 later workflow proof. See [STATUS.md](STATUS.md) for composition evidence.
 
+## Startup consumption and proof strength
+
+Performance work in Boundaries L, O and P clarified a general Configuration
+Service rule: **read consumers should request only the proof strength they
+actually need**.
+
+The standalone TUI currently has two startup consumers: Core `ai.verbose` and
+System `system.memory.warning_threshold_mib`. Their initial process values are
+read from the same private SQLite authority and carry the current configuration
+revision, but they do not authorize mutation and therefore do not require a
+global state token. When System is active, Boundary P resolves both in one
+process-scoped startup snapshot using System's already-validated loader-owned
+schema. AI consumes its part exactly once. Classic/late AI entry performs a
+fresh read instead of reusing bootstrap state.
+
+This optimization does not weaken the write/readback contract. Configuration
+CHANGE preparation, compare-and-swap admission, explicit System readback and
+verification still use full inspection and state-token semantics. The startup
+snapshot is not persisted, is not a general settings cache, cannot authorize
+execution and must not be used as evidence that a desired value was applied.
+
+This pattern may be extended to future startup consumers only when they are
+bounded, schema-owned, read-only, share one process bootstrap and need the same
+revision-only proof strength. It must not become an implicit global effective-
+configuration cache.
+
 ## Boundary 3: System memory warning consumer
 
 The first shipped module setting is `system.memory.warning_threshold_mib`,
