@@ -1318,6 +1318,12 @@ ${tail_out}"
             echo -e "  ${CYAN}──────────────────────────────────────────────────────────────${NC}" >&2
         fi
 
+        # The canonical capability result is already committed at this point.
+        # Publish its local presentation before non-authoritative tool metadata
+        # and audit bookkeeping so diagnostics cannot hold the UI behind a
+        # terminal result.
+        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$_display_output" "$_display_output" "$exit_code" "$_requires_admin" "$_duration_ms")"
+
         output="TOOL:${T_TOOL} EXIT:${exit_code}\nOUTPUT:\n${output}"
         local _exec_status="tool_succeeded"; [ "$exit_code" -ne 0 ] && _exec_status="tool_failed"
         _ai_write_tool_meta "$tier" "$_meta_approval" "$_exec_status" "$exit_code" \
@@ -1326,7 +1332,6 @@ ${tail_out}"
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
         unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
-        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$_display_output" "$_display_output" "$exit_code" "$_requires_admin" "$_duration_ms")"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
             [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
