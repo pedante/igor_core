@@ -43,6 +43,8 @@ For most Igor 2 work:
    - `KNOWLEDGE_IMPORT.md` — accepted direction for normalizing docs, scripts, Agent Skills/AOH, ServerMind, Steward and local learning into Igor-managed knowledge/module candidates without granting execution authority.
    - `DECISIONS.md` — accepted and unresolved architectural decisions.
    - `LEGACY.md` — significant current paths that must be kept, adapted or retired.
+   - `PERFORMANCE_INVESTIGATION.md` — completed Boundary A–P performance investigation: measurements, architectural fixes, stopping point and remaining opportunities.
+   - `PERFORMANCE_AUDIT_PROMPT.md` — reusable Codex prompt for systematically finding the same classes of performance antipattern without weakening Igor authority boundaries.
 
 ## Current implementation versus target
 
