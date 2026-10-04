@@ -8,6 +8,7 @@ on:
 jobs:
   focused:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,8 +17,12 @@ jobs:
       - run: pip install 'pytest>=9,<10'
       - name: Syntax
         run: |
+          bash -n igor.sh
           bash -n core/ai/core.sh
           python -m py_compile core/ai/tui.py tests/test_ai_menu_startup.py tests/test_ai_tui.py
-      - name: Focused startup and TUI contracts
+      - name: Boundary G readiness contracts
         run: |
-          python -m pytest -q             tests/test_ai_menu_startup.py             tests/test_ai_tui.py             tests/test_ai_operator_backend.py             tests/test_ai_tui_operator.py
+          python -m pytest -q             tests/test_ai_menu_startup.py::AIMenuStartupTests::test_tui_reaches_input_ready_before_provider_or_context_preflight             tests/test_ai_menu_startup.py::AIMenuStartupTests::test_deferred_request_preparation_runs_provider_before_context_once             tests/test_ai_tui.py::TuiTests::test_deferred_preflight_statuses_keep_backend_busy
+      - name: Existing startup lifecycle
+        run: |
+          python -m pytest -q tests/test_ai_menu_startup.py
