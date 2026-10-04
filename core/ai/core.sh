@@ -138,6 +138,8 @@ PY
 # the canonical capability dispatcher and configuration owners.
 _ai_emit_operator_snapshot() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local _surface_started
+    _surface_started="$(_ai_now_ms)"
 
     # Normal startup uses a compiled structural namespace. The seed comes only
     # from loader-validated registrations/base lifecycle state; it performs no
@@ -164,6 +166,7 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
             return 1
         }
         _ai_event_emit operator_snapshot "$_compiled" >/dev/null 2>&1 || true
+        _ai_record_timing operator_surface "$_surface_started" >/dev/null
         return 0
     fi
 
@@ -241,6 +244,7 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
         return 1
     }
     _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
+    _ai_record_timing operator_surface "$_surface_started" >/dev/null
 }
 
 
