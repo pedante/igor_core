@@ -16,6 +16,7 @@ from operator_surface import (  # noqa: E402
     SurfaceError,
     build_surface,
     cached_build_surface,
+    cached_read_surface,
     children,
 )
 
@@ -192,6 +193,20 @@ class OperatorSurfaceTests(unittest.TestCase):
             self.assertRegex(first["compiled_source_digest"], r"^[0-9a-f]{64}$")
             self.assertEqual(stat.S_IMODE(cache.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(cache.parent.stat().st_mode), 0o700)
+
+    def test_loader_keyed_cache_reads_without_rebuilding_seed(self):
+        payload = {**self.payload(), "seed_version": 1,
+                   "availability_model": "registration"}
+        generation = "a" * 64
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "cache" / "operator-surface-v1.json"
+            built = cached_build_surface(payload, cache, generation)
+            hit = cached_read_surface(cache, generation)
+            miss = cached_read_surface(cache, "b" * 64)
+
+        self.assertEqual(hit, built)
+        self.assertIsNone(miss)
+        self.assertEqual(built["compiled_source_digest"], generation)
 
     def test_compiled_cache_rebuilds_when_registration_seed_changes(self):
         payload = {**self.payload(), "seed_version": 1,
