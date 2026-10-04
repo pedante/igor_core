@@ -2,6 +2,33 @@
 
 Last updated: 2026-10-04
 
+## Memory architecture reconciliation — documentation candidate
+
+The persistent-memory and knowledge documents now explicitly reconcile the
+implemented Igor 2 memory layers rather than describing "memory" as a future
+single subsystem.
+
+The clarification records that:
+
+- System Model, Configuration/Deployment responsibility, Operational History,
+  Investigations, Knowledge/Learning, runtime/session state and Context Engine
+  remain separate authorities with typed references between them;
+- no generic memory database is introduced and no persisted observation becomes
+  fresh machine truth merely because it survived restart;
+- bounded context retrieval should stay deterministic/inspectable first, with
+  semantic/vector indexes treated only as optional derived accelerators;
+- portable knowledge/pattern/runbook artifacts may use Markdown plus typed front
+  matter and should remain OKF-compatible where practical;
+- OKF compatibility is an import/export/interchange concern, never authority for
+  current facts, configuration, secrets, History, approval/privilege or runtime;
+- the next missing memory feature is the roadmap's Step 16 explainable
+  baseline/local-learning layer, not a rebuild of Steps 8, 12 or 15.
+
+ROADMAP.md now includes rough remaining memory/knowledge engineering sizes so
+future planning distinguishes already-implemented foundations from deferred
+learning/search ambitions. This candidate is documentation-only and changes no
+runtime, persistence layout, authority, migration or test baseline.
+
 ## Configuration Startup Snapshot — Boundary P — CLOSED
 
 Boundary O's warm real-host run reduced module bootstrap from **885ms to 686ms**
