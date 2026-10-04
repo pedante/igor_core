@@ -81,9 +81,24 @@ Focused branch proof passed:
 
 The temporary branch-only proof workflow is removed after evidence capture.
 
-Real-host closure requires one normal standalone-TUI run and the full timing
-output. The dominant per-module/subphase becomes the next optimization boundary;
-N itself should not speculate ahead of that evidence.
+The first real-host Boundary N trace showed Docker at 27ms and legacy
+Nextcloud at 98ms, while System's preflight/compat/contribution phases totaled
+only 31ms. Roughly half a second of registration remained unattributed and the
+System path did not publish its expected final consumer/total observation. That
+is not enough evidence to optimize Nextcloud or any v2 indexing path.
+
+N is therefore tightened to time System's configuration consumption explicitly
+as `module.registration.system.v2.configuration` and to publish
+`module.registration.unattributed` (plus a derived aggregate when necessary)
+rather than silently dropping an incomplete diagnostic observation. The first N
+host run also rebuilt the operator surface because N modifies loader files that
+Boundary M intentionally fingerprints; that rebuild is expected after changing
+branches and is unrelated to module-registration authority.
+
+The tightened branch re-passed the mixed timing contract (**1/1**), complete AI
+startup lifecycle (**14/14**) and operator backend/warm-cache regressions
+(**12/12**). Real-host closure now requires one more unchanged N measurement.
+The dominant measured subphase becomes the next optimization boundary.
 
 ## Operator Surface Warm Fast Path — Boundary M
 
