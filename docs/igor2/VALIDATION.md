@@ -194,12 +194,15 @@ until a separate reviewed metadata change removes it.
 [CI](../../.github/workflows/ci.yml) covers PRs targeting `master`, `main` and
 `igor2`, and pushes to those branches. Ordinary events run the shared
 `affected` entry point. PR selection uses the base SHA; pushes use the previous
-SHA. Checkout fetches local history. Manual `workflow_dispatch` selects
-focused/affected/full and a comparison ref; full is an explicit operator
-choice. Logs and JSON are uploaded even on failure. Existing repository-wide
-Ruff and ShellCheck jobs retain their existing lint policy and are separate
-from harness baseline comparison; this milestone does not bless their backlog.
-A first-ever branch push with no valid prior SHA needs a manual comparison ref.
+SHA. Checkout fetches local history. The affected harness already runs Ruff and
+ShellCheck on every changed Python/shell/BATS file, so ordinary PRs do not also
+pay for duplicate whole-repository lint scans. Repository-wide Ruff and
+ShellCheck remain available as explicit `workflow_dispatch` + `full` audit
+jobs; their existing backlog/policy is unchanged and is not silently accepted.
+Manual `workflow_dispatch` also selects focused/affected/full validation and a
+comparison ref; full is an explicit operator choice. Logs and JSON are uploaded
+even on failure. A first-ever branch push with no valid prior SHA needs a manual
+comparison ref.
 
 Local Markdown validation checks inline file links, not anchors, external URLs
 or reference-style links. YAML workflow parsing/review is separate. Per-file
