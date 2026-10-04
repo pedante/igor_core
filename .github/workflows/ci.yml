@@ -126,6 +126,7 @@ jobs:
 
 
   # Temporary focused proof for Execution Fence Boundary D; removed after evidence.
+  # Triggered only while the stacked PR is temporarily based on igor2.
   boundary_d:
     name: Execution Fence Boundary D
     runs-on: ubuntu-latest
