@@ -1,10 +1,9 @@
 # Igor 2 Performance Investigation
 
-Status: **closure candidate after Boundary P**. This document records the
-performance investigation that ran across capability execution, result
-publication and standalone-TUI startup. Boundary P is intended to be the final
-optimization in this pass; its real-host closure measurement is recorded in
-[STATUS.md](STATUS.md) when available.
+Status: **closed after Boundary P**. This document records the performance
+investigation that ran across capability execution, result publication and
+standalone-TUI startup. Boundary P was the final optimization in this pass and
+its real-host closure measurement is recorded in [STATUS.md](STATUS.md).
 
 The purpose of this work was not to make Igor "fast at any cost". The objective
 was to remove avoidable work from hot paths while preserving the architecture
@@ -226,8 +225,13 @@ and contains no state token. AI consumes that bootstrap snapshot exactly once.
 Classic/late AI entry and later reloads keep the existing fresh resolver.
 Mutation/readback authority is unchanged.
 
-P is the planned stopping point for this performance pass unless its real-host
-trace uncovers a new architectural defect.
+The second unchanged real-host P launch confirmed the intended behavior:
+`configuration.core_resolve=0ms`, `configuration.decode=0ms`,
+`tui.ai_pre_configuration=6ms`, `tui.ai_pre_session=46ms` and
+`tui.startup_to_input_ready=2302ms`. The operator surface remained warm with
+no rebuild. The new `configuration.startup_snapshot` timer did not surface on
+the physical host, so that missing diagnostic remains observability debt rather
+than a performance blocker.
 
 ## Result so far
 
@@ -239,16 +243,17 @@ After Boundary H:           4.849 s
 After Boundary J:           3.595 s
 Boundary N warm:            2.808 s
 Boundary O warm:            2.653 s
-Boundary P:                 real-host closure pending
+Boundary P warm:            2.302 s
 ```
 
-Boundary O is already about **10.7x faster** than the 28.445 s baseline, a
-reduction of roughly **90.7%**.
+Boundary P is about **12.4x faster** than the 28.445 s baseline, a reduction of
+roughly **91.9%**.
 
-This is a good point to stop optimizing startup as a primary project. The
-remaining phases are measured in hundreds of milliseconds, not tens of seconds,
-and further work has lower expected return and higher risk of accidental
-complexity.
+This investigation is now closed. The remaining phases are measured in hundreds
+of milliseconds rather than tens of seconds, and further startup work has lower
+expected return and higher risk of invalidation/authority complexity. Treat
+performance as monitored technical quality, not the active Igor 2 workstream,
+until new measurements justify reopening it.
 
 ## What remains worth improving later
 
