@@ -238,6 +238,216 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
+def build_seed(raw: bytes, lib_dir: Path) -> dict[str, Any]:
+    """Decode loader-owned structural registration frames.
+
+    v2 registrations were already validated by Module API loading. This helper
+    does not source module code or evaluate dynamic requirements.
+    """
+    parts = raw.split(b"\0")
+    if parts[-1:] == [b""]:
+        parts.pop()
+    if len(parts) % 7:
+        raise SurfaceError("invalid operator surface seed framing")
+
+    sys.path.insert(0, str(lib_dir))
+    try:
+        from configuration import CORE_SCHEMA, capability_records as configuration_capabilities
+        from deployment_attachment import capability_records as deployment_capabilities
+    except ImportError as exc:
+        raise SurfaceError("operator surface core registry unavailable") from exc
+
+    modules_raw: dict[str, dict[str, Any]] = {}
+    overrides: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for offset in range(0, len(parts), 7):
+        try:
+            kind, one, two, three, four, five, six = (
+                value.decode() for value in parts[offset:offset + 7]
+            )
+        except UnicodeDecodeError as exc:
+            raise SurfaceError("invalid operator surface seed encoding") from exc
+        if kind == "module":
+            name, api_text, status, reason, enabled_text, metadata = (
+                one, two, three, four, five, six
+            )
+            if not _ID.fullmatch(name):
+                raise SurfaceError("invalid seed module name")
+            try:
+                api = int(api_text)
+            except ValueError as exc:
+                raise SurfaceError("invalid seed module api") from exc
+            if enabled_text not in {"true", "false"}:
+                raise SurfaceError("invalid seed module enablement")
+            modules_raw[name] = {
+                "name": name,
+                "module_api": api,
+                "status": status,
+                "reason": reason or None,
+                "enabled": enabled_text == "true",
+                "metadata": metadata,
+            }
+        elif kind == "contribution":
+            key, owner, source, state, reason, record = (
+                one, two, three, four, five, six
+            )
+            if ":" not in key or not _ID.fullmatch(owner):
+                raise SurfaceError("invalid seed contribution identity")
+            contribution_kind, indexed_ident = key.split(":", 1)
+            ident = indexed_ident.split("@", 1)[0]
+            try:
+                descriptor = json.loads(record)
+            except (TypeError, ValueError):
+                descriptor = {
+                    "kind": contribution_kind,
+                    "id": ident,
+                    "handler": record,
+                }
+            if not isinstance(descriptor, dict):
+                raise SurfaceError("invalid seed contribution descriptor")
+            descriptor_kind = descriptor.get("kind", contribution_kind)
+            descriptor_id = descriptor.get("id", ident)
+            if not isinstance(descriptor_kind, str) or not isinstance(descriptor_id, str):
+                raise SurfaceError("invalid seed contribution descriptor identity")
+            overrides[(descriptor_kind, descriptor_id, owner)] = {
+                "index_key": key,
+                "owner": owner,
+                "source": source,
+                "availability": _availability(state),
+                "unavailable_reason": reason or None,
+                "descriptor": descriptor,
+            }
+        else:
+            raise SurfaceError("invalid operator surface seed record")
+
+    modules: list[dict[str, Any]] = []
+    contributions: list[dict[str, Any]] = []
+    represented: set[tuple[str, str, str]] = set()
+    active_owners: set[str] = set()
+
+    for name in sorted(modules_raw):
+        row = modules_raw[name]
+        registration = None
+        display_name = name
+        if row["module_api"] == 2 and row["metadata"]:
+            try:
+                registration = json.loads(row["metadata"])
+            except ValueError:
+                registration = None
+            if isinstance(registration, dict):
+                manifest = registration.get("manifest")
+                if isinstance(manifest, dict) and isinstance(manifest.get("display_name"), str):
+                    display_name = manifest["display_name"]
+        else:
+            display_name = row["metadata"] or name
+
+        modules.append({
+            "name": name,
+            "display_name": display_name,
+            "status": row["status"],
+            "reason": row["reason"],
+            "enabled": row["enabled"],
+            "module_api": row["module_api"],
+        })
+        if row["status"] == "active" and row["enabled"]:
+            active_owners.add(name)
+
+        if not isinstance(registration, dict):
+            continue
+        rows = registration.get("contributions")
+        if not isinstance(rows, list):
+            continue
+        for descriptor in rows:
+            if not isinstance(descriptor, dict):
+                continue
+            contribution_kind = descriptor.get("kind")
+            ident = descriptor.get("id")
+            if not isinstance(contribution_kind, str) or not isinstance(ident, str):
+                continue
+            identity = (contribution_kind, ident, name)
+            represented.add(identity)
+            override = overrides.get(identity)
+            if row["status"] == "active" and row["enabled"]:
+                availability = override["availability"] if override else "active"
+                reason = override["unavailable_reason"] if override else None
+            elif row["status"] == "disabled" or not row["enabled"]:
+                availability = "inactive"
+                reason = row["reason"]
+            else:
+                availability = "unavailable"
+                reason = row["reason"] or row["status"]
+            contributions.append({
+                "index_key": override["index_key"] if override else f"{contribution_kind}:{ident}",
+                "id": ident,
+                "kind": contribution_kind,
+                "owner": name,
+                "source": str(descriptor.get("source") or "module_contract"),
+                "availability": availability,
+                "unavailable_reason": reason,
+                "descriptor": copy.deepcopy(descriptor),
+            })
+
+    # Preserve legacy/non-v2 registrations and Core-owned structural records.
+    for identity, original in sorted(
+            overrides.items(), key=lambda item: item[1]["index_key"]):
+        if identity in represented:
+            continue
+        row = copy.deepcopy(original)
+        owner_record = modules_raw.get(row["owner"])
+        if owner_record is not None:
+            if owner_record["status"] == "disabled" or not owner_record["enabled"]:
+                row["availability"] = "inactive"
+                row["unavailable_reason"] = owner_record["reason"]
+            elif owner_record["status"] != "active":
+                row["availability"] = "unavailable"
+                row["unavailable_reason"] = (
+                    owner_record["reason"] or owner_record["status"]
+                )
+        descriptor = row["descriptor"]
+        row["id"] = descriptor.get(
+            "id", row["index_key"].split(":", 1)[1].split("@", 1)[0]
+        )
+        row["kind"] = descriptor.get("kind", row["index_key"].split(":", 1)[0])
+        contributions.append(row)
+
+    capabilities = []
+    for row in contributions:
+        if row.get("kind") != "capability":
+            continue
+        capabilities.append({
+            "index_key": row["index_key"],
+            "id": row["id"],
+            "owner": row["owner"],
+            "provider": row["owner"],
+            "source": row["source"],
+            "availability": row["availability"],
+            "unavailable_reason": row["unavailable_reason"],
+            "descriptor": copy.deepcopy(row["descriptor"]),
+        })
+
+    # Core-owned descriptors are pure registration metadata. These helpers do
+    # not inspect runtime services; active flags consume the loader snapshot.
+    capabilities.extend(configuration_capabilities("system" in active_owners))
+    capabilities.extend(deployment_capabilities("nextcloud_docker" in active_owners))
+
+    return {
+        "seed_version": 1,
+        "availability_model": "registration",
+        "modules": modules,
+        "contributions": contributions,
+        "capabilities": capabilities,
+        "configurations": [{
+            "owner": "core",
+            "schema": copy.deepcopy(CORE_SCHEMA),
+        }],
+        "sources": {
+            "modules": "ok",
+            "contributions": "ok",
+            "capabilities": "ok",
+            "configurations": "ok",
+        },
+    }
+
+
 def _surface_digest(surface: dict[str, Any]) -> str:
     candidate = copy.deepcopy(surface)
     digest = candidate.pop("digest", None)
@@ -408,8 +618,16 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
 
 def main(argv: list[str]) -> int:
     try:
-        if len(argv) < 2 or argv[1] not in {"build", "cached-build", "children"}:
-            raise SurfaceError("usage: operator_surface.py {build|cached-build|children} [CACHE]")
+        if len(argv) < 2 or argv[1] not in {"seed", "build", "cached-build", "children"}:
+            raise SurfaceError(
+                "usage: operator_surface.py {seed|build|cached-build|children} [ARG]"
+            )
+        if argv[1] == "seed":
+            if len(argv) != 3:
+                raise SurfaceError("seed requires core lib path")
+            result = build_seed(sys.stdin.buffer.read(), Path(argv[2]))
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
         payload = json.load(sys.stdin)
         if argv[1] == "build":
             if len(argv) != 2:
