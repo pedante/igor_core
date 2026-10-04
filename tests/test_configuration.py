@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core/lib"))
+import configuration
 from configuration import ConfigurationService, decode, legacy_verbose
 from configuration_schema import ConfigurationError, validate_schema
 from secret_refs import SecretReferenceService, SecretSource
@@ -48,6 +49,50 @@ def test_declarations_are_read_only_owner_stamped_schemas(tmp_path):
     assert by_owner["fixture"]["owner"] == "fixture"
     assert by_owner["fixture"]["fields"][0]["id"] == "fixture.value"
     assert list(tmp_path.iterdir()) == []
+
+
+def test_core_verbose_fast_resolve_coexists_with_module_desired_records(tmp_path):
+    schema = {"schema_version": 1, "fields": [
+        {"id": "fixture.value", "type": "boolean", "scope": "module", "default": False}
+    ]}
+    full = ConfigurationService(tmp_path, schemas=[("fixture", schema)])
+    prepared = full.status()
+    full.commit([
+        {"target": "installation:local", "id": "ai.verbose", "value": False},
+        {"target": "module:fixture", "id": "fixture.value", "value": True},
+    ], expected_revision=0, expected_state=prepared["state_token"], operation_id=OP)
+
+    # The startup consumer deliberately knows only Core's schema. It may read
+    # Core's desired row + global revision, but it cannot claim a global state
+    # token because validating that token requires the fixture schema.
+    core_only = ConfigurationService(tmp_path)
+    resolved = core_only.resolve_ai_verbose()
+    assert resolved["resolved"] == {"status": "resolved", "value": False, "source": "desired"}
+    assert resolved["revision"] == 1
+    assert "state_token" not in resolved
+    with pytest.raises(ConfigurationError, match="schema unavailable"):
+        core_only.inspect()
+
+
+def test_core_verbose_cli_fast_path_skips_installed_schema_discovery(tmp_path, monkeypatch, capsys):
+    service = ConfigurationService(tmp_path)
+    prepared = service.status()
+    service.commit([CHANGE], expected_revision=0, expected_state=prepared["state_token"],
+                   operation_id=OP)
+
+    def forbidden(_root):
+        raise AssertionError("installed module schemas must not be discovered")
+
+    monkeypatch.setattr(configuration, "installed_schemas", forbidden)
+    monkeypatch.setenv("IGOR_CONFIGURATION_ROOT", str(ROOT))
+    monkeypatch.setenv("IGOR_CONFIGURATION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("IGOR_CONFIGURATION_INHERITED_VERBOSE", "")
+    monkeypatch.setattr(sys, "argv", ["configuration.py", "resolve-ai-verbose"])
+    assert configuration.cli() == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["resolved"]["value"] is False
+    assert result["revision"] == 1
+    assert "state_token" not in result
 
 
 def test_desired_revision_scope_permissions_and_reopen(tmp_path):
