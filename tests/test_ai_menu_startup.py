@@ -17,7 +17,9 @@ class AIMenuStartupTests(unittest.TestCase):
                  runtime_case="absent", tui=False):
         shell = r'''
 source "$IGOR_DIR/core/ai/core.sh"
-header(){ :; }
+header(){
+    [ -z "$TEST_HEADER_MARKER" ] || printf 'header\n' >> "$TEST_HEADER_MARKER"
+}
 clear(){ :; }
 igor_fzf_pick(){
     if [ "$TEST_FALLBACK" = true ]; then return 2; fi
@@ -97,6 +99,7 @@ printf '\nMENU_RETURN=%s\n' "$?"
             context_marker = root / "context.marker"
             prompt_marker = root / "prompt.marker"
             classic_ui_marker = root / "classic-ui.marker"
+            header_marker = root / "header.marker"
             env = {**os.environ, "IGOR_DIR": temp,
                    "IGOR_RUNTIME_DIR": str(runtime),
                    "TMPDIR": str(tmptrap),
@@ -107,6 +110,7 @@ printf '\nMENU_RETURN=%s\n' "$?"
                    "TEST_CONTEXT_MARKER": str(context_marker),
                    "TEST_PROMPT_MARKER": str(prompt_marker),
                    "TEST_CLASSIC_UI_MARKER": str(classic_ui_marker),
+                   "TEST_HEADER_MARKER": str(header_marker),
                    "TERM": "dumb", "IGOR_AI_ENABLED": "true"}
             if tui:
                 env["IGOR_TUI_MODE"] = "true"
@@ -148,6 +152,7 @@ printf '\nMENU_RETURN=%s\n' "$?"
                             "context_gathered": context_marker.exists(),
                             "prompt_built": prompt_marker.exists(),
                             "classic_ui_used": classic_ui_marker.exists(),
+                            "classic_header_used": header_marker.exists(),
                             "events": event_rows}
             return result, state.read_text() if state.is_file() else "", trace, runtime_info
 
@@ -164,6 +169,7 @@ printf '\nMENU_RETURN=%s\n' "$?"
                 self.assertEqual(runtime["mode"], 0o700)
                 self.assertEqual(runtime["tmp_entries"], [])
                 self.assertTrue(runtime["classic_ui_used"])
+                self.assertTrue(runtime["classic_header_used"])
                 self.assertTrue(runtime["prompt_built"])
                 positions = [trace.index(f"[STATE] {name}") for name in
                              ("ready", "running", "user_exited")]
@@ -226,6 +232,7 @@ printf '\nMENU_RETURN=%s\n' "$?"
         self.assertFalse(runtime["context_gathered"])
         self.assertFalse(runtime["prompt_built"])
         self.assertFalse(runtime["classic_ui_used"])
+        self.assertFalse(runtime["classic_header_used"])
         self.assertTrue(any(row.get("event_type") == "model_status" and
                             row.get("status") == "input_ready"
                             for row in runtime["events"]))
@@ -241,6 +248,13 @@ printf '\nMENU_RETURN=%s\n' "$?"
             "tui.bootstrap_config_hooks",
             "tui.backend_dispatch",
             "tui.ai_source",
+            "tui.ai_pre_header",
+            "tui.ai_pre_keys",
+            "tui.ai_pre_settings",
+            "tui.ai_pre_configuration",
+            "tui.ai_pre_model_cost",
+            "tui.ai_pre_provider",
+            "tui.ai_pre_selection",
             "tui.ai_pre_session",
             "tui.ai_session_runtime",
             "tui.ai_local_ui",
