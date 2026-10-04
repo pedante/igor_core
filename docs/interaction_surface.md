@@ -16,11 +16,12 @@ without forcing an early prompt render; the rebuilt prompt uses the current
 mode.
 
 The curses frontend also skips the classic backend presentation path before
-READY: it does not enter the tmux AI layout, print the classic banner, or build
-the classic right-pane command reference. Those are presentation-only surfaces
-owned by the classic UI; the standalone TUI already owns its screen and command
-palette. Local commands, settings/navigation and the operator surface remain
-usable before the first provider request.
+READY: it does not render the classic system/header status block, enter the tmux
+AI layout, print the classic banner, or build the classic right-pane command
+reference. Those are presentation-only surfaces owned by the classic UI; the
+standalone TUI already owns its screen, header and command palette. Local
+commands, settings/navigation and the operator surface remain usable before the
+first provider request.
 
 ## Focus and navigation
 
