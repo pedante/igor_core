@@ -357,6 +357,7 @@ PY
     [ "${_IGOR_HANDLER_TIMEOUT[capability:system.service.list]:-}" = 30 ]
     [ "${_IGOR_MODULE_ENTRYPOINT[system]:-}" = module.sh ]
     [ "${_IGOR_OWNER_HAS_DOMAIN_EVENTS[system]:-0}" = 0 ]
+    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.3.0 ]
 }
 
 @test "targeted preparation evaluates only the selected capability requirement path" {
@@ -390,9 +391,29 @@ EOF
     run igor_capability_prepare system.service.list '{}' system 2
     [ "$status" -eq 0 ]
     count="$(wc -l < "$counter")"
-    [ "$count" -le 20 ]
+    [ "$count" -le 6 ]
 }
 
+
+@test "service-list resolution closure is precompiled without Python" {
+    local real_python counter wrapper
+    real_python="$(command -v python3)"
+    counter="$IGOR_DIR/runtime/resolution-python-invocations"
+    wrapper="$IGOR_DIR/bin/resolution-counting-python"
+    : > "$counter"
+    cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+printf '.\n' >> "$counter"
+exec "$real_python" "\$@"
+EOF
+    chmod +x "$wrapper"
+    export IGOR_PYTHON="$wrapper"
+
+    run _ml_capability_resolution_ids system.service.list
+    [ "$status" -eq 0 ]
+    [ "$output" = system.service.list ]
+    [ ! -s "$counter" ]
+}
 
 @test "execution fence evaluates current preconditions exactly once" {
     local proposal trace
