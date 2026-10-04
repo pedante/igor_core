@@ -66,18 +66,30 @@ def installed_schemas(root: Path) -> list[tuple[str, dict]]:
 
 
 def _memory_consumption(state: dict) -> dict:
-    """Inspection of a process snapshot; never a claim of verification."""
+    """Inspection of a process snapshot; never a claim of verification.
+
+    Boundary O allows the ordinary health consumer to hold the authoritative
+    value/revision without eagerly acquiring a global configuration state token.
+    A token, when present, is still required to match for the stronger snapshot
+    comparison used after an explicit apply/readback workflow.
+    """
     try:
         value = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_MIB"])
         revision = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_REVISION"])
-        token = os.environ["IGOR_SYSTEM_MEMORY_WARNING_STATE"]
-        if not 81 <= value <= 4096 or revision < 0 or not re.fullmatch(r"[0-9a-f]{64}", token):
+        token = os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_STATE")
+        if not 81 <= value <= 4096 or revision < 0:
             raise ValueError("invalid consumer snapshot")
-        return {"status": "consumed_current_process", "value": value, "revision": revision,
-                "state": token, "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID"),
-                "source": "system.host.memory.health.consumer",
-                "matches_desired": value == state["resolved"]["value"] and revision == state["revision"] and token == state["state_token"],
-                "verification": "not_verified"}
+        if token is not None and not re.fullmatch(r"[0-9a-f]{64}", token):
+            raise ValueError("invalid consumer state token")
+        matches = value == state["resolved"]["value"] and revision == state["revision"]
+        result = {"status": "consumed_current_process", "value": value, "revision": revision,
+                  "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID"),
+                  "source": "system.host.memory.health.consumer",
+                  "matches_desired": matches and (token == state["state_token"] if token is not None else True),
+                  "verification": "not_verified"}
+        if token is not None:
+            result["state"] = token
+        return result
     except (KeyError, ValueError):
         return {"status": "unavailable", "source": "system.host.memory.health.consumer", "verification": "not_verified"}
 
@@ -483,6 +495,36 @@ class ConfigurationService:
             "resolved": {"status": "resolved", "value": value, "source": source},
         }
 
+    def resolve_system_memory_warning(self):
+        """Resolve System's health threshold without global configuration proof.
+
+        The caller supplies only System's already-validated configuration schema.
+        This consumer reads the same authoritative desired store and current
+        global revision, but deliberately does not compute a state token.  State
+        tokens remain mandatory for mutation admission and explicit readback
+        verification.
+        """
+        field = self._field(MEMORY_WARNING, MEMORY_TARGET)
+        with self._store() as db:
+            metadata = self._metadata(db)
+            row = None
+            if db:
+                raw = db.execute(
+                    "SELECT record FROM desired WHERE target=? AND id=?",
+                    (MEMORY_TARGET, MEMORY_WARNING),
+                ).fetchone()
+                if raw is not None:
+                    row = self._record(decode(raw[0]))
+        value = field.get("default") if row is None or row["unset"] else row["value"]
+        source = "default" if row is None or row["unset"] else "desired"
+        return {
+            "schema_version": 1,
+            "id": MEMORY_WARNING,
+            "target": MEMORY_TARGET,
+            "revision": int(metadata["revision"]),
+            "resolved": {"status": "resolved", "value": value, "source": source},
+        }
+
     def export(self):
         with self._store() as db:
             metadata = self._metadata(db)
@@ -664,13 +706,29 @@ def cli():
                 "data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"],
                 "inherited_verbose": os.environ.get("IGOR_CONFIGURATION_INHERITED_VERBOSE") or None,
             }
+            root = Path(request["igor_dir"])
+            active = {"core"}
+            schemas = []
+        elif action == "resolve-system-memory-warning":
+            # Boundary O consumes the loader's already-validated System
+            # configuration contribution. It neither rediscovers installed
+            # schemas nor computes a global state token.
+            record = decode(os.environ["IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD"])
+            if (type(record) is not dict or record.get("kind") != "configuration" or
+                    record.get("id") != "system.memory.preferences" or
+                    type(record.get("schema")) is not dict):
+                raise ConfigurationError("invalid System memory configuration declaration")
+            request = {"data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"]}
+            root = None
+            active = {"core", "system"}
+            schemas = [("system", record["schema"])]
         else:
             request = decode(sys.stdin.read())
-        root = Path(request["igor_dir"])
-        # Runtime callers supply the actual loader-owned activation snapshot.
-        # Standalone inspection admits no module writes without that snapshot.
-        active = set(request.get("active_owners", ["core"]))
-        schemas = [] if action == "resolve-ai-verbose" else installed_schemas(root)
+            root = Path(request["igor_dir"])
+            # Runtime callers supply the actual loader-owned activation snapshot.
+            # Standalone inspection admits no module writes without that snapshot.
+            active = set(request.get("active_owners", ["core"]))
+            schemas = installed_schemas(root)
         service = ConfigurationService(Path(request["data_dir"]), schemas=schemas,
                                        owner_active=lambda owner: owner == "core" or owner in active)
         if action == "resolve-ai-verbose":
@@ -679,6 +737,12 @@ def cli():
                     root, request.get("inherited_verbose")
                 )
             )
+        elif action == "resolve-system-memory-warning":
+            result = service.resolve_system_memory_warning()
+            # Fixed internal framing keeps startup to one Python process. Both
+            # fields are schema-validated integers before they reach the shell.
+            print(f'{result["resolved"]["value"]}\t{result["revision"]}')
+            return 0
         elif action == "capabilities":
             result = capability_records("system" in active)
         elif action == "declarations":
