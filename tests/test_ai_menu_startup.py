@@ -251,6 +251,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
             "tui.ai_pre_header",
             "tui.ai_pre_keys",
             "tui.ai_pre_settings",
+            "configuration.core_resolve",
+            "configuration.decode",
             "tui.ai_pre_configuration",
             "tui.ai_pre_model_cost",
             "tui.ai_pre_provider",
