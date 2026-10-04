@@ -9,13 +9,19 @@ metadata so TUI, CLI, and future frontends can share one discoverability model.
 from __future__ import annotations
 
 import copy
+import fcntl
 import hashlib
 import json
+import os
 import re
+import stat
 import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 SURFACE_VERSION = 1
+CACHE_VERSION = 1
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _KINDS = {
     "automation", "capability", "check", "configuration", "domain_event",
@@ -143,7 +149,8 @@ def _configuration_entries(record: dict[str, Any], active_owners: set[str]) -> l
 
 
 def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {*_SOURCE_NAMES, "sources"}
+    allowed = {*_SOURCE_NAMES, "sources", "seed_version", "availability_model",
+               "compiled_source_digest"}
     if not isinstance(payload, dict) or set(payload) - allowed:
         raise SurfaceError("invalid operator surface payload")
     modules = _bounded_list(payload.get("modules", []), "modules", 512)
@@ -219,10 +226,145 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
         "entry_count": len(entries),
         "sources": sources,
         "entries": entries,
+        "availability_model": str(payload.get("availability_model") or "runtime_snapshot"),
     }
+    source_digest = payload.get("compiled_source_digest")
+    if source_digest is not None:
+        if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+            raise SurfaceError("invalid compiled source digest")
+        document["compiled_source_digest"] = source_digest
     raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     document["digest"] = hashlib.sha256(raw).hexdigest()
     return document
+
+
+def _surface_digest(surface: dict[str, Any]) -> str:
+    candidate = copy.deepcopy(surface)
+    digest = candidate.pop("digest", None)
+    if not isinstance(digest, str):
+        raise SurfaceError("cached surface digest missing")
+    raw = json.dumps(candidate, sort_keys=True, separators=(",", ":")).encode()
+    actual = hashlib.sha256(raw).hexdigest()
+    if digest != actual:
+        raise SurfaceError("cached surface digest mismatch")
+    return digest
+
+
+def _cache_directory(path: Path) -> Path:
+    directory = path.parent
+    try:
+        directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+        info = directory.lstat()
+    except OSError as exc:
+        raise SurfaceError("operator surface cache directory unavailable") from exc
+    if (directory.is_symlink() or not stat.S_ISDIR(info.st_mode) or
+            info.st_uid != os.geteuid()):
+        raise SurfaceError("operator surface cache directory is unsafe")
+    # Do not make an existing shared directory stricter implicitly; simply
+    # decline to persist derived metadata there.
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        raise SurfaceError("operator surface cache directory is not private")
+    return directory
+
+
+def _cache_file_safe(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return (not path.is_symlink() and stat.S_ISREG(info.st_mode) and
+            info.st_uid == os.geteuid() and info.st_nlink == 1 and
+            stat.S_IMODE(info.st_mode) == 0o600)
+
+
+def _read_cache(path: Path, source_digest: str) -> dict[str, Any] | None:
+    if not _cache_file_safe(path):
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            value = json.load(stream)
+    except (OSError, ValueError, TypeError):
+        return None
+    if (not isinstance(value, dict) or value.get("cache_version") != CACHE_VERSION or
+            value.get("source_digest") != source_digest):
+        return None
+    surface = value.get("surface")
+    if not isinstance(surface, dict) or surface.get("surface_version") != SURFACE_VERSION:
+        return None
+    try:
+        _surface_digest(surface)
+    except SurfaceError:
+        return None
+    if surface.get("compiled_source_digest") != source_digest:
+        return None
+    return surface
+
+
+def _write_cache(path: Path, source_digest: str, surface: dict[str, Any]) -> None:
+    directory = _cache_directory(path)
+    payload = {
+        "cache_version": CACHE_VERSION,
+        "source_digest": source_digest,
+        "surface": surface,
+    }
+    fd, temporary = tempfile.mkstemp(prefix=".operator-surface-", dir=directory)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def cached_build_surface(payload: dict[str, Any], cache_path: Path) -> dict[str, Any]:
+    """Return a compiled structural projection, reusing it across sessions.
+
+    The cache is derived presentation metadata only. The digest is computed from
+    the current validated registration seed, so package/module/schema changes
+    rebuild it. Runtime availability is deliberately not part of this cache and
+    remains the capability dispatcher's responsibility.
+    """
+    if not isinstance(payload, dict) or payload.get("seed_version") != 1:
+        raise SurfaceError("invalid operator surface seed")
+    source_raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    source_digest = hashlib.sha256(source_raw).hexdigest()
+
+    # Cache failure must never make the operator namespace unavailable. Unsafe,
+    # missing or corrupt derived state falls back to an in-memory rebuild.
+    try:
+        directory = _cache_directory(cache_path)
+        lock_path = directory / (cache_path.name + ".lock")
+        lock_fd = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            lock_info = os.fstat(lock_fd)
+            if (not stat.S_ISREG(lock_info.st_mode) or lock_info.st_uid != os.geteuid() or
+                    stat.S_IMODE(lock_info.st_mode) != 0o600):
+                raise SurfaceError("operator surface cache lock is unsafe")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            cached = _read_cache(cache_path, source_digest)
+            if cached is not None:
+                return cached
+            build_payload = {**payload, "compiled_source_digest": source_digest}
+            surface = build_surface(build_payload)
+            _write_cache(cache_path, source_digest, surface)
+            return surface
+        finally:
+            os.close(lock_fd)
+    except (OSError, SurfaceError):
+        build_payload = {**payload, "compiled_source_digest": source_digest}
+        return build_surface(build_payload)
 
 
 def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
@@ -266,12 +408,20 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
 
 def main(argv: list[str]) -> int:
     try:
-        if len(argv) != 2 or argv[1] not in {"build", "children"}:
-            raise SurfaceError("usage: operator_surface.py {build|children}")
+        if len(argv) < 2 or argv[1] not in {"build", "cached-build", "children"}:
+            raise SurfaceError("usage: operator_surface.py {build|cached-build|children} [CACHE]")
         payload = json.load(sys.stdin)
         if argv[1] == "build":
+            if len(argv) != 2:
+                raise SurfaceError("build takes no arguments")
             result = build_surface(payload)
+        elif argv[1] == "cached-build":
+            if len(argv) != 3:
+                raise SurfaceError("cached-build requires cache path")
+            result = cached_build_surface(payload, Path(argv[2]))
         else:
+            if len(argv) != 2:
+                raise SurfaceError("children takes no arguments")
             surface = payload.get("surface")
             if not isinstance(surface, dict):
                 raise SurfaceError("children requires surface")
