@@ -2,7 +2,77 @@
 
 Last updated: 2026-10-04
 
-## TUI Startup Critical Path — Boundary I candidate
+## TUI Local Setup Fast Path — Boundary J candidate
+
+Boundary I closed the remaining startup-attribution gap on the measured Igor
+host. Its sequential top-level phases accounted for about **5.052s** of the
+**5.063s** observed time to first `input_ready`, leaving only ~11ms
+unattributed:
+
+```text
+[TIMING] tui.backend_spawn=10ms
+[TIMING] tui.backend_prebootstrap=168ms
+[TIMING] tui.bootstrap_config=57ms
+[TIMING] tui.bootstrap_modules=833ms
+[TIMING] tui.bootstrap_module_config=47ms
+[TIMING] tui.bootstrap_aux_sources=9ms
+[TIMING] tui.bootstrap_config_hooks=8ms
+[TIMING] tui.backend_dispatch=104ms
+[TIMING] tui.ai_source=81ms
+[TIMING] tui.ai_pre_session=684ms
+[TIMING] tui.ai_session_runtime=235ms
+[TIMING] tui.ai_local_setup=1932ms
+[TIMING] tui.ai_operator_snapshot=399ms
+[TIMING] tui.ai_ready_finalize=485ms
+[TIMING] tui.startup_to_input_ready=5063ms
+```
+
+The largest remaining phase is therefore `tui.ai_local_setup`: **1.932s**,
+about 38% of the measured startup. Boundary J targets only work that the
+standalone curses frontend does not need before READY:
+
+- it does not enter the classic tmux AI layout or print the classic backend
+  banner before the TUI becomes interactive;
+- it does not render classic right-pane provider/session/command-reference
+  content on the standalone TUI path;
+- it does not render a full provider system prompt around the intentionally
+  deferred placeholder context. The authoritative prompt is rebuilt by
+  `_ai_refresh_context` after full context preparation and before the first
+  provider-bound request;
+- a local mode change while context is deferred updates mode immediately but
+  cannot force that discarded startup prompt to render early;
+- when an existing WIP is present, the TUI preserves its existing automatic
+  "keep for later / fresh session" behavior while loading the final knowledge
+  view once instead of loading investigation carry-over and immediately
+  rebuilding without it.
+
+Knowledge, WIP persistence, provider validation, full context gathering,
+scrubbing, capability projection, approvals, privilege mediation, execution and
+verification remain authoritative at their existing boundaries.
+
+Boundary J keeps `tui.ai_local_setup` and adds nested attribution:
+
+```text
+[TIMING] tui.ai_local_ui=<ms>
+[TIMING] tui.ai_local_knowledge=<ms>
+[TIMING] tui.ai_local_prompt=<ms>
+[TIMING] tui.ai_local_session_header=<ms>
+[TIMING] tui.ai_local_command_reference=<ms>
+```
+
+Focused branch proof passed: shell syntax, Python compilation, and the complete
+AI startup lifecycle suite (**14/14 passed in 7.331s**). Regressions require the
+TUI to reach READY without provider/context preparation, without a system-prompt
+render, and without classic tmux/right-pane presentation; the classic path still
+renders its normal prompt/presentation. A separate regression proves mode
+changes cannot defeat deferred prompt preparation.
+
+No post-Boundary-J real-host speed claim is made yet. Closure requires the same
+TUI startup measurement on the Igor host and comparison of
+`tui.ai_local_setup`, its nested timings, and
+`tui.startup_to_input_ready` against the 1.932s / 5.063s Boundary I baseline.
+
+## TUI Startup Critical Path — Boundary I
 
 Boundary H removed the dominant module-loader delay on the measured Igor host:
 
@@ -56,8 +126,10 @@ test/TUI files, and the full AI startup lifecycle suite (**13/13 passed in
 plus the upstream `igor.sh` timing contract to be published in the session log.
 The temporary branch-only proof workflow is removed after evidence capture.
 
-A real-host Boundary I run is required to close this candidate and choose the
-next optimization from measured evidence rather than inference.
+The real-host Boundary I run closed this candidate: the sequential phase total
+reconciled to within ~11ms of `tui.startup_to_input_ready`, and
+`tui.ai_local_setup=1932ms` was the largest remaining phase. Boundary J targets
+that measured phase.
 
 ## Module Loader Startup Performance — Boundary H candidate
 
