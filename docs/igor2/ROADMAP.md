@@ -493,6 +493,38 @@ let Igor silently rewrite its installed executable modules.
 
 Begin with explainable statistics and thresholds, not opaque ML. A learned baseline describes evidence about normal behavior; it is not desired state or responsibility. Learned artifacts remain reference material under D053 until an explicit authoritative transition exists.
 
+### Memory/knowledge remaining work — planning size, not completion evidence
+
+The repository already has the important memory foundations: current System
+Model state, Operational History, durable Investigations and bounded context
+retrieval. Do not schedule another generic "memory foundation" or replace those
+services with one database.
+
+For planning, the remaining memory/knowledge work is approximately:
+
+| Missing outcome | Focused engineering effort | Needed now | Impact | Foundation / dependency | Timing |
+|---|---:|---:|---:|---:|---|
+| Explainable Step 16 baselines over retained history | 4–6 days | 5/5 | 5/5 | 4/5 | next memory feature |
+| Evidence-backed local pattern/runbook lifecycle | 3–5 days | 4/5 | 5/5 | 4/5 | after first baseline slice |
+| Portable Knowledge Artifact import/export, OKF-compatible where practical | 2–3 days | 3/5 | 4/5 | 3/5 | bounded, can accompany learning |
+| Deterministic knowledge discovery/index improvements | 2–4 days | 3/5 | 4/5 | 3/5 | grow from real corpus needs |
+| Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | wait for measured need |
+| Automatic learning/promotion into executable capability candidates | 8–15+ days | 1/5 | 4/5 | 2/5 | post-2.0 unless reprioritized |
+
+These are rough focused-development estimates including focused tests and
+documentation, not elapsed-time commitments.
+
+The implementation rule is:
+
+> Igor owns memory and knowledge semantics; SQLite, files, OKF documents and
+> future semantic indexes are replaceable implementations or interchange
+> formats.
+
+Knowledge/runbook interchange may use a Markdown/front-matter representation
+compatible with Open Knowledge Format (OKF) where practical. This applies only
+to reference artifacts. It does not move System Model, Configuration,
+Operational History, secrets, approval/privilege or runtime authority into OKF.
+
 ## Step 17 configuration foundation — owner-scoped bounded implementation
 
 After the Architecture Readiness Review, the Project Owner accepted Step 17A's

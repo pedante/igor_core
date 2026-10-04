@@ -51,6 +51,89 @@ Step 15A establishes these outcomes:
 
 The accepted decisions are D048–D054.
 
+## Practical memory model
+
+Igor uses **memory** as an architectural umbrella, not as one database or one
+authority. The existing subsystems deliberately retain different meanings:
+
+```text
+System Model          -> what Igor currently understands about the machine
+Configuration         -> durable desired configuration and user intent
+Deployment Service    -> accepted bindings, relationships and responsibility
+Operational History   -> what happened over time
+Investigations        -> durable problem-solving state
+Knowledge / learning  -> reference material, patterns, runbooks and local experience
+Session/runtime       -> current interaction and disposable process state
+Context Engine        -> bounded projection of relevant material to a model/interface
+```
+
+Those authorities may reference one another through typed/scoped IDs, but one
+must not silently become the source of truth for another. In particular:
+
+- conversation history is not machine memory;
+- a persisted observation does not become fresh current state after restart;
+- history is not desired state;
+- a learned pattern is not responsibility or execution permission;
+- knowledge is reference data and cannot grant approval, privilege or capability
+  authority;
+- the Context Engine selects and projects memory; it does not own or rewrite it.
+
+This means Igor does **not** need a generic `memory.db` that absorbs all durable
+state. Separate services may use SQLite, versioned files or another private
+backend when their own consistency requirements justify it. Callers use service
+contracts and stable identities, never backend paths or SQL schemas.
+
+## Retrieval and derived indexes
+
+Useful memory depends on bounded retrieval rather than injecting all retained
+state into every AI request. The default retrieval order should remain
+deterministic and inspectable:
+
+1. select by semantic type and owning authority;
+2. constrain by scope/object/domain and active owner;
+3. enforce freshness/known/availability rules;
+4. retain provenance, verification and sensitivity;
+5. project only the material relevant to the current request.
+
+A search index, embedding index or vector database may later accelerate or rank
+reference material, but it is a **derived index**, not durable truth or
+authorization. Igor should add such machinery only after measured retrieval
+needs justify it.
+
+## Knowledge representation and OKF compatibility
+
+Knowledge, learned patterns and runbooks benefit from a portable,
+human-readable representation. Igor should keep the Knowledge Artifact model
+representable as ordinary content plus typed metadata such as:
+
+```text
+type
+owner
+source/provenance
+scope
+status
+freshness/stale_after
+verification
+compatibility/version
+content
+```
+
+Markdown with structured front matter is a suitable repository/export form.
+Where practical, Igor knowledge import/export should remain compatible with the
+Open Knowledge Format (OKF) model rather than inventing an incompatible
+Igor-only document syntax.
+
+This is an interoperability constraint, **not** an OKF dependency and not a
+replacement for Igor's memory contracts. Igor owns the semantics and may use a
+different internal index/store. OKF-style artifacts are appropriate for
+knowledge, patterns, runbooks, references and reviewed learning; they are not
+the authoritative representation for current System Model facts, mutable
+configuration, secrets, approvals, privilege state, Operational History or
+runtime/session state.
+
+If OKF evolves, Igor should adapt at the import/export boundary rather than
+letting an external format dictate Core authority or persistence.
+
 ## Non-goals
 
 This gate does not require:

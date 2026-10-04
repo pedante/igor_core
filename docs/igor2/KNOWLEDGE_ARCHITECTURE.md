@@ -1,6 +1,6 @@
 # Igor Knowledge Architecture
 
-Status: **accepted architectural direction; implementation deferred**.
+Status: **accepted architectural direction; compiler/tooling deferred**. The portable representation and memory-boundary clarification below is accepted direction; it does not create runtime authority.
 
 ## Purpose
 
@@ -107,6 +107,51 @@ Relationships and structured understanding used by Igor reasoning.
 ### Active operational packages
 
 Modules, checks, capabilities and playbooks derived from reviewed knowledge.
+
+## Portable representation and OKF compatibility
+
+Igor should own the **Knowledge Artifact semantics** while keeping storage and
+interchange replaceable. A useful portable artifact needs enough metadata to
+answer:
+
+- what kind of knowledge is this;
+- who owns it;
+- where did it come from;
+- what scope/domain/version does it apply to;
+- when is it stale;
+- who/what verified it;
+- whether it is shipped, imported or learned locally.
+
+The preferred repository/export shape is human-readable content with structured
+metadata, normally Markdown plus front matter. Where practical that shape should
+be compatible with Open Knowledge Format (OKF) so knowledge packs can move
+between Igor and other tools without requiring Igor to adopt an external memory
+runtime.
+
+OKF compatibility applies to **reference knowledge**, for example:
+
+- documentation and operational notes;
+- known failure modes;
+- patterns and symptom/cause/resolution relationships;
+- runbooks and procedures;
+- reviewed investigation conclusions;
+- portable knowledge-pack material.
+
+It does not make OKF the representation for current machine facts,
+Configuration Service records, secrets, Operational History, approvals,
+privilege state, deployment authority or runtime/session state.
+
+Igor remains free to index these artifacts in SQLite, a text index or a later
+semantic index. Those indexes are derived and replaceable; the artifact's typed
+meaning, provenance and authority boundary are the durable contract.
+
+## Retrieval direction
+
+Start with deterministic metadata/object/domain retrieval and the existing
+Context Engine. The normal path should prefer a small relevant projection over
+large prompt dumps. Semantic or vector search is a later optimization when
+measured corpus size or recall problems justify it; it must not become a second
+source of truth.
 
 ## LLM role
 
