@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only explainable baselines derived from canonical Operational History."""
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from operational_history import HistoryError, OperationalHistory
 VERSION = 1
 MIN_SAMPLES = 3
 MAX_LIMIT = 100
-_CAPABILITY = re.compile(r"[a-z][a-z0-9_.-]{1,159}")
+_CAPABILITY = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*")
 
 
 class BaselineError(ValueError):
