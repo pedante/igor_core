@@ -137,7 +137,7 @@ def test_system_memory_cli_fast_path_uses_supplied_validated_schema(tmp_path, mo
     )
     monkeypatch.setattr(sys, "argv", ["configuration.py", "resolve-system-memory-warning"])
     assert configuration.cli() == 0
-    assert capsys.readouterr().out.strip() == "225\t1"
+    assert capsys.readouterr().out.strip() == "225:1"
 
 
 def test_desired_revision_scope_permissions_and_reopen(tmp_path):
