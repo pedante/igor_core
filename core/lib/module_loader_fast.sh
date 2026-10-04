@@ -348,8 +348,11 @@ _ml_fast_index_compiled_fields() {
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source
     local _entrypoint _kind _compiled_key _static_reason
-    local _phase_started=""
-    [ "${IGOR_TUI_MODE:-false}" = true ] && _phase_started="$(_ml_now_ms)"
+    local _phase_started="" _module_total_started="" _module_total_ended=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _phase_started="$(_ml_now_ms)"
+        _module_total_started="$_phase_started"
+    fi
 
     if [ "${_IGOR_V2_COMPILED_READY:-0}" -ne 1 ] ||
        [ -z "${_IGOR_V2_DATA[$_name]:-}" ] ||
@@ -473,8 +476,15 @@ _ml_load_v2() {
             _ml_tui_phase_record "$_name.v2.configuration" "$_configuration_started"
     fi
     _ml_log ok "Loaded Module API v2: $_name"
-    [ "${IGOR_TUI_MODE:-false}" = true ] &&
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
         _ml_tui_phase_record "$_name.v2.consumer" "$_phase_started"
+        _module_total_ended="$(_ml_now_ms)"
+        if [[ "$_module_total_started" =~ ^[0-9]+$ ]] &&
+           [[ "$_module_total_ended" =~ ^[0-9]+$ ]] &&
+           [ "$_module_total_ended" -ge "$_module_total_started" ]; then
+            _IGOR_TUI_MODULE_REGISTRATION_BY_NAME["$_name"]=$((_module_total_ended - _module_total_started))
+        fi
+    fi
     return 0
 }
 
