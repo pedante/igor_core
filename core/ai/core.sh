@@ -3162,6 +3162,25 @@ except: pass
             printf '[TIMING] module.sort=%sms\n' "$_IGOR_TUI_MODULE_SORT_MS" >> "$session_file"
         [[ "${_IGOR_TUI_MODULE_REGISTRATION_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] module.registration=%sms\n' "$_IGOR_TUI_MODULE_REGISTRATION_MS" >> "$session_file"
+        local _module_timing_name _module_timing_phase _module_timing_key _module_timing_value
+        for _module_timing_name in ${_IGOR_TUI_MODULE_REGISTRATION_ORDER:-}; do
+            _module_timing_value="${_IGOR_TUI_MODULE_REGISTRATION_BY_NAME[$_module_timing_name]:-}"
+            [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                printf '[TIMING] module.registration.%s=%sms\n'                     "$_module_timing_name" "$_module_timing_value" >> "$session_file"
+            case "${_IGOR_MODULE_API[$_module_timing_name]:-1}" in
+                1) _module_timing_phase="v1.dependencies v1.syntax v1.source v1.hooks v1.finalize" ;;
+                2) _module_timing_phase="v2.preflight v2.compat v2.contributions v2.consumer" ;;
+                *) _module_timing_phase="" ;;
+            esac
+            for _module_timing_phase in $_module_timing_phase; do
+                _module_timing_key="${_module_timing_name}.${_module_timing_phase}"
+                _module_timing_value="${_IGOR_TUI_MODULE_PHASE_MS[$_module_timing_key]:-}"
+                [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                    printf '[TIMING] module.registration.%s.%s=%sms\n'                         "$_module_timing_name" "$_module_timing_phase" "$_module_timing_value" >> "$session_file"
+            done
+        done
+        [[ "${_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.registration.reconcile=%sms\n'                 "$_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS" >> "$session_file"
         case "${_IGOR_MODULE_V2_CACHE_STATE:-}" in
             hit|miss|bypass|fallback|none)
                 printf '[MODULE] v2_registry_cache=%s\n' "$_IGOR_MODULE_V2_CACHE_STATE" >> "$session_file"
