@@ -69,7 +69,11 @@ The warm-path regression first builds a real cache, then replaces the full
 still succeeds, does not touch that marker and is bounded to **<=2 Python
 processes**, versus the previous Boundary F warm allowance of <=4. A separate
 regression proves that changing structural registration changes the loader
-generation key.
+generation key. After the first real-host sample still showed a rebuild, an
+additional proof repeated the warm-cache check across **two separate Bash
+processes sharing the same cache**; the second process reused the cache without
+calling the seed builder. This distinguishes process lifetime from structural
+generation stability.
 
 No post-Boundary-M real-host speed claim is made yet. Closure requires the same
 standalone-TUI measurement and comparison of `operator_surface`,
