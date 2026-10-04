@@ -40,6 +40,7 @@ For most Igor 2 work:
    - `PERFORMANCE_INVESTIGATION.md` — Boundary A–P performance retrospective, measured gains, architectural lessons, stopping rule and remaining low-priority opportunities.
    - `PERFORMANCE_AUDIT_PROMPT.md` — reusable Codex prompt for systematically finding the same classes of performance antipattern without weakening authority.
    - `INFLUENCES.md` — ServerMind/Steward/AOH lessons intentionally adopted by Igor.
+   - `KNOWLEDGE_ARCHITECTURE.md` — accepted long-term knowledge model, portable Knowledge Artifact boundary, deterministic retrieval direction and optional OKF-compatible interchange without making external formats authority.
    - `KNOWLEDGE_IMPORT.md` — accepted direction for normalizing docs, scripts, Agent Skills/AOH, ServerMind, Steward and local learning into Igor-managed knowledge/module candidates without granting execution authority.
    - `DECISIONS.md` — accepted and unresolved architectural decisions.
    - `LEGACY.md` — significant current paths that must be kept, adapted or retired.
