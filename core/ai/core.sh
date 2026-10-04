@@ -3017,6 +3017,19 @@ except: pass
             printf '[TIMING] tui.bootstrap_modules=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULES_MS" >> "$session_file"
         [[ "${_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.bootstrap_module_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_DISCOVERY_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.discovery=%sms\n' "$_IGOR_TUI_MODULE_DISCOVERY_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_V2_REGISTRY_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.v2_registry=%sms\n' "$_IGOR_TUI_MODULE_V2_REGISTRY_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_SORT_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.sort=%sms\n' "$_IGOR_TUI_MODULE_SORT_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_REGISTRATION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.registration=%sms\n' "$_IGOR_TUI_MODULE_REGISTRATION_MS" >> "$session_file"
+        case "${_IGOR_MODULE_V2_CACHE_STATE:-}" in
+            hit|miss|bypass|fallback|none)
+                printf '[MODULE] v2_registry_cache=%s\n' "$_IGOR_MODULE_V2_CACHE_STATE" >> "$session_file"
+                ;;
+        esac
     fi
     local session_id; session_id=$(basename "$session_file" .log)
     IGOR_AI_EVENT_SESSION_ID="$session_id"
