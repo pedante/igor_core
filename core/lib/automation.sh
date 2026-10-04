@@ -128,9 +128,17 @@ igor_automation_subscribe() {
 
 _igor_automation_event_callback() {
     [ "${_IGOR_AUTOMATION_DRAINING:-0}" = 0 ] || return 0
-    local _context _ids _line _fd
-    _context="$(_igor_automation_context)" || return 1
-    _ids="$(printf '%s' "$_context" | python3 "${IGOR_DIR}/core/lib/automation_registry.py" match-event "$1" --mode "$(ai_get_mode)")" || return 1
+    local _ids _line _fd _mode
+    _mode="$(ai_get_mode)" || return 1
+    case "${_mode,,}" in guide) return 0 ;; assist|executive) ;; *) return 1 ;; esac
+
+    # Domain delivery only queues a potential signal. Do the cheapest safe
+    # negative test directly against the durable automation registry; do not
+    # rebuild the global capability/proposal/event context on every unrelated
+    # capability.completed event. claim-event revalidates the complete current
+    # context before any automation can dispatch.
+    _ids="$(python3 "${IGOR_DIR}/core/lib/automation_registry.py" prefilter-event "$1" \
+        --mode "$_mode" --data-dir "${IGOR_DATA_DIR:-${IGOR_DIR}/data}")" || return 1
     [ "$_ids" != '[]' ] || return 0
     _line="$(python3 -c 'import json,sys; print(json.dumps({"event":json.loads(sys.argv[1]),"ids":json.loads(sys.argv[2])},separators=(",", ":")))' "$1" "$_ids")" || return 1
     exec {_fd}>>"$IGOR_AUTOMATION_EVENT_QUEUE" || return 1
