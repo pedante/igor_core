@@ -366,7 +366,13 @@ _ai_set_mode() {
         printf 'Mode changed to %s, but settings could not be saved.\n' "$_mode" >&2
         return 1
     fi
-    if [ "${system_prompt+x}" = x ] && [ "${knowledge_block+x}" = x ] &&
+    # A standalone TUI may carry a deliberately deferred prompt until the first
+    # provider-bound request.  Local mode changes update the mode immediately,
+    # but must not force the discarded startup prompt to be rendered early.
+    # _ai_refresh_context rebuilds the authoritative prompt with the current mode
+    # before that first provider request.
+    if [ "${_context_deferred:-false}" != true ] &&
+       [ "${system_prompt+x}" = x ] && [ "${knowledge_block+x}" = x ] &&
        [ "${scrubbed_context+x}" = x ]; then
         system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
     fi
@@ -3072,6 +3078,11 @@ except: pass
         esac
         _ai_tui_phase_started_ms=$(_ai_now_ms)
     fi
+    local _ai_local_phase_started_ms=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_local_phase_started_ms="$_ai_tui_phase_started_ms"
+    fi
+
     local session_id; session_id=$(basename "$session_file" .log)
     IGOR_AI_EVENT_SESSION_ID="$session_id"
     export IGOR_AI_EVENT_SESSION_ID
@@ -3082,29 +3093,38 @@ except: pass
     mkfifo "$_fifo_path" 2>/dev/null && chmod 600 "$_fifo_path" \
         || warn "Could not create session FIFO (--extra will not work)"
 
-    clear
-    # Enter AI mode immediately after clear — sets mouse on + scroll bindings before
-    # any user-facing prompts (WIP check, interstitial, etc.) so scroll never injects
-    # ^[[A ^[[B during the session setup phase.
-    declare -f igor_ai_entry &>/dev/null && igor_ai_entry
+    # The standalone curses frontend owns its whole presentation surface.  The
+    # classic clear/tmux layout/banner path writes only to the backend PTY before
+    # terminal capture is active, so doing it here is both invisible and wasteful.
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        clear
+        # Enter AI mode immediately after clear — sets mouse on + scroll bindings before
+        # any user-facing prompts (WIP check, interstitial, etc.) so scroll never injects
+        # ^[[A ^[[B during the session setup phase.
+        declare -f igor_ai_entry &>/dev/null && igor_ai_entry
 
-    echo -e "${MAG}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${MAG}${BOLD}  ║   IGOR  ·  AI Assistant                        ║${NC}"
-    echo -e "${MAG}${BOLD}  ║   I Guard. Observe. Repair.                         ║${NC}"
-    echo -e "${MAG}${BOLD}  ╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    local _banner_prov
-    case "$provider" in
-        openrouter) _banner_prov="OpenRouter" ;;
-        ollama)     _banner_prov="Ollama (local @ ${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434})" ;;
-        *)          _banner_prov="Anthropic" ;;
-    esac
-    echo -e "  ${CYAN}Provider:${NC} ${_banner_prov}  ${CYAN}Model:${NC} ${model}"
-    echo -e "  ${CYAN}Verbose:${NC}  ${IGOR_VERBOSE}"
-    echo ""
-    echo -e "  ${CYAN}Commands:${NC} help for the command list · : for the command palette"
-    echo -e "  ${CYAN}Tip:${NC}      run 'bash igor.sh --extra' in a 2nd terminal for the live panel."
-    echo ""
+        echo -e "${MAG}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
+        echo -e "${MAG}${BOLD}  ║   IGOR  ·  AI Assistant                        ║${NC}"
+        echo -e "${MAG}${BOLD}  ║   I Guard. Observe. Repair.                         ║${NC}"
+        echo -e "${MAG}${BOLD}  ╚══════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        local _banner_prov
+        case "$provider" in
+            openrouter) _banner_prov="OpenRouter" ;;
+            ollama)     _banner_prov="Ollama (local @ ${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434})" ;;
+            *)          _banner_prov="Anthropic" ;;
+        esac
+        echo -e "  ${CYAN}Provider:${NC} ${_banner_prov}  ${CYAN}Model:${NC} ${model}"
+        echo -e "  ${CYAN}Verbose:${NC}  ${IGOR_VERBOSE}"
+        echo ""
+        echo -e "  ${CYAN}Commands:${NC} help for the command list · : for the command palette"
+        echo -e "  ${CYAN}Tip:${NC}      run 'bash igor.sh --extra' in a 2nd terminal for the live panel."
+        echo ""
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_ui "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
     # ── Load quiet loop preference ────────────────────────────────────────────
     local _igor_loop_quiet="${IGOR_LOOP_QUIET:-true}"
@@ -3116,46 +3136,69 @@ except: pass
         echo ""
     fi
 
-    # P3-3: Display canary alert if a post-fix check failed since last session
+    # P3-3: Display canary alert if a post-fix check failed since last session.
+    # This is retained here; Boundary J changes presentation plumbing, not canary
+    # or durable investigation semantics.
     _ai_check_canary_alert
 
     # ── Load knowledge + WIP ──────────────────────────────────────────────────
-    local knowledge_block; knowledge_block=$(ai_knowledge_load)
-    ai_knowledge_show_status
+    local _wip_present=false
+    if [ -f "$WIP_FILE" ] && ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
+        _wip_present=true
+    fi
+
+    local knowledge_block
+    # The TUI has always selected "skip" for an existing WIP automatically.
+    # Load that exact final knowledge view once instead of first loading the WIP
+    # and immediately rebuilding the block without it.
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && $_wip_present; then
+        knowledge_block=$(ai_knowledge_load false)
+    else
+        knowledge_block=$(ai_knowledge_load)
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        ai_knowledge_show_status
+    fi
 
     local _wip_active=false
-    if [ -f "$WIP_FILE" ] && ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
-        _wip_active=true
-        echo ""
-        echo -e "  ${YEL}┌─ Open problem from last session ──────────────────────────────${NC}"
-        local _wip_preview; _wip_preview=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //')
-        [ -n "$_wip_preview" ] && echo -e "  ${YEL}│${NC}  $_wip_preview"
-        echo -e "  ${YEL}└───────────────────────────────────────────────────────────────${NC}"
-        echo ""
-        echo -e "  ${BOLD}Is this problem still open?${NC}"
-        echo -e "  ${GRN}y${NC} = still open  ${CYAN}n${NC} = solved  ${YEL}s${NC} = skip"
-        echo ""
-        local _wip_ans
+    if $_wip_present; then
         if [ "${IGOR_TUI_MODE:-false}" = true ]; then
-            _wip_ans=s
+            # Preserve the existing TUI choice: keep durable WIP for later while
+            # starting this session without investigation carry-over.
+            _wip_active=false
         else
+            _wip_active=true
+            echo ""
+            echo -e "  ${YEL}┌─ Open problem from last session ──────────────────────────────${NC}"
+            local _wip_preview; _wip_preview=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //')
+            [ -n "$_wip_preview" ] && echo -e "  ${YEL}│${NC}  $_wip_preview"
+            echo -e "  ${YEL}└───────────────────────────────────────────────────────────────${NC}"
+            echo ""
+            echo -e "  ${BOLD}Is this problem still open?${NC}"
+            echo -e "  ${GRN}y${NC} = still open  ${CYAN}n${NC} = solved  ${YEL}s${NC} = skip"
+            echo ""
+            local _wip_ans
             read -rp "  [y/n/s]: " _wip_ans </dev/tty
+            case "$_wip_ans" in
+                n|N)
+                    _wip_active=false
+                    ai_knowledge_clear_wip
+                    knowledge_block=$(ai_knowledge_load)
+                    echo -e "  ${GRN}✔ WIP cleared.${NC}"
+                    ;;
+                s|S)
+                    _wip_active=false
+                    knowledge_block=$(ai_knowledge_load false)
+                    echo -e "  ${CYAN}WIP kept for later; this session starts fresh.${NC}" ;;
+                *)   echo -e "  ${GRN}✔ WIP active — Igor will continue from the open problem.${NC}" ;;
+            esac
         fi
-        case "$_wip_ans" in
-            n|N)
-                _wip_active=false
-                ai_knowledge_clear_wip
-                knowledge_block=$(ai_knowledge_load)
-                echo -e "  ${GRN}✔ WIP cleared.${NC}"
-                ;;
-            s|S)
-                _wip_active=false
-                knowledge_block=$(ai_knowledge_load false)
-                echo -e "  ${CYAN}WIP kept for later; this session starts fresh.${NC}" ;;
-            *)   echo -e "  ${GRN}✔ WIP active — Igor will continue from the open problem.${NC}" ;;
-        esac
     fi
     echo ""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_knowledge "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
     # ── Gather + scrub context ────────────────────────────────────────────────
     # [IDEA-06] Quick mode: skip server scan, use minimal system prompt.
@@ -3204,13 +3247,21 @@ except: pass
 
     # ── Build system prompt ───────────────────────────────────────────────────
     local system_prompt
-    system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context") || {
-        _ai_startup_fail prompt 1 "Could not build the AI session prompt."
-        return $?
-    }
-    if [ -z "$system_prompt" ]; then
-        _ai_startup_fail prompt 1 "AI session prompt is empty."
-        return $?
+    if [ "${_context_deferred:-false}" = true ]; then
+        # The full prompt depends on the full server context and is rebuilt by
+        # _ai_refresh_context immediately before the first provider request.
+        # Rendering it now would only build a structural prompt around a
+        # placeholder context and then discard it.
+        system_prompt="(deferred until first provider request)"
+    else
+        system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context") || {
+            _ai_startup_fail prompt 1 "Could not build the AI session prompt."
+            return $?
+        }
+        if [ -z "$system_prompt" ]; then
+            _ai_startup_fail prompt 1 "AI session prompt is empty."
+            return $?
+        fi
     fi
 
     # ── Prompt interstitial (RFC R1-3) ────────────────────────────────────────
@@ -3230,6 +3281,10 @@ except: pass
                 return $? ;;
         esac
         # Rebuild after potential edit (system_prompt may have been updated in-place)
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_prompt "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
     fi
 
     # [FIX-3] In-session hypothesis tracker (accumulates over conversation)
@@ -3278,9 +3333,15 @@ except: pass
     local _turns=0       # API call count
     local _session_outcome="unknown"
     declare -f _ai_reset_cmd_counters &>/dev/null && _ai_reset_cmd_counters
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_session_header "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
-    # Keep the optional right pane in sync with help and the palette.
-    if declare -f igor_right_render &>/dev/null; then
+    # Keep the classic optional right pane in sync with help and the palette.
+    # The standalone curses TUI owns a separate structured command palette.
+    if [ "${IGOR_TUI_MODE:-false}" != true ] &&
+       declare -f igor_right_render &>/dev/null; then
         local -a _command_reference=("Chat Commands" "---" "Commands")
         local _ref_name _ref_syntax _ref_description
         while IFS=$'\t' read -r _ref_name _ref_syntax _ref_description; do
@@ -3293,6 +3354,10 @@ except: pass
             _command_reference+=("[]" "${_ref_name}:${_ref_syntax}:${_ref_description}")
         done < <(python3 "${_AI_DIR}/session_commands.py" palette)
         igor_right_render "${_command_reference[@]}"
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_command_reference "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
     fi
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
