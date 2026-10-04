@@ -53,18 +53,9 @@ _igor_configuration_precondition() {
     [ -n "$_id" ] || _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
     [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
     case "$_id" in
-        system.memory.warning.apply)
+        system.memory.warning.apply|system.memory.warning.readback)
             _igor_configuration_memory_warning_contract "$_proposal" || return 1
             _igor_configuration_call memory-prepare "$_inputs" >/dev/null
-            return $? ;;
-        system.memory.warning.readback)
-            _igor_configuration_memory_warning_contract "$_proposal" || return 1
-            # Startup deliberately defers the global state token. An explicit
-            # readback upgrades the current process to the full authoritative
-            # proof before the module handler is allowed to report it.
-            _igor_configuration_memory_warning_load \
-                "$(_igor_capability_field "$_proposal" inputs.revision)" \
-                "$(_igor_capability_field "$_proposal" inputs.state)"
             return $? ;;
         core.configuration.*) ;;
         *) return 0 ;;
