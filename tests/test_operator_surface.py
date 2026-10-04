@@ -74,7 +74,10 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(by_path["system.host.memory.health"]["kind"], "check")
         self.assertEqual(by_path["system.memory.policy"]["kind"], "configuration")
         self.assertRegex(surface["digest"], r"^[0-9a-f]{64}$")
-        self.assertNotIn("value", json.dumps(surface))
+        serialized = json.dumps(surface, sort_keys=True)
+        self.assertNotIn('"value":', serialized)
+        self.assertNotIn('"desired":', serialized)
+        self.assertNotIn('"resolved":', serialized)
 
     def test_children_make_owner_scoped_namespace_for_non_scoped_ids(self):
         surface = build_surface(self.payload())
