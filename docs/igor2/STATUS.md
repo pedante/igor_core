@@ -2,6 +2,56 @@
 
 Last updated: 2026-10-04
 
+## TUI Startup Critical Path — Boundary I candidate
+
+Boundary H removed the dominant module-loader delay on the measured Igor host:
+
+```text
+[TIMING] tui.bootstrap_config=58ms
+[TIMING] tui.bootstrap_modules=808ms
+[TIMING] tui.bootstrap_module_config=48ms
+[TIMING] module.discovery=48ms
+[TIMING] module.v2_registry=172ms
+[TIMING] module.sort=32ms
+[TIMING] module.registration=547ms
+[TIMING] operator_surface=351ms
+[TIMING] tui.startup_to_input_ready=4849ms
+```
+
+That is a **96.4% reduction** in module bootstrap (22.624s → 0.808s) and an
+**82.9% reduction** in operator-visible time to first input (28.445s → 4.849s).
+The remaining startup delay is now outside the module loader, so Boundary I is
+instrumentation-only: it attributes the full path to `input_ready` before any
+further optimization.
+
+The new top-level TUI startup phases are sequential and diagnostic only:
+
+```text
+[TIMING] tui.backend_spawn=<ms>
+[TIMING] tui.backend_prebootstrap=<ms>
+[TIMING] tui.bootstrap_config=<ms>
+[TIMING] tui.bootstrap_modules=<ms>
+[TIMING] tui.bootstrap_module_config=<ms>
+[TIMING] tui.bootstrap_aux_sources=<ms>
+[TIMING] tui.bootstrap_config_hooks=<ms>
+[TIMING] tui.backend_dispatch=<ms>
+[TIMING] tui.ai_source=<ms>
+[TIMING] tui.ai_pre_session=<ms>
+[TIMING] tui.ai_session_runtime=<ms>
+[TIMING] tui.ai_local_setup=<ms>
+[TIMING] tui.ai_operator_snapshot=<ms>
+[TIMING] tui.ai_ready_finalize=<ms>
+[TIMING] tui.startup_to_input_ready=<ms>
+```
+
+`module.*` and `operator_surface` remain useful nested attributions, but they
+must not be added again when reconciling the sequential top-level phases.
+Boundary I changes no approval, privilege, execution, module, provider, context
+or readiness semantics.
+
+A real-host Boundary I run is required to close this candidate and choose the
+next optimization from measured evidence rather than inference.
+
 ## Module Loader Startup Performance — Boundary H candidate
 
 Boundary G's first real-host startup profile made the remaining bottleneck
@@ -75,10 +125,10 @@ Focused proof on the final runtime content passed:
 - Boundary G AI startup lifecycle: **13/13 passed in 6.82s**.
 
 The temporary proof workflow is removed from the branch after evidence capture.
-No post-Boundary-H real-host speed claim is made yet. Closure requires rerunning
-the same TUI startup on the measured host and comparing
-`tui.bootstrap_modules`, `module.v2_registry` and
-`tui.startup_to_input_ready` against the 22.624s / 28.445s baseline above.
+Real-host closure on the same operator path measured `tui.bootstrap_modules`
+at **808ms** and `tui.startup_to_input_ready` at **4849ms**, down from
+22.624s and 28.445s respectively. Module bootstrap is therefore no longer the
+dominant startup target; Boundary I attributes the remaining critical path.
 
 ## TUI Readiness Performance — Boundary G candidate
 
