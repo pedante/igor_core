@@ -63,6 +63,11 @@ declare -gA _IGOR_MODULE_ENTRYPOINT 2>/dev/null || true
 declare -gA _IGOR_OWNER_HAS_DOMAIN_EVENTS 2>/dev/null || true
 declare -gA _IGOR_MODULE_VERSION 2>/dev/null || true
 declare -gA _IGOR_CAPABILITY_DEPENDENCIES 2>/dev/null || true
+# Boundary N diagnostics. These are observations only and are populated only
+# for the standalone TUI startup path.
+declare -gA _IGOR_TUI_MODULE_REGISTRATION_BY_NAME 2>/dev/null || true
+declare -gA _IGOR_TUI_MODULE_PHASE_MS 2>/dev/null || true
+declare -g _IGOR_TUI_MODULE_REGISTRATION_ORDER=""
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
 declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
@@ -97,6 +102,30 @@ _ml_log() {
 }
 
 _ml_valid_name() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; }
+
+# Millisecond clock used only by diagnostic startup instrumentation. Bash 5's
+# EPOCHREALTIME avoids spawning `date` for every subphase; older shells retain
+# a compatible fallback.
+_ml_now_ms() {
+    local _raw
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        _raw="${EPOCHREALTIME/./}"
+        printf '%s' "$((10#$_raw / 1000))"
+    else
+        date +%s%3N
+    fi
+}
+
+_ml_tui_phase_record() {
+    [ "${IGOR_TUI_MODE:-false}" = true ] || return 0
+    local _key="${1:-}" _started="${2:-}" _ended
+    [ -n "$_key" ] || return 0
+    _ended="$(_ml_now_ms)"
+    if [[ "$_started" =~ ^[0-9]+$ ]] && [[ "$_ended" =~ ^[0-9]+$ ]] &&
+       [ "$_ended" -ge "$_started" ]; then
+        _IGOR_TUI_MODULE_PHASE_MS["$_key"]=$((_ended - _started))
+    fi
+}
 
 # This probe only selects the parser. V2 validity is decided by the strict
 # validator before executable code is touched. V1 deliberately keeps its old
@@ -1221,6 +1250,9 @@ igor_load_module() {
         return $?
     fi
 
+    local _phase_started=""
+    [ "${IGOR_TUI_MODE:-false}" = true ] && _phase_started="$(_ml_now_ms)"
+
     local _module_sh="${_dir}/module.sh"
     if [ ! -f "$_module_sh" ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
@@ -1236,6 +1268,10 @@ igor_load_module() {
         _ml_log error "Module $_name skipped — unmet required dependencies (see above)"
         return 1
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.dependencies" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     # Step 3: syntax check
     if ! bash -n "$_module_sh" 2>/tmp/_igor_ml_syntax_err; then
@@ -1245,6 +1281,10 @@ igor_load_module() {
         _syntax_err="$(cat /tmp/_igor_ml_syntax_err 2>/dev/null)"
         _ml_log error "Syntax error in $_name — SKIPPED: ${_syntax_err:-unknown}"
         return 1
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.syntax" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
     fi
 
     # Step 4: source
@@ -1256,6 +1296,10 @@ igor_load_module() {
         _source_err="$(cat /tmp/_igor_ml_source_err 2>/dev/null)"
         _ml_log error "Failed to source $_name — SKIPPED: ${_source_err:-unknown}"
         return 1
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.source" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
     fi
 
     # Step 5: call __register
@@ -1278,6 +1322,10 @@ igor_load_module() {
         _ml_log error "$_name: required ${_register_fn} function missing — SKIPPED"
         return 1
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.hooks" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     _IGOR_LOADED_MODULES["$_name"]=1
     _IGOR_MODULE_STATUS["$_name"]="active"
@@ -1299,6 +1347,8 @@ igor_load_module() {
     fi
 
     _ml_log ok "Loaded module: $_name"
+    [ "${IGOR_TUI_MODE:-false}" = true ] &&
+        _ml_tui_phase_record "$_name.v1.finalize" "$_phase_started"
     return 0
 }
 
