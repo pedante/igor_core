@@ -39,7 +39,16 @@ _ai_scrub_context_for_display(){
     if [ "$TEST_FAILURE" = scrub ]; then return 1; fi
     printf 'fixture context'
 }
-_ai_build_system_prompt(){ printf 'fixture policy'; }
+_ai_build_system_prompt(){
+    [ -z "$TEST_PROMPT_MARKER" ] || printf 'built\n' >> "$TEST_PROMPT_MARKER"
+    printf 'fixture policy'
+}
+igor_ai_entry(){
+    [ -z "$TEST_CLASSIC_UI_MARKER" ] || printf 'entry\n' >> "$TEST_CLASSIC_UI_MARKER"
+}
+igor_right_render(){
+    [ -z "$TEST_CLASSIC_UI_MARKER" ] || printf 'right\n' >> "$TEST_CLASSIC_UI_MARKER"
+}
 _ai_prompt_interstitial(){
     case "$TEST_FAILURE" in
         prompt_cancel) return 1 ;;
@@ -86,6 +95,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
             tmptrap.mkdir()
             provider_marker = root / "provider.marker"
             context_marker = root / "context.marker"
+            prompt_marker = root / "prompt.marker"
+            classic_ui_marker = root / "classic-ui.marker"
             env = {**os.environ, "IGOR_DIR": temp,
                    "IGOR_RUNTIME_DIR": str(runtime),
                    "TMPDIR": str(tmptrap),
@@ -94,6 +105,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
                    "TEST_FALLBACK": str(fallback).lower(),
                    "TEST_PROVIDER_MARKER": str(provider_marker),
                    "TEST_CONTEXT_MARKER": str(context_marker),
+                   "TEST_PROMPT_MARKER": str(prompt_marker),
+                   "TEST_CLASSIC_UI_MARKER": str(classic_ui_marker),
                    "TERM": "dumb", "IGOR_AI_ENABLED": "true"}
             if tui:
                 env["IGOR_TUI_MODE"] = "true"
@@ -133,6 +146,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
                             if (root / "runtime-target").exists() else None,
                             "provider_validated": provider_marker.exists(),
                             "context_gathered": context_marker.exists(),
+                            "prompt_built": prompt_marker.exists(),
+                            "classic_ui_used": classic_ui_marker.exists(),
                             "events": event_rows}
             return result, state.read_text() if state.is_file() else "", trace, runtime_info
 
@@ -148,6 +163,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
                 self.assertTrue(runtime["exists"])
                 self.assertEqual(runtime["mode"], 0o700)
                 self.assertEqual(runtime["tmp_entries"], [])
+                self.assertTrue(runtime["classic_ui_used"])
+                self.assertTrue(runtime["prompt_built"])
                 positions = [trace.index(f"[STATE] {name}") for name in
                              ("ready", "running", "user_exited")]
                 self.assertEqual(positions, sorted(positions))
@@ -207,6 +224,8 @@ printf '\nMENU_RETURN=%s\n' "$?"
         self.assertIn("AI_SESSION_STATE=user_exited", state)
         self.assertFalse(runtime["provider_validated"])
         self.assertFalse(runtime["context_gathered"])
+        self.assertFalse(runtime["prompt_built"])
+        self.assertFalse(runtime["classic_ui_used"])
         self.assertTrue(any(row.get("event_type") == "model_status" and
                             row.get("status") == "input_ready"
                             for row in runtime["events"]))
@@ -224,6 +243,11 @@ printf '\nMENU_RETURN=%s\n' "$?"
             "tui.ai_source",
             "tui.ai_pre_session",
             "tui.ai_session_runtime",
+            "tui.ai_local_ui",
+            "tui.ai_local_knowledge",
+            "tui.ai_local_prompt",
+            "tui.ai_local_session_header",
+            "tui.ai_local_command_reference",
             "tui.ai_local_setup",
             "tui.ai_operator_snapshot",
             "tui.ai_ready_finalize",
@@ -271,6 +295,41 @@ _ai_prepare_deferred_request_runtime || exit 12
         self.assertIn("provider_deferred=false", result.stdout)
         self.assertIn("context_deferred=false", result.stdout)
         self.assertIn("prompt=fresh prompt", result.stdout)
+
+    def test_mode_change_does_not_force_deferred_prompt_render(self):
+        shell = r"""
+source "$IGOR_DIR/core/ai/core.sh"
+provider=openrouter
+ai_mode=assist
+executive_mode=false
+knowledge_block=knowledge
+scrubbed_context='placeholder context'
+system_prompt='placeholder prompt'
+_context_deferred=true
+PROMPT_CALLS=0
+_ai_save_settings(){ :; }
+_ai_frontend_event(){ :; }
+_ai_build_system_prompt(){ PROMPT_CALLS=$((PROMPT_CALLS + 1)); printf 'rendered-%s' "$PROMPT_CALLS"; }
+
+_ai_set_mode guide >/dev/null || exit 11
+printf 'deferred_calls=%s\n' "$PROMPT_CALLS"
+printf 'deferred_prompt=%s\n' "$system_prompt"
+_context_deferred=false
+_ai_set_mode assist >/dev/null || exit 12
+printf 'ready_calls=%s\n' "$PROMPT_CALLS"
+printf 'ready_prompt=%s\n' "$system_prompt"
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "core").symlink_to(ROOT / "core", target_is_directory=True)
+            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb"}
+            result = subprocess.run(["bash", "-c", shell], text=True,
+                                    capture_output=True, env=env, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("deferred_calls=0", result.stdout)
+        self.assertIn("deferred_prompt=placeholder prompt", result.stdout)
+        self.assertIn("ready_calls=1", result.stdout)
+        self.assertIn("ready_prompt=rendered-1", result.stdout)
 
     def test_input_eof_is_not_a_user_exit(self):
         result, state, _, _ = self.run_menu("f", input_text="")
