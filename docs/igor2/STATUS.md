@@ -2,6 +2,61 @@
 
 Last updated: 2026-10-04
 
+## TUI Readiness Performance — Boundary G candidate
+
+The compiled operator surface in Boundary F removes repeated namespace work, but
+real TUI readiness still waited behind unrelated synchronous startup work.
+Boundary G changes the measured boundary from a component-local optimization to
+the operator-visible path: curses frontend spawn through the first
+`model_status=input_ready`.
+
+For the standalone TUI only:
+
+- provider connectivity/authentication pre-flight is deferred until the first
+  provider-bound request instead of blocking the composer;
+- the full server-context scan is likewise deferred until that first request;
+  the former capability load and reviewed `host.memory` refresh still happen
+  before context is gathered, so full-context semantics are moved rather than
+  removed;
+- deferred provider or context failure blocks that provider request and remains
+  visible in the TUI, while local commands and navigation can be used before a
+  network request exists;
+- the 5-minute context refresher cannot accidentally treat never-captured
+  deferred context as stale and rebuild it before first input;
+- the curses TUI skips the classic tmux/fzf/rich feature probe because it owns
+  its own interaction surface and does not use those launch-time features.
+
+The backend now records the actual startup path rather than only the final
+operator-surface component:
+
+```text
+[TIMING] tui.bootstrap_config=<ms>
+[TIMING] tui.bootstrap_modules=<ms>
+[TIMING] tui.bootstrap_module_config=<ms>
+[TIMING] operator_surface=<ms>
+[TIMING] tui.startup_to_input_ready=<ms>
+[TIMING] provider.preflight=<ms>
+[TIMING] context.first_request=<ms>
+```
+
+`tui.startup_to_input_ready` starts in `tui.py` before the backend PTY is
+forked, so it includes the global `igor.sh --ai-tui-backend` bootstrap that the
+Boundary F timer could not see. The module bootstrap remains synchronous and is
+intentionally not optimized in this boundary; its dedicated timing is expected
+to identify the next remaining startup target on a real host.
+
+Focused branch proof passed on the exact Boundary G content:
+
+- Bash syntax for `igor.sh` and `core/ai/core.sh`, plus Python compilation for
+  the changed TUI/startup tests;
+- new readiness/deferred-work contracts: **3/3 passed in 1.25s**;
+- existing AI startup lifecycle: **13 tests + 12 subtests passed in 9.51s**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+No real-host startup-speed claim is made yet. Closure requires measuring
+`tui.startup_to_input_ready` on the same machine before/after this boundary and
+using the new phase timings to attribute the remaining delay.
+
 ## Operator Surface Startup Performance — Boundary F candidate
 
 The operator namespace previously rebuilt module, contribution, capability and
