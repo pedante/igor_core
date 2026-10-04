@@ -544,7 +544,11 @@ def cached_build_surface(payload: dict[str, Any], cache_path: Path) -> dict[str,
     """
     if not isinstance(payload, dict) or payload.get("seed_version") != 1:
         raise SurfaceError("invalid operator surface seed")
-    source_raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    source_raw = json.dumps(
+        {"implementation": implementation_digest, "seed": payload},
+        sort_keys=True, separators=(",", ":"),
+    ).encode()
     source_digest = hashlib.sha256(source_raw).hexdigest()
 
     # Cache failure must never make the operator namespace unavailable. Unsafe,
