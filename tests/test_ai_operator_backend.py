@@ -171,6 +171,54 @@ warm_count="$(wc -l < "$PY_COUNT")"
             self.assertTrue(cache.is_file())
             self.assertEqual(cache.stat().st_mode & 0o777, 0o600)
 
+    def test_warm_operator_cache_reuses_generation_across_shell_processes(self):
+        script = r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+_IGOR_MODULE_CONFIG_LOADED=1
+_IGOR_MODULE_DIRS[system]="$IGOR_DIR/modules/system"
+_IGOR_MODULE_API[system]=2
+_IGOR_MODULE_STATE[system]=enabled
+_IGOR_MODULE_STATUS[system]=active
+_IGOR_LOADED_MODULES[system]=1
+_IGOR_V2_DATA[system]='{"manifest":{"display_name":"System","name":"system"},"contributions":[{"kind":"capability","id":"system.test","owner":"system","source":"contracts/test.json","description":"Test","capability_version":2,"inputs":{"properties":{},"required":[],"additionalProperties":false},"safety":{"tier":"READ"},"privilege":"none","preconditions":[],"verification":{"kind":"none","required":false},"recovery":{"class":"not_applicable"},"affects":[]}]}'
+if [ "${FAIL_SEED:-0}" = 1 ]; then
+    igor_operator_surface_seed() { touch "$SEED_MARKER"; return 91; }
+fi
+_ai_emit_operator_snapshot
+'''
+        with tempfile.TemporaryDirectory() as runtime:
+            root = Path(runtime)
+            data_dir = root / "data"
+            seed_marker = root / "seed-called"
+            first_stream = root / "first.jsonl"
+            second_stream = root / "second.jsonl"
+            base_env = {
+                **os.environ,
+                "IGOR_DIR": str(ROOT),
+                "IGOR_RUNTIME_DIR": runtime,
+                "IGOR_DATA_DIR": str(data_dir),
+                "SEED_MARKER": str(seed_marker),
+            }
+            first = subprocess.run(
+                ["bash", "-c", script], cwd=ROOT,
+                env={**base_env, "IGOR_AI_EVENT_STREAM": str(first_stream)},
+                text=True, capture_output=True, timeout=20, check=False,
+            )
+            second = subprocess.run(
+                ["bash", "-c", script], cwd=ROOT,
+                env={**base_env, "IGOR_AI_EVENT_STREAM": str(second_stream),
+                     "FAIL_SEED": "1"},
+                text=True, capture_output=True, timeout=20, check=False,
+            )
+
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(second.returncode, 0, second.stderr)
+            self.assertFalse(seed_marker.exists())
+            first_event = json.loads(first_stream.read_text().splitlines()[-1])
+            second_event = json.loads(second_stream.read_text().splitlines()[-1])
+            self.assertEqual(first_event["surface"], second_event["surface"])
+
     def test_loader_generation_changes_with_structural_registration(self):
         script = r'''
 source "$IGOR_DIR/core/lib/module_loader.sh"
