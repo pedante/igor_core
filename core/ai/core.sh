@@ -143,7 +143,9 @@ _ai_emit_operator_snapshot() {
     # from loader-validated registrations/base lifecycle state; it performs no
     # dynamic requirement probes. The derived cache survives frontend sessions
     # and is invalidated automatically when that structural seed changes.
-    if declare -f igor_operator_surface_seed >/dev/null 2>&1; then
+    if declare -f igor_operator_surface_seed >/dev/null 2>&1 &&
+       declare -p _IGOR_MODULE_DIRS >/dev/null 2>&1 &&
+       [ "${#_IGOR_MODULE_DIRS[@]}" -gt 0 ]; then
         local _compiled _cache
         _cache="${IGOR_OPERATOR_SURFACE_CACHE:-${IGOR_DATA_DIR:-${IGOR_DIR}/data}/cache/operator-surface-v1.json}"
         _compiled="$(igor_operator_surface_seed |
