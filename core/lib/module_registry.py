@@ -77,6 +77,18 @@ def _hash_package(hasher: "hashlib._Hash", package: Path) -> None:
             if path.is_symlink():
                 hasher.update(b"symlink\0" + rel.encode() + b"\0")
                 hasher.update(os.readlink(path).encode() + b"\0")
+                # module.conf is historically allowed to be a file symlink.
+                # Hash the resolved bytes as well so an unchanged link cannot
+                # make a changed manifest look like a warm-cache hit.
+                try:
+                    resolved = path.resolve(strict=True)
+                    if resolved.is_file():
+                        with resolved.open("rb") as stream:
+                            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                                hasher.update(block)
+                except OSError:
+                    hasher.update(b"unreadable-symlink-target")
+                hasher.update(b"\0")
                 continue
             try:
                 info = path.stat()
@@ -101,6 +113,7 @@ def source_digest(module_dirs: list[Path]) -> str:
     hasher.update(f"module-registry-cache-v{CACHE_VERSION}".encode())
     for name in (
         "module_registry.py",
+        "module_loader_fast.sh",
         "module_contract.py",
         "capability_runtime.py",
         "configuration_schema.py",
