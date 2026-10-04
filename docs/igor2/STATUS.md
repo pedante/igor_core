@@ -2,6 +2,63 @@
 
 Last updated: 2026-10-04
 
+## Provider Runtime Performance — Boundary C candidate
+
+The post-Boundary-B real-host `system.service.list` trace measured
+`running -> provider_complete` at **1.826s** while the native
+`systemctl list-units` call remained about **41ms**. Boundary C targets only
+the generic Module API v2 provider bridge around that work.
+
+The runtime now:
+
+- compiles handler function, timeout, entrypoint and per-owner domain-event
+  presence at module load after strict Module API v2 validation;
+- reuses `module_contract.py`'s existing entrypoint containment, `bash -n`
+  and declared-handler validation instead of running a duplicate `bash -n`
+  subprocess on every canonical capability invocation;
+- keeps per-invocation entrypoint package containment and isolated child
+  `source`/handler execution, so changed invalid Bash still fails before the
+  handler can execute;
+- constructs the canonical handler request directly for already-validated
+  capability inputs instead of reparsing/reserializing the same JSON through a
+  separate Python process;
+- bypasses the domain-event temp-directory/background poll bridge for module
+  owners that declare no domain events, while retaining the existing bridge for
+  owners that do;
+- fuses v2 handler-envelope validation and typed domain-output validation into
+  one Capability Runtime process.
+
+The fused validator preserves the previous outcome distinction: malformed or
+`status=error` handler envelopes are provider failures; a valid
+`status=ok` envelope with invalid typed output remains
+`output_status=invalid` / `invalid_output`; valid output is normalized
+against the authoritative v2 output schema.
+
+Focused proof on the exact Boundary C runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_capability_runtime.py`: **21/21 passed** in 0.65s;
+- `tests/modules/test_module_handler.bats`: **9/9 passed**;
+- selected `tests/modules/test_system_admin_surface.bats`: **4/4 passed**,
+  including the real service inventory/status path, compiled service handler
+  metadata, targeted preparation and the single execution-fence precondition.
+
+The module-handler proof includes a zero-`IGOR_PYTHON` canonical bridge path,
+fast-path entrypoint containment, changed-invalid-source fail-closed behavior,
+generic malformed/error-response handling and timeout enforcement.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected CI job again failed during its pre-test global BATS install
+with the known hosted-runner `EACCES`; whole-repository Ruff remains red on
+its existing backlog and reported no new Boundary C file errors. No full
+regression was run for this bounded performance milestone.
+
+Boundary C does **not** change approval, privilege, History lifecycle,
+execution-fence preparation/revalidation, provider isolation, verification,
+Domain Event semantics, Automation follow-up or frontend publication. The next
+proof is the same real-host timestamped `system.service.list` run; no
+wall-clock improvement is claimed before that measurement.
+
 ## Operational History Performance — Boundary B candidate
 
 Boundary A reduced the measured `system.service.list` execution-fence
