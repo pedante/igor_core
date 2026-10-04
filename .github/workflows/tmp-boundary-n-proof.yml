@@ -1,0 +1,22 @@
+name: tmp-boundary-n-proof
+on:
+  push:
+    branches:
+      - perf/module-registration-critical-path-boundary-n
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: |
+          bash -n core/lib/module_loader.sh
+          bash -n core/lib/module_loader_fast.sh
+          bash -n core/ai/core.sh
+          python -m py_compile tests/test_module_registration_timing.py tests/test_ai_menu_startup.py
+      - name: Boundary N registration timing contract
+        run: python tests/test_module_registration_timing.py
+      - name: Startup lifecycle
+        run: python tests/test_ai_menu_startup.py
+      - name: Operator warm-path regression
+        run: python tests/test_ai_operator_backend.py
