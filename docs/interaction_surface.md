@@ -46,11 +46,13 @@ opens the contract-driven operator explorer. Session startup publishes a
 compiled `operator_snapshot` from loader-validated registration metadata. The
 derived projection is cached at
 `${IGOR_DATA_DIR}/cache/operator-surface-v1.json` and keyed by the current
-structural registration digest, so unchanged sessions reuse it instead of
-walking dynamic capability/configuration registries again. Type a segment to
-filter; `.` or Enter descends; Backspace/Esc returns toward the root; `Ctrl+R`
-requests the current compiled snapshot without losing the backend authority
-boundary.
+loader-owned structural generation. On an unchanged warm session the backend
+checks that generation and reads the compiled projection directly; it does not
+rebuild the JSON structural seed merely to prove the cache current. A miss,
+corrupt cache or structural generation change rebuilds from the same validated
+loader frames. Type a segment to filter; `.` or Enter descends;
+Backspace/Esc returns toward the root; `Ctrl+R` requests the current compiled
+snapshot without losing the backend authority boundary.
 
 The compiled surface is presentation metadata, not runtime authority. Its
 `availability_model` is `registration`: package/module/schema/enablement and
