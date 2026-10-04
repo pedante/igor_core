@@ -136,13 +136,13 @@ unset IGOR_PYTHON
 : > "$PY_COUNT"
 _ai_emit_operator_snapshot
 cold_count="$(wc -l < "$PY_COUNT")"
-[ "$cold_count" -le 4 ]
+[ "$cold_count" -le 4 ] || { printf 'cold_python_count=%s\\n' "$cold_count" >&2; exit 31; }
 
 : > "$PY_COUNT"
 _ai_emit_operator_snapshot
 warm_count="$(wc -l < "$PY_COUNT")"
-[ "$warm_count" -le 4 ]
-[ ! -e "$MARKER" ]
+[ "$warm_count" -le 4 ] || { printf 'warm_python_count=%s\\n' "$warm_count" >&2; exit 32; }
+[ ! -e "$MARKER" ] || { printf 'legacy collector invoked\\n' >&2; exit 33; }
 '''
             result = subprocess.run(
                 ["bash", "-c", script],
