@@ -2083,3 +2083,12 @@ igor_load_capabilities() {
 
     return 0
 }
+
+
+# Boundary H — compiled Module API v2 startup fast path.
+# Install overrides only after all compatibility loader functions above exist,
+# so the fast path can delegate to the original implementation on any failure.
+if [ -f "${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh" ]; then
+    # shellcheck source=core/lib/module_loader_fast.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh"
+fi
