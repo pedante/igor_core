@@ -695,7 +695,11 @@ interruption reconciliation and explicit responsibility.
 
 Step 17 established the correct Configuration Service architecture and bounded
 real settings, but it deliberately did not migrate all module/application
-configuration, secrets or legacy mutable sources.
+configuration, secrets or legacy mutable sources. Boundary L/O/P later narrowed
+and coalesced startup reads without creating a second configuration authority:
+write/readback CAS and state-token proof remain on the full service path. See
+[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) for the completed
+performance pass and stopping rule.
 
 Before Igor 2 consolidation, close the Ownership Foundation with evidence for:
 
