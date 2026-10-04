@@ -535,22 +535,40 @@ def _write_cache(path: Path, source_digest: str, surface: dict[str, Any]) -> Non
             os.unlink(temporary)
 
 
-def cached_build_surface(payload: dict[str, Any], cache_path: Path) -> dict[str, Any]:
+def cached_read_surface(cache_path: Path, source_digest: str) -> dict[str, Any] | None:
+    """Read one loader-keyed compiled projection without rebuilding its seed.
+
+    The loader owns this structural generation key. A cache hit is presentation
+    metadata only; capability dispatch still performs fresh runtime authority
+    checks before effect.
+    """
+    if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        raise SurfaceError("invalid operator surface source digest")
+    return _read_cache(cache_path, source_digest)
+
+
+def cached_build_surface(
+    payload: dict[str, Any], cache_path: Path, source_digest: str | None = None
+) -> dict[str, Any]:
     """Return a compiled structural projection, reusing it across sessions.
 
-    The cache is derived presentation metadata only. The digest is computed from
-    the current validated registration seed, so package/module/schema changes
-    rebuild it. Runtime availability is deliberately not part of this cache and
-    remains the capability dispatcher's responsibility.
+    Without an explicit digest this retains Boundary F's self-contained seed
+    fingerprint. Boundary M may instead supply the loader-owned generation key
+    derived from the exact structural frames and Core projection implementation.
+    Runtime availability is deliberately not part of this cache and remains the
+    capability dispatcher's responsibility.
     """
     if not isinstance(payload, dict) or payload.get("seed_version") != 1:
         raise SurfaceError("invalid operator surface seed")
-    implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-    source_raw = json.dumps(
-        {"implementation": implementation_digest, "seed": payload},
-        sort_keys=True, separators=(",", ":"),
-    ).encode()
-    source_digest = hashlib.sha256(source_raw).hexdigest()
+    if source_digest is None:
+        implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        source_raw = json.dumps(
+            {"implementation": implementation_digest, "seed": payload},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()
+        source_digest = hashlib.sha256(source_raw).hexdigest()
+    elif not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        raise SurfaceError("invalid operator surface source digest")
 
     # Cache failure must never make the operator namespace unavailable. Unsafe,
     # missing or corrupt derived state falls back to an in-memory rebuild.
@@ -621,11 +639,21 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
     return [result[key] for key in sorted(result)]
 
 
+def _session_envelope(surface: dict[str, Any], session_id: str) -> dict[str, Any]:
+    return {"session_id": session_id, "surface": surface}
+
+
 def main(argv: list[str]) -> int:
     try:
-        if len(argv) < 2 or argv[1] not in {"seed", "build", "cached-build", "children"}:
+        commands = {
+            "seed", "build", "cached-build", "cached-read-envelope",
+            "cached-build-keyed-envelope", "children",
+        }
+        if len(argv) < 2 or argv[1] not in commands:
             raise SurfaceError(
-                "usage: operator_surface.py {seed|build|cached-build|children} [ARG]"
+                "usage: operator_surface.py "
+                "{seed|build|cached-build|cached-read-envelope|"
+                "cached-build-keyed-envelope|children} [ARG]"
             )
         if argv[1] == "seed":
             if len(argv) != 3:
@@ -633,6 +661,18 @@ def main(argv: list[str]) -> int:
             result = build_seed(sys.stdin.buffer.read(), Path(argv[2]))
             print(json.dumps(result, sort_keys=True, separators=(",", ":")))
             return 0
+        if argv[1] == "cached-read-envelope":
+            if len(argv) != 5:
+                raise SurfaceError(
+                    "cached-read-envelope requires cache path, digest and session id"
+                )
+            surface = cached_read_surface(Path(argv[2]), argv[3])
+            if surface is None:
+                return 3
+            result = _session_envelope(surface, argv[4])
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
+
         payload = json.load(sys.stdin)
         if argv[1] == "build":
             if len(argv) != 2:
@@ -642,6 +682,13 @@ def main(argv: list[str]) -> int:
             if len(argv) != 3:
                 raise SurfaceError("cached-build requires cache path")
             result = cached_build_surface(payload, Path(argv[2]))
+        elif argv[1] == "cached-build-keyed-envelope":
+            if len(argv) != 5:
+                raise SurfaceError(
+                    "cached-build-keyed-envelope requires cache path, digest and session id"
+                )
+            surface = cached_build_surface(payload, Path(argv[2]), argv[3])
+            result = _session_envelope(surface, argv[4])
         else:
             if len(argv) != 2:
                 raise SurfaceError("children takes no arguments")
