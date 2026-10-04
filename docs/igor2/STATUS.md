@@ -2,7 +2,90 @@
 
 Last updated: 2026-10-04
 
-## Operator Surface Warm Fast Path — Boundary M candidate
+## Module Registration Critical Path — Boundary N candidate
+
+Boundary M is closed on the measured host. A true warm second launch showed:
+
+```text
+[TIMING] module.registration=588ms
+[TIMING] module.registration=588ms
+[TIMING] operator_surface.generation=50ms
+[TIMING] operator_surface.cache_read=136ms
+[TIMING] operator_surface=285ms
+[TIMING] tui.ai_operator_snapshot=295ms
+[TIMING] tui.startup_to_input_ready=2813ms
+```
+
+There was no `operator_surface.rebuild` line, proving persistent warm-cache
+reuse. The operator surface fell from 384ms on the Boundary L run to 285ms on
+the warm Boundary M run (**25.8% lower**). The remaining largest startup phase
+is module bootstrap, and `module.registration=588ms` accounts for about 68% of
+that 860ms module interval.
+
+Boundary N is deliberately measurement-first. The installed repository gives a
+useful architectural split:
+
+- `system`: Module API v2 with compatibility hooks;
+- `docker`: pure Module API v2 registration;
+- `nextcloud_docker`: legacy Module API v1 registration.
+
+N adds per-module totals:
+
+```text
+[TIMING] module.registration.system=<ms>
+[TIMING] module.registration.docker=<ms>
+[TIMING] module.registration.nextcloud_docker=<ms>
+[TIMING] module.registration.reconcile=<ms>
+```
+
+For legacy v1 modules it further records:
+
+```text
+module.registration.<name>.v1.dependencies
+module.registration.<name>.v1.syntax
+module.registration.<name>.v1.source
+module.registration.<name>.v1.hooks
+module.registration.<name>.v1.finalize
+```
+
+For compiled v2 modules it records:
+
+```text
+module.registration.<name>.v2.preflight
+module.registration.<name>.v2.compat
+module.registration.<name>.v2.contributions
+module.registration.<name>.v2.consumer
+```
+
+The `v2.consumer` phase intentionally includes owner-specific startup
+consumption that occurs after structural registration, such as System's
+configuration consumer. The per-module wrapper includes the complete
+`igor_load_module` path, while `module.registration.reconcile` accounts for
+post-load dependency-cycle reconciliation. Their totals can therefore be
+compared with the existing `module.registration` aggregate.
+
+Instrumentation uses Bash `EPOCHREALTIME` when available so collecting these
+subphases does not itself spawn a `date` process for every boundary. Older
+shells retain the existing millisecond-clock fallback.
+
+No module enablement, dependency resolution, package validation, source,
+registration, contribution indexing, configuration consumption, capability
+authority or execution behavior changes in Boundary N.
+
+Focused branch proof passed:
+
+- shell/Python syntax checks;
+- Boundary N mixed v1/v2 timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend/warm-cache regressions: **12/12 passed**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+
+Real-host closure requires one normal standalone-TUI run and the full timing
+output. The dominant per-module/subphase becomes the next optimization boundary;
+N itself should not speculate ahead of that evidence.
+
+## Operator Surface Warm Fast Path — Boundary M
 
 Boundary L reduced the measured Configuration Service startup phase from
 **460ms** to **304ms**, with the narrow authoritative read split into
@@ -75,10 +158,12 @@ processes sharing the same cache**; the second process reused the cache without
 calling the seed builder. This distinguishes process lifetime from structural
 generation stability.
 
-No post-Boundary-M real-host speed claim is made yet. Closure requires the same
-standalone-TUI measurement and comparison of `operator_surface`,
-`operator_surface.generation`, `operator_surface.cache_read` and
-`tui.startup_to_input_ready` against the 384ms / 2.901s Boundary L run.
+The same-host warm second launch closed Boundary M with
+`operator_surface.generation=50ms`, `operator_surface.cache_read=136ms`,
+`operator_surface=285ms`, `tui.ai_operator_snapshot=295ms` and no rebuild
+line. The session reached `tui.startup_to_input_ready=2813ms`. The warm
+operator projection is therefore behaving as designed; Boundary N targets the
+remaining 588ms module-registration phase.
 
 ## Configuration Read Fast Path — Boundary L
 
