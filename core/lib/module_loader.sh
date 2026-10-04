@@ -55,6 +55,12 @@ declare -gA _IGOR_REQ_CAPABILITIES 2>/dev/null || true
 declare -gA _IGOR_REQ_PLATFORM_FEATURES 2>/dev/null || true
 declare -gA _IGOR_REQ_PLATFORM_FAMILIES 2>/dev/null || true
 declare -gA _IGOR_REQ_BINS 2>/dev/null || true
+# Static Module API v2 handler metadata compiled at load time. Dynamic
+# contribution/module availability is still checked at invocation.
+declare -gA _IGOR_HANDLER_FUNCTION 2>/dev/null || true
+declare -gA _IGOR_HANDLER_TIMEOUT 2>/dev/null || true
+declare -gA _IGOR_MODULE_ENTRYPOINT 2>/dev/null || true
+declare -gA _IGOR_OWNER_HAS_DOMAIN_EVENTS 2>/dev/null || true
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
 declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
@@ -1181,6 +1187,7 @@ igor_load_module() {
 
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source _requires
+    local _entrypoint _handler _timeout _kind
     if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
@@ -1195,6 +1202,9 @@ _ml_load_v2() {
         _ml_v2_validate "$_name" || return 1
     fi
     _requires="$(_ml_v2_module_requirements "$_name")" || return 1
+    _entrypoint="$(_ml_v2_query "$_name" manifest.entrypoint 2>/dev/null)" || _entrypoint=""
+    _IGOR_MODULE_ENTRYPOINT["$_name"]="$_entrypoint"
+    _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=0
     _reason="$(_ml_v2_requirement_failure "$_requires")" || {
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="$_reason"
@@ -1260,6 +1270,15 @@ _ml_load_v2() {
         fi
         _ml_index_contribution "$_key" "$_name" "$_source" "$_record" || return 1
         _ml_index_requirement_fields "$_index_key" "$_record" || return 1
+        _kind="${_key%%:*}"
+        _handler="$(_ml_json_field "$_record" handler 2>/dev/null || true)"
+        if [ -n "$_handler" ]; then
+            _timeout="$(_ml_json_field "$_record" timeout_seconds 2>/dev/null || true)"
+            [ -n "$_timeout" ] || _timeout=30
+            _IGOR_HANDLER_FUNCTION["$_index_key"]="$_handler"
+            _IGOR_HANDLER_TIMEOUT["$_index_key"]="$_timeout"
+        fi
+        [ "$_kind" = domain_event ] && _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=1
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
         case "$_key" in
@@ -1554,19 +1573,24 @@ print(json.dumps({"capability_id": capability_id, "resolution": resolution,
 }
 
 igor_v2_invoke() {
-    local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _record _owner _handler _timeout _entrypoint
+    local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _key _owner _handler _timeout _entrypoint
     [ -n "$_input" ] || _input='{}'
     case "$_kind" in observer|check|knowledge) ;; *) return 1 ;; esac
-    _record="$(igor_v2_contribution_get "$_kind" "$_id")" || return 1
-    _owner="${_IGOR_CONTRIBUTION_OWNER[${_kind}:${_id}]}"
-    _handler="$(_ml_json_field "$_record" handler)"
+    _key="${_kind}:${_id}"
+    [ "$(igor_contribution_state "$_key")" = active ] || return 1
+    _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+    [ -n "$_owner" ] || return 1
+    _handler="${_IGOR_HANDLER_FUNCTION[$_key]:-}"
     [ -n "$_handler" ] || return 1
-    _timeout="$(_ml_json_field "$_record" timeout_seconds)"
-    [ -n "$_timeout" ] || _timeout=30
-    _entrypoint="$(_ml_v2_query "$_owner" manifest.entrypoint)"
+    _timeout="${_IGOR_HANDLER_TIMEOUT[$_key]:-30}"
+    _entrypoint="${_IGOR_MODULE_ENTRYPOINT[$_owner]:-}"
+    [ -n "$_entrypoint" ] || return 1
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
-    V2_HANDLER_ENTRYPOINT="$_entrypoint" _ml_bash_handler_invoke \
+    V2_HANDLER_ENTRYPOINT="$_entrypoint" \
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
+        _ml_bash_handler_invoke \
         "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
 }
 

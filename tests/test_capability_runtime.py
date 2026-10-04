@@ -69,6 +69,39 @@ class CapabilityRuntimeTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertNotIn("REJECTED_SECRET_VALUE", result.stdout + result.stderr)
 
+    def test_handler_output_bridge_preserves_provider_vs_typed_output_failures(self):
+        schema = {
+            "schema_version": 1,
+            "properties": {"count": {"type": "integer", "minimum": 0, "maximum": 10}},
+            "required": ["count"],
+            "additionalProperties": False,
+        }
+        command = [sys.executable, "core/lib/capability_runtime.py", "handler-output",
+                   json.dumps(schema, separators=(",", ":"))]
+
+        valid = subprocess.run(
+            command, input='{"status":"ok","result":{"count":2}}',
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(valid.returncode, 0)
+        self.assertEqual(json.loads(valid.stdout), {"count": 2})
+
+        for envelope in (
+            '{"status":"error","error":{"code":"unavailable","message":"sensor missing"}}',
+            'not-json',
+            '{"status":"ok","result":{"count":2},"tier":"READ"}',
+        ):
+            failed = subprocess.run(command, input=envelope, text=True,
+                                    capture_output=True, check=False)
+            self.assertEqual(failed.returncode, 2)
+
+        invalid_output = subprocess.run(
+            command, input='{"status":"ok","result":{"count":99}}',
+            text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(invalid_output.returncode, 3)
+        self.assertNotIn("99", invalid_output.stdout + invalid_output.stderr)
+
     def test_prepare_cli_rejects_explicit_null_version(self):
         request = {"op": "prepare", "descriptors": [descriptor().inspect()], "id": "system.service.restart", "inputs": {"unit": "demo.service"}, "capability_version": None}
         # Inspection-only availability keys are not descriptor syntax.
