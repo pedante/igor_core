@@ -464,9 +464,13 @@ _ml_load_v2() {
     unset '_IGOR_MODULE_REASON['"$_name"']'
     if [ "$_name" = system ] &&
        [ -n "${_IGOR_CONTRIBUTIONS[configuration:system.memory.preferences]:-}" ]; then
+        local _configuration_started=""
+        [ "${IGOR_TUI_MODE:-false}" = true ] && _configuration_started="$(_ml_now_ms)"
         unset IGOR_SYSTEM_MEMORY_WARNING_MIB IGOR_SYSTEM_MEMORY_WARNING_REVISION IGOR_SYSTEM_MEMORY_WARNING_STATE IGOR_SYSTEM_MEMORY_CONSUMER_ID
         _igor_configuration_memory_warning_load ||
             _ml_log warn "System memory configuration consumption unavailable"
+        [ "${IGOR_TUI_MODE:-false}" = true ] &&
+            _ml_tui_phase_record "$_name.v2.configuration" "$_configuration_started"
     fi
     _ml_log ok "Loaded Module API v2: $_name"
     [ "${IGOR_TUI_MODE:-false}" = true ] &&
