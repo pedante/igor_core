@@ -105,7 +105,7 @@ jobs:
       - name: Install validation tools
         run: |
           pip install 'pytest>=9,<10' ruff
-          npm install -g bats@1.13.0
+          sudo npm install -g bats@1.13.0
           sudo apt-get update -qq
           sudo apt-get install -y shellcheck
 
