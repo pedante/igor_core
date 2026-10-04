@@ -8,8 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core/lib"))
 
-from baselines import BaselineError, OperationalBaselines, summarize_episodes  # noqa: E402
-from operational_history import OperationalHistory  # noqa: E402
+from baselines import (
+    BaselineError,
+    OperationalBaselines,
+    summarize_episodes,
+)
+from operational_history import OperationalHistory
 
 
 def proposal(provider="fixture_read"):
