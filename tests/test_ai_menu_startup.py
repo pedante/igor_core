@@ -212,33 +212,32 @@ _context_deferred=true
 _context_captured_at=0
 _context_refresh_interval=300
 _key_status='deferred'
-_order=''
-_nexus_validate_or_key(){ _order+="provider "; return 0; }
-ai_gather_context(){ _order+="context "; printf 'fresh context'; }
+_nexus_validate_or_key(){ printf 'provider\n' >> "$ORDER_MARKER"; return 0; }
+ai_gather_context(){ printf 'context\n' >> "$ORDER_MARKER"; printf 'fresh context'; }
 ai_scrub_build_table(){ :; }
 _ai_scrub_context_for_display(){ cat; }
 _ai_build_system_prompt(){ printf 'fresh prompt'; }
 
 _ai_prepare_deferred_request_runtime || exit 11
-printf 'order=%s\n' "$_order"
 printf 'provider_deferred=%s\n' "$_provider_preflight_deferred"
 printf 'context_deferred=%s\n' "$_context_deferred"
 printf 'prompt=%s\n' "$system_prompt"
 _ai_prepare_deferred_request_runtime || exit 12
-printf 'order_after_second=%s\n' "$_order"
 """
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "core").symlink_to(ROOT / "core", target_is_directory=True)
-            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb"}
+            order_marker = root / "order.marker"
+            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb",
+                   "ORDER_MARKER": str(order_marker)}
             result = subprocess.run(["bash", "-c", shell], text=True,
                                     capture_output=True, env=env, timeout=15)
+            order = order_marker.read_text().splitlines()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("order=provider context ", result.stdout)
+        self.assertEqual(order, ["provider", "context"])
         self.assertIn("provider_deferred=false", result.stdout)
         self.assertIn("context_deferred=false", result.stdout)
         self.assertIn("prompt=fresh prompt", result.stdout)
-        self.assertIn("order_after_second=provider context ", result.stdout)
 
     def test_input_eof_is_not_a_user_exit(self):
         result, state, _, _ = self.run_menu("f", input_text="")
