@@ -138,6 +138,35 @@ PY
 # the canonical capability dispatcher and configuration owners.
 _ai_emit_operator_snapshot() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+
+    # Normal startup uses a compiled structural namespace. The seed comes only
+    # from loader-validated registrations/base lifecycle state; it performs no
+    # dynamic requirement probes. The derived cache survives frontend sessions
+    # and is invalidated automatically when that structural seed changes.
+    if declare -f igor_operator_surface_seed >/dev/null 2>&1; then
+        local _compiled _cache
+        _cache="${IGOR_OPERATOR_SURFACE_CACHE:-${IGOR_DATA_DIR:-${IGOR_DIR}/data}/cache/operator-surface-v1.json}"
+        _compiled="$(igor_operator_surface_seed |
+            python3 "${IGOR_DIR}/core/lib/operator_surface.py" cached-build "$_cache")" || {
+            _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
+            return 1
+        }
+        _compiled="$(printf '%s' "$_compiled" |
+            AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 -c '
+import json,os,sys
+surface=json.load(sys.stdin)
+print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
+                  "surface":surface},separators=(",",":")))
+')" || {
+            _ai_frontend_event warning "Operator surface response could not be encoded. Press Ctrl+R to retry."
+            return 1
+        }
+        _ai_event_emit operator_snapshot "$_compiled" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    # Compatibility fallback for callers/tests that source the AI backend
+    # without the module-loader structural seed API.
     local _modules='[]' _contributions='[]' _capabilities='[]' _configurations='[]' _payload _sources
     local _modules_status=missing _contributions_status=missing
     local _capabilities_status=missing _configurations_status=missing
