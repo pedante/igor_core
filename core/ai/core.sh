@@ -630,6 +630,88 @@ _ai_scrub_context_for_display() {
     return "$_rc"
 }
 
+# Validate the configured provider without changing request/execution authority.
+# The classic UI still performs this during pre-flight. The TUI may defer it
+# until the first provider-bound request so network latency does not block the
+# composer from becoming ready.
+_ai_provider_preflight() {
+    local _include_balance="${1:-false}" _ollama_host
+    _or_balance=""
+    case "${provider:-openrouter}" in
+        openrouter)
+            if [ -z "${or_api_key:-}" ]; then
+                _key_status="✘ not set"
+                return 1
+            fi
+            if _nexus_validate_or_key "$or_api_key"; then
+                _key_status="✔ valid"
+                if [ "$_include_balance" = true ]; then
+                    _or_balance=$(_nexus_get_or_balance "$or_api_key")
+                fi
+                return 0
+            fi
+            _key_status="✘ invalid or unreachable"
+            return 1
+            ;;
+        ollama)
+            _ollama_host="${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434}"
+            if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${_ollama_host}/api/tags" 2>/dev/null |
+               grep -q "^200$"; then
+                _key_status="✔ running"
+                return 0
+            fi
+            _key_status="✘ not reachable"
+            return 1
+            ;;
+        *)
+            if [ -z "${api_key:-}" ]; then
+                _key_status="✘ not set"
+                return 1
+            fi
+            if _nexus_validate_ant_key "$api_key"; then
+                _key_status="✔ valid"
+                return 0
+            fi
+            _key_status="✘ invalid or unreachable"
+            return 1
+            ;;
+    esac
+}
+
+
+# Complete work deliberately removed from the TUI readiness critical path.
+# This runs only for provider-bound requests. A failed deferred pre-flight or
+# context refresh prevents that request from being sent; the session itself
+# remains available for local commands and a retry.
+_ai_prepare_deferred_request_runtime() {
+    local _started
+    if [ "${_provider_preflight_deferred:-false}" = true ]; then
+        _started="$(_ai_now_ms)"
+        _ai_frontend_event model_status 'Validating provider…' validating_provider
+        if ! _ai_provider_preflight false; then
+            _ai_record_timing provider.preflight "$_started" >/dev/null
+            _ai_frontend_event error "Provider validation failed: ${_key_status:-unavailable}." provider_failed
+            return 1
+        fi
+        _ai_record_timing provider.preflight "$_started" >/dev/null
+        _provider_preflight_deferred=false
+    fi
+
+    if [ "${_context_deferred:-false}" = true ]; then
+        _started="$(_ai_now_ms)"
+        _ai_frontend_event model_status 'Preparing server context…' preparing_context
+        if ! _ai_refresh_context; then
+            _ai_record_timing context.first_request "$_started" >/dev/null
+            _ai_frontend_event error "Server context preparation failed. Retry or use 'refresh'." context_error
+            return 1
+        fi
+        _ai_record_timing context.first_request "$_started" >/dev/null
+        _context_captured_at=$(date +%s)
+        _context_deferred=false
+    fi
+    return 0
+}
+
 # Refresh context and report collection separately from scrub validation.
 # Heuristic warnings do not replace the final provider request redaction gate.
 _ai_refresh_context() {
@@ -2318,44 +2400,46 @@ menu_ai() {
     ai_set_cost_rates "$model"
 
     # ── Pre-flight: validate key then render info to right pane ──────────────────
-    local _el _prov_label _key_status _or_balance=""
+    local _el _prov_label _key_status _or_balance="" _provider_preflight_deferred=false
     _el="${ai_mode^}"
 
-    # Show a "checking..." placeholder while the key validation runs
-    declare -f igor_right_render &>/dev/null && \
-        igor_right_render "AI Assistant" "Status" "validating ${provider} key..."
+    case "$provider" in
+        openrouter) _prov_label="OpenRouter" ;;
+        ollama)     _prov_label="Ollama (local)" ;;
+        *)          _prov_label="Anthropic" ;;
+    esac
 
-    if [ "$provider" = "openrouter" ]; then
-        _prov_label="OpenRouter"
-        if [ -n "$or_api_key" ]; then
-            if _nexus_validate_or_key "$or_api_key"; then
-                _key_status="✔ valid"
-                _or_balance=$(_nexus_get_or_balance "$or_api_key")
-            else
-                _key_status="✘ invalid or unreachable"
-            fi
-        else
-            _key_status="✘ not set"
-        fi
-    elif [ "$provider" = "ollama" ]; then
-        local _ollama_host="${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434}"
-        _prov_label="Ollama (local)"
-        if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${_ollama_host}/api/tags" 2>/dev/null | grep -q "^200$"; then
-            _key_status="✔ running"
-        else
-            _key_status="✘ not reachable"
-        fi
+    # The TUI becomes interactive before network pre-flight. Local key presence
+    # is still checked immediately; connectivity/authentication is verified
+    # before the first provider-bound request.
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        case "$provider" in
+            openrouter)
+                if [ -n "$or_api_key" ]; then
+                    _key_status="… validate on first request"
+                    _provider_preflight_deferred=true
+                else
+                    _key_status="✘ not set"
+                fi
+                ;;
+            ollama)
+                _key_status="… validate on first request"
+                _provider_preflight_deferred=true
+                ;;
+            *)
+                if [ -n "$api_key" ]; then
+                    _key_status="… validate on first request"
+                    _provider_preflight_deferred=true
+                else
+                    _key_status="✘ not set"
+                fi
+                ;;
+        esac
     else
-        _prov_label="Anthropic"
-        if [ -n "$api_key" ]; then
-            if _nexus_validate_ant_key "$api_key"; then
-                _key_status="✔ valid"
-            else
-                _key_status="✘ invalid or unreachable"
-            fi
-        else
-            _key_status="✘ not set"
-        fi
+        # Show a "checking..." placeholder while the key validation runs.
+        declare -f igor_right_render &>/dev/null && \
+            igor_right_render "AI Assistant" "Status" "validating ${provider} key..."
+        _ai_provider_preflight true || true
     fi
 
     local _tools_fmt
@@ -2905,7 +2989,8 @@ except: pass
             "$_rt_dir" "Could not write the private runtime state file."
         return $?
     }
-    if [ "$_key_status" != "✔ valid" ] && [ "$_key_status" != "✔ running" ]; then
+    if [ "$_provider_preflight_deferred" != true ] &&
+       [ "$_key_status" != "✔ valid" ] && [ "$_key_status" != "✔ running" ]; then
         _ai_startup_fail provider_key 1 "Provider key is invalid, missing, or the provider is unreachable."
         return $?
     fi
@@ -3004,10 +3089,18 @@ except: pass
     echo ""
 
     # ── Gather + scrub context ────────────────────────────────────────────────
-    # [IDEA-06] Quick mode: skip server scan, use minimal system prompt
+    # [IDEA-06] Quick mode: skip server scan, use minimal system prompt.
+    # The TUI keeps full-context semantics but defers the expensive scan until
+    # the first provider-bound request, allowing the composer to become READY.
     local system_context scrubbed_context
-    local _context_captured_at _context_refresh_interval
-    if $_quick_mode; then
+    local _context_captured_at _context_refresh_interval _context_deferred=false
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && ! $_quick_mode; then
+        _context_deferred=true
+        system_context="(deferred until first provider request)"
+        scrubbed_context="(deferred until first provider request)"
+        _context_captured_at=0
+        _context_refresh_interval=300
+    elif $_quick_mode; then
         echo -e "  ${CYAN}Fast mode — skipping server scan.${NC}"
         echo ""
         system_context="(quick mode — no server scan)"
@@ -3107,6 +3200,7 @@ except: pass
         _investigation_state_enabled=true
     fi
     _ai_pending_choice_clear
+    local _tui_ready_timing_recorded=false
     # P3-1: Session-sticky runbook match (set once on first relevant user message)
     local _active_runbook=""
     # P3-2: Session metadata for post-mortem
@@ -3175,6 +3269,12 @@ except: pass
         echo -e -n "  ${MAG}Igor${NC} [$(echo -e "${_ptag}")] ${MAG}›${NC} "
         # This is the authoritative frontend boundary: after input_ready the
         # backend's next blocking operation is the stdin read below.
+        if [ "${IGOR_TUI_MODE:-false}" = true ] &&
+           [ "$_tui_ready_timing_recorded" = false ] &&
+           [[ "${IGOR_TUI_STARTED_MS:-}" =~ ^[0-9]+$ ]]; then
+            _ai_record_timing tui.startup_to_input_ready "$IGOR_TUI_STARTED_MS" >/dev/null
+            _tui_ready_timing_recorded=true
+        fi
         _ai_frontend_event model_status '' 'input_ready'
         local user_input=""
         # Disable all mouse reporting before reading input — tmux `mouse on` routes
@@ -3702,6 +3802,10 @@ Do NOT repeat these failed approaches. Try a different method."
                 # Fall through — no 'continue'; user_input goes to the API
                 ;;
             "/cmd "*)
+                if ! _ai_prepare_deferred_request_runtime; then
+                    echo ""
+                    continue
+                fi
                 local _cmd_desc="${user_input#/cmd }"
                 if [ -z "$_cmd_desc" ]; then
                     warn "Usage: /cmd <description>  (e.g. /cmd flush the redis cache)"
@@ -3758,6 +3862,11 @@ Do NOT repeat these failed approaches. Try a different method."
                 continue ;;
             "")  continue ;;
         esac
+
+        if ! _ai_prepare_deferred_request_runtime; then
+            echo ""
+            continue
+        fi
 
         # ── Intent detection ──────────────────────────────────────────────────
         local _intent_handled=false
