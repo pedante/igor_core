@@ -71,6 +71,17 @@ return the exact full state token obtained from Configuration Service. The
 existing stale apply, approved apply, readback mismatch and recovery workflows
 remain in the test suite.
 
+Final runtime/test content passed:
+
+- Configuration Service contracts: **42/42 passed**;
+- complete System configuration workflow: **13/13 passed**;
+- Boundary N/O registration timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend / warm-cache regressions: **12/12 passed**.
+
+Shell and Python syntax/compilation checks also passed. The temporary branch-only
+proof workflow is removed after evidence capture.
+
 Because Boundary O changes `module_loader_fast.sh` and
 `configuration.py`, the first host launch may legitimately rebuild the Module
 API v2 and operator-surface derived caches. Real-host closure therefore uses a
