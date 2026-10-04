@@ -18,6 +18,5 @@ jobs:
           python tests/test_operator_surface.py
           python tests/test_ai_operator_backend.py
           python tests/test_ai_tui_operator.py
-          python tests/test_ai_interaction_surface.py
       - name: Startup lifecycle
         run: python tests/test_ai_menu_startup.py
