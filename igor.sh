@@ -378,9 +378,30 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
    [ -f "${IGOR_DIR}/core/lib/module_loader.sh" ]; then
     source "${IGOR_DIR}/core/lib/config_loader.sh"
     source "${IGOR_DIR}/core/lib/module_loader.sh"
+
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_STARTED_MS=$(date +%s%3N)
+    fi
     igor_load_config      || warn "Config loading reported an error — check core/lib/config_loader.sh"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_CONFIG_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
+
     igor_load_all_modules || warn "Module loading reported an error — check modules/"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_MODULES_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
+
     _cfg_validate_all_loaded_modules
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        unset _IGOR_TUI_PHASE_STARTED_MS _IGOR_TUI_PHASE_ENDED_MS
+    fi
     # M2-1: diagnose runner — hook-based aggregator available everywhere
     if [ -f "${IGOR_DIR}/core/lib/diagnose_runner.sh" ]; then
         source "${IGOR_DIR}/core/lib/diagnose_runner.sh"
@@ -421,8 +442,12 @@ fi
 
 # ── Feature availability setup ────────────────────────────────────────────────
 # Must run AFTER config loading so IGOR_USE_TMUX / IGOR_FZF_ALREADY_ASKED are set.
-# Sets _IGOR_FZF_AVAILABLE and _IGOR_RICH_AVAILABLE; may prompt to install fzf/tmux.
-igor_setup_features
+# The standalone curses TUI owns its own interaction surface and never uses the
+# tmux/fzf/rich startup probe; skipping that probe also prevents an unrelated
+# package-install prompt from blocking the backend PTY.
+if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+    igor_setup_features
+fi
 
 # ── Startup alert banner ──────────────────────────────────────────────────────
 # Show pending alerts while startup output is still on screen — BEFORE
