@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-04
 
-## Configuration Startup Snapshot — Boundary P candidate
+## Configuration Startup Snapshot — Boundary P — CLOSED
 
 Boundary O's warm real-host run reduced module bootstrap from **885ms to 686ms**
 and first input-ready from **2.808s to 2.653s**. The derived registration
@@ -66,17 +66,45 @@ failing marker after module startup; AI initialization still succeeds and
 consumes the snapshot once, proving that the second Configuration Service read
 was actually removed.
 
-Real-host closure should use the second unchanged P launch because P changes
-files fingerprinted by derived module/operator caches. Compare
-`configuration.startup_snapshot`, `configuration.core_resolve`,
-`tui.bootstrap_modules`, `tui.ai_pre_configuration` and
-`tui.startup_to_input_ready` against the Boundary O warm baseline of
-686ms / 316ms pre-configuration / 2.653s READY.
+The second unchanged real-host P launch closed the boundary:
 
-If P behaves as designed and does not expose a new disproportionate phase, this
-performance investigation should stop. The retrospective, remaining-work list
-and systematic future audit prompt are recorded in
-[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) and
+```text
+[TIMING] tui.bootstrap_modules=679ms
+[TIMING] configuration.core_resolve=0ms
+[TIMING] configuration.decode=0ms
+[TIMING] tui.ai_pre_configuration=6ms
+[TIMING] tui.ai_pre_session=46ms
+[TIMING] operator_surface.generation=49ms
+[TIMING] operator_surface.cache_read=139ms
+[TIMING] operator_surface=288ms
+[TIMING] tui.startup_to_input_ready=2302ms
+```
+
+Compared with Boundary O, AI pre-configuration fell from 316ms to 6ms
+(**98.1% lower**), AI pre-session fell from 357ms to 46ms (**87.1% lower**),
+and READY fell from 2.653s to 2.302s (**13.2% lower**). Module bootstrap
+remained effectively flat (686ms -> 679ms), which is expected because P
+coalesces a later Core read into the authoritative snapshot already taken during
+module bootstrap rather than making that first store access disappear.
+
+The physical-host trace did not emit the new
+`configuration.startup_snapshot` diagnostic even though
+`configuration.core_resolve=0ms`, `configuration.decode=0ms` and the 310ms
+collapse of the enclosing AI configuration phase prove the snapshot was
+consumed. Treat that missing timer as observability debt, not a second
+performance problem.
+
+There was no `operator_surface.rebuild`; Boundary M's persistent warm path
+remained healthy.
+
+Boundary P therefore closes this performance investigation. From the original
+28.445s standalone-TUI READY trace to 2.302s, startup is about **12.4x faster**
+with roughly **91.9% less wall-clock time**. Remaining opportunities are
+documented but are not current blockers. Reopen performance work from measured
+user-visible evidence rather than continuing micro-optimization.
+
+The retrospective, remaining-work list and systematic future audit prompt are
+recorded in [PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) and
 [PERFORMANCE_AUDIT_PROMPT.md](PERFORMANCE_AUDIT_PROMPT.md).
 
 ## System Configuration Consumer Fast Path — Boundary O
