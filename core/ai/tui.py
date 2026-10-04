@@ -146,7 +146,9 @@ class EventState:
         if kind == "model_status":
             if event_status == "input_ready":
                 self.backend_ready = True
-            elif event_status in {"request_started", "response_received"}:
+            elif event_status in {
+                "request_started", "response_received", "validating_provider", "preparing_context"
+            }:
                 self.backend_ready = False
         if kind == "session_finished":
             self.backend_ready = False
@@ -1141,6 +1143,8 @@ def _session_status_label(state: EventState) -> str:
     if state.backend_ready:
         return "READY"
     return {
+        "validating_provider": "CONNECTING",
+        "preparing_context": "PREPARING",
         "request_started": "THINKING",
         "response_received": "PROCESSING",
         "input_ready": "READY",
@@ -1809,8 +1813,13 @@ def run_tui(backend: Iterable[str] = DEFAULT_BACKEND, stream: Path | None = None
     own_stream = stream is None
     path = (stream or _private_stream_path()).expanduser().resolve()
     environment = os.environ.copy()
-    environment.update(IGOR_TUI_MODE="true", IGOR_AI_EVENT_RENDER="false",
-                       IGOR_AI_EVENT_STREAM=str(path), IGOR_RUNTIME_DIR=str(path.parent))
+    environment.update(
+        IGOR_TUI_MODE="true",
+        IGOR_AI_EVENT_RENDER="false",
+        IGOR_AI_EVENT_STREAM=str(path),
+        IGOR_RUNTIME_DIR=str(path.parent),
+        IGOR_TUI_STARTED_MS=str(time.time_ns() // 1_000_000),
+    )
     backend_command = tuple(backend)
     pid, master = pty.fork()
     if pid == 0:
