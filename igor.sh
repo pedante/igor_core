@@ -155,6 +155,13 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             igor_history_cli "${2:-recent}" "${3:-}"
             exit $?
             ;;
+        --baselines)
+            # Read-only derived learning projection over canonical History.
+            # No module/config startup, observer refresh or execution authority.
+            source "${IGOR_DIR}/core/lib/baselines.sh"
+            igor_baseline_cli "${2:-list}" "${3:-}" "${4:-}"
+            exit $?
+            ;;
         --events)
             source "${IGOR_DIR}/core/lib/config_loader.sh"
             source "${IGOR_DIR}/core/lib/module_loader.sh"
