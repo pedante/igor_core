@@ -11,9 +11,13 @@ Full mirrors the canonical run_all.sh groups (legacy Bash, rendering, Core,
 module and integration BATS) and additionally discovers every test_*.py under
 tests. Each test file is a bounded subprocess. BATS uses its native per-test
 watchdog and continuation; a Python file timeout moves on to the next file.
-Limits default to 600s/file, 1200s for System configuration/administration vertical slices,
-and 180s/BATS test. These are ceilings, not expected durations. No full run is
-ever triggered by focused/affected. CI and local validation share this entry point.
+Limits default to 600s/file and 1200s for System configuration/administration
+vertical slices. BATS' native per-test watchdog is disabled by default because
+released BATS 1.13.0 can hold a fast-failing runner open until the watchdog
+deadline; the harness' process-group timeout remains authoritative. A native
+BATS timeout can still be opted into explicitly. These are ceilings, not
+expected durations. No full run is ever triggered by focused/affected. CI and
+local validation share this entry point.
 
 Raw output and summary.json live in a unique temporary directory by default;
 --output-dir must name a new directory. Summary counts refer to test identities
@@ -226,7 +230,14 @@ def run_group(group, root, output_dir, index, args):
         "pytest": [args.python, "-m", "pytest", "-p", "validation_pytest", "-q", *files],
         "module-contract": [args.python, "core/lib/module_contract.py", "validate", *files],
     }
-    env = {**os.environ, "IGOR_DIR": str(root), "BATS_TEST_TIMEOUT": str(args.bats_timeout)}
+    env = {**os.environ, "IGOR_DIR": str(root)}
+    # BATS 1.13.0 issue #1206: a native watchdog can keep a fast-failing suite
+    # alive until the timeout expires. The outer process-group timeout already
+    # fails closed, so do not enable the defective watchdog unless explicitly
+    # requested for a targeted reproduction.
+    env.pop("BATS_TEST_TIMEOUT", None)
+    if args.bats_timeout:
+        env["BATS_TEST_TIMEOUT"] = str(args.bats_timeout)
     report_path = output_dir / f"{index:03d}-pytest.jsonl"
     if kind == "pytest":
         env["IGOR_VALIDATION_REPORT"] = str(report_path)
@@ -265,6 +276,13 @@ def positive_seconds(value):
     return number
 
 
+def nonnegative_int(value):
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("timeout must be zero or positive")
+    return number
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("focused", "affected", "full"))
@@ -277,14 +295,13 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true", help="print JSON plan; execute nothing")
     parser.add_argument("--group-timeout", type=positive_seconds, default=600)
     parser.add_argument("--slow-timeout", type=positive_seconds, default=1200)
-    parser.add_argument("--bats-timeout", type=int, default=180)
+    parser.add_argument("--bats-timeout", type=nonnegative_int, default=0,
+                        help="opt-in BATS native per-test watchdog; 0 disables it (default)")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--ruff", default=shutil.which("ruff") or "ruff")
     parser.add_argument("--shellcheck", default=shutil.which("shellcheck") or "shellcheck")
     parser.add_argument("--bats", default=shutil.which("bats") or "bats")
     args = parser.parse_args(argv)
-    if args.bats_timeout <= 0:
-        parser.error("--bats-timeout must be positive")
     started = time.monotonic()
     output_dir = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix="igor-validation-"))
     if args.output_dir:
