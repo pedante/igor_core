@@ -61,6 +61,7 @@ retain the broad fallback.
 
 | Changed domain | Broader regression coverage |
 |---|---|
+| Root entrypoint/router | Root CLI inspection/startup plus non-TTY TUI fallback; standalone `igor.sh` changes still select all |
 | Capability/package/safety/approval/privilege | Contracts, resolution/dispatch, admission, safety, privilege, History and Docker/System composition |
 | Module API/loader/modules | Module contracts, loading, activation, composition and inspection |
 | History | Python History/deployment History and canonical event/History BATS |
