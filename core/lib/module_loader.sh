@@ -61,6 +61,8 @@ declare -gA _IGOR_HANDLER_FUNCTION 2>/dev/null || true
 declare -gA _IGOR_HANDLER_TIMEOUT 2>/dev/null || true
 declare -gA _IGOR_MODULE_ENTRYPOINT 2>/dev/null || true
 declare -gA _IGOR_OWNER_HAS_DOMAIN_EVENTS 2>/dev/null || true
+declare -gA _IGOR_MODULE_VERSION 2>/dev/null || true
+declare -gA _IGOR_CAPABILITY_DEPENDENCIES 2>/dev/null || true
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
 declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
@@ -555,6 +557,42 @@ igor_contribution_state() {
     elif [ -n "$(_ml_contribution_dynamic_failure "$_key")" ]; then
         printf 'unavailable\n'
     else printf 'active\n'; fi
+}
+
+_ml_index_capability_runtime_fields() {
+    local _key="$1" _record="$2" _parsed
+    local -a _fields=()
+    [[ "$_record" = \{* ]] || return 0
+    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+handler=record.get("handler","")
+timeout=record.get("timeout_seconds",30)
+deps=[]
+impl=record.get("implementation")
+if isinstance(impl,dict) and impl.get("kind")=="composition":
+    for variant in impl.get("variants",[]):
+        for step in variant.get("steps",[]):
+            ident=step.get("capability_id")
+            if isinstance(ident,str) and ident:
+                deps.append(ident)
+    final=impl.get("final_check")
+    if isinstance(final,dict):
+        ident=final.get("capability_id")
+        if isinstance(ident,str) and ident:
+            deps.append(ident)
+print(handler)
+print(timeout)
+print(" ".join(dict.fromkeys(deps)))
+print("ok")
+')" || return 1
+    mapfile -t _fields <<< "$_parsed"
+    [ "${#_fields[@]}" -eq 4 ] && [ "${_fields[3]}" = ok ] || return 1
+    if [ -n "${_fields[0]}" ]; then
+        _IGOR_HANDLER_FUNCTION["$_key"]="${_fields[0]}"
+        _IGOR_HANDLER_TIMEOUT["$_key"]="${_fields[1]}"
+    fi
+    _IGOR_CAPABILITY_DEPENDENCIES["$_key"]="${_fields[2]}"
 }
 
 _ml_index_requirement_fields() {
@@ -1187,7 +1225,7 @@ igor_load_module() {
 
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source _requires
-    local _entrypoint _handler _timeout _kind
+    local _entrypoint _kind
     if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
@@ -1204,6 +1242,7 @@ _ml_load_v2() {
     _requires="$(_ml_v2_module_requirements "$_name")" || return 1
     _entrypoint="$(_ml_v2_query "$_name" manifest.entrypoint 2>/dev/null)" || _entrypoint=""
     _IGOR_MODULE_ENTRYPOINT["$_name"]="$_entrypoint"
+    _IGOR_MODULE_VERSION["$_name"]="$(_ml_v2_query "$_name" manifest.version 2>/dev/null || true)"
     _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=0
     _reason="$(_ml_v2_requirement_failure "$_requires")" || {
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
@@ -1271,13 +1310,7 @@ _ml_load_v2() {
         _ml_index_contribution "$_key" "$_name" "$_source" "$_record" || return 1
         _ml_index_requirement_fields "$_index_key" "$_record" || return 1
         _kind="${_key%%:*}"
-        _handler="$(_ml_json_field "$_record" handler 2>/dev/null || true)"
-        if [ -n "$_handler" ]; then
-            _timeout="$(_ml_json_field "$_record" timeout_seconds 2>/dev/null || true)"
-            [ -n "$_timeout" ] || _timeout=30
-            _IGOR_HANDLER_FUNCTION["$_index_key"]="$_handler"
-            _IGOR_HANDLER_TIMEOUT["$_index_key"]="$_timeout"
-        fi
+        _ml_index_capability_runtime_fields "$_index_key" "$_record" || return 1
         [ "$_kind" = domain_event ] && _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=1
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
@@ -1429,41 +1462,24 @@ print(json.dumps(rows, sort_keys=True, separators=(",", ":")))
 # read-only inspection. Duplicate providers retain their @owner index keys;
 # selection is deliberately left to the capability resolver.
 _ml_capability_resolution_ids() {
-    local _id="${1:-}" _key
+    local _id="${1:-}" _key _item
+    local -A _seen=()
     [ -n "$_id" ] || return 2
-    {
-        printf '%s\0' "$_id"
-        while IFS= read -r _key; do
-            case "$_key" in
-                "capability:$_id"|"capability:$_id@"*)
-                    printf '%s\0' "${_IGOR_CONTRIBUTIONS[$_key]:-}"
-                    ;;
-            esac
-        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
-    } | "$(_ml_python)" -c '
-import json,sys
-raw=sys.stdin.buffer.read().split(b"\0")
-if raw[-1:]==[b""]: raw.pop()
-if not raw: raise SystemExit(1)
-ids={raw[0].decode()}
-for item in raw[1:]:
-    if not item: continue
-    record=json.loads(item)
-    req=record.get("requires",{})
-    if isinstance(req,dict):
-        ids.update(x for x in req.get("capabilities",[]) if isinstance(x,str) and x)
-    impl=record.get("implementation")
-    if isinstance(impl,dict) and impl.get("kind")=="composition":
-        for variant in impl.get("variants",[]):
-            for step in variant.get("steps",[]):
-                ident=step.get("capability_id")
-                if isinstance(ident,str) and ident: ids.add(ident)
-        final=impl.get("final_check")
-        if isinstance(final,dict):
-            ident=final.get("capability_id")
-            if isinstance(ident,str) and ident: ids.add(ident)
-print("\n".join(sorted(ids)))
-'
+    _seen["$_id"]=1
+    printf '%s\n' "$_id"
+    while IFS= read -r _key; do
+        case "$_key" in
+            "capability:$_id"|"capability:$_id@"*)
+                for _item in ${_IGOR_REQ_CAPABILITIES[$_key]:-} ${_IGOR_CAPABILITY_DEPENDENCIES[$_key]:-}; do
+                    [ -n "$_item" ] || continue
+                    if [ -z "${_seen[$_item]:-}" ]; then
+                        _seen["$_item"]=1
+                        printf '%s\n' "$_item"
+                    fi
+                done
+                ;;
+        esac
+    done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
 }
 
 _ml_capability_filter_contains() {
