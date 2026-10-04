@@ -2,7 +2,67 @@
 
 Last updated: 2026-10-04
 
-## Result Publication Performance — Boundary E candidate
+## Operator Surface Startup Performance — Boundary F candidate
+
+The operator namespace previously rebuilt module, contribution, capability and
+configuration projections synchronously before the AI backend entered its ready
+loop. That work included whole-registry dynamic requirement evaluation and a
+configuration declaration path that revalidated installed Module API v2
+packages, so namespace startup cost grew with module count and host checks.
+
+Boundary F separates navigation metadata from execution authority:
+
+- the loader exposes one structural seed from already validated v2 registration
+  data, base contribution lifecycle state, module activation state, pure
+  Core-owned capability descriptors and Core configuration schema;
+- disabled validated v2 packages remain present as inactive structural
+  metadata;
+- dynamic contribution requirements such as current binaries/providers are not
+  evaluated for namespace construction;
+- `operator_surface.py` persists the compiled projection under
+  `${IGOR_DATA_DIR}/cache/operator-surface-v1.json`;
+- the cache source identity covers the current structural seed plus the surface
+  projection implementation, so package/module/schema/enablement/base-contract
+  changes rebuild it automatically;
+- cache directory, lock and document are owner-private; writes are atomic and
+  lock-serialized;
+- missing, corrupt, stale or unsafe cache state falls back to an in-memory
+  rebuild because the cache is derived presentation state, never authority;
+- the real AI startup path uses the compiled projection whenever the loaded
+  module registry is available, while isolated callers retain the legacy
+  compatibility builder;
+- `[TIMING] operator_surface=<ms>` records real startup evidence.
+
+The surface declares `availability_model=registration`. Selecting a leaf still
+enters the canonical capability dispatcher and freshly resolves dynamic
+requirements, provider, approval, privilege, preconditions, verification and
+History before effect.
+
+Focused proof on the exact runtime/test content passed:
+
+- shell/Python syntax checks;
+- operator surface/backend/TUI contracts: **32/32 passed** in 1.54s;
+- compiled cold and warm snapshots are bounded to **<=4 Python processes**;
+- the compiled path proves the legacy dynamic contribution/capability/
+  configuration collectors are not invoked;
+- persistent cache reuse, structural-digest invalidation and corrupt-cache
+  recovery are covered;
+- selected capability authority smoke: **3/3 passed**, covering the real system
+  service inventory path, selected-only preparation and exactly one fresh
+  execution-fence precondition pass.
+
+A temporary branch-only proof job is used for this bounded milestone because
+the ordinary hosted-runner affected job still fails before repository tests at
+the known global BATS install `EACCES`. Whole-repository Ruff remains red on
+its existing backlog; new touched-line Ruff findings were cleaned where they
+belonged to Boundary F. No full regression was run.
+
+No real-host startup-speed claim is made until the same machine measures
+`operator_surface` once with a cold cache and again warm. The architectural
+target is that namespace opening scales with one structural registration
+fingerprint/cache read rather than dynamic whole-registry discovery.
+
+## Result Publication Performance — Boundary E validated
 
 Boundary D's real-host proof reduced the same `system.service.list` action to
 **3.45s** and the fresh execution-fence interval to **1.152s**. After terminal
@@ -55,9 +115,13 @@ No full regression was run for this bounded performance milestone.
 
 Boundary E does **not** change approval, privilege, capability execution,
 Operational History authority/durability, provider isolation, verification, or
-Automation dispatch authority. Real-host timing should be repeated with the
-same timestamped `system.service.list` run before claiming the wall-clock
-improvement.
+Automation dispatch authority.
+
+Real-host `system.service.list` evidence closed Boundary E at **3.36s** reported
+action duration. The targeted terminal-to-visible interval fell from about
+**1.143s to 0.471s** (about 59% faster), while authority-to-running,
+running-to-provider-complete and provider-complete-to-terminal remained
+essentially unchanged.
 
 ## Execution Fence Performance — Boundary D validated
 
