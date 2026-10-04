@@ -2,7 +2,84 @@
 
 Last updated: 2026-10-04
 
-## System Configuration Consumer Fast Path — Boundary O candidate
+## Configuration Startup Snapshot — Boundary P candidate
+
+Boundary O's warm real-host run reduced module bootstrap from **885ms to 686ms**
+and first input-ready from **2.808s to 2.653s**. The derived registration
+interval fell from 626ms to 419ms. Operator-surface reuse remained warm
+(`operator_surface=284ms`, no rebuild).
+
+The O trace no longer emitted every N subphase/per-module observation, so its
+`module.registration.unattributed=389ms` is treated as a diagnostic reporting
+gap, not a second measured bottleneck: the enclosing module/startup improvement
+tracks the intended configuration-consumer change closely. The diagnostic issue
+is retained as observability debt in
+[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md).
+
+Boundary P is the final planned optimization in this investigation. Boundaries
+L and O left two narrow authoritative Configuration Service reads in the same
+standalone-TUI process:
+
+- Core `ai.verbose`;
+- System `system.memory.warning_threshold_mib`.
+
+P coalesces those initial consumers when System is active:
+
+- the canonical loader registry supplies System's already-validated
+  configuration contribution;
+- one Configuration Service process opens the same private SQLite authority;
+- one metadata/revision read and two bounded desired-row reads resolve both
+  startup values;
+- legacy `ai.verbose` compatibility is retained when no desired Core row
+  exists;
+- the result contains values plus one revision and **no global state token**;
+- System consumes its threshold immediately;
+- AI marks the Core value as a process-scoped bootstrap snapshot and consumes it
+  exactly once at TUI startup instead of launching a second resolver;
+- classic/late AI entry does not reuse the snapshot because configuration may
+  have changed after process bootstrap;
+- all mutation, CAS/state-token, explicit System readback and verification paths
+  remain unchanged.
+
+This is not a persistent configuration cache. The snapshot exists only in the
+current TUI process and is not execution/write authority.
+
+Boundary P adds:
+
+```text
+[TIMING] configuration.startup_snapshot=<ms>
+[TIMING] configuration.core_resolve=0ms   # expected when the snapshot is reused
+[TIMING] configuration.decode=0ms         # expected when the snapshot is reused
+```
+
+Focused proof on the final runtime/test content passed:
+
+- Configuration Service contracts: **44/44 passed**;
+- complete System configuration workflow: **14/14 passed**;
+- module-registration timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend / warm-cache regressions: **12/12 passed**;
+- shell syntax and Python compilation passed.
+
+The TUI snapshot regression replaces the old Core verbose resolver with a
+failing marker after module startup; AI initialization still succeeds and
+consumes the snapshot once, proving that the second Configuration Service read
+was actually removed.
+
+Real-host closure should use the second unchanged P launch because P changes
+files fingerprinted by derived module/operator caches. Compare
+`configuration.startup_snapshot`, `configuration.core_resolve`,
+`tui.bootstrap_modules`, `tui.ai_pre_configuration` and
+`tui.startup_to_input_ready` against the Boundary O warm baseline of
+686ms / 316ms pre-configuration / 2.653s READY.
+
+If P behaves as designed and does not expose a new disproportionate phase, this
+performance investigation should stop. The retrospective, remaining-work list
+and systematic future audit prompt are recorded in
+[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) and
+[PERFORMANCE_AUDIT_PROMPT.md](PERFORMANCE_AUDIT_PROMPT.md).
+
+## System Configuration Consumer Fast Path — Boundary O
 
 Boundary N closed the remaining module-registration attribution gap on the
 measured Igor host:
@@ -82,13 +159,14 @@ Final runtime/test content passed:
 Shell and Python syntax/compilation checks also passed. The temporary branch-only
 proof workflow is removed after evidence capture.
 
-Because Boundary O changes `module_loader_fast.sh` and
-`configuration.py`, the first host launch may legitimately rebuild the Module
-API v2 and operator-surface derived caches. Real-host closure therefore uses a
-second unchanged launch and compares
-`module.registration.system.v2.configuration`,
-`tui.bootstrap_modules` and `tui.startup_to_input_ready` against the
-452ms / 885ms / 2.808s Boundary N baseline.
+The same-host warm Boundary O run closed the component result at
+`tui.bootstrap_modules=686ms`, `module.registration.derived=419ms` and
+`tui.startup_to_input_ready=2653ms`, down from 885ms / 626ms / 2808ms on
+Boundary N. The operator surface remained a true warm hit at 284ms with no
+rebuild. Some detailed N registration observations were missing from the O
+trace; the enclosing aggregate improvement is therefore the closure evidence.
+Boundary P performs the final coalescing of the two remaining narrow startup
+configuration reads.
 
 ## Module Registration Critical Path — Boundary N
 
