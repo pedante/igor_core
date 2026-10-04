@@ -3169,7 +3169,7 @@ except: pass
                 printf '[TIMING] module.registration.%s=%sms\n'                     "$_module_timing_name" "$_module_timing_value" >> "$session_file"
             case "${_IGOR_MODULE_API[$_module_timing_name]:-1}" in
                 1) _module_timing_phase="v1.dependencies v1.syntax v1.source v1.hooks v1.finalize" ;;
-                2) _module_timing_phase="v2.preflight v2.compat v2.contributions v2.consumer" ;;
+                2) _module_timing_phase="v2.preflight v2.compat v2.contributions v2.configuration v2.consumer" ;;
                 *) _module_timing_phase="" ;;
             esac
             for _module_timing_phase in $_module_timing_phase; do
@@ -3181,6 +3181,40 @@ except: pass
         done
         [[ "${_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] module.registration.reconcile=%sms\n'                 "$_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS" >> "$session_file"
+
+        # If a diagnostic clock observation was unavailable, retain a visible
+        # aggregate derived from the enclosing bootstrap partition rather than
+        # silently dropping the registration line.  Label any remaining gap as
+        # unattributed; never guess which module owns it.
+        local _module_registration_effective="${_IGOR_TUI_MODULE_REGISTRATION_MS:-}"
+        if ! [[ "$_module_registration_effective" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_BOOTSTRAP_MODULES_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_DISCOVERY_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_V2_REGISTRY_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_SORT_MS:-}" =~ ^[0-9]+$ ]]; then
+            _module_registration_effective=$((
+                _IGOR_TUI_BOOTSTRAP_MODULES_MS -
+                _IGOR_TUI_MODULE_DISCOVERY_MS -
+                _IGOR_TUI_MODULE_V2_REGISTRY_MS -
+                _IGOR_TUI_MODULE_SORT_MS
+            ))
+            [ "$_module_registration_effective" -ge 0 ] || _module_registration_effective=""
+            [[ "$_module_registration_effective" =~ ^[0-9]+$ ]] &&
+                printf '[TIMING] module.registration.derived=%sms\n'                     "$_module_registration_effective" >> "$session_file"
+        fi
+        if [[ "$_module_registration_effective" =~ ^[0-9]+$ ]]; then
+            local _module_attributed=0
+            for _module_timing_name in ${_IGOR_TUI_MODULE_REGISTRATION_ORDER:-}; do
+                _module_timing_value="${_IGOR_TUI_MODULE_REGISTRATION_BY_NAME[$_module_timing_name]:-}"
+                [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                    _module_attributed=$((_module_attributed + _module_timing_value))
+            done
+            [[ "${_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS:-}" =~ ^[0-9]+$ ]] &&
+                _module_attributed=$((_module_attributed + _IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS))
+            if [ "$_module_registration_effective" -ge "$_module_attributed" ]; then
+                printf '[TIMING] module.registration.unattributed=%sms\n'                     "$((_module_registration_effective - _module_attributed))" >> "$session_file"
+            fi
+        fi
         case "${_IGOR_MODULE_V2_CACHE_STATE:-}" in
             hit|miss|bypass|fallback|none)
                 printf '[MODULE] v2_registry_cache=%s\n' "$_IGOR_MODULE_V2_CACHE_STATE" >> "$session_file"
