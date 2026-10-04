@@ -51,14 +51,14 @@ except json.JSONDecodeError:
     raise SystemExit(2)
 if not isinstance(payload, dict):
     raise SystemExit(2)
+
 path = Path(os.environ["EVENT_PATH"])
+sequence_path = Path(str(path) + ".seq")
 flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW
 fd = os.open(path, flags, 0o600)
-with os.fdopen(fd, "r+", encoding="utf-8") as handle:
-    fcntl.flock(handle, fcntl.LOCK_EX)
-    file_stat = os.fstat(handle.fileno())
-    if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_uid != os.getuid():
-        raise SystemExit(2)
+
+
+def scan_sequence(handle):
     handle.seek(0)
     sequence = 0
     for line in handle:
@@ -66,6 +66,80 @@ with os.fdopen(fd, "r+", encoding="utf-8") as handle:
             sequence = max(sequence, int(json.loads(line).get("sequence", 0)))
         except (ValueError, TypeError, json.JSONDecodeError):
             continue
+    return sequence
+
+
+def cached_sequence(stream_stat):
+    try:
+        cache_fd = os.open(sequence_path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        cache_stat = os.fstat(cache_fd)
+        if not stat.S_ISREG(cache_stat.st_mode) or cache_stat.st_uid != os.getuid():
+            return None
+        with os.fdopen(cache_fd, "r", encoding="utf-8", closefd=False) as cache:
+            value = json.load(cache)
+        if (type(value) is not dict or type(value.get("sequence")) is not int or
+                value["sequence"] < 0):
+            return None
+        identity = (value.get("inode"), value.get("size"), value.get("mtime_ns"))
+        current = (stream_stat.st_ino, stream_stat.st_size, stream_stat.st_mtime_ns)
+        return value["sequence"] if identity == current else None
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None
+    finally:
+        try:
+            os.close(cache_fd)
+        except OSError:
+            pass
+
+
+def update_cache(sequence, stream_stat):
+    # Advisory only. If the cache is missing, corrupt, stale or unsafe, the
+    # next emitter falls back to the exact stream scan used before Boundary E.
+    try:
+        cache_fd = os.open(
+            sequence_path,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
+    except OSError:
+        return
+    try:
+        cache_stat = os.fstat(cache_fd)
+        if not stat.S_ISREG(cache_stat.st_mode) or cache_stat.st_uid != os.getuid():
+            return
+        value = {
+            "sequence": sequence,
+            "inode": stream_stat.st_ino,
+            "size": stream_stat.st_size,
+            "mtime_ns": stream_stat.st_mtime_ns,
+        }
+        with os.fdopen(cache_fd, "w", encoding="utf-8", closefd=False) as cache:
+            json.dump(value, cache, separators=(",", ":"))
+            cache.write("\n")
+            cache.flush()
+            os.fchmod(cache.fileno(), 0o600)
+    except OSError:
+        return
+    finally:
+        try:
+            os.close(cache_fd)
+        except OSError:
+            pass
+
+
+with os.fdopen(fd, "r+", encoding="utf-8") as handle:
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    file_stat = os.fstat(handle.fileno())
+    if not stat.S_ISREG(file_stat.st_mode) or file_stat.st_uid != os.getuid():
+        raise SystemExit(2)
+
+    sequence = cached_sequence(file_stat)
+    if sequence is None:
+        sequence = scan_sequence(handle)
+
     timestamp = datetime.now(timezone.utc).isoformat()
     event = {
         "event_type": event_type,
@@ -81,6 +155,7 @@ with os.fdopen(fd, "r+", encoding="utf-8") as handle:
     handle.write(json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n")
     handle.flush()
     os.fchmod(handle.fileno(), 0o600)
+    update_cache(sequence + 1, os.fstat(handle.fileno()))
 PY
 }
 

@@ -63,6 +63,22 @@ PY
     [ ! -e skipped ] && [ ! -e stopped ]
 }
 
+@test "terminal output event precedes diagnostic RESULT bookkeeping" {
+    local trace="$TEST_ROOT/result-order"
+    : > "$trace"
+    eval "$(declare -f _ai_event_emit | sed '1s/_ai_event_emit/_original_event_emit/')"
+    _ai_event_emit() {
+        [ "$1" != action_output ] || printf 'output\n' >> "$trace"
+        _original_event_emit "$@"
+    }
+    _ai_audit_dispatch() {
+        [ "${1:-}" != RESULT ] || printf 'audit\n' >> "$trace"
+        return 0
+    }
+
+    ai_execute_tool '{"tool":"host","cmd":"uname"}' >/dev/null
+    [ "$(tr '\n' ' ' < "$trace" | sed 's/ $//')" = "output audit" ]
+}
 @test "local output event is ordered, faithful, timed, and transport-free" {
     ai_scrub_outbound() { printf '%s' "$1" | sed 's/SECRET/[REDACTED]/g'; }
     : > "$TEST_ROOT/bin/SECRET"

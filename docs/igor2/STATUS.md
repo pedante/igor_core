@@ -2,7 +2,64 @@
 
 Last updated: 2026-10-04
 
-## Execution Fence Performance — Boundary D candidate
+## Result Publication Performance — Boundary E candidate
+
+Boundary D's real-host proof reduced the same `system.service.list` action to
+**3.45s** and the fresh execution-fence interval to **1.152s**. After terminal
+Operational History persistence, however, the TUI still became visibly updated
+about **1.143s** later. Boundary E targets only that post-terminal presentation
+path.
+
+The runtime now:
+
+- gives the synchronous Automation domain-event subscriber a non-authoritative
+  raw-trigger prefilter, so unrelated `capability.completed` events do not
+  rebuild the global capability/proposal/event context merely to discover there
+  is nothing to queue;
+- keeps `claim-event` as the full current-state/policy authority gate during
+  the existing drain; prefilter candidates cannot execute or grant authority;
+- replaces the frontend emitter's per-event full JSONL sequence scan with an
+  owner-only advisory `.seq` cache keyed by stream inode/size/mtime;
+- treats the JSONL stream as truth whenever that cache is missing, corrupt,
+  stale or unsafe, falling back to the exact prior full scan;
+- emits the local `action_output` presentation once the canonical result is
+  already terminal, before non-authoritative tool-meta and RESULT-audit
+  bookkeeping.
+
+Domain Event publication remains synchronous. Automation delivery still only
+queues signals, and canonical Automation dispatch still revalidates active
+source, target capability, READ/no-privilege policy, event type, mode, event ID
+and minimum interval before execution.
+
+Focused proof on the exact Boundary E runtime/test content passed:
+
+- shell/Python syntax checks;
+- selected `tests/test_automation_registry.py`: **4/4 passed** (30
+  deselected), covering exact non-authoritative prefiltering, the no-global-
+  context negative path, normal queue/drain dispatch, and validated capability
+  event delivery;
+- selected `tests/core/test_ai_events.bats`: **3/3 passed**, covering symlink
+  refusal, sequence-cache corrupt/truncate recovery and envelope-order
+  protection;
+- selected `tests/core/test_ai_safety_events.bats`: **2/2 passed**, proving
+  terminal output is published before RESULT diagnostics while local output
+  remains faithful/timed/transport-free;
+- `tests/modules/test_domain_event_bus.bats`: **3/3 passed**.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected job again failed before repository tests at the known hosted
+runner global BATS install `EACCES`. Whole-repository Ruff remains red on its
+existing backlog; the only referenced touched test-file finding was the
+pre-existing unused `# noqa: E402` in `tests/test_automation_registry.py`.
+No full regression was run for this bounded performance milestone.
+
+Boundary E does **not** change approval, privilege, capability execution,
+Operational History authority/durability, provider isolation, verification, or
+Automation dispatch authority. Real-host timing should be repeated with the
+same timestamped `system.service.list` run before claiming the wall-clock
+improvement.
+
+## Execution Fence Performance — Boundary D validated
 
 The post-Boundary-C real-host `system.service.list` trace measured
 `authority -> running` at **2.070s**. Boundary D keeps the same fresh
@@ -50,9 +107,12 @@ regression was run for this bounded performance milestone.
 
 Boundary D does **not** change approval, privilege, History durability,
 provider isolation, typed output verification, Domain Event/Automation
-follow-up or frontend publication. Real-host timing should be repeated with the
-same timestamped `system.service.list` trace before claiming wall-clock
-improvement.
+follow-up or frontend publication.
+
+Real-host evidence on `system.service.list` closed Boundary D at **3.45s**
+reported action duration. The targeted `authority -> running` interval fell
+from **2.070s to 1.152s** (about 44% faster), while the lifecycle remained
+`admitted -> authority -> running -> provider_complete -> terminal`.
 
 ## Provider Runtime Performance — Boundary C candidate
 
