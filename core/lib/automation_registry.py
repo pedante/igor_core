@@ -544,6 +544,36 @@ class Registry:
                 return False
         return True
 
+    def prefilter_event(self, event: dict[str, Any], mode: str) -> list[str]:
+        """Return only raw trigger candidates; never grants automation authority.
+
+        This is a negative fast path for synchronous domain-event delivery.
+        Canonical claim_event still revalidates source, target, event type,
+        mode, minimum interval and current capability policy before dispatch.
+        """
+        if type(event) is not dict or type(event.get("event_id")) is not str:
+            raise AutomationError("event signal is invalid")
+        if mode.capitalize() not in {"Assist", "Executive"}:
+            return []
+        event_type = event.get("event_type")
+        owner = event.get("owner")
+        related = event.get("related_objects", [])
+        if type(event_type) is not str or type(related) is not list:
+            raise AutomationError("event signal is invalid")
+        result = []
+        for row in self._load()["instances"]:
+            trigger = row["trigger"]
+            if not row["enabled"] or trigger["kind"] != "event":
+                continue
+            if trigger["event_type"] != event_type:
+                continue
+            if "owner" in trigger and trigger["owner"] != owner:
+                continue
+            if "object_id" in trigger and trigger["object_id"] not in related:
+                continue
+            result.append(row["id"])
+        return result
+
     def match_event(self, event: dict[str, Any], mode: str, now: datetime) -> list[str]:
         if type(event) is not dict or type(event.get("event_id")) is not str:
             raise AutomationError("event signal is invalid")
@@ -634,13 +664,22 @@ class Registry:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset", "claim", "finish", "match-event", "claim-event"])
+    parser.add_argument("action", choices=["proposals", "list", "inspect", "create", "enable", "disable", "edit", "delete", "reset", "claim", "finish", "prefilter-event", "match-event", "claim-event"])
     parser.add_argument("argument", nargs="?")
     parser.add_argument("configuration", nargs="?")
     parser.add_argument("--mode", default="Assist")
     parser.add_argument("--now")
+    parser.add_argument("--data-dir")
     args = parser.parse_args()
     try:
+        if args.action == "prefilter-event":
+            if not args.data_dir:
+                raise AutomationError("data directory is required")
+            registry = Registry(Path(args.data_dir), [], [], [])
+            result = registry.prefilter_event(json.loads(args.argument or "{}"), args.mode)
+            print(json.dumps(result, sort_keys=True))
+            return 0
+
         context = json.load(sys.stdin)
         registry = Registry(Path(context["data_dir"]), context["capabilities"], context["proposals"],
                             context.get("event_types", []))
