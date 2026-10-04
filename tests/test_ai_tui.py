@@ -90,6 +90,20 @@ class EventProjectionTests(unittest.TestCase):
         tui.apply_event(state, event("model_status", 4, status="input_ready"))
         self.assertTrue(state.backend_ready)
 
+
+    def test_deferred_preflight_statuses_keep_backend_busy(self):
+        state = tui.EventState()
+        tui.apply_event(state, event("model_status", 1, status="input_ready"))
+        self.assertTrue(state.backend_ready)
+
+        tui.apply_event(state, event("model_status", 2, status="validating_provider"))
+        self.assertFalse(state.backend_ready)
+        self.assertEqual(tui._session_status_label(state), "CONNECTING")
+
+        tui.apply_event(state, event("model_status", 3, status="preparing_context"))
+        self.assertFalse(state.backend_ready)
+        self.assertEqual(tui._session_status_label(state), "PREPARING")
+
     def test_mouse_capture_is_disabled_by_default_for_terminal_selection(self):
         with patch.dict(os.environ, {"IGOR_TUI_MOUSE": ""}), \
                 patch.object(tui.curses, "mousemask") as mousemask, \
