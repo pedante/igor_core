@@ -525,6 +525,57 @@ class ConfigurationService:
             "resolved": {"status": "resolved", "value": value, "source": source},
         }
 
+    def resolve_startup_snapshot(self, *, compatibility_loader=None):
+        """Resolve the bounded standalone-TUI startup consumers in one store read.
+
+        The snapshot is process-scoped startup data, not a persistent cache and
+        not a global configuration proof.  It returns only values plus the
+        current revision; mutation admission and explicit verification still
+        require the normal state-token path.
+        """
+        verbose_field = self._field("ai.verbose", "installation:local")
+        memory_field = self._field(MEMORY_WARNING, MEMORY_TARGET)
+        rows = {}
+        with self._store() as db:
+            metadata = self._metadata(db)
+            if db:
+                for target, ident in (
+                    ("installation:local", "ai.verbose"),
+                    (MEMORY_TARGET, MEMORY_WARNING),
+                ):
+                    raw = db.execute(
+                        "SELECT record FROM desired WHERE target=? AND id=?",
+                        (target, ident),
+                    ).fetchone()
+                    if raw is not None:
+                        rows[(target, ident)] = self._record(decode(raw[0]))
+
+        verbose_row = rows.get(("installation:local", "ai.verbose"))
+        if verbose_row is not None:
+            verbose_value = (verbose_field.get("default") if verbose_row["unset"]
+                             else verbose_row["value"])
+            verbose_source = "default" if verbose_row["unset"] else "desired"
+        else:
+            verbose_value = verbose_field.get("default")
+            verbose_source = "default"
+            if compatibility_loader is not None:
+                compatibility = compatibility_loader()
+                verbose_value = validate_value(verbose_field, compatibility["value"])
+                verbose_source = "compatibility"
+
+        memory_row = rows.get((MEMORY_TARGET, MEMORY_WARNING))
+        memory_value = (memory_field.get("default")
+                        if memory_row is None or memory_row["unset"]
+                        else memory_row["value"])
+        memory_source = "default" if memory_row is None or memory_row["unset"] else "desired"
+
+        return {
+            "schema_version": 1,
+            "revision": int(metadata["revision"]),
+            "ai_verbose": {"value": verbose_value, "source": verbose_source},
+            "system_memory_warning_mib": {"value": memory_value, "source": memory_source},
+        }
+
     def export(self):
         with self._store() as db:
             metadata = self._metadata(db)
@@ -709,17 +760,21 @@ def cli():
             root = Path(request["igor_dir"])
             active = {"core"}
             schemas = []
-        elif action == "resolve-system-memory-warning":
-            # Boundary O consumes the loader's already-validated System
-            # configuration contribution. It neither rediscovers installed
-            # schemas nor computes a global state token.
+        elif action in {"resolve-system-memory-warning", "resolve-startup-snapshot"}:
+            # Boundary O/P consume the loader's already-validated System
+            # configuration contribution. They neither rediscover installed
+            # schemas nor compute a global state token.
             record = decode(os.environ["IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD"])
             if (type(record) is not dict or record.get("kind") != "configuration" or
                     record.get("id") != "system.memory.preferences" or
                     type(record.get("schema")) is not dict):
                 raise ConfigurationError("invalid System memory configuration declaration")
-            request = {"data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"]}
-            root = None
+            request = {
+                "data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"],
+                "igor_dir": os.environ.get("IGOR_CONFIGURATION_ROOT"),
+                "inherited_verbose": os.environ.get("IGOR_CONFIGURATION_INHERITED_VERBOSE") or None,
+            }
+            root = Path(request["igor_dir"]) if request["igor_dir"] else None
             active = {"core", "system"}
             schemas = [("system", record["schema"])]
         else:
@@ -742,6 +797,17 @@ def cli():
             # Fixed internal framing keeps startup to one Python process. Both
             # fields are schema-validated integers before they reach the shell.
             print(f'{result["resolved"]["value"]}:{result["revision"]}')
+            return 0
+        elif action == "resolve-startup-snapshot":
+            if root is None:
+                raise ConfigurationError("startup snapshot requires Igor root")
+            result = service.resolve_startup_snapshot(
+                compatibility_loader=lambda: legacy_verbose(
+                    root, request.get("inherited_verbose")
+                )
+            )
+            verbose = "true" if result["ai_verbose"]["value"] else "false"
+            print(f'{verbose}:{result["system_memory_warning_mib"]["value"]}:{result["revision"]}')
             return 0
         elif action == "capabilities":
             result = capability_records("system" in active)
