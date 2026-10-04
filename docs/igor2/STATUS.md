@@ -45,10 +45,16 @@ and permission checks, authoritative `ai.verbose` configuration resolution,
 model/provider normalization, cost-rate setup and local deferred-provider state
 remain unchanged. Boundary K does not cache or bypass configuration authority.
 
-Focused branch proof is required before this candidate is opened. Real-host
-closure then compares `tui.ai_pre_session` and the nested phases against the
-743ms Boundary J baseline; only the dominant measured authority-safe subphase
-should become the next optimization target.
+Focused branch proof passed on the exact runtime/test content: Bash syntax,
+Python compilation for the affected startup/TUI files, and the complete AI
+startup lifecycle suite (**14/14 passed in 8.330s**). The regression requires
+the standalone TUI to skip the classic header while classic sessions still call
+it, and requires every Boundary K pre-session timing to be published. The
+temporary branch-only proof workflow is removed after evidence capture.
+
+Real-host closure compares `tui.ai_pre_session` and the nested phases against
+the 743ms Boundary J baseline; only the dominant measured authority-safe
+subphase should become the next optimization target.
 
 ## TUI Local Setup Fast Path — Boundary J
 
