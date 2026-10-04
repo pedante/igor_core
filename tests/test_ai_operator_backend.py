@@ -122,11 +122,12 @@ igor_capability_list() { touch "$MARKER"; return 9; }
 igor_configuration_declarations() { touch "$MARKER"; return 9; }
 
 real_python="$(command -v python3)"
+export REAL_PYTHON="$real_python"
 mkdir -p "$IGOR_RUNTIME_DIR/bin"
-cat > "$IGOR_RUNTIME_DIR/bin/python3" <<EOF
+cat > "$IGOR_RUNTIME_DIR/bin/python3" <<'EOF'
 #!/usr/bin/env bash
-printf '.\\n' >> "$PY_COUNT"
-exec "$real_python" "\\$@"
+printf '.\n' >> "$PY_COUNT"
+exec "$REAL_PYTHON" "$@"
 EOF
 chmod 700 "$IGOR_RUNTIME_DIR/bin/python3"
 export PATH="$IGOR_RUNTIME_DIR/bin:$PATH"
