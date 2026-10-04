@@ -1,0 +1,28 @@
+name: Boundary H proof
+
+on:
+  push:
+    branches:
+      - perf/module-loader-fast-path-boundary-h
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bats
+        run: sudo apt-get update -qq && sudo apt-get install -y bats
+      - name: Syntax
+        run: |
+          bash -n core/lib/module_loader.sh
+          bash -n core/lib/module_loader_fast.sh
+          bash -n core/ai/core.sh
+          python3 -m py_compile core/lib/module_registry.py core/lib/module_contract.py
+      - name: Boundary H module tests
+        run: bats tests/modules/test_module_v2.bats
+      - name: Loader regressions
+        run: |
+          bats tests/modules/test_loader_regressions.bats
+          bats tests/modules/test_module_contracts.bats
+      - name: Boundary G startup regressions
+        run: python3 -m pytest tests/test_ai_menu_startup.py -q
