@@ -1,0 +1,18 @@
+name: tmp-boundary-j-proof
+on:
+  push:
+    branches:
+      - perf/tui-local-setup-fast-path-boundary-j
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: |
+          bash -n igor.sh
+          bash -n core/ai/core.sh
+          python -m py_compile tests/test_ai_menu_startup.py core/ai/tui.py
+      - name: Boundary J startup contracts
+        run: |
+          python tests/test_ai_menu_startup.py
