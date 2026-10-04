@@ -1,5 +1,6 @@
 """Menu startup lifecycle regressions without network or host operations."""
 
+import json
 import os
 import subprocess
 import tempfile
@@ -106,7 +107,6 @@ printf '\nMENU_RETURN=%s\n' "$?"
                 for event_file in runtime.glob("frontend-*.jsonl"):
                     for line in event_file.read_text().splitlines():
                         try:
-                            import json
                             event_rows.append(json.loads(line))
                         except (OSError, ValueError):
                             pass
