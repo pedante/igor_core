@@ -2,7 +2,67 @@
 
 Last updated: 2026-10-04
 
-## AI Pre-Session Fast Path — Boundary K candidate
+## Configuration Read Fast Path — Boundary L candidate
+
+Boundary K closed the pre-session attribution gap on the measured Igor host:
+
+```text
+[TIMING] tui.ai_pre_header=6ms
+[TIMING] tui.ai_pre_keys=9ms
+[TIMING] tui.ai_pre_settings=7ms
+[TIMING] tui.ai_pre_configuration=460ms
+[TIMING] tui.ai_pre_model_cost=7ms
+[TIMING] tui.ai_pre_provider=4ms
+[TIMING] tui.ai_pre_selection=3ms
+[TIMING] tui.ai_pre_session=496ms
+[TIMING] tui.startup_to_input_ready=2783ms
+```
+
+The nested phases sum exactly to the 496ms aggregate; Configuration Service
+resolution alone consumed **460ms (92.7%)**. Boundary L therefore optimizes the
+startup consumer rather than caching configuration authority.
+
+The normal Configuration Service inspection contract computes a global state
+token. That requires validating every desired record against its owning schema,
+so it must retain the complete installed module configuration namespace.
+Boundary L does **not** weaken that contract. Instead it adds a narrow Core-owned
+consumer for `ai.verbose` that:
+
+- reads the same owner-private SQLite configuration store on every session;
+- reads only the `installation:local / ai.verbose` desired record plus the
+  current global revision;
+- preserves the literal legacy compatibility fallback when no Core desired
+  record exists;
+- returns no state token and therefore cannot be used for configuration writes,
+  compare-and-swap admission or claims about unrelated module desired records;
+- instantiates Configuration Service with Core schema only for this explicit
+  consumer, avoiding installed Module API v2 schema discovery/validation;
+- bypasses the generic Python JSON request-builder process for this fixed
+  startup query and collapses two JSON extraction subprocesses into one typed
+  decoder.
+
+Full `inspect`, `list`, `export`, validation, writes, restore and
+module-owned setting flows still load the installed configuration schemas and
+retain their existing global revision/state-token semantics.
+
+Boundary L adds nested evidence inside the existing configuration phase:
+
+```text
+[TIMING] configuration.core_resolve=<ms>
+[TIMING] configuration.decode=<ms>
+[TIMING] tui.ai_pre_configuration=<ms>
+```
+
+Regression coverage includes a store containing both Core and module-owned
+desired records. A Core-only service must resolve `ai.verbose` successfully
+without claiming a state token, while a normal global inspection without the
+module schema must still fail closed.
+
+Real-host closure compares `tui.ai_pre_configuration` and
+`tui.startup_to_input_ready` against the Boundary K baselines of 460ms and
+2.783s respectively.
+
+## AI Pre-Session Fast Path — Boundary K
 
 Boundary J reduced the measured local-setup bottleneck from **1.932s** to
 **97ms** and the same-host standalone-TUI path reached `input_ready` in
@@ -52,9 +112,11 @@ the standalone TUI to skip the classic header while classic sessions still call
 it, and requires every Boundary K pre-session timing to be published. The
 temporary branch-only proof workflow is removed after evidence capture.
 
-Real-host closure compares `tui.ai_pre_session` and the nested phases against
-the 743ms Boundary J baseline; only the dominant measured authority-safe
-subphase should become the next optimization target.
+The same-host real run closed Boundary K with
+`tui.ai_pre_session=496ms` and `tui.startup_to_input_ready=2783ms`. The
+nested phases reconciled exactly to 496ms, and
+`tui.ai_pre_configuration=460ms` accounted for 92.7% of that interval.
+Boundary L targets that measured Configuration Service read path.
 
 ## TUI Local Setup Fast Path — Boundary J
 
