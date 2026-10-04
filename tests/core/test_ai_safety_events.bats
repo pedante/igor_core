@@ -77,55 +77,8 @@ PY
     }
 
     ai_execute_tool '{"tool":"host","cmd":"uname"}' >/dev/null
-    [ "$(cat "$trace")" =     ai_scrub_outbound() { printf '%s' "$1" | sed 's/SECRET/[REDACTED]/g'; }
-    : > "$TEST_ROOT/bin/SECRET"
-    chmod +x "$TEST_ROOT/bin/SECRET"
-    ai_execute_tool '{"tool":"host","cmd":"which SECRET"}' >/dev/null
-    _ai_frontend_action_result() {
-        _ai_event_emit action_result '{"tool_call_id":"fixture-call","result":{"execution_status":"tool_succeeded"}}'
-    }
-    _ai_frontend_action_result
-    run python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
-import json, sys
-events = [json.loads(line) for line in open(sys.argv[1])]
-assert [e["event_type"] for e in events] == [
-    "action_proposed", "action_started", "action_output", "action_result"
-]
-output = events[2]["output"]
-assert "SECRET" in output
-assert "[REDACTED]" not in output
-assert not output.startswith("TOOL:")
-assert "\\nOUTPUT:" not in output
-assert isinstance(events[2].get("duration_ms"), int)
-assert events[2]["duration_ms"] >= 0
-assert all(isinstance(event.get("timestamp"), str) and event["timestamp"] for event in events)
-PY
-    [ "$status" -eq 0 ]
+    [ "$(tr '\n' ' ' < "$trace" | sed 's/ $//')" = "output audit" ]
 }
-
-@test "rendering a proposal does not execute an action twice" {
-    export IGOR_AI_EVENT_RENDER=true
-    ai_mode=executive
-    ai_scrub_outbound() { printf '%s' "$1"; }
-    local rendered
-    rendered=$(printf 'y\n' | ai_execute_tool '{"tool":"host","cmd":"printf x >> executed"}' 2>&1 >/dev/null)
-    [ "$(wc -c < executed)" -eq 1 ]
-    [[ "$rendered" == *"CHANGE action:"* ]]
-    [[ "$rendered" != *"NEEDS APPROVAL"* ]]
-}
-
-@test "quiet READ continuation records events without terminal proposal" {
-    export IGOR_AI_EVENT_RENDER=true
-    ai_scrub_outbound() { printf '%s' "$1"; }
-    local rendered
-    rendered=$(ai_execute_tool '{"tool":"host","cmd":"uname"}' 2>&1 >/dev/null)
-    [[ "$rendered" != *"READ action:"* ]]
-    run event_types
-    [ "$output" = "action_proposed action_started action_output" ]
-}
-output\naudit' ]
-}
-
 @test "local output event is ordered, faithful, timed, and transport-free" {
     ai_scrub_outbound() { printf '%s' "$1" | sed 's/SECRET/[REDACTED]/g'; }
     : > "$TEST_ROOT/bin/SECRET"
