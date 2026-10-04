@@ -306,30 +306,30 @@ knowledge_block=knowledge
 scrubbed_context='placeholder context'
 system_prompt='placeholder prompt'
 _context_deferred=true
-PROMPT_CALLS=0
 _ai_save_settings(){ :; }
 _ai_frontend_event(){ :; }
-_ai_build_system_prompt(){ PROMPT_CALLS=$((PROMPT_CALLS + 1)); printf 'rendered-%s' "$PROMPT_CALLS"; }
+_ai_build_system_prompt(){ printf 'built\n' >> "$PROMPT_MARKER"; printf 'rendered'; }
 
 _ai_set_mode guide >/dev/null || exit 11
-printf 'deferred_calls=%s\n' "$PROMPT_CALLS"
+[ ! -e "$PROMPT_MARKER" ] || exit 21
 printf 'deferred_prompt=%s\n' "$system_prompt"
 _context_deferred=false
 _ai_set_mode assist >/dev/null || exit 12
-printf 'ready_calls=%s\n' "$PROMPT_CALLS"
 printf 'ready_prompt=%s\n' "$system_prompt"
 """
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "core").symlink_to(ROOT / "core", target_is_directory=True)
-            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb"}
+            prompt_marker = root / "prompt.marker"
+            env = {**os.environ, "IGOR_DIR": temp, "TERM": "dumb",
+                   "PROMPT_MARKER": str(prompt_marker)}
             result = subprocess.run(["bash", "-c", shell], text=True,
                                     capture_output=True, env=env, timeout=15)
+            calls = prompt_marker.read_text().splitlines() if prompt_marker.exists() else []
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("deferred_calls=0", result.stdout)
+        self.assertEqual(calls, ["built"])
         self.assertIn("deferred_prompt=placeholder prompt", result.stdout)
-        self.assertIn("ready_calls=1", result.stdout)
-        self.assertIn("ready_prompt=rendered-1", result.stdout)
+        self.assertIn("ready_prompt=rendered", result.stdout)
 
     def test_input_eof_is_not_a_user_exit(self):
         result, state, _, _ = self.run_menu("f", input_text="")
