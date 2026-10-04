@@ -109,6 +109,7 @@ igor_operator_surface_seed
             data_dir = Path(runtime) / "data"
             marker = Path(runtime) / "legacy-collector-called"
             script = r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
 source "$IGOR_DIR/core/ai/core.sh"
 _IGOR_MODULE_CONFIG_LOADED=1
 _IGOR_MODULE_DIRS[system]="$IGOR_DIR/modules/system"
