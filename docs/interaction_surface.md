@@ -4,6 +4,15 @@ Launch with `bash igor.sh --ai-tui`. The frontend projects the existing ordered
 backend event stream and sends user input through its PTY. Classic and headless
 paths remain available; Step 20 owns default launch and consolidation.
 
+The standalone TUI's first `input_ready` no longer waits for provider-network
+validation or a full server-context scan. Those operations remain mandatory
+before the first provider-bound request: the TUI shows CONNECTING while provider
+pre-flight runs and PREPARING while full context is assembled. Context
+preparation still loads the capability projection and refreshes the reviewed
+`host.memory` observation before gathering/scrubbing the prompt context.
+Local commands, settings/navigation and the operator surface remain usable before
+that first provider request.
+
 ## Focus and navigation
 
 Tab/Shift+Tab cycles input → output → panel (when open). Ctrl+B toggles the panel
