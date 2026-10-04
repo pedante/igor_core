@@ -212,8 +212,10 @@ elif value is not None:
 }
 
 igor_capability_prepare() {
-    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _resolution_ids _request _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
+    local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _resolution_ids _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
     local _family _argv _update_argv _upgrade_argv _package _resolved_package _op
+    local _base_privilege _base_version _base_owner _base_inputs _field_text
+    local -a _base_fields=()
     [ -n "$_inputs" ] || _inputs='{}'
     _resolution_ids="$(_ml_capability_resolution_ids "$_id")" || return 1
     _records="$(igor_capability_list "$_resolution_ids")" || return 1
@@ -222,33 +224,35 @@ igor_capability_prepare() {
         source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
         igor_detect_distro >/dev/null 2>&1 || true
     fi
-    _request="$("$(_ml_python)" - "$_records" "$_id" "$_inputs" "$_provider" "$_version" "${IGOR_DISTRO_FAMILY:-}" <<'PY'
-import json, sys
-try:
-    request = {"op": "prepare", "records": json.loads(sys.argv[1]),
-                      "id": sys.argv[2], "inputs": json.loads(sys.argv[3]),
-                      "provider": sys.argv[4] or None,
-                      "platform_family": sys.argv[6] or None}
-    if sys.argv[5]:
-        if sys.argv[5] not in {"1", "2"}:
-            raise ValueError("unsupported capability version")
-        request["capability_version"] = int(sys.argv[5])
-    print(json.dumps(request, separators=(",", ":")))
-except (ValueError, TypeError):
-    raise SystemExit(1)
+    _proposal="$(printf '%s' "$_records" | "$(_ml_python)" \
+        "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" prepare-shell \
+        "$_id" "$_inputs" "$_provider" "$_version" "${IGOR_DISTRO_FAMILY:-}")" || return 1
+    _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
+import json,sys
+p=json.loads(sys.argv[1])
+print(p["privilege"])
+print(p["capability_version"])
+print(p["owner"])
+print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
+print("ok")
 PY
 )" || return 1
-    _proposal="$(printf '%s' "$_request" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py")" || return 1
-    if [ "$(_igor_capability_field "$_proposal" privilege)" = required ]; then
+    mapfile -t _base_fields <<< "$_field_text"
+    [ "${#_base_fields[@]}" -eq 5 ] && [ "${_base_fields[4]}" = ok ] || return 1
+    _base_privilege="${_base_fields[0]}"
+    _base_version="${_base_fields[1]}"
+    _base_owner="${_base_fields[2]}"
+    _base_inputs="${_base_fields[3]}"
+    if [ "$_base_privilege" = required ]; then
         # The existing privileged adapter has no typed domain result. Keep v1
         # usable; a v2 provider stays unavailable until that adapter is reviewed.
-        [ "$(_igor_capability_field "$_proposal" capability_version)" = 1 ] || return 1
+        [ "$_base_version" = 1 ] || return 1
         # Reviewed Core operation adapter. A privileged module handler may not
         # replace argv after approval. Additional privileged operations need a
         # reviewed adapter here before becoming available.
         case "$_id" in
             system.service.restart|system.service.start|system.service.enable)
-                _unit="$(_igor_capability_field "$_proposal" inputs.unit)" || return 1
+                _unit="$(_igor_capability_field "$_base_inputs" unit)" || return 1
                 [[ "$_unit" =~ ^[A-Za-z0-9][A-Za-z0-9_.@:+-]*$ ]] || return 1
                 if ! declare -f svc_restart_argv >/dev/null 2>&1; then
                     # shellcheck source=core/lib/pkg.sh
@@ -268,7 +272,7 @@ PY
 )" || return 1
                 ;;
             system.package.install)
-                _package="$(_igor_capability_field "$_proposal" inputs.package)" || return 1
+                _package="$(_igor_capability_field "$_base_inputs" package)" || return 1
                 if ! declare -f pkg_install_argv >/dev/null 2>&1; then
                     # shellcheck source=core/lib/pkg.sh
                     source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
@@ -350,8 +354,8 @@ PY
             *) return 1 ;;
         esac
     fi
-    _igor_capability_preconditions "$_proposal" || _precondition_status=failed
-    _source_version="$(_ml_v2_query "$(_igor_capability_field "$_proposal" owner)" manifest.version 2>/dev/null)" || _source_version=""
+    _igor_capability_preconditions "$_proposal" "$_id" "$_base_owner" "$_base_inputs" || _precondition_status=failed
+    _source_version="${_IGOR_MODULE_VERSION[$_base_owner]:-}"
     _proposal="$("$(_ml_python)" - "$_proposal" "$_spec" "$_precondition_status" "$_source_version" <<'PY'
 import hashlib, json, sys
 value = json.loads(sys.argv[1])
@@ -399,13 +403,18 @@ PY
 }
 
 _igor_capability_preconditions() {
-    _igor_configuration_precondition "$1" || return 1
-    local _proposal="$1" _row _kind _arg _object _property _expected _state _value _root _inputs _request
+    local _proposal="$1" _id="${2:-}" _owner="${3:-}" _known_inputs="${4:-}"
+    local _row _kind _arg _object _property _expected _state _value _root _inputs _request
+    _igor_configuration_precondition "$_proposal" "$_id" "$_known_inputs" || return 1
     while IFS=$'\t' read -r _kind _arg _object _property _expected; do
         [ -n "$_kind" ] || continue
         case "$_kind" in
             owner_active)
-                _ml_owner_active "$(_igor_capability_field "$_proposal" owner)" || return 1 ;;
+                if [ -n "$_owner" ]; then
+                    _ml_owner_active "$_owner" || return 1
+                else
+                    _ml_owner_active "$(_igor_capability_field "$_proposal" owner)" || return 1
+                fi ;;
             service_exists)
                 _value="$(_igor_capability_field "$_proposal" "inputs.$_arg")" || return 1
                 declare -f svc_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
@@ -434,7 +443,8 @@ PY
                 _state="$(igor_capability_inspect "$_arg")" || return 1
                 [ "$(_igor_capability_field "$_state" resolution)" = resolved ] || return 1 ;;
             deployment_proposal_current)
-                _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                _inputs="$_known_inputs"
+                [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
                 _request="$("$(_ml_python)" - "$_inputs" <<'PY'
 import json,sys
 inputs=json.loads(sys.argv[1])
