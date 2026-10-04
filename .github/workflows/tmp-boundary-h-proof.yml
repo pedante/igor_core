@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Bats
-        run: sudo apt-get update -qq && sudo apt-get install -y bats
+        run: sudo apt-get update -qq && sudo apt-get install -y bats python3-pytest
       - name: Syntax
         run: |
           bash -n core/lib/module_loader.sh
@@ -26,3 +26,5 @@ jobs:
           bats tests/modules/test_module_contracts.bats
       - name: Boundary G startup regressions
         run: python3 -m pytest tests/test_ai_menu_startup.py -q
+      - name: Full regression
+        run: bash tests/run_all.sh
