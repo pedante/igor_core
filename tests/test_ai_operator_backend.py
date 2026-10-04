@@ -94,7 +94,7 @@ igor_operator_surface_seed
                 cwd=ROOT,
                 env={**os.environ, "IGOR_DIR": str(ROOT),
                      "IGOR_RUNTIME_DIR": runtime, "MARKER": str(marker)},
-                text=True, capture_output=True, timeout=20,
+                text=True, capture_output=True, timeout=20, check=False,
             )
         self.assertEqual(result.returncode, 0, result.stderr)
         seed = json.loads(result.stdout.strip().splitlines()[-1])
@@ -154,7 +154,7 @@ warm_count="$(wc -l < "$PY_COUNT")"
                      "IGOR_AI_EVENT_STREAM": str(stream),
                      "MARKER": str(marker),
                      "PY_COUNT": str(Path(runtime) / "python-count")},
-                text=True, capture_output=True, timeout=20,
+                text=True, capture_output=True, timeout=20, check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             events = [json.loads(line) for line in stream.read_text().splitlines()]
