@@ -700,6 +700,13 @@ _ai_prepare_deferred_request_runtime() {
     if [ "${_context_deferred:-false}" = true ]; then
         _started="$(_ai_now_ms)"
         _ai_frontend_event model_status 'Preparing server context…' preparing_context
+        # Match the former full-startup preparation exactly: capability
+        # projection is available before prompt injection and the reviewed
+        # memory observation is fresh before context is gathered.
+        declare -f igor_load_capabilities &>/dev/null &&
+            igor_load_capabilities 2>/dev/null || true
+        declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+            igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
         if ! _ai_refresh_context; then
             _ai_record_timing context.first_request "$_started" >/dev/null
             _ai_frontend_event error "Server context preparation failed. Retry or use 'refresh'." context_error
@@ -3245,7 +3252,8 @@ except: pass
 
         # [FIX-1] Auto-refresh context if stale (default: every 5 minutes)
         local _now; _now=$(date +%s)
-        if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
+        if [ "${_context_deferred:-false}" != true ] &&
+           (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
             echo -e "  ${CYAN}↻ Context auto-refreshing (${_context_refresh_interval}s elapsed)...${NC}"
             if _ai_refresh_context; then
                 _context_captured_at=$_now
