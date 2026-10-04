@@ -113,7 +113,7 @@ modules, refresh observers or run providers.
 
 ## Persistence
 
-There is **none** in this slice.
+There is **none** in this slice. Baselines are computed only when explicitly queried; there is no background sampler or learning process.
 
 Operational History remains the source authority. Baselines are recomputed from
 the bounded retained window. This keeps the first learning layer cheap to
