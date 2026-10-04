@@ -5,13 +5,22 @@ backend event stream and sends user input through its PTY. Classic and headless
 paths remain available; Step 20 owns default launch and consolidation.
 
 The standalone TUI's first `input_ready` no longer waits for provider-network
-validation or a full server-context scan. Those operations remain mandatory
-before the first provider-bound request: the TUI shows CONNECTING while provider
-pre-flight runs and PREPARING while full context is assembled. Context
-preparation still loads the capability projection and refreshes the reviewed
-`host.memory` observation before gathering/scrubbing the prompt context.
-Local commands, settings/navigation and the operator surface remain usable before
-that first provider request.
+validation, a full server-context scan, or construction of the provider system
+prompt around placeholder context. Those operations remain mandatory before the
+first provider-bound request: the TUI shows CONNECTING while provider pre-flight
+runs and PREPARING while full context is assembled. Context preparation still
+loads the capability projection and refreshes the reviewed `host.memory`
+observation before gathering/scrubbing context and rebuilding the authoritative
+system prompt. A local mode change during this deferred window updates the mode
+without forcing an early prompt render; the rebuilt prompt uses the current
+mode.
+
+The curses frontend also skips the classic backend presentation path before
+READY: it does not enter the tmux AI layout, print the classic banner, or build
+the classic right-pane command reference. Those are presentation-only surfaces
+owned by the classic UI; the standalone TUI already owns its screen and command
+palette. Local commands, settings/navigation and the operator surface remain
+usable before the first provider request.
 
 ## Focus and navigation
 
