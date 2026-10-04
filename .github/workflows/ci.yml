@@ -123,35 +123,3 @@ jobs:
           name: validation-${{ inputs.mode || 'affected' }}
           path: validation-results/
           if-no-files-found: warn
-
-
-  # Temporary focused proof for Result Publication Boundary E; removed after evidence.
-  # Triggered only while the stacked PR is temporarily based on igor2.
-  boundary_e:
-    name: Result Publication Boundary E
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install focused tools
-        run: |
-          pip install 'pytest>=9,<10'
-          sudo npm install -g bats@1.13.0
-      - name: Syntax
-        run: |
-          bash -n core/ai/events.sh
-          bash -n core/ai/safety.sh
-          bash -n core/lib/automation.sh
-          python -m py_compile core/lib/automation_registry.py
-      - name: Automation event fast path
-        run: |
-          python -m pytest -q tests/test_automation_registry.py \
-            -k 'event_prefilter or event_callback or event_delivery_only_queues or validated_capability_event'
-      - name: Frontend event sequence and publication
-        run: |
-          bats --filter 'sequence cache|payload cannot replace|event stream refuses' tests/core/test_ai_events.bats
-          bats --filter 'terminal output event|local output event' tests/core/test_ai_safety_events.bats
-      - name: Domain event bus
-        run: bats tests/modules/test_domain_event_bus.bats
