@@ -2268,6 +2268,14 @@ except (ValueError,TypeError):
 
 menu_ai() {
     local _AI_SESSION_STATE="" conversation="" session_file="" _fifo_path=""
+    local _ai_tui_phase_started_ms="" _ai_tui_phase_ended_ms=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        if [[ "${_IGOR_TUI_AI_SOURCE_ENDED_MS:-}" =~ ^[0-9]+$ ]]; then
+            _ai_tui_phase_started_ms="$_IGOR_TUI_AI_SOURCE_ENDED_MS"
+        else
+            _ai_tui_phase_started_ms=$(_ai_now_ms)
+        fi
+    fi
     if [ "${IGOR_AI_ENABLED:-true}" != "true" ]; then
         _ai_startup_fail configuration 1 "AI assistant is disabled."
         return $?
@@ -2975,6 +2983,15 @@ except: pass
 
     # ── Session initialisation ─────────────────────────────────────────────────
     [ "$preflight" = "s" ] || [ "$preflight" = "S" ] || return 0
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            _IGOR_TUI_AI_PRE_SESSION_MS=$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     local _rt_dir
     _ai_runtime_private_dir _rt_dir || {
         _ai_startup_fail runtime 1 "Could not prepare private AI runtime directory." \
@@ -3011,12 +3028,35 @@ except: pass
         return $?
     }
     if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            _IGOR_TUI_AI_SESSION_RUNTIME_MS=$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))
+        fi
+
+        [[ "${_IGOR_TUI_BACKEND_SPAWN_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_spawn=%sms\n' "$_IGOR_TUI_BACKEND_SPAWN_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BACKEND_PREBOOTSTRAP_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_prebootstrap=%sms\n' "$_IGOR_TUI_BACKEND_PREBOOTSTRAP_MS" >> "$session_file"
         [[ "${_IGOR_TUI_BOOTSTRAP_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.bootstrap_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_CONFIG_MS" >> "$session_file"
         [[ "${_IGOR_TUI_BOOTSTRAP_MODULES_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.bootstrap_modules=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULES_MS" >> "$session_file"
         [[ "${_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.bootstrap_module_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_aux_sources=%sms\n' "$_IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_config_hooks=%sms\n' "$_IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BACKEND_DISPATCH_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_dispatch=%sms\n' "$_IGOR_TUI_BACKEND_DISPATCH_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_SOURCE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_source=%sms\n' "$_IGOR_TUI_AI_SOURCE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SESSION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_session=%sms\n' "$_IGOR_TUI_AI_PRE_SESSION_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_SESSION_RUNTIME_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_session_runtime=%sms\n' "$_IGOR_TUI_AI_SESSION_RUNTIME_MS" >> "$session_file"
         [[ "${_IGOR_TUI_MODULE_DISCOVERY_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] module.discovery=%sms\n' "$_IGOR_TUI_MODULE_DISCOVERY_MS" >> "$session_file"
         [[ "${_IGOR_TUI_MODULE_V2_REGISTRY_MS:-}" =~ ^[0-9]+$ ]] &&
@@ -3030,6 +3070,7 @@ except: pass
                 printf '[MODULE] v2_registry_cache=%s\n' "$_IGOR_MODULE_V2_CACHE_STATE" >> "$session_file"
                 ;;
         esac
+        _ai_tui_phase_started_ms=$(_ai_now_ms)
     fi
     local session_id; session_id=$(basename "$session_file" .log)
     IGOR_AI_EVENT_SESSION_ID="$session_id"
@@ -3255,7 +3296,25 @@ except: pass
     fi
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            printf '[TIMING] tui.ai_local_setup=%sms\n'                 "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     _ai_emit_operator_snapshot
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            printf '[TIMING] tui.ai_operator_snapshot=%sms\n'                 "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     _ai_set_session_state ready || {
         _ai_startup_fail runtime_state 1 "Could not persist ready state." \
             "$_rt_dir" "Could not write the private runtime state file."
@@ -3301,6 +3360,12 @@ except: pass
         if [ "${IGOR_TUI_MODE:-false}" = true ] &&
            [ "$_tui_ready_timing_recorded" = false ] &&
            [[ "${IGOR_TUI_STARTED_MS:-}" =~ ^[0-9]+$ ]]; then
+            _ai_tui_phase_ended_ms=$(_ai_now_ms)
+            if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+               [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+               [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+                printf '[TIMING] tui.ai_ready_finalize=%sms\n'                     "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+            fi
             _ai_record_timing tui.startup_to_input_ready "$IGOR_TUI_STARTED_MS" >/dev/null
             _tui_ready_timing_recorded=true
         fi
