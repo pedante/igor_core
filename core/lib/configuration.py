@@ -741,7 +741,7 @@ def cli():
             result = service.resolve_system_memory_warning()
             # Fixed internal framing keeps startup to one Python process. Both
             # fields are schema-validated integers before they reach the shell.
-            print(f'{result["resolved"]["value"]}\t{result["revision"]}')
+            print(f'{result["resolved"]["value"]}:{result["revision"]}')
             return 0
         elif action == "capabilities":
             result = capability_records("system" in active)
