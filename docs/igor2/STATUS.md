@@ -2,7 +2,81 @@
 
 Last updated: 2026-10-04
 
-## Configuration Read Fast Path — Boundary L candidate
+## Operator Surface Warm Fast Path — Boundary M candidate
+
+Boundary L reduced the measured Configuration Service startup phase from
+**460ms** to **304ms**, with the narrow authoritative read split into
+`configuration.core_resolve=221ms` and `configuration.decode=74ms`.
+The same run reached first input in **2.901s**; unrelated module/snapshot/finalize
+phases were slower than the preceding run, so the Boundary L component result is
+used rather than treating that end-to-end variance as a regression.
+
+On that run the operator projection was again a clear bounded target:
+
+```text
+[TIMING] operator_surface=384ms
+[TIMING] tui.ai_operator_snapshot=392ms
+[TIMING] tui.startup_to_input_ready=2901ms
+```
+
+Boundary F persisted a compiled operator projection, but a warm session still
+rebuilt and parsed the full structural seed before it could prove that cache was
+current. Boundary M connects that cache to the loader-owned structural state
+already produced by the Module Platform:
+
+- the loader exposes the exact raw structural frames used by the operator
+  projection separately from the Python seed builder;
+- a cheap loader-owned generation key hashes those current module/contribution
+  frames plus the Core projection implementations;
+- Module API v2 package metadata in those frames is the already-validated
+  structural document loaded through Boundary H's compiled registry path;
+- module lifecycle/enablement, legacy/v1 registrations and current structural
+  contribution state remain part of the key, so the warm cache cannot ignore
+  those overlays;
+- on a matching generation, `operator_surface.py` reads and validates the
+  owner-private cached projection directly and wraps it for the current session;
+- the full JSON seed is materialized only after a cache miss, corruption or
+  generation change;
+- platforms that cannot produce the generation key retain Boundary F's original
+  seed/build path.
+
+The generation also fingerprints the operator projection, Configuration Service
+Core descriptors, deployment attachment descriptors and loader implementation.
+The cache remains disposable presentation metadata. Selecting an entry still
+enters the canonical capability dispatcher, which freshly resolves runtime
+requirements, provider, approval, privilege, execution-fence preconditions,
+verification and Operational History.
+
+Boundary M adds:
+
+```text
+[TIMING] operator_surface.generation=<ms>
+[TIMING] operator_surface.cache_read=<ms>
+[TIMING] operator_surface.rebuild=<ms>   # cache miss only
+[TIMING] operator_surface=<ms>
+```
+
+Focused branch proof passed:
+
+- shell/Python syntax checks;
+- operator surface projection contracts: **12/12 passed**;
+- backend operator bridge contracts: **11/11 passed**;
+- TUI operator contracts: **11/11 passed**;
+- complete AI startup lifecycle: **14/14 passed**.
+
+The warm-path regression first builds a real cache, then replaces the full
+`igor_operator_surface_seed` builder with a failing marker. The second snapshot
+still succeeds, does not touch that marker and is bounded to **<=2 Python
+processes**, versus the previous Boundary F warm allowance of <=4. A separate
+regression proves that changing structural registration changes the loader
+generation key.
+
+No post-Boundary-M real-host speed claim is made yet. Closure requires the same
+standalone-TUI measurement and comparison of `operator_surface`,
+`operator_surface.generation`, `operator_surface.cache_read` and
+`tui.startup_to_input_ready` against the 384ms / 2.901s Boundary L run.
+
+## Configuration Read Fast Path — Boundary L
 
 Boundary K closed the pre-session attribution gap on the measured Igor host:
 
@@ -67,10 +141,12 @@ Focused branch proof passed on the final runtime/test content:
 
 The temporary branch-only proof workflow is removed after evidence capture.
 
-Real-host closure compares `tui.ai_pre_configuration`,
-`configuration.core_resolve`, `configuration.decode` and
-`tui.startup_to_input_ready` against the Boundary K baselines of 460ms and
-2.783s respectively.
+The same-host real run closed Boundary L with
+`tui.ai_pre_configuration=304ms` (**34% lower** than 460ms),
+`configuration.core_resolve=221ms` and `configuration.decode=74ms`.
+The run reached `tui.startup_to_input_ready=2901ms`; several unrelated phases
+were slower than the preceding sample, so the component-local improvement is
+the closure evidence. `operator_surface=384ms` became the next bounded target.
 
 ## AI Pre-Session Fast Path — Boundary K
 
