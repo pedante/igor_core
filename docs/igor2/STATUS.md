@@ -58,7 +58,17 @@ desired records. A Core-only service must resolve `ai.verbose` successfully
 without claiming a state token, while a normal global inspection without the
 module schema must still fail closed.
 
-Real-host closure compares `tui.ai_pre_configuration` and
+Focused branch proof passed on the final runtime/test content:
+
+- shell syntax and Python compilation passed;
+- Configuration Service plus system-owned configuration workflows:
+  **51/51 passed in 44.30s**;
+- complete AI startup lifecycle: **14/14 passed in 7.001s**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+
+Real-host closure compares `tui.ai_pre_configuration`,
+`configuration.core_resolve`, `configuration.decode` and
 `tui.startup_to_input_ready` against the Boundary K baselines of 460ms and
 2.783s respectively.
 
