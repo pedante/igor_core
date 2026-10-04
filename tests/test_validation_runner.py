@@ -211,6 +211,26 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertEqual(result["runner_skip_count"], 1)
         self.assertIn("ok 2 after", Path(result["log"]).read_text())
 
+    def test_fast_failing_bats_does_not_pay_native_watchdog_deadline_by_default(self):
+        bats = shutil.which("bats")
+        self.assertIsNotNone(bats, "BATS required for harness acceptance")
+        self.write("tests/test_fixture.bats", '@test "fast failure" { false; }\n')
+        args = type("Args", (), {"bats": bats, "python": sys.executable, "ruff": "ruff",
+                                 "shellcheck": "shellcheck", "bats_timeout": 0,
+                                 "group_timeout": 5, "slow_timeout": 20})()
+
+        result = runner.run_group(
+            {"id": "fixture", "kind": "bats", "files": ["tests/test_fixture.bats"]},
+            self.root,
+            self.root,
+            0,
+            args,
+        )
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["native_failure_count"], 1)
+        self.assertEqual(result["native_timeout_count"], 0)
+        self.assertLess(result["elapsed_seconds"], 3)
+
     def test_bats_watchdog_is_disabled_unless_explicitly_requested(self):
         args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",
                                  "shellcheck": "shellcheck", "bats_timeout": 0,
