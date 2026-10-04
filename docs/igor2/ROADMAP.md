@@ -65,17 +65,20 @@ Imported knowledge/module candidates additionally retain source kind, upstream
 project/document identity, version/tag/commit or retrieval point, license/provenance
 where applicable and the transformation that produced the Igor-managed artifact.
 
-The configuration direction in [CONFIGURATION.md](CONFIGURATION.md) keeps
-canonical setting identity and semantics independent from current env-file or
-future database storage. Modules describe configuration; Igor owns mutable
-values, secret references, validation and migration. The document is a design
-proposal, not an implemented Configuration Service.
+The configuration foundation in [CONFIGURATION.md](CONFIGURATION.md) now has an
+implemented Core-owned Configuration Service: versioned schemas, private
+SQLite desired values, revision/state-token authority, the `ai.verbose` Core
+slice, and the first real module-owned System memory-warning workflow. Modules
+describe configuration meaning; Igor owns mutable values, validation,
+persistence and migration. Secrets remain references-only and the broader
+configuration/secret migration gate is not yet complete.
 
-This is a hard architectural gate, not a new wave name. Early non-conflicting
-Wave C loader/contract implementation may proceed, but Wave C must not freeze
-the current mixed config/secret/state layout into the public Module v2
-contract, and broad application-module migration waits for this foundation to
-be green.
+This remains a hard architectural gate, not a new wave name. Early
+non-conflicting Wave C loader/contract work may proceed, but Wave C must not
+freeze the remaining mixed config/secret/state layout into the public Module v2
+contract. Broad application-module migration still waits for the unfinished
+ownership/secret/binding work, even though the Configuration Service foundation
+itself is now real and exercised.
 
 ## Igor 2.0 scope boundary
 
