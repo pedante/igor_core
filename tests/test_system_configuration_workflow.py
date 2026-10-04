@@ -159,6 +159,30 @@ printf 'CHECK=%s\n' "$check"
     assert "warning_mib=150;revision=0" in check["result"]["evidence"]
 
 
+def test_tui_startup_snapshot_feeds_system_and_ai_once(tmp_path):
+    _igor_dir, result = run_system_shell(tmp_path, r'''
+export IGOR_TUI_MODE=true
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+_ml_log() { :; }
+igor_load_all_modules >/dev/null || exit 2
+printf 'memory=%s:%s\n' "$IGOR_SYSTEM_MEMORY_WARNING_MIB" "$IGOR_SYSTEM_MEMORY_WARNING_REVISION"
+printf 'verbose=%s:%s\n' "$IGOR_VERBOSE" "$IGOR_VERBOSE_REVISION"
+printf 'pending=%s\n' "$IGOR_CONFIGURATION_STARTUP_AI_PENDING"
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 3
+_igor_configuration_ai_verbose_resolve() { touch "$SECOND_READ_MARKER"; return 91; }
+_ai_configuration_verbose_load || exit 4
+[ ! -e "$SECOND_READ_MARKER" ] || exit 5
+[ -z "${IGOR_CONFIGURATION_STARTUP_AI_PENDING+x}" ] || exit 6
+printf 'reuse=%s:%s:%s\n' "$IGOR_VERBOSE" "$_IGOR_TUI_CONFIGURATION_SERVICE_MS" "$_IGOR_TUI_CONFIGURATION_DECODE_MS"
+'''.replace("$SECOND_READ_MARKER", str(tmp_path / "second-read")))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "memory=150:0" in result.stdout
+    assert "verbose=true:0" in result.stdout
+    assert "pending=1" in result.stdout
+    assert "reuse=true:0:0" in result.stdout
+
+
 def test_explicit_readback_acquires_full_state_proof_just_in_time(tmp_path):
     _igor_dir, result = run_system_shell(tmp_path, r'''
 source "$IGOR_DIR/core/lib/module_loader.sh"
