@@ -140,6 +140,55 @@ def test_system_memory_cli_fast_path_uses_supplied_validated_schema(tmp_path, mo
     assert capsys.readouterr().out.strip() == "225:1"
 
 
+def test_startup_snapshot_resolves_core_and_system_from_one_revision(tmp_path):
+    schema = {"schema_version": 1, "fields": [{
+        "id": "system.memory.warning_threshold_mib", "type": "integer",
+        "scope": "module", "default": 150, "minimum": 81, "maximum": 4096,
+    }]}
+    service = ConfigurationService(tmp_path, schemas=[("system", schema)])
+    prepared = service.status()
+    service.commit([
+        {"target": "installation:local", "id": "ai.verbose", "value": False},
+        {"target": "module:system", "id": "system.memory.warning_threshold_mib", "value": 240},
+    ], expected_revision=0, expected_state=prepared["state_token"], operation_id=OP)
+
+    snapshot = ConfigurationService(
+        tmp_path, schemas=[("system", schema)]
+    ).resolve_startup_snapshot()
+    assert snapshot["revision"] == 1
+    assert snapshot["ai_verbose"] == {"value": False, "source": "desired"}
+    assert snapshot["system_memory_warning_mib"] == {"value": 240, "source": "desired"}
+    assert "state_token" not in snapshot
+
+
+def test_startup_snapshot_cli_skips_installed_schema_discovery(tmp_path, monkeypatch, capsys):
+    schema = {"schema_version": 1, "fields": [{
+        "id": "system.memory.warning_threshold_mib", "type": "integer",
+        "scope": "module", "default": 150, "minimum": 81, "maximum": 4096,
+    }]}
+    service = ConfigurationService(tmp_path, schemas=[("system", schema)])
+    prepared = service.status()
+    service.commit([
+        {"target": "installation:local", "id": "ai.verbose", "value": False},
+        {"target": "module:system", "id": "system.memory.warning_threshold_mib", "value": 230},
+    ], expected_revision=0, expected_state=prepared["state_token"], operation_id=OP)
+
+    def forbidden(_root):
+        raise AssertionError("installed module schemas must not be rediscovered")
+
+    monkeypatch.setattr(configuration, "installed_schemas", forbidden)
+    monkeypatch.setenv("IGOR_CONFIGURATION_ROOT", str(ROOT))
+    monkeypatch.setenv("IGOR_CONFIGURATION_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("IGOR_CONFIGURATION_INHERITED_VERBOSE", "")
+    monkeypatch.setenv(
+        "IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD",
+        json.dumps({"kind": "configuration", "id": "system.memory.preferences", "schema": schema}),
+    )
+    monkeypatch.setattr(sys, "argv", ["configuration.py", "resolve-startup-snapshot"])
+    assert configuration.cli() == 0
+    assert capsys.readouterr().out.strip() == "false:230:1"
+
+
 def test_desired_revision_scope_permissions_and_reopen(tmp_path):
     service = ConfigurationService(tmp_path)
     assert commit(service)["application"] == "not_verified"
