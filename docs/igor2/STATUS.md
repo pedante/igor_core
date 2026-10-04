@@ -65,6 +65,16 @@ rather than one process per field/contribution. A separate test changes a
 required binary between two cache-hit startups and requires contribution
 availability to change accordingly, guarding the runtime-truth boundary.
 
+Focused proof on the final runtime content passed:
+
+- shell syntax and Python compilation for the loader/compiler changes;
+- Module API v2 contracts: **30/30 passed**, including cold/warm cache reuse,
+  package-change invalidation and dynamic-requirement freshness;
+- loader regressions: **12/12 passed**;
+- module contract regressions: **23/23 passed**;
+- Boundary G AI startup lifecycle: **13/13 passed in 6.82s**.
+
+The temporary proof workflow is removed from the branch after evidence capture.
 No post-Boundary-H real-host speed claim is made yet. Closure requires rerunning
 the same TUI startup on the measured host and comparing
 `tui.bootstrap_modules`, `module.v2_registry` and
