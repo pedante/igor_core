@@ -753,37 +753,79 @@ print(json.dumps(rows,sort_keys=True,separators=(",",":")))
 # This is structural metadata only: it deliberately does not evaluate dynamic
 # contribution requirements such as command/binary availability. Canonical
 # capability prepare/execution remains the authority for current availability.
-igor_operator_surface_seed() {
+#
+# Boundary M keeps the raw loader-owned framing separate from the Python
+# projection.  The same frames can therefore produce a cheap structural
+# generation key on the warm path without first rebuilding the JSON seed.
+_igor_operator_surface_seed_frames() {
     local _name _api _status _reason _enabled _metadata
     local _key _owner _source _state _record
-    {
-        while IFS= read -r _name; do
-            [ -n "$_name" ] || continue
-            _api="${_IGOR_MODULE_API[$_name]:-1}"
-            _status="${_IGOR_MODULE_STATUS[$_name]:-discovered}"
-            _reason="${_IGOR_MODULE_REASON[$_name]:-}"
-            if igor_module_enabled "$_name"; then _enabled=true; else _enabled=false; fi
-            if [ "$_api" = 2 ] && [ -n "${_IGOR_V2_DATA[$_name]:-}" ]; then
-                _metadata="${_IGOR_V2_DATA[$_name]}"
-            else
-                _metadata="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" display_name 2>/dev/null || printf '%s' "$_name")"
-            fi
-            printf 'module\0%s\0%s\0%s\0%s\0%s\0%s\0' \
-                "$_name" "$_api" "$_status" "$_reason" "$_enabled" "$_metadata"
-        done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
 
-        while IFS= read -r _key; do
-            [ -n "$_key" ] || continue
-            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
-            _source="${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}"
-            _state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
-            _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
-            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
-            printf 'contribution\0%s\0%s\0%s\0%s\0%s\0%s\0' \
-                "$_key" "$_owner" "$_source" "$_state" "$_reason" "$_record"
-        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
-    } | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/operator_surface.py" \
-        seed "${_IGOR_LOADER_DIR}/core/lib"
+    while IFS= read -r _name; do
+        [ -n "$_name" ] || continue
+        _api="${_IGOR_MODULE_API[$_name]:-1}"
+        _status="${_IGOR_MODULE_STATUS[$_name]:-discovered}"
+        _reason="${_IGOR_MODULE_REASON[$_name]:-}"
+        if igor_module_enabled "$_name"; then _enabled=true; else _enabled=false; fi
+        if [ "$_api" = 2 ] && [ -n "${_IGOR_V2_DATA[$_name]:-}" ]; then
+            # Boundary H already loaded this validated structural package
+            # document from its compiled registry/cache.
+            _metadata="${_IGOR_V2_DATA[$_name]}"
+        else
+            _metadata="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" display_name 2>/dev/null || printf '%s' "$_name")"
+        fi
+        printf 'module\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+            "$_name" "$_api" "$_status" "$_reason" "$_enabled" "$_metadata"
+    done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
+
+    while IFS= read -r _key; do
+        [ -n "$_key" ] || continue
+        _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+        _source="${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}"
+        _state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
+        _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
+        _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+        printf 'contribution\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+            "$_key" "$_owner" "$_source" "$_state" "$_reason" "$_record"
+    done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+}
+
+igor_operator_surface_seed() {
+    _igor_operator_surface_seed_frames |
+        "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/operator_surface.py" \
+            seed "${_IGOR_LOADER_DIR}/core/lib"
+}
+
+# Return a loader-owned fingerprint for the exact structural frames consumed by
+# the operator surface plus the Core projection implementations that add
+# Core-owned capabilities/configuration.  This is derived presentation identity,
+# not execution authority.  If sha256sum is unavailable the caller falls back
+# to the original seed/build path.
+igor_operator_surface_generation() {
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    local _surface="${_IGOR_LOADER_DIR}/core/lib/operator_surface.py"
+    local _configuration="${_IGOR_LOADER_DIR}/core/lib/configuration.py"
+    local _deployment="${_IGOR_LOADER_DIR}/core/lib/deployment_attachment.py"
+    local _loader="${_IGOR_LOADER_DIR}/core/lib/module_loader.sh"
+    local _fast="${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh"
+    local _digest _rest
+    [ -f "$_surface" ] && [ -f "$_configuration" ] &&
+        [ -f "$_deployment" ] && [ -f "$_loader" ] || return 1
+
+    {
+        printf 'igor-operator-surface-generation-v1\0'
+        _igor_operator_surface_seed_frames
+        printf 'implementation\0'
+        if [ -f "$_fast" ]; then
+            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader" "$_fast"
+        else
+            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader"
+        fi
+    } | sha256sum | {
+        read -r _digest _rest
+        [[ "$_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+        printf '%s' "$_digest"
+    }
 }
 
 igor_module_records() {
