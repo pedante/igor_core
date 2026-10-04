@@ -545,3 +545,78 @@ EOF
     [ "$(igor_module_status legacy)" = active ]
     igor_module_enabled legacy
 }
+
+
+@test "Boundary H compiles v2 metadata once per startup and reuses the private registry cache" {
+    mkdir -p "$IGOR_DIR/modules/fast"
+    _manifest fast
+    _module fast '{"contract_version":1,"contributions":[{"kind":"knowledge","id":"fast.one","path":"one.md"}]}'
+    printf 'one\n' > "$IGOR_DIR/modules/fast/one.md"
+    printf 'fast=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    local real_python="$(_ml_python)"
+    local wrapper="$IGOR_DIR/count-python"
+    local count_file="$IGOR_DIR/python-count"
+    printf '0\n' > "$count_file"
+    cat > "$wrapper" <<'EOF'
+#!/bin/bash
+count=$(cat "$IGOR_PYTHON_COUNT_FILE")
+printf '%s\n' "$((count + 1))" > "$IGOR_PYTHON_COUNT_FILE"
+exec "$IGOR_REAL_PYTHON" "$@"
+EOF
+    chmod +x "$wrapper"
+    export IGOR_REAL_PYTHON="$real_python"
+    export IGOR_PYTHON_COUNT_FILE="$count_file"
+    export IGOR_PYTHON="$wrapper"
+
+    _load
+
+    [ "$(igor_module_status fast)" = active ]
+    [ "$(igor_contribution_state knowledge:fast.one)" = active ]
+    [ "$_IGOR_MODULE_V2_CACHE_STATE" = miss ]
+    [ "$(cat "$count_file")" -eq 1 ]
+
+    local cache="${IGOR_DATA_DIR:-$IGOR_DIR/data}/cache/module-registry-v2.json"
+    [ -f "$cache" ]
+    [ "$(stat -c %a "$cache")" = 600 ]
+    [ "$(stat -c %a "$(dirname "$cache")")" = 700 ]
+
+    _restart_loader_state
+    _load
+
+    [ "$_IGOR_MODULE_V2_CACHE_STATE" = hit ]
+    [ "$(cat "$count_file")" -eq 2 ]
+    [ "$(igor_contribution_state knowledge:fast.one)" = active ]
+
+    printf 'two\n' > "$IGOR_DIR/modules/fast/two.md"
+    _module fast '{"contract_version":1,"contributions":[{"kind":"knowledge","id":"fast.one","path":"one.md"},{"kind":"knowledge","id":"fast.two","path":"two.md"}]}'
+    _restart_loader_state
+    _load
+
+    [ "$_IGOR_MODULE_V2_CACHE_STATE" = miss ]
+    [ "$(cat "$count_file")" -eq 3 ]
+    [ "$(igor_contribution_state knowledge:fast.two)" = active ]
+}
+
+@test "Boundary H cache never freezes dynamic contribution requirements" {
+    mkdir -p "$IGOR_DIR/modules/dynamic"
+    _manifest dynamic
+    _module dynamic '{"contract_version":1,"contributions":[{"kind":"observer","id":"dynamic.tool","handler":"dynamic__observe","output_type":"dynamic.data","requires":{"bins":["igor-boundary-h-dynamic-bin"]}}]}' \
+        'dynamic__observe() { printf "{\"status\":\"ok\",\"result\":{}}\n"; }'
+    printf 'dynamic=enabled\n' > "$IGOR_DIR/config/modules.conf"
+
+    _load
+    [ "$_IGOR_MODULE_V2_CACHE_STATE" = miss ]
+    [ "$(igor_contribution_state observer:dynamic.tool)" = unavailable ]
+
+    local bindir="$IGOR_DIR/bin"
+    mkdir -p "$bindir"
+    printf '#!/bin/sh\nexit 0\n' > "$bindir/igor-boundary-h-dynamic-bin"
+    chmod +x "$bindir/igor-boundary-h-dynamic-bin"
+    export PATH="$bindir:$PATH"
+
+    _restart_loader_state
+    _load
+    [ "$_IGOR_MODULE_V2_CACHE_STATE" = hit ]
+    [ "$(igor_contribution_state observer:dynamic.tool)" = active ]
+}

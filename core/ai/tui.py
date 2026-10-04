@@ -27,6 +27,7 @@ import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +75,8 @@ class Activity:
     repeats: int = 1
     show_result_output: bool = True
     exit_code: int | None = None
+    duration_ms: int | None = None
+    timestamp: str = ""
     requires_admin_auth: bool = False
 
 
@@ -93,6 +96,7 @@ class EventState:
     console_capture: Activity | None = None
     output_action_ids: set[str] = field(default_factory=set)
     collapse_output: bool = False
+    show_timestamps: bool = False
     command_state: str = "ready"
     backend_ready: bool = False
     settings_snapshot: dict[str, Any] | None = None
@@ -142,7 +146,9 @@ class EventState:
         if kind == "model_status":
             if event_status == "input_ready":
                 self.backend_ready = True
-            elif event_status in {"request_started", "response_received"}:
+            elif event_status in {
+                "request_started", "response_received", "validating_provider", "preparing_context"
+            }:
                 self.backend_ready = False
         if kind == "session_finished":
             self.backend_ready = False
@@ -206,6 +212,8 @@ class EventState:
             status=str(event.get("status") or ""),
             result=result if isinstance(result, dict) else None,
             exit_code=event.get("exit_code") if isinstance(event.get("exit_code"), int) else None,
+            duration_ms=event.get("duration_ms") if isinstance(event.get("duration_ms"), int) else None,
+            timestamp=str(event.get("timestamp") or ""),
             requires_admin_auth=event.get("requires_admin_auth") is True,
             show_result_output=not (kind == "action_result" and
                                     (bool(action_ids & self.output_action_ids) or
@@ -217,7 +225,7 @@ class EventState:
 
     def begin_terminal_capture(self) -> None:
         """Show opaque output only for a local command without event output."""
-        self.console_capture = Activity("terminal", "")
+        self.console_capture = Activity("terminal", "", timestamp=_local_timestamp())
         self.activity.append(self.console_capture)
 
     def end_terminal_capture(self) -> None:
@@ -237,14 +245,14 @@ class EventState:
 
     def add_user_input(self, text: str) -> None:
         if text:
-            self.activity.append(Activity("user", text))
+            self.activity.append(Activity("user", text, timestamp=_local_timestamp()))
             if len(self.activity) > 2000:
                 del self.activity[:-2000]
 
     def add_operator_input(self, text: str) -> None:
         if text:
             label = text.removeprefix("invoke ").strip()
-            self.activity.append(Activity("operator", label or text))
+            self.activity.append(Activity("operator", label or text, timestamp=_local_timestamp()))
             if len(self.activity) > 2000:
                 del self.activity[:-2000]
 
@@ -252,6 +260,40 @@ class EventState:
 def apply_event(state: EventState, event: dict[str, Any]) -> bool:
     """Testable event application entry point."""
     return state.accept(event)
+
+
+def _local_timestamp() -> str:
+    return datetime.now().astimezone().isoformat()
+
+
+def _display_timestamp(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone()
+        return parsed.strftime("%H:%M:%S.%f")[:-3]
+    except ValueError:
+        return ""
+
+
+def _format_duration(duration_ms: int | None) -> str:
+    if duration_ms is None:
+        return ""
+    if duration_ms < 1000:
+        return f"{duration_ms} ms"
+    return f"{duration_ms / 1000:.2f} s"
+
+
+_TOOL_ENVELOPE = re.compile(r"^TOOL:[^ \\r\\n]+ EXIT:\\d+(?:\\\\n|\\n)OUTPUT:(?:\\\\n|\\n)?")
+
+
+def _display_result_output(value: Any) -> str:
+    """Remove the provider transport envelope from a locally rendered result."""
+    text = str(value or "")
+    match = _TOOL_ENVELOPE.match(text)
+    return text[match.end():] if match else text
 
 
 def _clean_terminal_output(raw: str) -> str:
@@ -302,19 +344,23 @@ def _activity_text(item: Activity) -> str:
         prefix = f"{prefix} [{item.classification}]"
     if item.event_type in {"action_proposed", "approval_waiting"} and item.requires_admin_auth:
         prefix += " · administrator privileges"
+    if item.event_type == "action_output" and item.duration_ms is not None:
+        prefix += f" ({_format_duration(item.duration_ms)})"
     if item.event_type == "terminal":
         return _clean_terminal_output(item.text)
     if item.event_type == "action_result":
         status = item.status or (item.result or {}).get("execution_status") or "complete"
         exit_code = (item.result or {}).get("exit_code")
         suffix = f" (exit {exit_code})" if exit_code is not None else ""
-        output = (item.result or {}).get("combined_output") or (item.result or {}).get("output")
+        output = _display_result_output(
+            (item.result or {}).get("combined_output") or (item.result or {}).get("output"))
         if item.show_result_output and output:
             return f"Result: {status}{suffix}\n{output}"
         return f"Result: {status}{suffix}"
     if not item.text and item.result:
         result_status = item.result.get("execution_status") or item.result.get("status") or "complete"
-        result_output = item.result.get("combined_output") or item.result.get("output") or ""
+        result_output = _display_result_output(
+            item.result.get("combined_output") or item.result.get("output") or "")
         item_text = f"{result_status}: {result_output}" if result_output else str(result_status)
         return f"{prefix}: {item_text}"
     message = (item.text if item.text.lower().startswith(f"{prefix.lower()}: ") else
@@ -362,6 +408,12 @@ def _activity_rows(state: EventState, width: int) -> list[tuple[str, str]]:
             text = _activity_text(item)
         if not text:
             continue
+        if state.show_timestamps:
+            stamp = _display_timestamp(item.timestamp)
+            if stamp:
+                lines = text.split("\n")
+                lines[0] = f"[{stamp}] {lines[0]}"
+                text = "\n".join(lines)
         role = activity_color_role(item)
         if rows and rows[-1][0] != "":
             rows.append(("", role))
@@ -1091,6 +1143,8 @@ def _session_status_label(state: EventState) -> str:
     if state.backend_ready:
         return "READY"
     return {
+        "validating_provider": "CONNECTING",
+        "preparing_context": "PREPARING",
         "request_started": "THINKING",
         "response_received": "PROCESSING",
         "input_ready": "READY",
@@ -1759,8 +1813,13 @@ def run_tui(backend: Iterable[str] = DEFAULT_BACKEND, stream: Path | None = None
     own_stream = stream is None
     path = (stream or _private_stream_path()).expanduser().resolve()
     environment = os.environ.copy()
-    environment.update(IGOR_TUI_MODE="true", IGOR_AI_EVENT_RENDER="false",
-                       IGOR_AI_EVENT_STREAM=str(path), IGOR_RUNTIME_DIR=str(path.parent))
+    environment.update(
+        IGOR_TUI_MODE="true",
+        IGOR_AI_EVENT_RENDER="false",
+        IGOR_AI_EVENT_STREAM=str(path),
+        IGOR_RUNTIME_DIR=str(path.parent),
+        IGOR_TUI_STARTED_MS=str(time.time_ns() // 1_000_000),
+    )
     backend_command = tuple(backend)
     pid, master = pty.fork()
     if pid == 0:
@@ -1770,7 +1829,10 @@ def run_tui(backend: Iterable[str] = DEFAULT_BACKEND, stream: Path | None = None
         os.execvpe(backend_command[0], backend_command, environment)
     flags = fcntl.fcntl(master, fcntl.F_GETFL)
     fcntl.fcntl(master, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-    state = EventState()
+    show_timestamps = os.environ.get("IGOR_TUI_TIMESTAMPS", "true").lower() not in {
+        "false", "off", "0", "no",
+    }
+    state = EventState(show_timestamps=show_timestamps)
     try:
         try:
             result = curses.wrapper(lambda screen: _loop(screen, pid, master, path, state))

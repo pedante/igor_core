@@ -130,14 +130,22 @@ _ml_bash_handler_invoke() {
     _entrypoint="$(_ml_bash_handler_path "$_module_dir" "$_entrypoint")" || {
         _ml_bash_handler_error "entrypoint is missing or escapes module package"; return 1;
     }
-    bash -n -- "$_entrypoint" 2>&1 || {
-        _ml_bash_handler_error "entrypoint failed Bash syntax validation"; return 1;
-    }
+    if [ "${V2_HANDLER_SYNTAX_VALIDATED:-0}" != 1 ]; then
+        bash -n -- "$_entrypoint" 2>&1 || {
+            _ml_bash_handler_error "entrypoint failed Bash syntax validation"; return 1;
+        }
+    fi
     _py="$(_ml_bash_handler_python)" || {
         _ml_bash_handler_error "Python JSON runtime is unavailable"; return 1;
     }
     [ -n "$_input" ] || _input='{}'
-    _request="$(printf '%s' "$_input" | "$_py" -c '
+    if [ "${V2_HANDLER_INPUT_CANONICAL:-0}" = 1 ]; then
+        # contribution_id is restricted above to identifier syntax and the
+        # capability runtime already validated/canonicalized the JSON object.
+        printf -v _request '{"api_version":2,"contribution_id":"%s","input":%s}' \
+            "$_contribution_id" "$_input"
+    else
+        _request="$(printf '%s' "$_input" | "$_py" -c '
 import json, sys
 try:
     value = json.load(sys.stdin)
@@ -149,12 +157,14 @@ if not isinstance(value, dict):
     raise SystemExit(1)
 print(json.dumps({"api_version": 2, "contribution_id": sys.argv[1], "input": value}, separators=(",", ":")))
 ' "$_contribution_id")" || return 1
+    fi
 
     if ! command -v timeout >/dev/null 2>&1; then
         _ml_bash_handler_error "timeout command is unavailable"
         return 1
     fi
-    if declare -F igor_v2_contribution_get >/dev/null 2>&1 &&
+    if [ "${V2_HANDLER_DOMAIN_EVENTS:-auto}" != 0 ] &&
+       declare -F igor_v2_contribution_get >/dev/null 2>&1 &&
        [ -n "${_IGOR_LOADER_DIR:-}" ] && [ -n "${IGOR_DOMAIN_EVENT_FILE:-}" ]; then
         _event_dir="$(mktemp -d "${TMPDIR:-/tmp}/igor-domain-handler.XXXXXXXX")" || return 1
         chmod 700 -- "$_event_dir"
@@ -215,6 +225,8 @@ PY
         return 1
     }
     [ -n "$_response" ] || { _ml_bash_handler_error "handler returned an empty response"; return 1; }
-    _ml_bash_handler_validate_response "$_response" || return 1
+    if [ "${V2_HANDLER_DEFER_RESPONSE_VALIDATION:-0}" != 1 ]; then
+        _ml_bash_handler_validate_response "$_response" || return 1
+    fi
     printf '%s\n' "$_response"
 }

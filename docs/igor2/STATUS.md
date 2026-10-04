@@ -1,6 +1,1105 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
+
+## Configuration Startup Snapshot — Boundary P — CLOSED
+
+Boundary O's warm real-host run reduced module bootstrap from **885ms to 686ms**
+and first input-ready from **2.808s to 2.653s**. The derived registration
+interval fell from 626ms to 419ms. Operator-surface reuse remained warm
+(`operator_surface=284ms`, no rebuild).
+
+The O trace no longer emitted every N subphase/per-module observation, so its
+`module.registration.unattributed=389ms` is treated as a diagnostic reporting
+gap, not a second measured bottleneck: the enclosing module/startup improvement
+tracks the intended configuration-consumer change closely. The diagnostic issue
+is retained as observability debt in
+[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md).
+
+Boundary P is the final planned optimization in this investigation. Boundaries
+L and O left two narrow authoritative Configuration Service reads in the same
+standalone-TUI process:
+
+- Core `ai.verbose`;
+- System `system.memory.warning_threshold_mib`.
+
+P coalesces those initial consumers when System is active:
+
+- the canonical loader registry supplies System's already-validated
+  configuration contribution;
+- one Configuration Service process opens the same private SQLite authority;
+- one metadata/revision read and two bounded desired-row reads resolve both
+  startup values;
+- legacy `ai.verbose` compatibility is retained when no desired Core row
+  exists;
+- the result contains values plus one revision and **no global state token**;
+- System consumes its threshold immediately;
+- AI marks the Core value as a process-scoped bootstrap snapshot and consumes it
+  exactly once at TUI startup instead of launching a second resolver;
+- classic/late AI entry does not reuse the snapshot because configuration may
+  have changed after process bootstrap;
+- all mutation, CAS/state-token, explicit System readback and verification paths
+  remain unchanged.
+
+This is not a persistent configuration cache. The snapshot exists only in the
+current TUI process and is not execution/write authority.
+
+Boundary P adds:
+
+```text
+[TIMING] configuration.startup_snapshot=<ms>
+[TIMING] configuration.core_resolve=0ms   # expected when the snapshot is reused
+[TIMING] configuration.decode=0ms         # expected when the snapshot is reused
+```
+
+Focused proof on the final runtime/test content passed:
+
+- Configuration Service contracts: **44/44 passed**;
+- complete System configuration workflow: **14/14 passed**;
+- module-registration timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend / warm-cache regressions: **12/12 passed**;
+- shell syntax and Python compilation passed.
+
+The TUI snapshot regression replaces the old Core verbose resolver with a
+failing marker after module startup; AI initialization still succeeds and
+consumes the snapshot once, proving that the second Configuration Service read
+was actually removed.
+
+The second unchanged real-host P launch closed the boundary:
+
+```text
+[TIMING] tui.bootstrap_modules=679ms
+[TIMING] configuration.core_resolve=0ms
+[TIMING] configuration.decode=0ms
+[TIMING] tui.ai_pre_configuration=6ms
+[TIMING] tui.ai_pre_session=46ms
+[TIMING] operator_surface.generation=49ms
+[TIMING] operator_surface.cache_read=139ms
+[TIMING] operator_surface=288ms
+[TIMING] tui.startup_to_input_ready=2302ms
+```
+
+Compared with Boundary O, AI pre-configuration fell from 316ms to 6ms
+(**98.1% lower**), AI pre-session fell from 357ms to 46ms (**87.1% lower**),
+and READY fell from 2.653s to 2.302s (**13.2% lower**). Module bootstrap
+remained effectively flat (686ms -> 679ms), which is expected because P
+coalesces a later Core read into the authoritative snapshot already taken during
+module bootstrap rather than making that first store access disappear.
+
+The physical-host trace did not emit the new
+`configuration.startup_snapshot` diagnostic even though
+`configuration.core_resolve=0ms`, `configuration.decode=0ms` and the 310ms
+collapse of the enclosing AI configuration phase prove the snapshot was
+consumed. Treat that missing timer as observability debt, not a second
+performance problem.
+
+There was no `operator_surface.rebuild`; Boundary M's persistent warm path
+remained healthy.
+
+Boundary P therefore closes this performance investigation. From the original
+28.445s standalone-TUI READY trace to 2.302s, startup is about **12.4x faster**
+with roughly **91.9% less wall-clock time**. Remaining opportunities are
+documented but are not current blockers. Reopen performance work from measured
+user-visible evidence rather than continuing micro-optimization.
+
+The retrospective, remaining-work list and systematic future audit prompt are
+recorded in [PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) and
+[PERFORMANCE_AUDIT_PROMPT.md](PERFORMANCE_AUDIT_PROMPT.md).
+
+## System Configuration Consumer Fast Path — Boundary O
+
+Boundary N closed the remaining module-registration attribution gap on the
+measured Igor host:
+
+```text
+[TIMING] tui.bootstrap_modules=885ms
+[TIMING] module.discovery=48ms
+[TIMING] module.v2_registry=176ms
+[TIMING] module.sort=35ms
+[TIMING] module.registration.system.v2.configuration=452ms
+[TIMING] module.registration.system.v2.consumer=456ms
+[TIMING] module.registration.docker=28ms
+[TIMING] module.registration.nextcloud_docker=96ms
+[TIMING] module.registration.reconcile=2ms
+[TIMING] module.registration.derived=626ms
+[TIMING] operator_surface=279ms
+[TIMING] tui.startup_to_input_ready=2808ms
+```
+
+System's configuration consumption alone accounted for **452ms**, about 72% of
+the derived registration interval. Docker and the complete legacy Nextcloud v1
+path were only 28ms and 96ms respectively. The N diagnostic
+`module.registration.unattributed=500ms` was not a second hidden bottleneck:
+the System per-module wrapper observation was missing, and
+626 - 28 - 96 - 2 = 500ms. Boundary O also makes completed v2 modules publish
+their own total so this residual reconciles correctly.
+
+The expensive System startup path used the full Configuration Service
+`inspect` contract. That operation correctly computes a global state token by
+validating the complete desired configuration namespace, but the ordinary
+memory health consumer only needs the authoritative warning threshold and the
+current revision. Boundary O separates those responsibilities:
+
+- System's already-validated
+  `configuration:system.memory.preferences` record is taken from the canonical
+  loader contribution registry after v2 registration;
+- Configuration Service revalidates that single owner-stamped schema and reads
+  the same owner-private SQLite desired store;
+- startup resolves only
+  `system.memory.warning_threshold_mib` plus the current global revision;
+- the narrow startup resolver does not call `installed_schemas`, scan unrelated
+  module configuration declarations, enumerate all desired records or compute a
+  global state token;
+- the health consumer can run with value/revision only; its evidence continues
+  to identify the exact consumed threshold and revision;
+- runtime inspection can report this consumed current-process value/revision
+  without pretending that a global state proof was acquired;
+- the existing full configuration loader remains unchanged for explicit
+  apply/readback workflows;
+- an explicit `system.memory.warning.readback` acquires the full validated
+  revision/state token just in time inside the actual invocation shell if it is
+  not already present, so the isolated System handler still reports a proven
+  state token;
+- configuration writes, compare-and-swap admission, stale proposal rejection,
+  desired-state verification and Operational History retain their existing
+  global state-token contracts.
+
+This is not a configuration cache. The startup value is read fresh from the
+Configuration Service SQLite authority on every process start, and the module
+schema remains owned by System rather than duplicated in Core.
+
+Focused proof covers both sides of the authority split: startup must load the
+default/current threshold while leaving
+`IGOR_SYSTEM_MEMORY_WARNING_STATE` absent, and an explicit readback must still
+return the exact full state token obtained from Configuration Service. The
+existing stale apply, approved apply, readback mismatch and recovery workflows
+remain in the test suite.
+
+Final runtime/test content passed:
+
+- Configuration Service contracts: **42/42 passed**;
+- complete System configuration workflow: **13/13 passed**;
+- Boundary N/O registration timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend / warm-cache regressions: **12/12 passed**.
+
+Shell and Python syntax/compilation checks also passed. The temporary branch-only
+proof workflow is removed after evidence capture.
+
+The same-host warm Boundary O run closed the component result at
+`tui.bootstrap_modules=686ms`, `module.registration.derived=419ms` and
+`tui.startup_to_input_ready=2653ms`, down from 885ms / 626ms / 2808ms on
+Boundary N. The operator surface remained a true warm hit at 284ms with no
+rebuild. Some detailed N registration observations were missing from the O
+trace; the enclosing aggregate improvement is therefore the closure evidence.
+Boundary P performs the final coalescing of the two remaining narrow startup
+configuration reads.
+
+## Module Registration Critical Path — Boundary N
+
+Boundary M is closed on the measured host. A true warm second launch showed:
+
+```text
+[TIMING] module.registration=588ms
+[TIMING] operator_surface.generation=50ms
+[TIMING] operator_surface.cache_read=136ms
+[TIMING] operator_surface=285ms
+[TIMING] tui.ai_operator_snapshot=295ms
+[TIMING] tui.startup_to_input_ready=2813ms
+```
+
+There was no `operator_surface.rebuild` line, proving persistent warm-cache
+reuse. The operator surface fell from 384ms on the Boundary L run to 285ms on
+the warm Boundary M run (**25.8% lower**). The remaining largest startup phase
+is module bootstrap, and `module.registration=588ms` accounts for about 68% of
+that 860ms module interval.
+
+Boundary N is deliberately measurement-first. The installed repository gives a
+useful architectural split:
+
+- `system`: Module API v2 with compatibility hooks;
+- `docker`: pure Module API v2 registration;
+- `nextcloud_docker`: legacy Module API v1 registration.
+
+N adds per-module totals:
+
+```text
+[TIMING] module.registration.system=<ms>
+[TIMING] module.registration.docker=<ms>
+[TIMING] module.registration.nextcloud_docker=<ms>
+[TIMING] module.registration.reconcile=<ms>
+```
+
+For legacy v1 modules it further records:
+
+```text
+module.registration.<name>.v1.dependencies
+module.registration.<name>.v1.syntax
+module.registration.<name>.v1.source
+module.registration.<name>.v1.hooks
+module.registration.<name>.v1.finalize
+```
+
+For compiled v2 modules it records:
+
+```text
+module.registration.<name>.v2.preflight
+module.registration.<name>.v2.compat
+module.registration.<name>.v2.contributions
+module.registration.<name>.v2.consumer
+```
+
+The `v2.consumer` phase intentionally includes owner-specific startup
+consumption that occurs after structural registration, such as System's
+configuration consumer. The per-module wrapper includes the complete
+`igor_load_module` path, while `module.registration.reconcile` accounts for
+post-load dependency-cycle reconciliation. Their totals can therefore be
+compared with the existing `module.registration` aggregate.
+
+Instrumentation uses Bash `EPOCHREALTIME` when available so collecting these
+subphases does not itself spawn a `date` process for every boundary. Older
+shells retain the existing millisecond-clock fallback.
+
+No module enablement, dependency resolution, package validation, source,
+registration, contribution indexing, configuration consumption, capability
+authority or execution behavior changes in Boundary N.
+
+Focused branch proof passed:
+
+- shell/Python syntax checks;
+- Boundary N mixed v1/v2 timing contract: **1/1 passed**;
+- complete AI startup lifecycle: **14/14 passed**;
+- operator backend/warm-cache regressions: **12/12 passed**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+
+The first real-host Boundary N trace showed Docker at 27ms and legacy
+Nextcloud at 98ms, while System's preflight/compat/contribution phases totaled
+only 31ms. Roughly half a second of registration remained unattributed and the
+System path did not publish its expected final consumer/total observation. That
+is not enough evidence to optimize Nextcloud or any v2 indexing path.
+
+N is therefore tightened to time System's configuration consumption explicitly
+as `module.registration.system.v2.configuration` and to publish
+`module.registration.unattributed` (plus a derived aggregate when necessary)
+rather than silently dropping an incomplete diagnostic observation. The first N
+host run also rebuilt the operator surface because N modifies loader files that
+Boundary M intentionally fingerprints; that rebuild is expected after changing
+branches and is unrelated to module-registration authority.
+
+The tightened branch re-passed the mixed timing contract (**1/1**), complete AI
+startup lifecycle (**14/14**) and operator backend/warm-cache regressions
+(**12/12**).
+
+The second same-host N run closed the boundary: System configuration consumption
+was **452ms** and its enclosing consumer phase was **456ms**; Docker was 28ms,
+legacy Nextcloud was 96ms and reconciliation was 2ms. The derived registration
+interval was 626ms. This proves the next optimization target is the overly
+strong Configuration Service read inside System registration, not legacy module
+loading or v2 contribution indexing. Boundary O addresses that consumer.
+
+## Operator Surface Warm Fast Path — Boundary M
+
+Boundary L reduced the measured Configuration Service startup phase from
+**460ms** to **304ms**, with the narrow authoritative read split into
+`configuration.core_resolve=221ms` and `configuration.decode=74ms`.
+The same run reached first input in **2.901s**; unrelated module/snapshot/finalize
+phases were slower than the preceding run, so the Boundary L component result is
+used rather than treating that end-to-end variance as a regression.
+
+On that run the operator projection was again a clear bounded target:
+
+```text
+[TIMING] operator_surface=384ms
+[TIMING] tui.ai_operator_snapshot=392ms
+[TIMING] tui.startup_to_input_ready=2901ms
+```
+
+Boundary F persisted a compiled operator projection, but a warm session still
+rebuilt and parsed the full structural seed before it could prove that cache was
+current. Boundary M connects that cache to the loader-owned structural state
+already produced by the Module Platform:
+
+- the loader exposes the exact raw structural frames used by the operator
+  projection separately from the Python seed builder;
+- a cheap loader-owned generation key hashes those current module/contribution
+  frames plus the Core projection implementations;
+- Module API v2 package metadata in those frames is the already-validated
+  structural document loaded through Boundary H's compiled registry path;
+- module lifecycle/enablement, legacy/v1 registrations and current structural
+  contribution state remain part of the key, so the warm cache cannot ignore
+  those overlays;
+- on a matching generation, `operator_surface.py` reads and validates the
+  owner-private cached projection directly and wraps it for the current session;
+- the full JSON seed is materialized only after a cache miss, corruption or
+  generation change;
+- platforms that cannot produce the generation key retain Boundary F's original
+  seed/build path.
+
+The generation also fingerprints the operator projection, Configuration Service
+Core descriptors, deployment attachment descriptors and loader implementation.
+The cache remains disposable presentation metadata. Selecting an entry still
+enters the canonical capability dispatcher, which freshly resolves runtime
+requirements, provider, approval, privilege, execution-fence preconditions,
+verification and Operational History.
+
+Boundary M adds:
+
+```text
+[TIMING] operator_surface.generation=<ms>
+[TIMING] operator_surface.cache_read=<ms>
+[TIMING] operator_surface.rebuild=<ms>   # cache miss only
+[TIMING] operator_surface=<ms>
+```
+
+Focused branch proof passed:
+
+- shell/Python syntax checks;
+- operator surface projection contracts: **12/12 passed**;
+- backend operator bridge contracts: **11/11 passed**;
+- TUI operator contracts: **11/11 passed**;
+- complete AI startup lifecycle: **14/14 passed**.
+
+The warm-path regression first builds a real cache, then replaces the full
+`igor_operator_surface_seed` builder with a failing marker. The second snapshot
+still succeeds, does not touch that marker and is bounded to **<=2 Python
+processes**, versus the previous Boundary F warm allowance of <=4. A separate
+regression proves that changing structural registration changes the loader
+generation key. After the first real-host sample still showed a rebuild, an
+additional proof repeated the warm-cache check across **two separate Bash
+processes sharing the same cache**; the second process reused the cache without
+calling the seed builder. This distinguishes process lifetime from structural
+generation stability.
+
+The same-host warm second launch closed Boundary M with
+`operator_surface.generation=50ms`, `operator_surface.cache_read=136ms`,
+`operator_surface=285ms`, `tui.ai_operator_snapshot=295ms` and no rebuild
+line. The session reached `tui.startup_to_input_ready=2813ms`. The warm
+operator projection is therefore behaving as designed; Boundary N targets the
+remaining 588ms module-registration phase.
+
+## Configuration Read Fast Path — Boundary L
+
+Boundary K closed the pre-session attribution gap on the measured Igor host:
+
+```text
+[TIMING] tui.ai_pre_header=6ms
+[TIMING] tui.ai_pre_keys=9ms
+[TIMING] tui.ai_pre_settings=7ms
+[TIMING] tui.ai_pre_configuration=460ms
+[TIMING] tui.ai_pre_model_cost=7ms
+[TIMING] tui.ai_pre_provider=4ms
+[TIMING] tui.ai_pre_selection=3ms
+[TIMING] tui.ai_pre_session=496ms
+[TIMING] tui.startup_to_input_ready=2783ms
+```
+
+The nested phases sum exactly to the 496ms aggregate; Configuration Service
+resolution alone consumed **460ms (92.7%)**. Boundary L therefore optimizes the
+startup consumer rather than caching configuration authority.
+
+The normal Configuration Service inspection contract computes a global state
+token. That requires validating every desired record against its owning schema,
+so it must retain the complete installed module configuration namespace.
+Boundary L does **not** weaken that contract. Instead it adds a narrow Core-owned
+consumer for `ai.verbose` that:
+
+- reads the same owner-private SQLite configuration store on every session;
+- reads only the `installation:local / ai.verbose` desired record plus the
+  current global revision;
+- preserves the literal legacy compatibility fallback when no Core desired
+  record exists;
+- returns no state token and therefore cannot be used for configuration writes,
+  compare-and-swap admission or claims about unrelated module desired records;
+- instantiates Configuration Service with Core schema only for this explicit
+  consumer, avoiding installed Module API v2 schema discovery/validation;
+- bypasses the generic Python JSON request-builder process for this fixed
+  startup query and collapses two JSON extraction subprocesses into one typed
+  decoder.
+
+Full `inspect`, `list`, `export`, validation, writes, restore and
+module-owned setting flows still load the installed configuration schemas and
+retain their existing global revision/state-token semantics.
+
+Boundary L adds nested evidence inside the existing configuration phase:
+
+```text
+[TIMING] configuration.core_resolve=<ms>
+[TIMING] configuration.decode=<ms>
+[TIMING] tui.ai_pre_configuration=<ms>
+```
+
+Regression coverage includes a store containing both Core and module-owned
+desired records. A Core-only service must resolve `ai.verbose` successfully
+without claiming a state token, while a normal global inspection without the
+module schema must still fail closed.
+
+Focused branch proof passed on the final runtime/test content:
+
+- shell syntax and Python compilation passed;
+- Configuration Service plus system-owned configuration workflows:
+  **51/51 passed in 44.30s**;
+- complete AI startup lifecycle: **14/14 passed in 7.001s**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+
+The same-host real run closed Boundary L with
+`tui.ai_pre_configuration=304ms` (**34% lower** than 460ms),
+`configuration.core_resolve=221ms` and `configuration.decode=74ms`.
+The run reached `tui.startup_to_input_ready=2901ms`; several unrelated phases
+were slower than the preceding sample, so the component-local improvement is
+the closure evidence. `operator_surface=384ms` became the next bounded target.
+
+## AI Pre-Session Fast Path — Boundary K
+
+Boundary J reduced the measured local-setup bottleneck from **1.932s** to
+**97ms** and the same-host standalone-TUI path reached `input_ready` in
+**3.595s**:
+
+```text
+[TIMING] tui.ai_pre_session=743ms
+[TIMING] tui.ai_session_runtime=257ms
+[TIMING] tui.ai_local_setup=97ms
+[TIMING] tui.ai_operator_snapshot=440ms
+[TIMING] tui.ai_ready_finalize=533ms
+[TIMING] tui.startup_to_input_ready=3595ms
+```
+
+The Boundary J top-level phases still reconcile closely to the end-to-end timer
+(about 3.583s of 3.595s), so `tui.ai_pre_session` is now the largest
+unexplained AI-local phase. Boundary K keeps its authority-bearing work intact
+and first attributes that 743ms internally.
+
+One presentation-only cost is removed immediately: the standalone TUI no longer
+calls the classic `header()` at AI-session entry. That function gathers
+domain/IP/hostname, health state, module status hooks and pending-menu state only
+to render the shell header; the curses frontend owns its own structured header
+and does not consume that output.
+
+Boundary K adds nested pre-session timings:
+
+```text
+[TIMING] tui.ai_pre_header=<ms>
+[TIMING] tui.ai_pre_keys=<ms>
+[TIMING] tui.ai_pre_settings=<ms>
+[TIMING] tui.ai_pre_configuration=<ms>
+[TIMING] tui.ai_pre_model_cost=<ms>
+[TIMING] tui.ai_pre_provider=<ms>
+[TIMING] tui.ai_pre_selection=<ms>
+```
+
+These phases partition the existing `tui.ai_pre_session` interval. Key loading
+and permission checks, authoritative `ai.verbose` configuration resolution,
+model/provider normalization, cost-rate setup and local deferred-provider state
+remain unchanged. Boundary K does not cache or bypass configuration authority.
+
+Focused branch proof passed on the exact runtime/test content: Bash syntax,
+Python compilation for the affected startup/TUI files, and the complete AI
+startup lifecycle suite (**14/14 passed in 8.330s**). The regression requires
+the standalone TUI to skip the classic header while classic sessions still call
+it, and requires every Boundary K pre-session timing to be published. The
+temporary branch-only proof workflow is removed after evidence capture.
+
+The same-host real run closed Boundary K with
+`tui.ai_pre_session=496ms` and `tui.startup_to_input_ready=2783ms`. The
+nested phases reconciled exactly to 496ms, and
+`tui.ai_pre_configuration=460ms` accounted for 92.7% of that interval.
+Boundary L targets that measured Configuration Service read path.
+
+## TUI Local Setup Fast Path — Boundary J
+
+Boundary I closed the remaining startup-attribution gap on the measured Igor
+host. Its sequential top-level phases accounted for about **5.052s** of the
+**5.063s** observed time to first `input_ready`, leaving only ~11ms
+unattributed:
+
+```text
+[TIMING] tui.backend_spawn=10ms
+[TIMING] tui.backend_prebootstrap=168ms
+[TIMING] tui.bootstrap_config=57ms
+[TIMING] tui.bootstrap_modules=833ms
+[TIMING] tui.bootstrap_module_config=47ms
+[TIMING] tui.bootstrap_aux_sources=9ms
+[TIMING] tui.bootstrap_config_hooks=8ms
+[TIMING] tui.backend_dispatch=104ms
+[TIMING] tui.ai_source=81ms
+[TIMING] tui.ai_pre_session=684ms
+[TIMING] tui.ai_session_runtime=235ms
+[TIMING] tui.ai_local_setup=1932ms
+[TIMING] tui.ai_operator_snapshot=399ms
+[TIMING] tui.ai_ready_finalize=485ms
+[TIMING] tui.startup_to_input_ready=5063ms
+```
+
+The largest remaining phase is therefore `tui.ai_local_setup`: **1.932s**,
+about 38% of the measured startup. Boundary J targets only work that the
+standalone curses frontend does not need before READY:
+
+- it does not enter the classic tmux AI layout or print the classic backend
+  banner before the TUI becomes interactive;
+- it does not render classic right-pane provider/session/command-reference
+  content on the standalone TUI path;
+- it does not render a full provider system prompt around the intentionally
+  deferred placeholder context. The authoritative prompt is rebuilt by
+  `_ai_refresh_context` after full context preparation and before the first
+  provider-bound request;
+- a local mode change while context is deferred updates mode immediately but
+  cannot force that discarded startup prompt to render early;
+- when an existing WIP is present, the TUI preserves its existing automatic
+  "keep for later / fresh session" behavior while loading the final knowledge
+  view once instead of loading investigation carry-over and immediately
+  rebuilding without it.
+
+Knowledge, WIP persistence, provider validation, full context gathering,
+scrubbing, capability projection, approvals, privilege mediation, execution and
+verification remain authoritative at their existing boundaries.
+
+Boundary J keeps `tui.ai_local_setup` and adds nested attribution:
+
+```text
+[TIMING] tui.ai_local_ui=<ms>
+[TIMING] tui.ai_local_knowledge=<ms>
+[TIMING] tui.ai_local_prompt=<ms>
+[TIMING] tui.ai_local_session_header=<ms>
+[TIMING] tui.ai_local_command_reference=<ms>
+```
+
+Focused branch proof passed: shell syntax, Python compilation, and the complete
+AI startup lifecycle suite (**14/14 passed in 7.331s**). Regressions require the
+TUI to reach READY without provider/context preparation, without a system-prompt
+render, and without classic tmux/right-pane presentation; the classic path still
+renders its normal prompt/presentation. A separate regression proves mode
+changes cannot defeat deferred prompt preparation.
+
+The same-host real run closed Boundary J with
+`tui.ai_local_setup=97ms` and `tui.startup_to_input_ready=3595ms`, down from
+1.932s and 5.063s respectively. The nested local-setup timings were all small;
+`tui.ai_pre_session=743ms` became the next measured AI-local target.
+
+## TUI Startup Critical Path — Boundary I
+
+Boundary H removed the dominant module-loader delay on the measured Igor host:
+
+```text
+[TIMING] tui.bootstrap_config=58ms
+[TIMING] tui.bootstrap_modules=808ms
+[TIMING] tui.bootstrap_module_config=48ms
+[TIMING] module.discovery=48ms
+[TIMING] module.v2_registry=172ms
+[TIMING] module.sort=32ms
+[TIMING] module.registration=547ms
+[TIMING] operator_surface=351ms
+[TIMING] tui.startup_to_input_ready=4849ms
+```
+
+That is a **96.4% reduction** in module bootstrap (22.624s → 0.808s) and an
+**82.9% reduction** in operator-visible time to first input (28.445s → 4.849s).
+The remaining startup delay is now outside the module loader, so Boundary I is
+instrumentation-only: it attributes the full path to `input_ready` before any
+further optimization.
+
+The new top-level TUI startup phases are sequential and diagnostic only:
+
+```text
+[TIMING] tui.backend_spawn=<ms>
+[TIMING] tui.backend_prebootstrap=<ms>
+[TIMING] tui.bootstrap_config=<ms>
+[TIMING] tui.bootstrap_modules=<ms>
+[TIMING] tui.bootstrap_module_config=<ms>
+[TIMING] tui.bootstrap_aux_sources=<ms>
+[TIMING] tui.bootstrap_config_hooks=<ms>
+[TIMING] tui.backend_dispatch=<ms>
+[TIMING] tui.ai_source=<ms>
+[TIMING] tui.ai_pre_session=<ms>
+[TIMING] tui.ai_session_runtime=<ms>
+[TIMING] tui.ai_local_setup=<ms>
+[TIMING] tui.ai_operator_snapshot=<ms>
+[TIMING] tui.ai_ready_finalize=<ms>
+[TIMING] tui.startup_to_input_ready=<ms>
+```
+
+`module.*` and `operator_surface` remain useful nested attributions, but they
+must not be added again when reconciling the sequential top-level phases.
+Boundary I changes no approval, privilege, execution, module, provider, context
+or readiness semantics.
+
+Focused branch proof passed on the instrumented runtime content: Bash syntax for
+`igor.sh` and `core/ai/core.sh`, Python compilation for the affected startup
+test/TUI files, and the full AI startup lifecycle suite (**13/13 passed in
+6.975s**). The regression requires every Boundary I phase owned by `core.sh`
+plus the upstream `igor.sh` timing contract to be published in the session log.
+The temporary branch-only proof workflow is removed after evidence capture.
+
+The real-host Boundary I run closed this candidate: the sequential phase total
+reconciled to within ~11ms of `tui.startup_to_input_ready`, and
+`tui.ai_local_setup=1932ms` was the largest remaining phase. Boundary J targets
+that measured phase.
+
+## Module Loader Startup Performance — Boundary H candidate
+
+Boundary G's first real-host startup profile made the remaining bottleneck
+unambiguous on the same operator path:
+
+```text
+[TIMING] tui.bootstrap_config=63ms
+[TIMING] tui.bootstrap_modules=22624ms
+[TIMING] tui.bootstrap_module_config=50ms
+[TIMING] operator_surface=399ms
+[TIMING] tui.startup_to_input_ready=28445ms
+```
+
+Module bootstrap therefore consumed about **79.5%** of the measured 28.445s
+time to first `input_ready`. Boundary H targets that phase only.
+
+Module API v2 previously validated each package in a Python process and then
+restarted Python repeatedly while sorting and registering the same validated
+JSON: module requirements, manifest fields, contribution rows/records,
+requirement indexes, handler metadata and static capability policy. Boundary H
+replaces that interpreter storm with one registry compiler invocation per
+startup:
+
+- `core/lib/module_registry.py` validates every installed v2 package in one
+  Python process and emits normalized structural registration frames;
+- the derived document is persisted as
+  `${IGOR_DATA_DIR}/cache/module-registry-v2.json` with an owner-private 0700
+  directory, 0600 lock/cache files, locking and atomic replacement;
+- the source digest covers the compiler/validator semantics plus the complete
+  installed v2 package contents, so manifest, contract, handler/entrypoint or
+  package-file changes invalidate the cache;
+- a warm cache still fingerprints current package files, but it does not
+  revalidate/reparse every contribution;
+- the shell loader populates the existing canonical contribution, requirement,
+  handler and dependency registries from the compiled frames. It does not add a
+  second execution registry;
+- v1 loading and compatibility registration remain unchanged and the fast path
+  delegates to the original v2 implementation if compiled state is unavailable.
+
+The cache is deliberately **structural metadata, not authority**. Module
+enablement, required-module/provider state, platform family, required binaries
+and contribution-local requirements are evaluated from the current process/host
+at the existing loader or dispatch boundary. Approval, privilege mediation,
+preconditions, execution fence, verification and Operational History are
+unchanged. A cache hit therefore cannot make an absent binary, inactive owner
+or stale provider appear available.
+
+Boundary H adds internal attribution under the existing module-bootstrap timer:
+
+```text
+[TIMING] module.discovery=<ms>
+[TIMING] module.v2_registry=<ms>
+[TIMING] module.sort=<ms>
+[TIMING] module.registration=<ms>
+[MODULE] v2_registry_cache=<hit|miss|bypass|fallback|none>
+```
+
+The proof contract includes a Python-process counter: for a v2-only fixture the
+cold startup must use one Python compiler process and a warm startup one more,
+rather than one process per field/contribution. A separate test changes a
+required binary between two cache-hit startups and requires contribution
+availability to change accordingly, guarding the runtime-truth boundary.
+
+Focused proof on the final runtime content passed:
+
+- shell syntax and Python compilation for the loader/compiler changes;
+- Module API v2 contracts: **30/30 passed**, including cold/warm cache reuse,
+  package-change invalidation and dynamic-requirement freshness;
+- loader regressions: **12/12 passed**;
+- module contract regressions: **23/23 passed**;
+- Boundary G AI startup lifecycle: **13/13 passed in 6.82s**.
+
+The temporary proof workflow is removed from the branch after evidence capture.
+Real-host closure on the same operator path measured `tui.bootstrap_modules`
+at **808ms** and `tui.startup_to_input_ready` at **4849ms**, down from
+22.624s and 28.445s respectively. Module bootstrap is therefore no longer the
+dominant startup target; Boundary I attributes the remaining critical path.
+
+## TUI Readiness Performance — Boundary G candidate
+
+The compiled operator surface in Boundary F removes repeated namespace work, but
+real TUI readiness still waited behind unrelated synchronous startup work.
+Boundary G changes the measured boundary from a component-local optimization to
+the operator-visible path: curses frontend spawn through the first
+`model_status=input_ready`.
+
+For the standalone TUI only:
+
+- provider connectivity/authentication pre-flight is deferred until the first
+  provider-bound request instead of blocking the composer;
+- the full server-context scan is likewise deferred until that first request;
+  the former capability load and reviewed `host.memory` refresh still happen
+  before context is gathered, so full-context semantics are moved rather than
+  removed;
+- deferred provider or context failure blocks that provider request and remains
+  visible in the TUI, while local commands and navigation can be used before a
+  network request exists;
+- the 5-minute context refresher cannot accidentally treat never-captured
+  deferred context as stale and rebuild it before first input;
+- the curses TUI skips the classic tmux/fzf/rich feature probe because it owns
+  its own interaction surface and does not use those launch-time features.
+
+The backend now records the actual startup path rather than only the final
+operator-surface component:
+
+```text
+[TIMING] tui.bootstrap_config=<ms>
+[TIMING] tui.bootstrap_modules=<ms>
+[TIMING] tui.bootstrap_module_config=<ms>
+[TIMING] operator_surface=<ms>
+[TIMING] tui.startup_to_input_ready=<ms>
+[TIMING] provider.preflight=<ms>
+[TIMING] context.first_request=<ms>
+```
+
+`tui.startup_to_input_ready` starts in `tui.py` before the backend PTY is
+forked, so it includes the global `igor.sh --ai-tui-backend` bootstrap that the
+Boundary F timer could not see. The module bootstrap remains synchronous and is
+intentionally not optimized in this boundary; its dedicated timing is expected
+to identify the next remaining startup target on a real host.
+
+Focused branch proof passed on the exact Boundary G content:
+
+- Bash syntax for `igor.sh` and `core/ai/core.sh`, plus Python compilation for
+  the changed TUI/startup tests;
+- new readiness/deferred-work contracts: **3/3 passed in 1.25s**;
+- existing AI startup lifecycle: **13 tests + 12 subtests passed in 9.51s**.
+
+The temporary branch-only proof workflow is removed after evidence capture.
+No real-host startup-speed claim is made yet. Closure requires measuring
+`tui.startup_to_input_ready` on the same machine before/after this boundary and
+using the new phase timings to attribute the remaining delay.
+
+## Operator Surface Startup Performance — Boundary F candidate
+
+The operator namespace previously rebuilt module, contribution, capability and
+configuration projections synchronously before the AI backend entered its ready
+loop. That work included whole-registry dynamic requirement evaluation and a
+configuration declaration path that revalidated installed Module API v2
+packages, so namespace startup cost grew with module count and host checks.
+
+Boundary F separates navigation metadata from execution authority:
+
+- the loader exposes one structural seed from already validated v2 registration
+  data, base contribution lifecycle state, module activation state, pure
+  Core-owned capability descriptors and Core configuration schema;
+- disabled validated v2 packages remain present as inactive structural
+  metadata;
+- dynamic contribution requirements such as current binaries/providers are not
+  evaluated for namespace construction;
+- `operator_surface.py` persists the compiled projection under
+  `${IGOR_DATA_DIR}/cache/operator-surface-v1.json`;
+- the cache source identity covers the current structural seed plus the surface
+  projection implementation, so package/module/schema/enablement/base-contract
+  changes rebuild it automatically;
+- cache directory, lock and document are owner-private; writes are atomic and
+  lock-serialized;
+- missing, corrupt, stale or unsafe cache state falls back to an in-memory
+  rebuild because the cache is derived presentation state, never authority;
+- the real AI startup path uses the compiled projection whenever the loaded
+  module registry is available, while isolated callers retain the legacy
+  compatibility builder;
+- `[TIMING] operator_surface=<ms>` records real startup evidence.
+
+The surface declares `availability_model=registration`. Selecting a leaf still
+enters the canonical capability dispatcher and freshly resolves dynamic
+requirements, provider, approval, privilege, preconditions, verification and
+History before effect.
+
+Focused proof on the exact runtime/test content passed:
+
+- shell/Python syntax checks;
+- operator surface/backend/TUI contracts: **32/32 passed** in 1.54s;
+- compiled cold and warm snapshots are bounded to **<=4 Python processes**;
+- the compiled path proves the legacy dynamic contribution/capability/
+  configuration collectors are not invoked;
+- persistent cache reuse, structural-digest invalidation and corrupt-cache
+  recovery are covered;
+- selected capability authority smoke: **3/3 passed**, covering the real system
+  service inventory path, selected-only preparation and exactly one fresh
+  execution-fence precondition pass.
+
+A temporary branch-only proof job is used for this bounded milestone because
+the ordinary hosted-runner affected job still fails before repository tests at
+the known global BATS install `EACCES`. Whole-repository Ruff remains red on
+its existing backlog; new touched-line Ruff findings were cleaned where they
+belonged to Boundary F. No full regression was run.
+
+No real-host startup-speed claim is made until the same machine measures
+`operator_surface` once with a cold cache and again warm. The architectural
+target is that namespace opening scales with one structural registration
+fingerprint/cache read rather than dynamic whole-registry discovery.
+
+## Result Publication Performance — Boundary E validated
+
+Boundary D's real-host proof reduced the same `system.service.list` action to
+**3.45s** and the fresh execution-fence interval to **1.152s**. After terminal
+Operational History persistence, however, the TUI still became visibly updated
+about **1.143s** later. Boundary E targets only that post-terminal presentation
+path.
+
+The runtime now:
+
+- gives the synchronous Automation domain-event subscriber a non-authoritative
+  raw-trigger prefilter, so unrelated `capability.completed` events do not
+  rebuild the global capability/proposal/event context merely to discover there
+  is nothing to queue;
+- keeps `claim-event` as the full current-state/policy authority gate during
+  the existing drain; prefilter candidates cannot execute or grant authority;
+- replaces the frontend emitter's per-event full JSONL sequence scan with an
+  owner-only advisory `.seq` cache keyed by stream inode/size/mtime;
+- treats the JSONL stream as truth whenever that cache is missing, corrupt,
+  stale or unsafe, falling back to the exact prior full scan;
+- emits the local `action_output` presentation once the canonical result is
+  already terminal, before non-authoritative tool-meta and RESULT-audit
+  bookkeeping.
+
+Domain Event publication remains synchronous. Automation delivery still only
+queues signals, and canonical Automation dispatch still revalidates active
+source, target capability, READ/no-privilege policy, event type, mode, event ID
+and minimum interval before execution.
+
+Focused proof on the exact Boundary E runtime/test content passed:
+
+- shell/Python syntax checks;
+- selected `tests/test_automation_registry.py`: **4/4 passed** (30
+  deselected), covering exact non-authoritative prefiltering, the no-global-
+  context negative path, normal queue/drain dispatch, and validated capability
+  event delivery;
+- selected `tests/core/test_ai_events.bats`: **3/3 passed**, covering symlink
+  refusal, sequence-cache corrupt/truncate recovery and envelope-order
+  protection;
+- selected `tests/core/test_ai_safety_events.bats`: **2/2 passed**, proving
+  terminal output is published before RESULT diagnostics while local output
+  remains faithful/timed/transport-free;
+- `tests/modules/test_domain_event_bus.bats`: **3/3 passed**.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected job again failed before repository tests at the known hosted
+runner global BATS install `EACCES`. Whole-repository Ruff remains red on its
+existing backlog; the only referenced touched test-file finding was the
+pre-existing unused `# noqa: E402` in `tests/test_automation_registry.py`.
+No full regression was run for this bounded performance milestone.
+
+Boundary E does **not** change approval, privilege, capability execution,
+Operational History authority/durability, provider isolation, verification, or
+Automation dispatch authority.
+
+Real-host `system.service.list` evidence closed Boundary E at **3.36s** reported
+action duration. The targeted terminal-to-visible interval fell from about
+**1.143s to 0.471s** (about 59% faster), while authority-to-running,
+running-to-provider-complete and provider-complete-to-terminal remained
+essentially unchanged.
+
+## Execution Fence Performance — Boundary D validated
+
+The post-Boundary-C real-host `system.service.list` trace measured
+`authority -> running` at **2.070s**. Boundary D keeps the same fresh
+execution-fence proof and removes repeated serialization/process work around it.
+
+The runtime now:
+
+- invokes the same `CapabilityRegistry.prepare` path through a direct
+  `prepare-shell` bridge instead of starting a separate Python process just to
+  construct the JSON prepare request;
+- compiles static `requires.capabilities` and composite leaf/final-check
+  dependency IDs at module load, so execution-time resolution closure assembly
+  is pure Bash while current provider availability is still reevaluated;
+- batches the freshly prepared base proposal fields needed by Core
+  (privilege/version/owner/canonical inputs) instead of reparsing each field in
+  a separate Python process;
+- reuses the already-known capability id, owner and canonical inputs for the
+  configuration/owner-active precondition path;
+- binds the source module version from the already-validated in-memory Module
+  API manifest rather than reparsing that manifest at each prepare.
+
+No precondition result is cached. The selected capability is still rebuilt from
+current loader state after approval, dynamic requirements are checked, current
+preconditions are evaluated exactly once, privileged argv remains reviewed and
+frozen, source version remains digest-bound, and the newly reconstructed digest
+must match the approved digest before the provider can enter `running`.
+
+Focused proof on the exact Boundary D runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_capability_runtime.py`: **22/22 passed** in 0.95s;
+- selected `tests/modules/test_system_admin_surface.bats`: **9/9 passed**,
+  covering real service inventory/status, compiled provider metadata,
+  selected-only dynamic requirements, service-list prepare bounded to
+  **<=6 Python processes**, zero-Python dependency-closure discovery, exactly
+  one execution-fence precondition evaluation, Docker composite
+  leaf/final-check resolution, child-unavailability fencing, and the reviewed
+  privileged service-restart adapter.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected CI job again failed before repository tests at the known
+hosted-runner global BATS install `EACCES`; whole-repository Ruff remains red
+on its existing backlog and reported no new errors in Boundary D files. No full
+regression was run for this bounded performance milestone.
+
+Boundary D does **not** change approval, privilege, History durability,
+provider isolation, typed output verification, Domain Event/Automation
+follow-up or frontend publication.
+
+Real-host evidence on `system.service.list` closed Boundary D at **3.45s**
+reported action duration. The targeted `authority -> running` interval fell
+from **2.070s to 1.152s** (about 44% faster), while the lifecycle remained
+`admitted -> authority -> running -> provider_complete -> terminal`.
+
+## Provider Runtime Performance — Boundary C candidate
+
+The post-Boundary-B real-host `system.service.list` trace measured
+`running -> provider_complete` at **1.826s** while the native
+`systemctl list-units` call remained about **41ms**. Boundary C targets only
+the generic Module API v2 provider bridge around that work.
+
+The runtime now:
+
+- compiles handler function, timeout, entrypoint and per-owner domain-event
+  presence at module load after strict Module API v2 validation;
+- reuses `module_contract.py`'s existing entrypoint containment, `bash -n`
+  and declared-handler validation instead of running a duplicate `bash -n`
+  subprocess on every canonical capability invocation;
+- keeps per-invocation entrypoint package containment and isolated child
+  `source`/handler execution, so changed invalid Bash still fails before the
+  handler can execute;
+- constructs the canonical handler request directly for already-validated
+  capability inputs instead of reparsing/reserializing the same JSON through a
+  separate Python process;
+- bypasses the domain-event temp-directory/background poll bridge for module
+  owners that declare no domain events, while retaining the existing bridge for
+  owners that do;
+- fuses v2 handler-envelope validation and typed domain-output validation into
+  one Capability Runtime process.
+
+The fused validator preserves the previous outcome distinction: malformed or
+`status=error` handler envelopes are provider failures; a valid
+`status=ok` envelope with invalid typed output remains
+`output_status=invalid` / `invalid_output`; valid output is normalized
+against the authoritative v2 output schema.
+
+Focused proof on the exact Boundary C runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_capability_runtime.py`: **21/21 passed** in 0.65s;
+- `tests/modules/test_module_handler.bats`: **9/9 passed**;
+- selected `tests/modules/test_system_admin_surface.bats`: **4/4 passed**,
+  including the real service inventory/status path, compiled service handler
+  metadata, targeted preparation and the single execution-fence precondition.
+
+The module-handler proof includes a zero-`IGOR_PYTHON` canonical bridge path,
+fast-path entrypoint containment, changed-invalid-source fail-closed behavior,
+generic malformed/error-response handling and timeout enforcement.
+
+A temporary branch-only proof job was removed after evidence capture. The
+ordinary affected CI job again failed during its pre-test global BATS install
+with the known hosted-runner `EACCES`; whole-repository Ruff remains red on
+its existing backlog and reported no new Boundary C file errors. No full
+regression was run for this bounded performance milestone.
+
+Boundary C does **not** change approval, privilege, History lifecycle,
+execution-fence preparation/revalidation, provider isolation, verification,
+Domain Event semantics, Automation follow-up or frontend publication. The next
+proof is the same real-host timestamped `system.service.list` run; no
+wall-clock improvement is claimed before that measurement.
+
+## Operational History Performance — Boundary B candidate
+
+Boundary A reduced the measured `system.service.list` execution-fence
+revalidation interval from **10.622s to 2.095s**, but the real host trace still
+showed multiple durable authority writes and roughly 0.6–0.9s around individual
+History transitions. Boundary B is the next bounded generic-runtime
+optimization.
+
+The public Operational History episode/export contract and SQLite backend
+version remain unchanged. The hot path now:
+
+- records one canonical authority transition after final approval/privilege is
+  known instead of overlapping approval/authentication/execution writes;
+- preserves direct/non-AI execution without trusting an environment marker:
+  History can atomically record `authority -> running` for a direct caller in
+  the same pre-effect transaction;
+- constructs simple transition requests in shell and enters one
+  `operational_history.py` service process instead of using separate Python
+  request-builder and data-directory injector processes;
+- passes the private History data directory through an internal environment
+  boundary while retaining compatibility with explicit `data_dir` requests;
+- limits recovery decoding to runtime-owned unfinished attempts plus
+  interrupted/unreconciled attempts rather than decoding every terminal
+  episode;
+- skips the discarded `recent` History query during admission recovery.
+
+Successful AI-dispatched operations now have the intended durable sequence:
+
+```text
+admitted -> authority -> running -> provider_complete -> terminal
+```
+
+Declined, stopped and failed-authentication paths still terminalize without
+provider execution. Final authority is durable before any provider effect.
+Direct execution still obtains an authority boundary before effect, and
+interrupted/unknown recovery semantics are unchanged.
+
+Focused proof on the exact runtime/test content passed:
+
+- shell/Python syntax checks;
+- `tests/test_operational_history.py`: **24 passed + 16 subtests** in 4.89s;
+- `tests/modules/test_operational_history_dispatch.bats`: **13/13 passed**,
+  including durable-before-effect CHANGE, one-Python hot transition, direct
+  authority fallback, provider/verification failure separation, declined
+  approval, failed sudo authentication, real READ persistence, interrupted
+  CHANGE reconciliation/no replay, unavailable reconciliation, corruption
+  blocking, post-effect History failure behavior, legacy-journal suppression,
+  headless inspection and composite plan references.
+
+A temporary branch-only CI proof job and hosted-runner BATS install correction
+were removed after evidence capture. Whole-repository Ruff remains red on its
+pre-existing lint backlog. No full regression was run for this bounded
+performance milestone.
+
+Boundary B does **not** optimize module-handler startup, typed output validation,
+Domain Event/Automation post-completion work, event-stream sequencing or the
+remaining targeted prepare work. Real-host timing should be repeated with the
+same `system.service.list` trace before claiming the wall-clock improvement.
+
+## Capability Runtime Performance — Boundary A candidate
+
+A real `system.service.list` trace localized the dominant generic runtime cost:
+the native `systemctl list-units` query completed in about 41 ms, while the
+execution-fence reprepare/revalidation path consumed about 10.6s before the
+provider could enter `running`.
+
+Boundary A changes implementation cost without changing capability authority:
+
+- Module API v2 `requires` lists are compiled into Core-owned in-memory indexes
+  at module load; current module/platform/binary state is still checked at use
+  time.
+- prepare/inspect resolve only the requested capability plus its bounded
+  declared/composite dependency closure rather than dynamically reevaluating
+  unrelated capabilities.
+- composite preparation retains its leaf and final-check descriptors.
+- execution still reprepares immediately before the provider and compares the
+  approved digest, but the fresh preconditions are not executed a second time.
+- proposal/fresh execution-fence fields are parsed in batched, fail-closed
+  operations instead of one Python interpreter per field.
+
+Focused proof on the exact runtime/test content used by this candidate passed:
+`tests/test_capability_runtime.py` **20/20** in 0.42s and **6/6** selected System
+administration/composite BATS tests. The BATS proof includes the actual
+service-list/status path, selected-only dynamic requirement evaluation, a
+bounded Python-process budget, exactly one execution-fence precondition
+evaluation, Docker composite resolution and child-unavailability fencing.
+Shell/Python syntax checks also passed.
+
+The shared affected CI job could only be exercised by temporarily correcting
+the hosted runner's existing global BATS install permission issue; that
+workflow-only change was removed after the focused evidence. Whole-repository
+Ruff remains red on its existing backlog. No full regression was run for this
+boundary.
+
+Boundary A deliberately does **not** alter Operational History transitions or
+recovery scanning, module-handler isolation/startup, Domain Event/Automation
+post-completion work, event-stream sequencing, approval/privilege rules or
+verification/recovery semantics. Those remain separate optimization boundaries.
 
 ## Roadmap completion-gate correction — documentation-only candidate
 

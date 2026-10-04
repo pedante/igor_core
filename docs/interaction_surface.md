@@ -4,6 +4,31 @@ Launch with `bash igor.sh --ai-tui`. The frontend projects the existing ordered
 backend event stream and sends user input through its PTY. Classic and headless
 paths remain available; Step 20 owns default launch and consolidation.
 
+The standalone TUI's first `input_ready` no longer waits for provider-network
+validation, a full server-context scan, or construction of the provider system
+prompt around placeholder context. Those operations remain mandatory before the
+first provider-bound request: the TUI shows CONNECTING while provider pre-flight
+runs and PREPARING while full context is assembled. Context preparation still
+loads the capability projection and refreshes the reviewed `host.memory`
+observation before gathering/scrubbing context and rebuilding the authoritative
+system prompt. A local mode change during this deferred window updates the mode
+without forcing an early prompt render; the rebuilt prompt uses the current
+mode.
+
+The curses frontend also skips the classic backend presentation path before
+READY: it does not render the classic system/header status block, enter the tmux
+AI layout, print the classic banner, or build the classic right-pane command
+reference. Those are presentation-only surfaces owned by the classic UI; the
+standalone TUI already owns its screen, header and command palette.
+
+The startup read of Core-owned `ai.verbose` still comes from Configuration
+Service's current private SQLite authority on every session, but it uses a
+narrow consumer that returns only the resolved value and global revision. It
+does not compute a global configuration state token or rediscover module
+configuration schemas; full inspection/write interfaces keep those stronger
+namespace/state-token contracts. Local commands, settings/navigation and the
+operator surface remain usable before the first provider request.
+
 ## Focus and navigation
 
 Tab/Shift+Tab cycles input → output → panel (when open). Ctrl+B toggles the panel
@@ -17,16 +42,29 @@ section selection; Page Up/Down scrolls section content. Terminal resize and
 panel toggling preserve the composer and backend projection.
 
 Ctrl+P opens the existing local command palette. Typing `:` on an empty draft
-opens the contract-driven operator explorer. The explorer immediately requests a
-fresh `operator_snapshot` projected by the backend from already-loaded module,
-contribution, capability and configuration registries. Type a segment to filter;
-`.` or Enter descends; Backspace/Esc returns toward the root; `Ctrl+R`
-requests another snapshot without losing the backend authority boundary.
+opens the contract-driven operator explorer. Session startup publishes a
+compiled `operator_snapshot` from loader-validated registration metadata. The
+derived projection is cached at
+`${IGOR_DATA_DIR}/cache/operator-surface-v1.json` and keyed by the current
+loader-owned structural generation. On an unchanged warm session the backend
+checks that generation and reads the compiled projection directly; it does not
+rebuild the JSON structural seed merely to prove the cache current. A miss,
+corrupt cache or structural generation change rebuilds from the same validated
+loader frames. Type a segment to filter; `.` or Enter descends;
+Backspace/Esc returns toward the root; `Ctrl+R` requests the current compiled
+snapshot without losing the backend authority boundary.
 
-The explorer displays total/source counts and distinguishes a populated
-projection, a genuinely empty set of registered operator contracts, registry
-source failures and a backend that has not returned a snapshot. Browsing and
-refresh perform no model call or host probe.
+The compiled surface is presentation metadata, not runtime authority. Its
+`availability_model` is `registration`: package/module/schema/enablement and
+base contract changes invalidate the structural digest, while changing host
+facts such as a binary appearing or disappearing do not. Selecting a capability
+still enters the canonical dispatcher, which freshly resolves provider,
+requirements, approval, privilege, execution-fence preconditions and
+verification before effect. The explorer displays total/source counts and
+distinguishes a populated projection, a genuinely empty set of registered
+operator contracts, projection failures and a backend that has not returned a
+snapshot. Browsing and refresh perform no model call or host probe. The cache is
+disposable derived state; deleting or corrupting it causes a safe rebuild.
 
 ## Panel and inspection
 

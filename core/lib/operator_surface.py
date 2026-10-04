@@ -9,13 +9,19 @@ metadata so TUI, CLI, and future frontends can share one discoverability model.
 from __future__ import annotations
 
 import copy
+import fcntl
 import hashlib
 import json
+import os
 import re
+import stat
 import sys
+import tempfile
+from pathlib import Path
 from typing import Any
 
 SURFACE_VERSION = 1
+CACHE_VERSION = 1
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _KINDS = {
     "automation", "capability", "check", "configuration", "domain_event",
@@ -143,7 +149,8 @@ def _configuration_entries(record: dict[str, Any], active_owners: set[str]) -> l
 
 
 def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {*_SOURCE_NAMES, "sources"}
+    allowed = {*_SOURCE_NAMES, "sources", "seed_version", "availability_model",
+               "compiled_source_digest"}
     if not isinstance(payload, dict) or set(payload) - allowed:
         raise SurfaceError("invalid operator surface payload")
     modules = _bounded_list(payload.get("modules", []), "modules", 512)
@@ -219,10 +226,379 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
         "entry_count": len(entries),
         "sources": sources,
         "entries": entries,
+        "availability_model": str(payload.get("availability_model") or "runtime_snapshot"),
     }
+    source_digest = payload.get("compiled_source_digest")
+    if source_digest is not None:
+        if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+            raise SurfaceError("invalid compiled source digest")
+        document["compiled_source_digest"] = source_digest
     raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
     document["digest"] = hashlib.sha256(raw).hexdigest()
     return document
+
+
+def build_seed(raw: bytes, lib_dir: Path) -> dict[str, Any]:
+    """Decode loader-owned structural registration frames.
+
+    v2 registrations were already validated by Module API loading. This helper
+    does not source module code or evaluate dynamic requirements.
+    """
+    parts = raw.split(b"\0")
+    if parts[-1:] == [b""]:
+        parts.pop()
+    if len(parts) % 7:
+        raise SurfaceError("invalid operator surface seed framing")
+
+    sys.path.insert(0, str(lib_dir))
+    try:
+        from configuration import CORE_SCHEMA
+        from configuration import capability_records as configuration_capabilities
+        from deployment_attachment import capability_records as deployment_capabilities
+    except ImportError as exc:
+        raise SurfaceError("operator surface core registry unavailable") from exc
+
+    modules_raw: dict[str, dict[str, Any]] = {}
+    overrides: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for offset in range(0, len(parts), 7):
+        try:
+            kind, one, two, three, four, five, six = (
+                value.decode() for value in parts[offset:offset + 7]
+            )
+        except UnicodeDecodeError as exc:
+            raise SurfaceError("invalid operator surface seed encoding") from exc
+        if kind == "module":
+            name, api_text, status, reason, enabled_text, metadata = (
+                one, two, three, four, five, six
+            )
+            if not _ID.fullmatch(name):
+                raise SurfaceError("invalid seed module name")
+            try:
+                api = int(api_text)
+            except ValueError as exc:
+                raise SurfaceError("invalid seed module api") from exc
+            if enabled_text not in {"true", "false"}:
+                raise SurfaceError("invalid seed module enablement")
+            modules_raw[name] = {
+                "name": name,
+                "module_api": api,
+                "status": status,
+                "reason": reason or None,
+                "enabled": enabled_text == "true",
+                "metadata": metadata,
+            }
+        elif kind == "contribution":
+            key, owner, source, state, reason, record = (
+                one, two, three, four, five, six
+            )
+            if ":" not in key or not _ID.fullmatch(owner):
+                raise SurfaceError("invalid seed contribution identity")
+            contribution_kind, indexed_ident = key.split(":", 1)
+            ident = indexed_ident.split("@", 1)[0]
+            try:
+                descriptor = json.loads(record)
+            except (TypeError, ValueError):
+                descriptor = {
+                    "kind": contribution_kind,
+                    "id": ident,
+                    "handler": record,
+                }
+            if not isinstance(descriptor, dict):
+                raise SurfaceError("invalid seed contribution descriptor")
+            descriptor_kind = descriptor.get("kind", contribution_kind)
+            descriptor_id = descriptor.get("id", ident)
+            if not isinstance(descriptor_kind, str) or not isinstance(descriptor_id, str):
+                raise SurfaceError("invalid seed contribution descriptor identity")
+            overrides[(descriptor_kind, descriptor_id, owner)] = {
+                "index_key": key,
+                "owner": owner,
+                "source": source,
+                "availability": _availability(state),
+                "unavailable_reason": reason or None,
+                "descriptor": descriptor,
+            }
+        else:
+            raise SurfaceError("invalid operator surface seed record")
+
+    modules: list[dict[str, Any]] = []
+    contributions: list[dict[str, Any]] = []
+    represented: set[tuple[str, str, str]] = set()
+    active_owners: set[str] = set()
+
+    for name in sorted(modules_raw):
+        row = modules_raw[name]
+        registration = None
+        display_name = name
+        if row["module_api"] == 2 and row["metadata"]:
+            try:
+                registration = json.loads(row["metadata"])
+            except ValueError:
+                registration = None
+            if isinstance(registration, dict):
+                manifest = registration.get("manifest")
+                if isinstance(manifest, dict) and isinstance(manifest.get("display_name"), str):
+                    display_name = manifest["display_name"]
+        else:
+            display_name = row["metadata"] or name
+
+        modules.append({
+            "name": name,
+            "display_name": display_name,
+            "status": row["status"],
+            "reason": row["reason"],
+            "enabled": row["enabled"],
+            "module_api": row["module_api"],
+        })
+        if row["status"] == "active" and row["enabled"]:
+            active_owners.add(name)
+
+        if not isinstance(registration, dict):
+            continue
+        rows = registration.get("contributions")
+        if not isinstance(rows, list):
+            continue
+        for descriptor in rows:
+            if not isinstance(descriptor, dict):
+                continue
+            contribution_kind = descriptor.get("kind")
+            ident = descriptor.get("id")
+            if not isinstance(contribution_kind, str) or not isinstance(ident, str):
+                continue
+            identity = (contribution_kind, ident, name)
+            represented.add(identity)
+            override = overrides.get(identity)
+            if row["status"] == "active" and row["enabled"]:
+                availability = override["availability"] if override else "active"
+                reason = override["unavailable_reason"] if override else None
+            elif row["status"] == "disabled" or not row["enabled"]:
+                availability = "inactive"
+                reason = row["reason"]
+            else:
+                availability = "unavailable"
+                reason = row["reason"] or row["status"]
+            contributions.append({
+                "index_key": override["index_key"] if override else f"{contribution_kind}:{ident}",
+                "id": ident,
+                "kind": contribution_kind,
+                "owner": name,
+                "source": str(descriptor.get("source") or "module_contract"),
+                "availability": availability,
+                "unavailable_reason": reason,
+                "descriptor": copy.deepcopy(descriptor),
+            })
+
+    # Preserve legacy/non-v2 registrations and Core-owned structural records.
+    for identity, original in sorted(
+            overrides.items(), key=lambda item: item[1]["index_key"]):
+        if identity in represented:
+            continue
+        row = copy.deepcopy(original)
+        owner_record = modules_raw.get(row["owner"])
+        if owner_record is not None:
+            if owner_record["status"] == "disabled" or not owner_record["enabled"]:
+                row["availability"] = "inactive"
+                row["unavailable_reason"] = owner_record["reason"]
+            elif owner_record["status"] != "active":
+                row["availability"] = "unavailable"
+                row["unavailable_reason"] = (
+                    owner_record["reason"] or owner_record["status"]
+                )
+        descriptor = row["descriptor"]
+        row["id"] = descriptor.get(
+            "id", row["index_key"].split(":", 1)[1].split("@", 1)[0]
+        )
+        row["kind"] = descriptor.get("kind", row["index_key"].split(":", 1)[0])
+        contributions.append(row)
+
+    capabilities = []
+    for row in contributions:
+        if row.get("kind") != "capability":
+            continue
+        capabilities.append({
+            "index_key": row["index_key"],
+            "id": row["id"],
+            "owner": row["owner"],
+            "provider": row["owner"],
+            "source": row["source"],
+            "availability": row["availability"],
+            "unavailable_reason": row["unavailable_reason"],
+            "descriptor": copy.deepcopy(row["descriptor"]),
+        })
+
+    # Core-owned descriptors are pure registration metadata. These helpers do
+    # not inspect runtime services; active flags consume the loader snapshot.
+    capabilities.extend(configuration_capabilities("system" in active_owners))
+    capabilities.extend(deployment_capabilities("nextcloud_docker" in active_owners))
+
+    return {
+        "seed_version": 1,
+        "availability_model": "registration",
+        "modules": modules,
+        "contributions": contributions,
+        "capabilities": capabilities,
+        "configurations": [{
+            "owner": "core",
+            "schema": copy.deepcopy(CORE_SCHEMA),
+        }],
+        "sources": {
+            "modules": "ok",
+            "contributions": "ok",
+            "capabilities": "ok",
+            "configurations": "ok",
+        },
+    }
+
+
+def _surface_digest(surface: dict[str, Any]) -> str:
+    candidate = copy.deepcopy(surface)
+    digest = candidate.pop("digest", None)
+    if not isinstance(digest, str):
+        raise SurfaceError("cached surface digest missing")
+    raw = json.dumps(candidate, sort_keys=True, separators=(",", ":")).encode()
+    actual = hashlib.sha256(raw).hexdigest()
+    if digest != actual:
+        raise SurfaceError("cached surface digest mismatch")
+    return digest
+
+
+def _cache_directory(path: Path) -> Path:
+    directory = path.parent
+    try:
+        directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+        info = directory.lstat()
+    except OSError as exc:
+        raise SurfaceError("operator surface cache directory unavailable") from exc
+    if (directory.is_symlink() or not stat.S_ISDIR(info.st_mode) or
+            info.st_uid != os.geteuid()):
+        raise SurfaceError("operator surface cache directory is unsafe")
+    # Do not make an existing shared directory stricter implicitly; simply
+    # decline to persist derived metadata there.
+    if stat.S_IMODE(info.st_mode) != 0o700:
+        raise SurfaceError("operator surface cache directory is not private")
+    return directory
+
+
+def _cache_file_safe(path: Path) -> bool:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    return (not path.is_symlink() and stat.S_ISREG(info.st_mode) and
+            info.st_uid == os.geteuid() and info.st_nlink == 1 and
+            stat.S_IMODE(info.st_mode) == 0o600)
+
+
+def _read_cache(path: Path, source_digest: str) -> dict[str, Any] | None:
+    if not _cache_file_safe(path):
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as stream:
+            value = json.load(stream)
+    except (OSError, ValueError, TypeError):
+        return None
+    if (not isinstance(value, dict) or value.get("cache_version") != CACHE_VERSION or
+            value.get("source_digest") != source_digest):
+        return None
+    surface = value.get("surface")
+    if not isinstance(surface, dict) or surface.get("surface_version") != SURFACE_VERSION:
+        return None
+    try:
+        _surface_digest(surface)
+    except SurfaceError:
+        return None
+    if surface.get("compiled_source_digest") != source_digest:
+        return None
+    return surface
+
+
+def _write_cache(path: Path, source_digest: str, surface: dict[str, Any]) -> None:
+    directory = _cache_directory(path)
+    payload = {
+        "cache_version": CACHE_VERSION,
+        "source_digest": source_digest,
+        "surface": surface,
+    }
+    fd, temporary = tempfile.mkstemp(prefix=".operator-surface-", dir=directory)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, sort_keys=True, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def cached_read_surface(cache_path: Path, source_digest: str) -> dict[str, Any] | None:
+    """Read one loader-keyed compiled projection without rebuilding its seed.
+
+    The loader owns this structural generation key. A cache hit is presentation
+    metadata only; capability dispatch still performs fresh runtime authority
+    checks before effect.
+    """
+    if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        raise SurfaceError("invalid operator surface source digest")
+    _cache_directory(cache_path)
+    return _read_cache(cache_path, source_digest)
+
+
+def cached_build_surface(
+    payload: dict[str, Any], cache_path: Path, source_digest: str | None = None
+) -> dict[str, Any]:
+    """Return a compiled structural projection, reusing it across sessions.
+
+    Without an explicit digest this retains Boundary F's self-contained seed
+    fingerprint. Boundary M may instead supply the loader-owned generation key
+    derived from the exact structural frames and Core projection implementation.
+    Runtime availability is deliberately not part of this cache and remains the
+    capability dispatcher's responsibility.
+    """
+    if not isinstance(payload, dict) or payload.get("seed_version") != 1:
+        raise SurfaceError("invalid operator surface seed")
+    if source_digest is None:
+        implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        source_raw = json.dumps(
+            {"implementation": implementation_digest, "seed": payload},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()
+        source_digest = hashlib.sha256(source_raw).hexdigest()
+    elif not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        raise SurfaceError("invalid operator surface source digest")
+
+    # Cache failure must never make the operator namespace unavailable. Unsafe,
+    # missing or corrupt derived state falls back to an in-memory rebuild.
+    try:
+        directory = _cache_directory(cache_path)
+        lock_path = directory / (cache_path.name + ".lock")
+        lock_fd = os.open(
+            lock_path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            lock_info = os.fstat(lock_fd)
+            if (not stat.S_ISREG(lock_info.st_mode) or lock_info.st_uid != os.geteuid() or
+                    stat.S_IMODE(lock_info.st_mode) != 0o600):
+                raise SurfaceError("operator surface cache lock is unsafe")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            cached = _read_cache(cache_path, source_digest)
+            if cached is not None:
+                return cached
+            build_payload = {**payload, "compiled_source_digest": source_digest}
+            surface = build_surface(build_payload)
+            _write_cache(cache_path, source_digest, surface)
+            return surface
+        finally:
+            os.close(lock_fd)
+    except (OSError, SurfaceError):
+        build_payload = {**payload, "compiled_source_digest": source_digest}
+        return build_surface(build_payload)
 
 
 def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
@@ -264,14 +640,59 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
     return [result[key] for key in sorted(result)]
 
 
+def _session_envelope(surface: dict[str, Any], session_id: str) -> dict[str, Any]:
+    return {"session_id": session_id, "surface": surface}
+
+
 def main(argv: list[str]) -> int:
     try:
-        if len(argv) != 2 or argv[1] not in {"build", "children"}:
-            raise SurfaceError("usage: operator_surface.py {build|children}")
+        commands = {
+            "seed", "build", "cached-build", "cached-read-envelope",
+            "cached-build-keyed-envelope", "children",
+        }
+        if len(argv) < 2 or argv[1] not in commands:
+            raise SurfaceError(
+                "usage: operator_surface.py "
+                "{seed|build|cached-build|cached-read-envelope|"
+                "cached-build-keyed-envelope|children} [ARG]"
+            )
+        if argv[1] == "seed":
+            if len(argv) != 3:
+                raise SurfaceError("seed requires core lib path")
+            result = build_seed(sys.stdin.buffer.read(), Path(argv[2]))
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
+        if argv[1] == "cached-read-envelope":
+            if len(argv) != 5:
+                raise SurfaceError(
+                    "cached-read-envelope requires cache path, digest and session id"
+                )
+            surface = cached_read_surface(Path(argv[2]), argv[3])
+            if surface is None:
+                return 3
+            result = _session_envelope(surface, argv[4])
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            return 0
+
         payload = json.load(sys.stdin)
         if argv[1] == "build":
+            if len(argv) != 2:
+                raise SurfaceError("build takes no arguments")
             result = build_surface(payload)
+        elif argv[1] == "cached-build":
+            if len(argv) != 3:
+                raise SurfaceError("cached-build requires cache path")
+            result = cached_build_surface(payload, Path(argv[2]))
+        elif argv[1] == "cached-build-keyed-envelope":
+            if len(argv) != 5:
+                raise SurfaceError(
+                    "cached-build-keyed-envelope requires cache path, digest and session id"
+                )
+            surface = cached_build_surface(payload, Path(argv[2]), argv[3])
+            result = _session_envelope(surface, argv[4])
         else:
+            if len(argv) != 2:
+                raise SurfaceError("children takes no arguments")
             surface = payload.get("surface")
             if not isinstance(surface, dict):
                 raise SurfaceError("children requires surface")

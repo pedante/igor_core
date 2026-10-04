@@ -63,7 +63,23 @@ PY
     [ ! -e skipped ] && [ ! -e stopped ]
 }
 
-@test "output event is ordered before the transaction result and scrubbed" {
+@test "terminal output event precedes diagnostic RESULT bookkeeping" {
+    local trace="$TEST_ROOT/result-order"
+    : > "$trace"
+    eval "$(declare -f _ai_event_emit | sed '1s/_ai_event_emit/_original_event_emit/')"
+    _ai_event_emit() {
+        [ "$1" != action_output ] || printf 'output\n' >> "$trace"
+        _original_event_emit "$@"
+    }
+    _ai_audit_dispatch() {
+        [ "${1:-}" != RESULT ] || printf 'audit\n' >> "$trace"
+        return 0
+    }
+
+    ai_execute_tool '{"tool":"host","cmd":"uname"}' >/dev/null
+    [ "$(tr '\n' ' ' < "$trace" | sed 's/ $//')" = "output audit" ]
+}
+@test "local output event is ordered, faithful, timed, and transport-free" {
     ai_scrub_outbound() { printf '%s' "$1" | sed 's/SECRET/[REDACTED]/g'; }
     : > "$TEST_ROOT/bin/SECRET"
     chmod +x "$TEST_ROOT/bin/SECRET"
@@ -78,8 +94,14 @@ events = [json.loads(line) for line in open(sys.argv[1])]
 assert [e["event_type"] for e in events] == [
     "action_proposed", "action_started", "action_output", "action_result"
 ]
-assert "[REDACTED]" in events[2]["output"]
-assert "SECRET" not in open(sys.argv[1]).read()
+output = events[2]["output"]
+assert "SECRET" in output
+assert "[REDACTED]" not in output
+assert not output.startswith("TOOL:")
+assert "\\nOUTPUT:" not in output
+assert isinstance(events[2].get("duration_ms"), int)
+assert events[2]["duration_ms"] >= 0
+assert all(isinstance(event.get("timestamp"), str) and event["timestamp"] for event in events)
 PY
     [ "$status" -eq 0 ]
 }

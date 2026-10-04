@@ -49,6 +49,25 @@ declare -gA _IGOR_CONTRIBUTION_STATE 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_REASON 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_OWNER 2>/dev/null || true
 declare -gA _IGOR_CONTRIBUTION_SOURCE 2>/dev/null || true
+declare -gA _IGOR_REQ_INDEXED 2>/dev/null || true
+declare -gA _IGOR_REQ_MODULES 2>/dev/null || true
+declare -gA _IGOR_REQ_CAPABILITIES 2>/dev/null || true
+declare -gA _IGOR_REQ_PLATFORM_FEATURES 2>/dev/null || true
+declare -gA _IGOR_REQ_PLATFORM_FAMILIES 2>/dev/null || true
+declare -gA _IGOR_REQ_BINS 2>/dev/null || true
+# Static Module API v2 handler metadata compiled at load time. Dynamic
+# contribution/module availability is still checked at invocation.
+declare -gA _IGOR_HANDLER_FUNCTION 2>/dev/null || true
+declare -gA _IGOR_HANDLER_TIMEOUT 2>/dev/null || true
+declare -gA _IGOR_MODULE_ENTRYPOINT 2>/dev/null || true
+declare -gA _IGOR_OWNER_HAS_DOMAIN_EVENTS 2>/dev/null || true
+declare -gA _IGOR_MODULE_VERSION 2>/dev/null || true
+declare -gA _IGOR_CAPABILITY_DEPENDENCIES 2>/dev/null || true
+# Boundary N diagnostics. These are observations only and are populated only
+# for the standalone TUI startup path.
+declare -gA _IGOR_TUI_MODULE_REGISTRATION_BY_NAME 2>/dev/null || true
+declare -gA _IGOR_TUI_MODULE_PHASE_MS 2>/dev/null || true
+declare -g _IGOR_TUI_MODULE_REGISTRATION_ORDER=""
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
 declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
@@ -83,6 +102,30 @@ _ml_log() {
 }
 
 _ml_valid_name() { [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; }
+
+# Millisecond clock used only by diagnostic startup instrumentation. Bash 5's
+# EPOCHREALTIME avoids spawning `date` for every subphase; older shells retain
+# a compatible fallback.
+_ml_now_ms() {
+    local _raw
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        _raw="${EPOCHREALTIME/./}"
+        printf '%s' "$((10#$_raw / 1000))"
+    else
+        date +%s%3N
+    fi
+}
+
+_ml_tui_phase_record() {
+    [ "${IGOR_TUI_MODE:-false}" = true ] || return 0
+    local _key="${1:-}" _started="${2:-}" _ended
+    [ -n "$_key" ] || return 0
+    _ended="$(_ml_now_ms)"
+    if [[ "$_started" =~ ^[0-9]+$ ]] && [[ "$_ended" =~ ^[0-9]+$ ]] &&
+       [ "$_ended" -ge "$_started" ]; then
+        _IGOR_TUI_MODULE_PHASE_MS["$_key"]=$((_ended - _started))
+    fi
+}
 
 # This probe only selects the parser. V2 validity is decided by the strict
 # validator before executable code is touched. V1 deliberately keeps its old
@@ -545,11 +588,123 @@ igor_contribution_state() {
     else printf 'active\n'; fi
 }
 
+_ml_index_capability_runtime_fields() {
+    local _key="$1" _record="$2" _parsed
+    local -a _fields=()
+    [[ "$_record" = \{* ]] || return 0
+    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+handler=record.get("handler","")
+timeout=record.get("timeout_seconds",30)
+deps=[]
+impl=record.get("implementation")
+if isinstance(impl,dict) and impl.get("kind")=="composition":
+    for variant in impl.get("variants",[]):
+        for step in variant.get("steps",[]):
+            ident=step.get("capability_id")
+            if isinstance(ident,str) and ident:
+                deps.append(ident)
+    final=impl.get("final_check")
+    if isinstance(final,dict):
+        ident=final.get("capability_id")
+        if isinstance(ident,str) and ident:
+            deps.append(ident)
+print(handler)
+print(timeout)
+print(" ".join(dict.fromkeys(deps)))
+print("ok")
+')" || return 1
+    mapfile -t _fields <<< "$_parsed"
+    [ "${#_fields[@]}" -eq 4 ] && [ "${_fields[3]}" = ok ] || return 1
+    if [ -n "${_fields[0]}" ]; then
+        _IGOR_HANDLER_FUNCTION["$_key"]="${_fields[0]}"
+        _IGOR_HANDLER_TIMEOUT["$_key"]="${_fields[1]}"
+    fi
+    _IGOR_CAPABILITY_DEPENDENCIES["$_key"]="${_fields[2]}"
+}
+
+_ml_index_requirement_fields() {
+    local _key="$1" _record="$2" _parsed
+    local -a _fields=()
+    [[ "$_record" = \{* ]] || return 0
+    _parsed="$(printf '%s' "$_record" | "$(_ml_python)" -c '
+import json,sys
+record=json.load(sys.stdin)
+requires=record.get("requires",{})
+if not isinstance(requires,dict):
+    raise SystemExit(1)
+for key in ("modules","capabilities","platform_features","platform_families","bins"):
+    value=requires.get(key,[])
+    if not isinstance(value,list) or any(not isinstance(item,str) or not item for item in value):
+        raise SystemExit(1)
+    print(" ".join(value))
+print("ok")
+')" || return 1
+    mapfile -t _fields <<< "$_parsed"
+    [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 1
+    _IGOR_REQ_INDEXED["$_key"]=1
+    _IGOR_REQ_MODULES["$_key"]="${_fields[0]}"
+    _IGOR_REQ_CAPABILITIES["$_key"]="${_fields[1]}"
+    _IGOR_REQ_PLATFORM_FEATURES["$_key"]="${_fields[2]}"
+    _IGOR_REQ_PLATFORM_FAMILIES["$_key"]="${_fields[3]}"
+    _IGOR_REQ_BINS["$_key"]="${_fields[4]}"
+}
+
+_ml_indexed_requirement_failure() {
+    local _key="$1" _item _family
+    local -a _items=()
+    read -r -a _items <<< "${_IGOR_REQ_MODULES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        if ! igor_has_module "$_item"; then
+            printf 'required module %s is %s%s' "$_item" \
+                "${_IGOR_MODULE_STATUS[$_item]:-missing}" \
+                "${_IGOR_MODULE_REASON[$_item]:+ (${_IGOR_MODULE_REASON[$_item]})}"
+            return 1
+        fi
+    done
+    read -r -a _items <<< "${_IGOR_REQ_CAPABILITIES[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        _ml_v2_capability_reason "$_item" || return 1
+    done
+    if [ -n "${_IGOR_REQ_PLATFORM_FEATURES[$_key]:-}" ]; then
+        printf 'unsupported platform feature requirement: %s' "${_IGOR_REQ_PLATFORM_FEATURES[$_key]// /, }"
+        return 1
+    fi
+    if [ -n "${_IGOR_REQ_PLATFORM_FAMILIES[$_key]:-}" ]; then
+        if [ -z "${IGOR_DISTRO_FAMILY:-}" ]; then
+            source "${_IGOR_LOADER_DIR}/core/lib/distro.sh"
+            igor_detect_distro
+        fi
+        _family="${IGOR_DISTRO_FAMILY:-unknown}"
+        case " ${_IGOR_REQ_PLATFORM_FAMILIES[$_key]} " in
+            *" $_family "*) ;;
+            *)
+                printf 'platform family %s is outside allowed set %s' "$_family" "${_IGOR_REQ_PLATFORM_FAMILIES[$_key]// /, }"
+                return 1
+                ;;
+        esac
+    fi
+    read -r -a _items <<< "${_IGOR_REQ_BINS[$_key]:-}"
+    for _item in "${_items[@]}"; do
+        [ -n "$_item" ] || continue
+        if ! command -v "$_item" >/dev/null 2>&1; then
+            printf 'required binary %s is missing' "$_item"
+            return 1
+        fi
+    done
+    return 0
+}
+
 _ml_contribution_dynamic_failure() {
     local _key="$1" _record="${_IGOR_CONTRIBUTIONS[$1]:-}" _requires
     [[ "$_record" = \{* ]] || return 0
-    # Most contributions have no dynamic requirements. Avoid spawning Python
-    # for those records on every Operator Surface snapshot.
+    if [ "${_IGOR_REQ_INDEXED[$_key]:-0}" = 1 ]; then
+        _ml_indexed_requirement_failure "$_key" || true
+        return 0
+    fi
     [[ "$_record" == *'"requires"'* ]] || return 0
     _requires="$(printf '%s' "$_record" | "$(_ml_python)" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("requires",{})))')" || return 0
     _ml_v2_requirement_failure "$_requires" || true
@@ -621,6 +776,85 @@ for i in range(0,len(raw),6):
                  "descriptor":descriptor})
 print(json.dumps(rows,sort_keys=True,separators=(",",":")))
 '
+}
+
+# Build the operator namespace from already-validated registration data.
+# This is structural metadata only: it deliberately does not evaluate dynamic
+# contribution requirements such as command/binary availability. Canonical
+# capability prepare/execution remains the authority for current availability.
+#
+# Boundary M keeps the raw loader-owned framing separate from the Python
+# projection.  The same frames can therefore produce a cheap structural
+# generation key on the warm path without first rebuilding the JSON seed.
+_igor_operator_surface_seed_frames() {
+    local _name _api _status _reason _enabled _metadata
+    local _key _owner _source _state _record
+
+    while IFS= read -r _name; do
+        [ -n "$_name" ] || continue
+        _api="${_IGOR_MODULE_API[$_name]:-1}"
+        _status="${_IGOR_MODULE_STATUS[$_name]:-discovered}"
+        _reason="${_IGOR_MODULE_REASON[$_name]:-}"
+        if igor_module_enabled "$_name"; then _enabled=true; else _enabled=false; fi
+        if [ "$_api" = 2 ] && [ -n "${_IGOR_V2_DATA[$_name]:-}" ]; then
+            # Boundary H already loaded this validated structural package
+            # document from its compiled registry/cache.
+            _metadata="${_IGOR_V2_DATA[$_name]}"
+        else
+            _metadata="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" display_name 2>/dev/null || printf '%s' "$_name")"
+        fi
+        printf 'module\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+            "$_name" "$_api" "$_status" "$_reason" "$_enabled" "$_metadata"
+    done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
+
+    while IFS= read -r _key; do
+        [ -n "$_key" ] || continue
+        _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+        _source="${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}"
+        _state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
+        _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
+        _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+        printf 'contribution\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+            "$_key" "$_owner" "$_source" "$_state" "$_reason" "$_record"
+    done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+}
+
+igor_operator_surface_seed() {
+    _igor_operator_surface_seed_frames |
+        "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/operator_surface.py" \
+            seed "${_IGOR_LOADER_DIR}/core/lib"
+}
+
+# Return a loader-owned fingerprint for the exact structural frames consumed by
+# the operator surface plus the Core projection implementations that add
+# Core-owned capabilities/configuration.  This is derived presentation identity,
+# not execution authority.  If sha256sum is unavailable the caller falls back
+# to the original seed/build path.
+igor_operator_surface_generation() {
+    command -v sha256sum >/dev/null 2>&1 || return 1
+    local _surface="${_IGOR_LOADER_DIR}/core/lib/operator_surface.py"
+    local _configuration="${_IGOR_LOADER_DIR}/core/lib/configuration.py"
+    local _deployment="${_IGOR_LOADER_DIR}/core/lib/deployment_attachment.py"
+    local _loader="${_IGOR_LOADER_DIR}/core/lib/module_loader.sh"
+    local _fast="${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh"
+    local _digest _rest
+    [ -f "$_surface" ] && [ -f "$_configuration" ] &&
+        [ -f "$_deployment" ] && [ -f "$_loader" ] || return 1
+
+    {
+        printf 'igor-operator-surface-generation-v1\0'
+        _igor_operator_surface_seed_frames
+        printf 'implementation\0'
+        if [ -f "$_fast" ]; then
+            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader" "$_fast"
+        else
+            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader"
+        fi
+    } | sha256sum | {
+        read -r _digest _rest
+        [[ "$_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+        printf '%s' "$_digest"
+    }
 }
 
 igor_module_records() {
@@ -1016,6 +1250,9 @@ igor_load_module() {
         return $?
     fi
 
+    local _phase_started=""
+    [ "${IGOR_TUI_MODE:-false}" = true ] && _phase_started="$(_ml_now_ms)"
+
     local _module_sh="${_dir}/module.sh"
     if [ ! -f "$_module_sh" ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
@@ -1031,6 +1268,10 @@ igor_load_module() {
         _ml_log error "Module $_name skipped — unmet required dependencies (see above)"
         return 1
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.dependencies" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     # Step 3: syntax check
     if ! bash -n "$_module_sh" 2>/tmp/_igor_ml_syntax_err; then
@@ -1040,6 +1281,10 @@ igor_load_module() {
         _syntax_err="$(cat /tmp/_igor_ml_syntax_err 2>/dev/null)"
         _ml_log error "Syntax error in $_name — SKIPPED: ${_syntax_err:-unknown}"
         return 1
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.syntax" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
     fi
 
     # Step 4: source
@@ -1051,6 +1296,10 @@ igor_load_module() {
         _source_err="$(cat /tmp/_igor_ml_source_err 2>/dev/null)"
         _ml_log error "Failed to source $_name — SKIPPED: ${_source_err:-unknown}"
         return 1
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.source" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
     fi
 
     # Step 5: call __register
@@ -1073,6 +1322,10 @@ igor_load_module() {
         _ml_log error "$_name: required ${_register_fn} function missing — SKIPPED"
         return 1
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ml_tui_phase_record "$_name.v1.hooks" "$_phase_started"
+        _phase_started="$(_ml_now_ms)"
+    fi
 
     _IGOR_LOADED_MODULES["$_name"]=1
     _IGOR_MODULE_STATUS["$_name"]="active"
@@ -1094,11 +1347,14 @@ igor_load_module() {
     fi
 
     _ml_log ok "Loaded module: $_name"
+    [ "${IGOR_TUI_MODE:-false}" = true ] &&
+        _ml_tui_phase_record "$_name.v1.finalize" "$_phase_started"
     return 0
 }
 
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source _requires
+    local _entrypoint _kind
     if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
@@ -1113,6 +1369,10 @@ _ml_load_v2() {
         _ml_v2_validate "$_name" || return 1
     fi
     _requires="$(_ml_v2_module_requirements "$_name")" || return 1
+    _entrypoint="$(_ml_v2_query "$_name" manifest.entrypoint 2>/dev/null)" || _entrypoint=""
+    _IGOR_MODULE_ENTRYPOINT["$_name"]="$_entrypoint"
+    _IGOR_MODULE_VERSION["$_name"]="$(_ml_v2_query "$_name" manifest.version 2>/dev/null || true)"
+    _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=0
     _reason="$(_ml_v2_requirement_failure "$_requires")" || {
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="$_reason"
@@ -1177,6 +1437,10 @@ _ml_load_v2() {
             _index_key="${_key}@${_name}"
         fi
         _ml_index_contribution "$_key" "$_name" "$_source" "$_record" || return 1
+        _ml_index_requirement_fields "$_index_key" "$_record" || return 1
+        _kind="${_key%%:*}"
+        _ml_index_capability_runtime_fields "$_index_key" "$_record" || return 1
+        [ "$_kind" = domain_event ] && _IGOR_OWNER_HAS_DOMAIN_EVENTS["$_name"]=1
         # Requirement availability is derived on inspection and dispatch so
         # another module loaded later in this startup can satisfy a local edge.
         case "$_key" in
@@ -1326,11 +1590,49 @@ print(json.dumps(rows, sort_keys=True, separators=(",", ":")))
 # The same owner-stamped contribution index backs active dispatch and
 # read-only inspection. Duplicate providers retain their @owner index keys;
 # selection is deliberately left to the capability resolver.
+_ml_capability_resolution_ids() {
+    local _id="${1:-}" _key _item
+    local -A _seen=()
+    [ -n "$_id" ] || return 2
+    _seen["$_id"]=1
+    printf '%s\n' "$_id"
+    while IFS= read -r _key; do
+        case "$_key" in
+            "capability:$_id"|"capability:$_id@"*)
+                for _item in ${_IGOR_REQ_CAPABILITIES[$_key]:-} ${_IGOR_CAPABILITY_DEPENDENCIES[$_key]:-}; do
+                    [ -n "$_item" ] || continue
+                    if [ -z "${_seen[$_item]:-}" ]; then
+                        _seen["$_item"]=1
+                        printf '%s\n' "$_item"
+                    fi
+                done
+                ;;
+        esac
+    done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+}
+
+_ml_capability_filter_contains() {
+    local _filter="$1" _candidate="$2" _item
+    while IFS= read -r _item; do
+        [ "$_item" = "$_candidate" ] && return 0
+    done <<< "$_filter"
+    return 1
+}
+
 igor_capability_list() {
-    local _key _owner _record _state _reason _dynamic _base_state _owner_active
+    local _filter_ids="${1:-}" _key _record_id _owner _record _state _reason _dynamic _base_state _owner_active
     {
         while IFS= read -r _key; do
             case "$_key" in capability:*|legacy_action:*) ;; *) continue ;; esac
+            if [[ "$_key" = capability:* ]]; then
+                _record_id="${_key#capability:}"
+                _record_id="${_record_id%%@*}"
+            else
+                _record_id="${_key#legacy_action:}"
+            fi
+            if [ -n "$_filter_ids" ] && ! _ml_capability_filter_contains "$_filter_ids" "$_record_id"; then
+                continue
+            fi
             _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
             _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
             if [[ "$_key" = legacy_action:* ]]; then
@@ -1376,10 +1678,8 @@ PY
     } | "$(_ml_python)" -c '
 import json, sys
 raw = sys.stdin.buffer.read().split(b"\0")
-if raw[-1:] == [b""]:
-    raw.pop()
-if len(raw) % 6:
-    raise SystemExit("invalid contribution records")
+if raw[-1:] == [b""]: raw.pop()
+if len(raw) % 6: raise SystemExit("invalid contribution records")
 result = []
 for index in range(0, len(raw), 6):
     key, owner, source, state, reason, record = (item.decode() for item in raw[index:index + 6])
@@ -1388,17 +1688,23 @@ for index in range(0, len(raw), 6):
                    "provider": owner, "source": source, "availability": state,
                    "unavailable_reason": reason or None, "descriptor": record})
 sys.path.insert(0, sys.argv[1])
+wanted=set(sys.argv[4].splitlines()) if sys.argv[4] else None
 from configuration import capability_records
-result.extend(capability_records(sys.argv[2]=="true"))
+core_rows=capability_records(sys.argv[2]=="true")
 from deployment_attachment import capability_records as deployment_capability_records
-result.extend(deployment_capability_records(sys.argv[3]=="true"))
+core_rows.extend(deployment_capability_records(sys.argv[3]=="true"))
+if wanted is not None:
+    core_rows=[row for row in core_rows if row.get("id") in wanted]
+result.extend(core_rows)
 print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)" "$(_ml_owner_active nextcloud_docker && printf true || printf false)"
+' "${_IGOR_LOADER_DIR}/core/lib" "$(_ml_owner_active system && printf true || printf false)" "$(_ml_owner_active nextcloud_docker && printf true || printf false)" "$_filter_ids"
 }
 
+
 igor_capability_inspect() {
-    local _id="${1:-}" _provider="${2:-}"
-    igor_capability_list | "$(_ml_python)" -c '
+    local _id="${1:-}" _provider="${2:-}" _resolution_ids
+    _resolution_ids="$(_ml_capability_resolution_ids "$_id")" || return 1
+    igor_capability_list "$_resolution_ids" | "$(_ml_python)" -c '
 import json, sys
 capability_id, provider = sys.argv[1:]
 rows = [r for r in json.load(sys.stdin) if r["id"] == capability_id]
@@ -1412,19 +1718,24 @@ print(json.dumps({"capability_id": capability_id, "resolution": resolution,
 }
 
 igor_v2_invoke() {
-    local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _record _owner _handler _timeout _entrypoint
+    local _kind="${1:-}" _id="${2:-}" _input="${3:-}" _key _owner _handler _timeout _entrypoint
     [ -n "$_input" ] || _input='{}'
     case "$_kind" in observer|check|knowledge) ;; *) return 1 ;; esac
-    _record="$(igor_v2_contribution_get "$_kind" "$_id")" || return 1
-    _owner="${_IGOR_CONTRIBUTION_OWNER[${_kind}:${_id}]}"
-    _handler="$(_ml_json_field "$_record" handler)"
+    _key="${_kind}:${_id}"
+    [ "$(igor_contribution_state "$_key")" = active ] || return 1
+    _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+    [ -n "$_owner" ] || return 1
+    _handler="${_IGOR_HANDLER_FUNCTION[$_key]:-}"
     [ -n "$_handler" ] || return 1
-    _timeout="$(_ml_json_field "$_record" timeout_seconds)"
-    [ -n "$_timeout" ] || _timeout=30
-    _entrypoint="$(_ml_v2_query "$_owner" manifest.entrypoint)"
+    _timeout="${_IGOR_HANDLER_TIMEOUT[$_key]:-30}"
+    _entrypoint="${_IGOR_MODULE_ENTRYPOINT[$_owner]:-}"
+    [ -n "$_entrypoint" ] || return 1
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
-    V2_HANDLER_ENTRYPOINT="$_entrypoint" _ml_bash_handler_invoke \
+    V2_HANDLER_ENTRYPOINT="$_entrypoint" \
+    V2_HANDLER_SYNTAX_VALIDATED=1 \
+    V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
+        _ml_bash_handler_invoke \
         "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
 }
 
@@ -1864,3 +2175,12 @@ igor_load_capabilities() {
 
     return 0
 }
+
+
+# Boundary H — compiled Module API v2 startup fast path.
+# Install overrides only after all compatibility loader functions above exist,
+# so the fast path can delegate to the original implementation on any failure.
+if [ -f "${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh" ]; then
+    # shellcheck source=core/lib/module_loader_fast.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh"
+fi

@@ -9,6 +9,19 @@
 
 set -o pipefail
 
+# Boundary I: capture the backend entry point before normal startup work.  The
+# standalone TUI exports IGOR_TUI_STARTED_MS immediately before forking this
+# backend, so these observations can account for PTY spawn/exec separately from
+# the shell bootstrap that follows.  Timing is diagnostic only.
+if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+    _IGOR_TUI_BACKEND_ENTRY_MS=$(date +%s%3N)
+    if [[ "${IGOR_TUI_STARTED_MS:-}" =~ ^[0-9]+$ ]] &&
+       [[ "$_IGOR_TUI_BACKEND_ENTRY_MS" =~ ^[0-9]+$ ]] &&
+       [ "$_IGOR_TUI_BACKEND_ENTRY_MS" -ge "$IGOR_TUI_STARTED_MS" ]; then
+        _IGOR_TUI_BACKEND_SPAWN_MS=$((_IGOR_TUI_BACKEND_ENTRY_MS - IGOR_TUI_STARTED_MS))
+    fi
+fi
+
 # ── Script directory detection ───────────────────────────────────────────────────────
 export IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -378,9 +391,34 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
    [ -f "${IGOR_DIR}/core/lib/module_loader.sh" ]; then
     source "${IGOR_DIR}/core/lib/config_loader.sh"
     source "${IGOR_DIR}/core/lib/module_loader.sh"
+
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_STARTED_MS=$(date +%s%3N)
+        if [[ "${_IGOR_TUI_BACKEND_ENTRY_MS:-}" =~ ^[0-9]+$ ]] &&
+           [ "$_IGOR_TUI_PHASE_STARTED_MS" -ge "$_IGOR_TUI_BACKEND_ENTRY_MS" ]; then
+            _IGOR_TUI_BACKEND_PREBOOTSTRAP_MS=$((_IGOR_TUI_PHASE_STARTED_MS - _IGOR_TUI_BACKEND_ENTRY_MS))
+        fi
+    fi
     igor_load_config      || warn "Config loading reported an error — check core/lib/config_loader.sh"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_CONFIG_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
+
     igor_load_all_modules || warn "Module loading reported an error — check modules/"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_MODULES_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
+
     _cfg_validate_all_loaded_modules
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
     # M2-1: diagnose runner — hook-based aggregator available everywhere
     if [ -f "${IGOR_DIR}/core/lib/diagnose_runner.sh" ]; then
         source "${IGOR_DIR}/core/lib/diagnose_runner.sh"
@@ -395,6 +433,12 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
     # Register tunnel hooks now that igor_register_hook is available
     declare -f _tunnel_register_hooks &>/dev/null && _tunnel_register_hooks
 
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+    fi
+
     # Run module config validators — checks NC-specific required vars after
     # modules are loaded (can't run at config.sh source time, modules not yet loaded).
     if declare -f igor_get_hooks &>/dev/null; then
@@ -403,6 +447,11 @@ if [ -f "${IGOR_DIR}/core/lib/config_loader.sh" ] && \
             declare -f "$_cv_fn" &>/dev/null && "$_cv_fn" 2>&1 >&2 || true
         done
         unset _cv_fn
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+        _IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+        _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
     fi
 
     # Debug log: emit loaded module names when NEXUS_VERBOSE=true
@@ -421,8 +470,12 @@ fi
 
 # ── Feature availability setup ────────────────────────────────────────────────
 # Must run AFTER config loading so IGOR_USE_TMUX / IGOR_FZF_ALREADY_ASKED are set.
-# Sets _IGOR_FZF_AVAILABLE and _IGOR_RICH_AVAILABLE; may prompt to install fzf/tmux.
-igor_setup_features
+# The standalone curses TUI owns its own interaction surface and never uses the
+# tmux/fzf/rich startup probe; skipping that probe also prevents an unrelated
+# package-install prompt from blocking the backend PTY.
+if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+    igor_setup_features
+fi
 
 # ── Startup alert banner ──────────────────────────────────────────────────────
 # Show pending alerts while startup output is still on screen — BEFORE
@@ -1250,7 +1303,20 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     for _igor_arg in "$@"; do
         case "$_igor_arg" in
             --ai-tui-backend)
+                if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+                    _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+                    if [[ "${_IGOR_TUI_PHASE_STARTED_MS:-}" =~ ^[0-9]+$ ]]; then
+                        _IGOR_TUI_BACKEND_DISPATCH_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+                    fi
+                    _IGOR_TUI_PHASE_STARTED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+                fi
                 _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
+                if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+                    _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)
+                    _IGOR_TUI_AI_SOURCE_MS=$((_IGOR_TUI_PHASE_ENDED_MS - _IGOR_TUI_PHASE_STARTED_MS))
+                    _IGOR_TUI_AI_SOURCE_ENDED_MS="$_IGOR_TUI_PHASE_ENDED_MS"
+                    unset _IGOR_TUI_PHASE_STARTED_MS _IGOR_TUI_PHASE_ENDED_MS
+                fi
                 IGOR_TUI_MODE=true AI_SKIP_INTERSTITIAL=true menu_ai
                 exit $?
                 ;;

@@ -35,9 +35,9 @@ source "${IGOR_DIR}/core/lib/configuration.sh"
 _ai_frontend_event() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local _kind="$1" _display="${2:-}" _status="${3:-}" _payload
-    if [ -n "$_display" ]; then
-        _display=$(ai_scrub_outbound "$_display" 2>/dev/null) || _display='[display unavailable]'
-    fi
+    # The frontend stream is a private local presentation boundary (0600).
+    # Provider/audit payloads are scrubbed separately; re-scrubbing here both
+    # costs time and corrupts legitimate host identifiers such as systemd units.
     _payload=$(AI_EVENT_DISPLAY="$_display" AI_EVENT_STATUS="$_status" \
         AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" \
         AI_EVENT_MODE="$(ai_get_mode)" AI_EVENT_PROVIDER="${provider:-}" \
@@ -59,9 +59,8 @@ PY
 
 _ai_frontend_action_result() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
-    local _safe_result _payload
-    _safe_result=$(ai_scrub_outbound "$1" 2>/dev/null) || return 0
-    _payload=$(AI_EVENT_RESULT="$_safe_result" \
+    local _payload
+    _payload=$(AI_EVENT_RESULT="$1" \
         AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 - <<'PY'
 import json
 import os
@@ -75,6 +74,25 @@ print(json.dumps({"session_id": os.environ["AI_EVENT_SESSION_ID"],
 PY
     ) || return 0
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
+}
+
+# Cheap diagnostic timing. These observations never influence authority.
+_ai_now_ms() {
+    date +%s%3N 2>/dev/null || printf '0'
+}
+
+_ai_record_timing() {
+    local _stage="${1:-unknown}" _started="${2:-0}" _ended _elapsed=""
+    _ended=$(_ai_now_ms)
+    if [[ "$_started" =~ ^[0-9]+$ && "$_ended" =~ ^[0-9]+$ ]] &&
+       [ "$_ended" -ge "$_started" ]; then
+        _elapsed=$((_ended - _started))
+        [ -n "${session_file:-}" ] &&
+            printf '[TIMING] %s=%sms\n' "$_stage" "$_elapsed" >> "$session_file"
+        [ "${IGOR_VERBOSE:-false}" = true ] &&
+            printf 'DEBUG: timing %s=%sms\n' "$_stage" "$_elapsed" >&2
+    fi
+    printf '%s' "$_elapsed"
 }
 
 # Publish the current editable session settings for structured frontends.  The
@@ -120,6 +138,72 @@ PY
 # the canonical capability dispatcher and configuration owners.
 _ai_emit_operator_snapshot() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
+    local _surface_started
+    _surface_started="$(_ai_now_ms)"
+
+    # Normal startup uses a compiled structural namespace. Boundary M asks the
+    # loader for a cheap generation key first. On a warm hit the cached surface
+    # is read directly; the full structural seed is only materialized on miss.
+    # The key covers the same loader-owned structural frames plus the Core
+    # projection implementation. It performs no dynamic requirement probes.
+    if declare -f igor_operator_surface_seed >/dev/null 2>&1 &&
+       declare -p _IGOR_MODULE_DIRS >/dev/null 2>&1 &&
+       [ "${#_IGOR_MODULE_DIRS[@]}" -gt 0 ]; then
+        local _compiled="" _cache _generation="" _generation_started=""
+        local _cache_started="" _cache_rc=0 _rebuild_started=""
+        local _session_id="${IGOR_AI_EVENT_SESSION_ID:-}"
+        _cache="${IGOR_OPERATOR_SURFACE_CACHE:-${IGOR_DATA_DIR:-${IGOR_DIR}/data}/cache/operator-surface-v1.json}"
+
+        if declare -f igor_operator_surface_generation >/dev/null 2>&1; then
+            _generation_started="$(_ai_now_ms)"
+            _generation="$(igor_operator_surface_generation 2>/dev/null)" || _generation=""
+            _ai_record_timing operator_surface.generation "$_generation_started" >/dev/null
+        fi
+
+        if [[ "$_generation" =~ ^[0-9a-f]{64}$ ]]; then
+            _cache_started="$(_ai_now_ms)"
+            _compiled="$(python3 "${IGOR_DIR}/core/lib/operator_surface.py" \
+                cached-read-envelope "$_cache" "$_generation" "$_session_id" 2>/dev/null)"
+            _cache_rc=$?
+            _ai_record_timing operator_surface.cache_read "$_cache_started" >/dev/null
+
+            if [ "$_cache_rc" -ne 0 ]; then
+                _rebuild_started="$(_ai_now_ms)"
+                _compiled="$(igor_operator_surface_seed |
+                    python3 "${IGOR_DIR}/core/lib/operator_surface.py" \
+                        cached-build-keyed-envelope "$_cache" "$_generation" "$_session_id")" || {
+                    _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
+                    return 1
+                }
+                _ai_record_timing operator_surface.rebuild "$_rebuild_started" >/dev/null
+            fi
+        else
+            # Compatibility fallback if the loader cannot provide a generation
+            # key (for example on a platform without sha256sum).
+            _compiled="$(igor_operator_surface_seed |
+                python3 "${IGOR_DIR}/core/lib/operator_surface.py" cached-build "$_cache")" || {
+                _ai_frontend_event warning "Compiled operator surface projection failed. Press Ctrl+R to retry."
+                return 1
+            }
+            _compiled="$(printf '%s' "$_compiled" |
+                AI_EVENT_SESSION_ID="$_session_id" python3 -c '
+import json,os,sys
+surface=json.load(sys.stdin)
+print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
+                  "surface":surface},separators=(",",":")))
+')" || {
+                _ai_frontend_event warning "Operator surface response could not be encoded. Press Ctrl+R to retry."
+                return 1
+            }
+        fi
+
+        _ai_event_emit operator_snapshot "$_compiled" >/dev/null 2>&1 || true
+        _ai_record_timing operator_surface "$_surface_started" >/dev/null
+        return 0
+    fi
+
+    # Compatibility fallback for callers/tests that source the AI backend
+    # without the module-loader structural seed API.
     local _modules='[]' _contributions='[]' _capabilities='[]' _configurations='[]' _payload _sources
     local _modules_status=missing _contributions_status=missing
     local _capabilities_status=missing _configurations_status=missing
@@ -192,6 +276,7 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
         return 1
     }
     _ai_event_emit operator_snapshot "$_payload" >/dev/null 2>&1 || true
+    _ai_record_timing operator_surface "$_surface_started" >/dev/null
 }
 
 
@@ -313,7 +398,13 @@ _ai_set_mode() {
         printf 'Mode changed to %s, but settings could not be saved.\n' "$_mode" >&2
         return 1
     fi
-    if [ "${system_prompt+x}" = x ] && [ "${knowledge_block+x}" = x ] &&
+    # A standalone TUI may carry a deliberately deferred prompt until the first
+    # provider-bound request.  Local mode changes update the mode immediately,
+    # but must not force the discarded startup prompt to be rendered early.
+    # _ai_refresh_context rebuilds the authoritative prompt with the current mode
+    # before that first provider request.
+    if [ "${_context_deferred:-false}" != true ] &&
+       [ "${system_prompt+x}" = x ] && [ "${knowledge_block+x}" = x ] &&
        [ "${scrubbed_context+x}" = x ]; then
         system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
     fi
@@ -575,6 +666,95 @@ _ai_scrub_context_for_display() {
     [ "$_rc" -eq 0 ] && [ -s "$_warnings" ] && _rc=2
     rm -f -- "$_warnings"
     return "$_rc"
+}
+
+# Validate the configured provider without changing request/execution authority.
+# The classic UI still performs this during pre-flight. The TUI may defer it
+# until the first provider-bound request so network latency does not block the
+# composer from becoming ready.
+_ai_provider_preflight() {
+    local _include_balance="${1:-false}" _ollama_host
+    _or_balance=""
+    case "${provider:-openrouter}" in
+        openrouter)
+            if [ -z "${or_api_key:-}" ]; then
+                _key_status="✘ not set"
+                return 1
+            fi
+            if _nexus_validate_or_key "$or_api_key"; then
+                _key_status="✔ valid"
+                if [ "$_include_balance" = true ]; then
+                    _or_balance=$(_nexus_get_or_balance "$or_api_key")
+                fi
+                return 0
+            fi
+            _key_status="✘ invalid or unreachable"
+            return 1
+            ;;
+        ollama)
+            _ollama_host="${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434}"
+            if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${_ollama_host}/api/tags" 2>/dev/null |
+               grep -q "^200$"; then
+                _key_status="✔ running"
+                return 0
+            fi
+            _key_status="✘ not reachable"
+            return 1
+            ;;
+        *)
+            if [ -z "${api_key:-}" ]; then
+                _key_status="✘ not set"
+                return 1
+            fi
+            if _nexus_validate_ant_key "$api_key"; then
+                _key_status="✔ valid"
+                return 0
+            fi
+            _key_status="✘ invalid or unreachable"
+            return 1
+            ;;
+    esac
+}
+
+
+# Complete work deliberately removed from the TUI readiness critical path.
+# This runs only for provider-bound requests. A failed deferred pre-flight or
+# context refresh prevents that request from being sent; the session itself
+# remains available for local commands and a retry.
+_ai_prepare_deferred_request_runtime() {
+    local _started
+    if [ "${_provider_preflight_deferred:-false}" = true ]; then
+        _started="$(_ai_now_ms)"
+        _ai_frontend_event model_status 'Validating provider…' validating_provider
+        if ! _ai_provider_preflight false; then
+            _ai_record_timing provider.preflight "$_started" >/dev/null
+            _ai_frontend_event error "Provider validation failed: ${_key_status:-unavailable}." provider_failed
+            return 1
+        fi
+        _ai_record_timing provider.preflight "$_started" >/dev/null
+        _provider_preflight_deferred=false
+    fi
+
+    if [ "${_context_deferred:-false}" = true ]; then
+        _started="$(_ai_now_ms)"
+        _ai_frontend_event model_status 'Preparing server context…' preparing_context
+        # Match the former full-startup preparation exactly: capability
+        # projection is available before prompt injection and the reviewed
+        # memory observation is fresh before context is gathered.
+        declare -f igor_load_capabilities &>/dev/null &&
+            igor_load_capabilities 2>/dev/null || true
+        declare -f igor_observer_ensure_fresh >/dev/null 2>&1 &&
+            igor_observer_ensure_fresh host.memory host:local >/dev/null 2>&1 || true
+        if ! _ai_refresh_context; then
+            _ai_record_timing context.first_request "$_started" >/dev/null
+            _ai_frontend_event error "Server context preparation failed. Retry or use 'refresh'." context_error
+            return 1
+        fi
+        _ai_record_timing context.first_request "$_started" >/dev/null
+        _context_captured_at=$(date +%s)
+        _context_deferred=false
+    fi
+    return 0
 }
 
 # Refresh context and report collection separately from scrub validation.
@@ -2126,11 +2306,32 @@ except (ValueError,TypeError):
 
 menu_ai() {
     local _AI_SESSION_STATE="" conversation="" session_file="" _fifo_path=""
+    local _ai_tui_phase_started_ms="" _ai_tui_phase_ended_ms=""
+    local _ai_pre_phase_started_ms="" _ai_pre_phase_ended_ms=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        if [[ "${_IGOR_TUI_AI_SOURCE_ENDED_MS:-}" =~ ^[0-9]+$ ]]; then
+            _ai_tui_phase_started_ms="$_IGOR_TUI_AI_SOURCE_ENDED_MS"
+        else
+            _ai_tui_phase_started_ms=$(_ai_now_ms)
+        fi
+        _ai_pre_phase_started_ms="$_ai_tui_phase_started_ms"
+    fi
     if [ "${IGOR_AI_ENABLED:-true}" != "true" ]; then
         _ai_startup_fail configuration 1 "AI assistant is disabled."
         return $?
     fi
-    header
+    # The classic header is a presentation surface: it gathers host/domain,
+    # health, status hooks and pending menu state solely to paint the shell UI.
+    # The standalone curses frontend owns its own header and structured state,
+    # so none of this work belongs on its READY critical path.
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        header
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_HEADER_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # Guard: ensure cost functions are available even if cost.sh failed to source
     declare -f ai_add_cost    &>/dev/null || ai_add_cost()    { :; }
@@ -2198,6 +2399,11 @@ menu_ai() {
 
     command -v python3 &>/dev/null || { _ai_startup_fail dependency 1 "python3 is required for AI assistant."; return $?; }
     command -v curl    &>/dev/null || { _ai_startup_fail dependency 1 "curl is required for AI assistant."; return $?; }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_KEYS_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # ── Settings ───────────────────────────────────────────────────────────────
     local AI_SETTINGS_FILE="${IGOR_DIR}/config/variables/ai_settings.env"
@@ -2253,7 +2459,17 @@ menu_ai() {
         [ -n "$sv_ol_host"  ] && IGOR_OLLAMA_HOST="$sv_ol_host" && export IGOR_OLLAMA_HOST
         [ -n "$sv_ol_model" ] && IGOR_OLLAMA_DEFAULT_MODEL="$sv_ol_model" && export IGOR_OLLAMA_DEFAULT_MODEL
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_SETTINGS_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
     _ai_configuration_verbose_load || { _ai_startup_fail configuration 1 "ai.verbose configuration is unavailable; inspect configuration before retrying."; return $?; }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_CONFIGURATION_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
     # Normalize model for active provider
     model=$(_ai_model_for_provider "$model" "$provider")
     export provider ai_mode executive_mode IGOR_VERBOSE NEXUS_TEMPERATURE
@@ -2263,46 +2479,53 @@ menu_ai() {
     }
 
     ai_set_cost_rates "$model"
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_MODEL_COST_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
+    fi
 
     # ── Pre-flight: validate key then render info to right pane ──────────────────
-    local _el _prov_label _key_status _or_balance=""
+    local _el _prov_label _key_status _or_balance="" _provider_preflight_deferred=false
     _el="${ai_mode^}"
 
-    # Show a "checking..." placeholder while the key validation runs
-    declare -f igor_right_render &>/dev/null && \
-        igor_right_render "AI Assistant" "Status" "validating ${provider} key..."
+    case "$provider" in
+        openrouter) _prov_label="OpenRouter" ;;
+        ollama)     _prov_label="Ollama (local)" ;;
+        *)          _prov_label="Anthropic" ;;
+    esac
 
-    if [ "$provider" = "openrouter" ]; then
-        _prov_label="OpenRouter"
-        if [ -n "$or_api_key" ]; then
-            if _nexus_validate_or_key "$or_api_key"; then
-                _key_status="✔ valid"
-                _or_balance=$(_nexus_get_or_balance "$or_api_key")
-            else
-                _key_status="✘ invalid or unreachable"
-            fi
-        else
-            _key_status="✘ not set"
-        fi
-    elif [ "$provider" = "ollama" ]; then
-        local _ollama_host="${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434}"
-        _prov_label="Ollama (local)"
-        if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "${_ollama_host}/api/tags" 2>/dev/null | grep -q "^200$"; then
-            _key_status="✔ running"
-        else
-            _key_status="✘ not reachable"
-        fi
+    # The TUI becomes interactive before network pre-flight. Local key presence
+    # is still checked immediately; connectivity/authentication is verified
+    # before the first provider-bound request.
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        case "$provider" in
+            openrouter)
+                if [ -n "$or_api_key" ]; then
+                    _key_status="… validate on first request"
+                    _provider_preflight_deferred=true
+                else
+                    _key_status="✘ not set"
+                fi
+                ;;
+            ollama)
+                _key_status="… validate on first request"
+                _provider_preflight_deferred=true
+                ;;
+            *)
+                if [ -n "$api_key" ]; then
+                    _key_status="… validate on first request"
+                    _provider_preflight_deferred=true
+                else
+                    _key_status="✘ not set"
+                fi
+                ;;
+        esac
     else
-        _prov_label="Anthropic"
-        if [ -n "$api_key" ]; then
-            if _nexus_validate_ant_key "$api_key"; then
-                _key_status="✔ valid"
-            else
-                _key_status="✘ invalid or unreachable"
-            fi
-        else
-            _key_status="✘ not set"
-        fi
+        # Show a "checking..." placeholder while the key validation runs.
+        declare -f igor_right_render &>/dev/null && \
+            igor_right_render "AI Assistant" "Status" "validating ${provider} key..."
+        _ai_provider_preflight true || true
     fi
 
     local _tools_fmt
@@ -2332,9 +2555,10 @@ menu_ai() {
     )
     [ -n "$_or_balance" ] && _rargs+=("Balance" "${_bal_val}")
 
-    if declare -f igor_right_render &>/dev/null; then
+    if [ "${IGOR_TUI_MODE:-false}" != true ] &&
+       declare -f igor_right_render &>/dev/null; then
         igor_right_render "${_rargs[@]}"
-    else
+    elif [ "${IGOR_TUI_MODE:-false}" != true ]; then
         # No right pane — brief inline display
         echo -e "  ${CYAN}Provider:${NC} ${_prov_label}  ${CYAN}Key:${NC} ${_key_status}"
         echo -e "  ${CYAN}Model:${NC}    ${model}  ${CYAN}Temp:${NC} ${NEXUS_TEMPERATURE:-0.7}"
@@ -2378,6 +2602,11 @@ menu_ai() {
             fi
         fi
         echo ""
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_PROVIDER_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_pre_phase_started_ms="$_ai_pre_phase_ended_ms"
     fi
 
     local preflight
@@ -2831,6 +3060,17 @@ except: pass
 
     # ── Session initialisation ─────────────────────────────────────────────────
     [ "$preflight" = "s" ] || [ "$preflight" = "S" ] || return 0
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_pre_phase_ended_ms=$(_ai_now_ms)
+        _IGOR_TUI_AI_PRE_SELECTION_MS=$((_ai_pre_phase_ended_ms - _ai_pre_phase_started_ms))
+        _ai_tui_phase_ended_ms="$_ai_pre_phase_ended_ms"
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            _IGOR_TUI_AI_PRE_SESSION_MS=$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     local _rt_dir
     _ai_runtime_private_dir _rt_dir || {
         _ai_startup_fail runtime 1 "Could not prepare private AI runtime directory." \
@@ -2852,7 +3092,8 @@ except: pass
             "$_rt_dir" "Could not write the private runtime state file."
         return $?
     }
-    if [ "$_key_status" != "✔ valid" ] && [ "$_key_status" != "✔ running" ]; then
+    if [ "$_provider_preflight_deferred" != true ] &&
+       [ "$_key_status" != "✔ valid" ] && [ "$_key_status" != "✔ running" ]; then
         _ai_startup_fail provider_key 1 "Provider key is invalid, missing, or the provider is unreachable."
         return $?
     fi
@@ -2865,6 +3106,129 @@ except: pass
         _ai_startup_fail session_log 1 "Could not create a private AI session log. Check data/sessions ownership and permissions."
         return $?
     }
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            _IGOR_TUI_AI_SESSION_RUNTIME_MS=$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))
+        fi
+
+        [[ "${_IGOR_TUI_BACKEND_SPAWN_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_spawn=%sms\n' "$_IGOR_TUI_BACKEND_SPAWN_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BACKEND_PREBOOTSTRAP_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_prebootstrap=%sms\n' "$_IGOR_TUI_BACKEND_PREBOOTSTRAP_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_CONFIG_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_MODULES_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_modules=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULES_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_module_config=%sms\n' "$_IGOR_TUI_BOOTSTRAP_MODULE_CONFIG_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_aux_sources=%sms\n' "$_IGOR_TUI_BOOTSTRAP_AUX_SOURCES_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.bootstrap_config_hooks=%sms\n' "$_IGOR_TUI_BOOTSTRAP_CONFIG_HOOKS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_BACKEND_DISPATCH_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.backend_dispatch=%sms\n' "$_IGOR_TUI_BACKEND_DISPATCH_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_SOURCE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_source=%sms\n' "$_IGOR_TUI_AI_SOURCE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_HEADER_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_header=%sms\n' "$_IGOR_TUI_AI_PRE_HEADER_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_KEYS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_keys=%sms\n' "$_IGOR_TUI_AI_PRE_KEYS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SETTINGS_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_settings=%sms\n' "$_IGOR_TUI_AI_PRE_SETTINGS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_CONFIGURATION_STARTUP_SNAPSHOT_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] configuration.startup_snapshot=%sms\n' "$_IGOR_TUI_CONFIGURATION_STARTUP_SNAPSHOT_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_CONFIGURATION_SERVICE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] configuration.core_resolve=%sms\n' "$_IGOR_TUI_CONFIGURATION_SERVICE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_CONFIGURATION_DECODE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] configuration.decode=%sms\n' "$_IGOR_TUI_CONFIGURATION_DECODE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_CONFIGURATION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_configuration=%sms\n' "$_IGOR_TUI_AI_PRE_CONFIGURATION_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_MODEL_COST_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_model_cost=%sms\n' "$_IGOR_TUI_AI_PRE_MODEL_COST_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_PROVIDER_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_provider=%sms\n' "$_IGOR_TUI_AI_PRE_PROVIDER_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SELECTION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_selection=%sms\n' "$_IGOR_TUI_AI_PRE_SELECTION_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_PRE_SESSION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_pre_session=%sms\n' "$_IGOR_TUI_AI_PRE_SESSION_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_AI_SESSION_RUNTIME_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] tui.ai_session_runtime=%sms\n' "$_IGOR_TUI_AI_SESSION_RUNTIME_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_DISCOVERY_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.discovery=%sms\n' "$_IGOR_TUI_MODULE_DISCOVERY_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_V2_REGISTRY_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.v2_registry=%sms\n' "$_IGOR_TUI_MODULE_V2_REGISTRY_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_SORT_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.sort=%sms\n' "$_IGOR_TUI_MODULE_SORT_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_MODULE_REGISTRATION_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.registration=%sms\n' "$_IGOR_TUI_MODULE_REGISTRATION_MS" >> "$session_file"
+        local _module_timing_name _module_timing_phase _module_timing_key _module_timing_value
+        for _module_timing_name in ${_IGOR_TUI_MODULE_REGISTRATION_ORDER:-}; do
+            _module_timing_value="${_IGOR_TUI_MODULE_REGISTRATION_BY_NAME[$_module_timing_name]:-}"
+            [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                printf '[TIMING] module.registration.%s=%sms\n'                     "$_module_timing_name" "$_module_timing_value" >> "$session_file"
+            case "${_IGOR_MODULE_API[$_module_timing_name]:-1}" in
+                1) _module_timing_phase="v1.dependencies v1.syntax v1.source v1.hooks v1.finalize" ;;
+                2) _module_timing_phase="v2.preflight v2.compat v2.contributions v2.configuration v2.consumer" ;;
+                *) _module_timing_phase="" ;;
+            esac
+            for _module_timing_phase in $_module_timing_phase; do
+                _module_timing_key="${_module_timing_name}.${_module_timing_phase}"
+                _module_timing_value="${_IGOR_TUI_MODULE_PHASE_MS[$_module_timing_key]:-}"
+                [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                    printf '[TIMING] module.registration.%s.%s=%sms\n'                         "$_module_timing_name" "$_module_timing_phase" "$_module_timing_value" >> "$session_file"
+            done
+        done
+        [[ "${_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] module.registration.reconcile=%sms\n'                 "$_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS" >> "$session_file"
+
+        # If a diagnostic clock observation was unavailable, retain a visible
+        # aggregate derived from the enclosing bootstrap partition rather than
+        # silently dropping the registration line.  Label any remaining gap as
+        # unattributed; never guess which module owns it.
+        local _module_registration_effective="${_IGOR_TUI_MODULE_REGISTRATION_MS:-}"
+        if ! [[ "$_module_registration_effective" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_BOOTSTRAP_MODULES_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_DISCOVERY_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_V2_REGISTRY_MS:-}" =~ ^[0-9]+$ ]] &&
+           [[ "${_IGOR_TUI_MODULE_SORT_MS:-}" =~ ^[0-9]+$ ]]; then
+            _module_registration_effective=$((
+                _IGOR_TUI_BOOTSTRAP_MODULES_MS -
+                _IGOR_TUI_MODULE_DISCOVERY_MS -
+                _IGOR_TUI_MODULE_V2_REGISTRY_MS -
+                _IGOR_TUI_MODULE_SORT_MS
+            ))
+            [ "$_module_registration_effective" -ge 0 ] || _module_registration_effective=""
+            [[ "$_module_registration_effective" =~ ^[0-9]+$ ]] &&
+                printf '[TIMING] module.registration.derived=%sms\n'                     "$_module_registration_effective" >> "$session_file"
+        fi
+        if [[ "$_module_registration_effective" =~ ^[0-9]+$ ]]; then
+            local _module_attributed=0
+            for _module_timing_name in ${_IGOR_TUI_MODULE_REGISTRATION_ORDER:-}; do
+                _module_timing_value="${_IGOR_TUI_MODULE_REGISTRATION_BY_NAME[$_module_timing_name]:-}"
+                [[ "$_module_timing_value" =~ ^[0-9]+$ ]] &&
+                    _module_attributed=$((_module_attributed + _module_timing_value))
+            done
+            [[ "${_IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS:-}" =~ ^[0-9]+$ ]] &&
+                _module_attributed=$((_module_attributed + _IGOR_TUI_MODULE_REGISTRATION_RECONCILE_MS))
+            if [ "$_module_registration_effective" -ge "$_module_attributed" ]; then
+                printf '[TIMING] module.registration.unattributed=%sms\n'                     "$((_module_registration_effective - _module_attributed))" >> "$session_file"
+            fi
+        fi
+        case "${_IGOR_MODULE_V2_CACHE_STATE:-}" in
+            hit|miss|bypass|fallback|none)
+                printf '[MODULE] v2_registry_cache=%s\n' "$_IGOR_MODULE_V2_CACHE_STATE" >> "$session_file"
+                ;;
+        esac
+        _ai_tui_phase_started_ms=$(_ai_now_ms)
+    fi
+    local _ai_local_phase_started_ms=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_local_phase_started_ms="$_ai_tui_phase_started_ms"
+    fi
+
     local session_id; session_id=$(basename "$session_file" .log)
     IGOR_AI_EVENT_SESSION_ID="$session_id"
     export IGOR_AI_EVENT_SESSION_ID
@@ -2875,29 +3239,38 @@ except: pass
     mkfifo "$_fifo_path" 2>/dev/null && chmod 600 "$_fifo_path" \
         || warn "Could not create session FIFO (--extra will not work)"
 
-    clear
-    # Enter AI mode immediately after clear — sets mouse on + scroll bindings before
-    # any user-facing prompts (WIP check, interstitial, etc.) so scroll never injects
-    # ^[[A ^[[B during the session setup phase.
-    declare -f igor_ai_entry &>/dev/null && igor_ai_entry
+    # The standalone curses frontend owns its whole presentation surface.  The
+    # classic clear/tmux layout/banner path writes only to the backend PTY before
+    # terminal capture is active, so doing it here is both invisible and wasteful.
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        clear
+        # Enter AI mode immediately after clear — sets mouse on + scroll bindings before
+        # any user-facing prompts (WIP check, interstitial, etc.) so scroll never injects
+        # ^[[A ^[[B during the session setup phase.
+        declare -f igor_ai_entry &>/dev/null && igor_ai_entry
 
-    echo -e "${MAG}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
-    echo -e "${MAG}${BOLD}  ║   IGOR  ·  AI Assistant                        ║${NC}"
-    echo -e "${MAG}${BOLD}  ║   I Guard. Observe. Repair.                         ║${NC}"
-    echo -e "${MAG}${BOLD}  ╚══════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    local _banner_prov
-    case "$provider" in
-        openrouter) _banner_prov="OpenRouter" ;;
-        ollama)     _banner_prov="Ollama (local @ ${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434})" ;;
-        *)          _banner_prov="Anthropic" ;;
-    esac
-    echo -e "  ${CYAN}Provider:${NC} ${_banner_prov}  ${CYAN}Model:${NC} ${model}"
-    echo -e "  ${CYAN}Verbose:${NC}  ${IGOR_VERBOSE}"
-    echo ""
-    echo -e "  ${CYAN}Commands:${NC} help for the command list · : for the command palette"
-    echo -e "  ${CYAN}Tip:${NC}      run 'bash igor.sh --extra' in a 2nd terminal for the live panel."
-    echo ""
+        echo -e "${MAG}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
+        echo -e "${MAG}${BOLD}  ║   IGOR  ·  AI Assistant                        ║${NC}"
+        echo -e "${MAG}${BOLD}  ║   I Guard. Observe. Repair.                         ║${NC}"
+        echo -e "${MAG}${BOLD}  ╚══════════════════════════════════════════════════════╝${NC}"
+        echo ""
+        local _banner_prov
+        case "$provider" in
+            openrouter) _banner_prov="OpenRouter" ;;
+            ollama)     _banner_prov="Ollama (local @ ${IGOR_OLLAMA_HOST:-http://127.0.0.1:11434})" ;;
+            *)          _banner_prov="Anthropic" ;;
+        esac
+        echo -e "  ${CYAN}Provider:${NC} ${_banner_prov}  ${CYAN}Model:${NC} ${model}"
+        echo -e "  ${CYAN}Verbose:${NC}  ${IGOR_VERBOSE}"
+        echo ""
+        echo -e "  ${CYAN}Commands:${NC} help for the command list · : for the command palette"
+        echo -e "  ${CYAN}Tip:${NC}      run 'bash igor.sh --extra' in a 2nd terminal for the live panel."
+        echo ""
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_ui "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
     # ── Load quiet loop preference ────────────────────────────────────────────
     local _igor_loop_quiet="${IGOR_LOOP_QUIET:-true}"
@@ -2909,52 +3282,83 @@ except: pass
         echo ""
     fi
 
-    # P3-3: Display canary alert if a post-fix check failed since last session
+    # P3-3: Display canary alert if a post-fix check failed since last session.
+    # This is retained here; Boundary J changes presentation plumbing, not canary
+    # or durable investigation semantics.
     _ai_check_canary_alert
 
     # ── Load knowledge + WIP ──────────────────────────────────────────────────
-    local knowledge_block; knowledge_block=$(ai_knowledge_load)
-    ai_knowledge_show_status
+    local _wip_present=false
+    if [ -f "$WIP_FILE" ] && ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
+        _wip_present=true
+    fi
+
+    local knowledge_block
+    # The TUI has always selected "skip" for an existing WIP automatically.
+    # Load that exact final knowledge view once instead of first loading the WIP
+    # and immediately rebuilding the block without it.
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && $_wip_present; then
+        knowledge_block=$(ai_knowledge_load false)
+    else
+        knowledge_block=$(ai_knowledge_load)
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+        ai_knowledge_show_status
+    fi
 
     local _wip_active=false
-    if [ -f "$WIP_FILE" ] && ! grep -q "^\*\*Status:\*\* EMPTY" "$WIP_FILE" 2>/dev/null; then
-        _wip_active=true
-        echo ""
-        echo -e "  ${YEL}┌─ Open problem from last session ──────────────────────────────${NC}"
-        local _wip_preview; _wip_preview=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //')
-        [ -n "$_wip_preview" ] && echo -e "  ${YEL}│${NC}  $_wip_preview"
-        echo -e "  ${YEL}└───────────────────────────────────────────────────────────────${NC}"
-        echo ""
-        echo -e "  ${BOLD}Is this problem still open?${NC}"
-        echo -e "  ${GRN}y${NC} = still open  ${CYAN}n${NC} = solved  ${YEL}s${NC} = skip"
-        echo ""
-        local _wip_ans
+    if $_wip_present; then
         if [ "${IGOR_TUI_MODE:-false}" = true ]; then
-            _wip_ans=s
+            # Preserve the existing TUI choice: keep durable WIP for later while
+            # starting this session without investigation carry-over.
+            _wip_active=false
         else
+            _wip_active=true
+            echo ""
+            echo -e "  ${YEL}┌─ Open problem from last session ──────────────────────────────${NC}"
+            local _wip_preview; _wip_preview=$(grep "^\*\*Problem" "$WIP_FILE" | head -1 | sed 's/\*\*Problem[^:]*:\*\* //')
+            [ -n "$_wip_preview" ] && echo -e "  ${YEL}│${NC}  $_wip_preview"
+            echo -e "  ${YEL}└───────────────────────────────────────────────────────────────${NC}"
+            echo ""
+            echo -e "  ${BOLD}Is this problem still open?${NC}"
+            echo -e "  ${GRN}y${NC} = still open  ${CYAN}n${NC} = solved  ${YEL}s${NC} = skip"
+            echo ""
+            local _wip_ans
             read -rp "  [y/n/s]: " _wip_ans </dev/tty
+            case "$_wip_ans" in
+                n|N)
+                    _wip_active=false
+                    ai_knowledge_clear_wip
+                    knowledge_block=$(ai_knowledge_load)
+                    echo -e "  ${GRN}✔ WIP cleared.${NC}"
+                    ;;
+                s|S)
+                    _wip_active=false
+                    knowledge_block=$(ai_knowledge_load false)
+                    echo -e "  ${CYAN}WIP kept for later; this session starts fresh.${NC}" ;;
+                *)   echo -e "  ${GRN}✔ WIP active — Igor will continue from the open problem.${NC}" ;;
+            esac
         fi
-        case "$_wip_ans" in
-            n|N)
-                _wip_active=false
-                ai_knowledge_clear_wip
-                knowledge_block=$(ai_knowledge_load)
-                echo -e "  ${GRN}✔ WIP cleared.${NC}"
-                ;;
-            s|S)
-                _wip_active=false
-                knowledge_block=$(ai_knowledge_load false)
-                echo -e "  ${CYAN}WIP kept for later; this session starts fresh.${NC}" ;;
-            *)   echo -e "  ${GRN}✔ WIP active — Igor will continue from the open problem.${NC}" ;;
-        esac
     fi
     echo ""
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_knowledge "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
     # ── Gather + scrub context ────────────────────────────────────────────────
-    # [IDEA-06] Quick mode: skip server scan, use minimal system prompt
+    # [IDEA-06] Quick mode: skip server scan, use minimal system prompt.
+    # The TUI keeps full-context semantics but defers the expensive scan until
+    # the first provider-bound request, allowing the composer to become READY.
     local system_context scrubbed_context
-    local _context_captured_at _context_refresh_interval
-    if $_quick_mode; then
+    local _context_captured_at _context_refresh_interval _context_deferred=false
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && ! $_quick_mode; then
+        _context_deferred=true
+        system_context="(deferred until first provider request)"
+        scrubbed_context="(deferred until first provider request)"
+        _context_captured_at=0
+        _context_refresh_interval=300
+    elif $_quick_mode; then
         echo -e "  ${CYAN}Fast mode — skipping server scan.${NC}"
         echo ""
         system_context="(quick mode — no server scan)"
@@ -2989,13 +3393,21 @@ except: pass
 
     # ── Build system prompt ───────────────────────────────────────────────────
     local system_prompt
-    system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context") || {
-        _ai_startup_fail prompt 1 "Could not build the AI session prompt."
-        return $?
-    }
-    if [ -z "$system_prompt" ]; then
-        _ai_startup_fail prompt 1 "AI session prompt is empty."
-        return $?
+    if [ "${_context_deferred:-false}" = true ]; then
+        # The full prompt depends on the full server context and is rebuilt by
+        # _ai_refresh_context immediately before the first provider request.
+        # Rendering it now would only build a structural prompt around a
+        # placeholder context and then discard it.
+        system_prompt="(deferred until first provider request)"
+    else
+        system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context") || {
+            _ai_startup_fail prompt 1 "Could not build the AI session prompt."
+            return $?
+        }
+        if [ -z "$system_prompt" ]; then
+            _ai_startup_fail prompt 1 "AI session prompt is empty."
+            return $?
+        fi
     fi
 
     # ── Prompt interstitial (RFC R1-3) ────────────────────────────────────────
@@ -3015,6 +3427,10 @@ except: pass
                 return $? ;;
         esac
         # Rebuild after potential edit (system_prompt may have been updated in-place)
+    fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_prompt "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
     fi
 
     # [FIX-3] In-session hypothesis tracker (accumulates over conversation)
@@ -3054,6 +3470,7 @@ except: pass
         _investigation_state_enabled=true
     fi
     _ai_pending_choice_clear
+    local _tui_ready_timing_recorded=false
     # P3-1: Session-sticky runbook match (set once on first relevant user message)
     local _active_runbook=""
     # P3-2: Session metadata for post-mortem
@@ -3062,9 +3479,15 @@ except: pass
     local _turns=0       # API call count
     local _session_outcome="unknown"
     declare -f _ai_reset_cmd_counters &>/dev/null && _ai_reset_cmd_counters
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_session_header "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
-    # Keep the optional right pane in sync with help and the palette.
-    if declare -f igor_right_render &>/dev/null; then
+    # Keep the classic optional right pane in sync with help and the palette.
+    # The standalone curses TUI owns a separate structured command palette.
+    if [ "${IGOR_TUI_MODE:-false}" != true ] &&
+       declare -f igor_right_render &>/dev/null; then
         local -a _command_reference=("Chat Commands" "---" "Commands")
         local _ref_name _ref_syntax _ref_description
         while IFS=$'\t' read -r _ref_name _ref_syntax _ref_description; do
@@ -3078,9 +3501,31 @@ except: pass
         done < <(python3 "${_AI_DIR}/session_commands.py" palette)
         igor_right_render "${_command_reference[@]}"
     fi
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_record_timing tui.ai_local_command_reference "$_ai_local_phase_started_ms" >/dev/null
+        _ai_local_phase_started_ms=$(_ai_now_ms)
+    fi
 
     # ── Chat loop ─────────────────────────────────────────────────────────────
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            printf '[TIMING] tui.ai_local_setup=%sms\n'                 "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     _ai_emit_operator_snapshot
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _ai_tui_phase_ended_ms=$(_ai_now_ms)
+        if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+           [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+            printf '[TIMING] tui.ai_operator_snapshot=%sms\n'                 "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+        fi
+        _ai_tui_phase_started_ms="$_ai_tui_phase_ended_ms"
+    fi
     _ai_set_session_state ready || {
         _ai_startup_fail runtime_state 1 "Could not persist ready state." \
             "$_rt_dir" "Could not write the private runtime state file."
@@ -3098,7 +3543,8 @@ except: pass
 
         # [FIX-1] Auto-refresh context if stale (default: every 5 minutes)
         local _now; _now=$(date +%s)
-        if (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
+        if [ "${_context_deferred:-false}" != true ] &&
+           (( _context_refresh_interval > 0 && _now - _context_captured_at > _context_refresh_interval )); then
             echo -e "  ${CYAN}↻ Context auto-refreshing (${_context_refresh_interval}s elapsed)...${NC}"
             if _ai_refresh_context; then
                 _context_captured_at=$_now
@@ -3122,6 +3568,18 @@ except: pass
         echo -e -n "  ${MAG}Igor${NC} [$(echo -e "${_ptag}")] ${MAG}›${NC} "
         # This is the authoritative frontend boundary: after input_ready the
         # backend's next blocking operation is the stdin read below.
+        if [ "${IGOR_TUI_MODE:-false}" = true ] &&
+           [ "$_tui_ready_timing_recorded" = false ] &&
+           [[ "${IGOR_TUI_STARTED_MS:-}" =~ ^[0-9]+$ ]]; then
+            _ai_tui_phase_ended_ms=$(_ai_now_ms)
+            if [[ "$_ai_tui_phase_started_ms" =~ ^[0-9]+$ ]] &&
+               [[ "$_ai_tui_phase_ended_ms" =~ ^[0-9]+$ ]] &&
+               [ "$_ai_tui_phase_ended_ms" -ge "$_ai_tui_phase_started_ms" ]; then
+                printf '[TIMING] tui.ai_ready_finalize=%sms\n'                     "$((_ai_tui_phase_ended_ms - _ai_tui_phase_started_ms))" >> "$session_file"
+            fi
+            _ai_record_timing tui.startup_to_input_ready "$IGOR_TUI_STARTED_MS" >/dev/null
+            _tui_ready_timing_recorded=true
+        fi
         _ai_frontend_event model_status '' 'input_ready'
         local user_input=""
         # Disable all mouse reporting before reading input — tmux `mouse on` routes
@@ -3649,6 +4107,10 @@ Do NOT repeat these failed approaches. Try a different method."
                 # Fall through — no 'continue'; user_input goes to the API
                 ;;
             "/cmd "*)
+                if ! _ai_prepare_deferred_request_runtime; then
+                    echo ""
+                    continue
+                fi
                 local _cmd_desc="${user_input#/cmd }"
                 if [ -z "$_cmd_desc" ]; then
                     warn "Usage: /cmd <description>  (e.g. /cmd flush the redis cache)"
@@ -3705,6 +4167,11 @@ Do NOT repeat these failed approaches. Try a different method."
                 continue ;;
             "")  continue ;;
         esac
+
+        if ! _ai_prepare_deferred_request_runtime; then
+            echo ""
+            continue
+        fi
 
         # ── Intent detection ──────────────────────────────────────────────────
         local _intent_handled=false
@@ -3846,12 +4313,15 @@ END USER STEERING"
         _ai_pin_update "Igor is thinking..."
         _ai_frontend_event model_status '' 'request_started'
         ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+        local _provider_started_ms; _provider_started_ms=$(_ai_now_ms)
         if ! _raw_result=$(_nexus_api_call); then
+            _ai_record_timing provider.initial "$_provider_started_ms" >/dev/null
             _ai_set_session_state provider_failed
             _ai_pin_exit
             warn "AI request could not be sent."
             continue
         fi
+        _ai_record_timing provider.initial "$_provider_started_ms" >/dev/null
         _nexus_parse_result "$_raw_result" _reply _cmds _in_tok _out_tok _explain_text _think_text _scratchpad_text _asst_msg _tconv_fmt _ev_rejected _ev_injection_initial _validation_json
         ai_add_cost "$_in_tok" "$_out_tok"
         local reply="$_reply"
@@ -4237,12 +4707,15 @@ END UNTRUSTED RUNBOOK REFERENCE DATA"
             conversation=$(_nexus_compress_conv "$conversation")
             export NEXUS_CONV="$conversation"
             ai_begin_request || { warn "AI request identity unavailable."; return 1; }
+            local _followup_started_ms; _followup_started_ms=$(_ai_now_ms)
             if ! _fu_raw=$(_nexus_api_call); then
+                _ai_record_timing provider.followup "$_followup_started_ms" >/dev/null
                 _loop_stop_reason="provider_failed"
                 _ai_set_session_state provider_failed
                 warn "Provider request could not be sent; tool history was preserved."
                 break
             fi
+            _ai_record_timing provider.followup "$_followup_started_ms" >/dev/null
             _nexus_parse_result "$_fu_raw" _fu_reply _fu_cmds _fu_in _fu_out _fu_explain _fu_think _fu_scratchpad _fu_asst_msg _fu_tconv_fmt
             if [ "${IGOR_PROVIDER_ERROR:-false}" = "true" ]; then
                 _loop_stop_reason="$(_ai_error_state)"

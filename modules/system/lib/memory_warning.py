@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-def consumer() -> dict:
+def consumer(*, require_state: bool) -> dict:
     package = Path(__file__).resolve().parents[1]
     contract = json.loads((package / "contracts/host.json").read_text())
     field = next(field for row in contract["contributions"] if row["kind"] == "configuration"
@@ -16,13 +16,19 @@ def consumer() -> dict:
                  if field["id"] == "system.memory.warning_threshold_mib")
     value = int(os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_MIB", field["default"]))
     revision = int(os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_REVISION", "0"))
-    state = os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_STATE", "0" * 64)
-    if (not field["minimum"] <= value <= field["maximum"] or revision < 0 or
-            len(state) != 64 or any(c not in "0123456789abcdef" for c in state)):
+    state = os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_STATE")
+    if not field["minimum"] <= value <= field["maximum"] or revision < 0:
         raise ValueError("invalid memory consumer state")
-    return {"value": value, "revision": revision, "state": state,
-            "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID", "unbound"),
-            "source": "system.host.memory.health.consumer"}
+    if state is not None and (len(state) != 64 or any(c not in "0123456789abcdef" for c in state)):
+        raise ValueError("invalid memory consumer state")
+    if require_state and state is None:
+        raise ValueError("configuration state proof unavailable")
+    result = {"value": value, "revision": revision,
+              "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID", "unbound"),
+              "source": "system.host.memory.health.consumer"}
+    if state is not None:
+        result["state"] = state
+    return result
 
 
 def main() -> int:
@@ -42,7 +48,7 @@ def main() -> int:
             if type(result["value"]) is not int or not 81 <= result["value"] <= 4096:
                 raise ValueError("invalid warning value")
         else:
-            runtime = consumer()
+            runtime = consumer(require_state=action == "readback")
             if action == "readback":
                 result = runtime
             else:

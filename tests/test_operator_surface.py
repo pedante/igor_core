@@ -2,14 +2,23 @@
 """Contract projection coverage for the generated operator surface."""
 
 import json
+import os
+import stat
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
-from operator_surface import SurfaceError, build_surface, children  # noqa: E402
+from operator_surface import (  # noqa: E402
+    SurfaceError,
+    build_surface,
+    cached_build_surface,
+    cached_read_surface,
+    children,
+)
 
 
 CAP = {
@@ -66,7 +75,10 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(by_path["system.host.memory.health"]["kind"], "check")
         self.assertEqual(by_path["system.memory.policy"]["kind"], "configuration")
         self.assertRegex(surface["digest"], r"^[0-9a-f]{64}$")
-        self.assertNotIn("value", json.dumps(surface))
+        serialized = json.dumps(surface, sort_keys=True)
+        self.assertNotIn('"value":', serialized)
+        self.assertNotIn('"desired":', serialized)
+        self.assertNotIn('"resolved":', serialized)
 
     def test_children_make_owner_scoped_namespace_for_non_scoped_ids(self):
         surface = build_surface(self.payload())
@@ -164,6 +176,75 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(surface["state"], "error")
         self.assertEqual(surface["sources"]["capabilities"],
                          {"status": "error", "count": 0})
+
+    def test_compiled_cache_reuses_structural_digest_across_sessions(self):
+        payload = {**self.payload(), "seed_version": 1,
+                   "availability_model": "registration"}
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "cache" / "operator-surface-v1.json"
+            first = cached_build_surface(payload, cache)
+            first_mtime = cache.stat().st_mtime_ns
+            second = cached_build_surface(payload, cache)
+            second_mtime = cache.stat().st_mtime_ns
+
+            self.assertEqual(first, second)
+            self.assertEqual(first_mtime, second_mtime)
+            self.assertEqual(first["availability_model"], "registration")
+            self.assertRegex(first["compiled_source_digest"], r"^[0-9a-f]{64}$")
+            self.assertEqual(stat.S_IMODE(cache.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(cache.parent.stat().st_mode), 0o700)
+
+    def test_loader_keyed_cache_reads_without_rebuilding_seed(self):
+        payload = {**self.payload(), "seed_version": 1,
+                   "availability_model": "registration"}
+        generation = "a" * 64
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "cache" / "operator-surface-v1.json"
+            built = cached_build_surface(payload, cache, generation)
+            hit = cached_read_surface(cache, generation)
+            miss = cached_read_surface(cache, "b" * 64)
+
+        self.assertEqual(hit, built)
+        self.assertIsNone(miss)
+        self.assertEqual(built["compiled_source_digest"], generation)
+
+    def test_compiled_cache_rebuilds_when_registration_seed_changes(self):
+        payload = {**self.payload(), "seed_version": 1,
+                   "availability_model": "registration"}
+        changed = json.loads(json.dumps(payload))
+        changed["capabilities"].append({
+            **json.loads(json.dumps(CAP)),
+            "id": "system.host.summary",
+            "descriptor": {
+                **json.loads(json.dumps(CAP["descriptor"])),
+                "description": "Host summary.",
+            },
+        })
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "cache" / "operator-surface-v1.json"
+            first = cached_build_surface(payload, cache)
+            second = cached_build_surface(changed, cache)
+
+        self.assertNotEqual(first["compiled_source_digest"],
+                            second["compiled_source_digest"])
+        self.assertEqual(second["entry_count"], first["entry_count"] + 1)
+        self.assertTrue(any(row["path"] == "system.host.summary"
+                            for row in second["entries"]))
+
+    def test_corrupt_compiled_cache_is_ignored_and_rebuilt(self):
+        payload = {**self.payload(), "seed_version": 1,
+                   "availability_model": "registration"}
+        with tempfile.TemporaryDirectory() as root:
+            cache = Path(root) / "cache" / "operator-surface-v1.json"
+            first = cached_build_surface(payload, cache)
+            cache.write_text('{"cache_version":1,"source_digest":"bad"}',
+                             encoding="utf-8")
+            os.chmod(cache, 0o600)
+            second = cached_build_surface(payload, cache)
+            self.assertEqual(first, second)
+            stored = json.loads(cache.read_text(encoding="utf-8"))
+            self.assertEqual(stored["source_digest"],
+                             second["compiled_source_digest"])
 
     def test_malformed_payload_fails_closed(self):
         with self.assertRaises(SurfaceError):

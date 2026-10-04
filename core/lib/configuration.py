@@ -66,18 +66,30 @@ def installed_schemas(root: Path) -> list[tuple[str, dict]]:
 
 
 def _memory_consumption(state: dict) -> dict:
-    """Inspection of a process snapshot; never a claim of verification."""
+    """Inspection of a process snapshot; never a claim of verification.
+
+    Boundary O allows the ordinary health consumer to hold the authoritative
+    value/revision without eagerly acquiring a global configuration state token.
+    A token, when present, is still required to match for the stronger snapshot
+    comparison used after an explicit apply/readback workflow.
+    """
     try:
         value = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_MIB"])
         revision = int(os.environ["IGOR_SYSTEM_MEMORY_WARNING_REVISION"])
-        token = os.environ["IGOR_SYSTEM_MEMORY_WARNING_STATE"]
-        if not 81 <= value <= 4096 or revision < 0 or not re.fullmatch(r"[0-9a-f]{64}", token):
+        token = os.environ.get("IGOR_SYSTEM_MEMORY_WARNING_STATE")
+        if not 81 <= value <= 4096 or revision < 0:
             raise ValueError("invalid consumer snapshot")
-        return {"status": "consumed_current_process", "value": value, "revision": revision,
-                "state": token, "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID"),
-                "source": "system.host.memory.health.consumer",
-                "matches_desired": value == state["resolved"]["value"] and revision == state["revision"] and token == state["state_token"],
-                "verification": "not_verified"}
+        if token is not None and not re.fullmatch(r"[0-9a-f]{64}", token):
+            raise ValueError("invalid consumer state token")
+        matches = value == state["resolved"]["value"] and revision == state["revision"]
+        result = {"status": "consumed_current_process", "value": value, "revision": revision,
+                  "consumer_id": os.environ.get("IGOR_SYSTEM_MEMORY_CONSUMER_ID"),
+                  "source": "system.host.memory.health.consumer",
+                  "matches_desired": matches and (token == state["state_token"] if token is not None else True),
+                  "verification": "not_verified"}
+        if token is not None:
+            result["state"] = token
+        return result
     except (KeyError, ValueError):
         return {"status": "unavailable", "source": "system.host.memory.health.consumer", "verification": "not_verified"}
 
@@ -444,6 +456,126 @@ class ConfigurationService:
             result["runtime_consumption"] = _memory_consumption(result) if self.owner_active("system") else {"status": "owner_inactive", "verification": "not_verified"}
         return result
 
+    def resolve_ai_verbose(self, *, compatibility_loader=None):
+        """Resolve the Core-owned startup setting without claiming global state.
+
+        The AI session only needs the current value plus the store revision.
+        Computing the normal inspection state token would validate every desired
+        record and therefore requires every installed module configuration
+        schema.  This narrow consumer reads only the Core-owned row from the
+        same authoritative store.  It deliberately returns no state token and
+        cannot be used for configuration writes or compare-and-swap admission.
+        """
+        field = self._field("ai.verbose", "installation:local")
+        with self._store() as db:
+            metadata = self._metadata(db)
+            row = None
+            if db:
+                raw = db.execute(
+                    "SELECT record FROM desired WHERE target=? AND id=?",
+                    ("installation:local", "ai.verbose"),
+                ).fetchone()
+                if raw is not None:
+                    row = self._record(decode(raw[0]))
+        if row is not None:
+            value = field.get("default") if row["unset"] else row["value"]
+            source = "default" if row["unset"] else "desired"
+        else:
+            value = field.get("default")
+            source = "default"
+            if compatibility_loader is not None:
+                compatibility = compatibility_loader()
+                value = validate_value(field, compatibility["value"])
+                source = "compatibility"
+        return {
+            "schema_version": 1,
+            "id": "ai.verbose",
+            "target": "installation:local",
+            "revision": int(metadata["revision"]),
+            "resolved": {"status": "resolved", "value": value, "source": source},
+        }
+
+    def resolve_system_memory_warning(self):
+        """Resolve System's health threshold without global configuration proof.
+
+        The caller supplies only System's already-validated configuration schema.
+        This consumer reads the same authoritative desired store and current
+        global revision, but deliberately does not compute a state token.  State
+        tokens remain mandatory for mutation admission and explicit readback
+        verification.
+        """
+        field = self._field(MEMORY_WARNING, MEMORY_TARGET)
+        with self._store() as db:
+            metadata = self._metadata(db)
+            row = None
+            if db:
+                raw = db.execute(
+                    "SELECT record FROM desired WHERE target=? AND id=?",
+                    (MEMORY_TARGET, MEMORY_WARNING),
+                ).fetchone()
+                if raw is not None:
+                    row = self._record(decode(raw[0]))
+        value = field.get("default") if row is None or row["unset"] else row["value"]
+        source = "default" if row is None or row["unset"] else "desired"
+        return {
+            "schema_version": 1,
+            "id": MEMORY_WARNING,
+            "target": MEMORY_TARGET,
+            "revision": int(metadata["revision"]),
+            "resolved": {"status": "resolved", "value": value, "source": source},
+        }
+
+    def resolve_startup_snapshot(self, *, compatibility_loader=None):
+        """Resolve the bounded standalone-TUI startup consumers in one store read.
+
+        The snapshot is process-scoped startup data, not a persistent cache and
+        not a global configuration proof.  It returns only values plus the
+        current revision; mutation admission and explicit verification still
+        require the normal state-token path.
+        """
+        verbose_field = self._field("ai.verbose", "installation:local")
+        memory_field = self._field(MEMORY_WARNING, MEMORY_TARGET)
+        rows = {}
+        with self._store() as db:
+            metadata = self._metadata(db)
+            if db:
+                for target, ident in (
+                    ("installation:local", "ai.verbose"),
+                    (MEMORY_TARGET, MEMORY_WARNING),
+                ):
+                    raw = db.execute(
+                        "SELECT record FROM desired WHERE target=? AND id=?",
+                        (target, ident),
+                    ).fetchone()
+                    if raw is not None:
+                        rows[(target, ident)] = self._record(decode(raw[0]))
+
+        verbose_row = rows.get(("installation:local", "ai.verbose"))
+        if verbose_row is not None:
+            verbose_value = (verbose_field.get("default") if verbose_row["unset"]
+                             else verbose_row["value"])
+            verbose_source = "default" if verbose_row["unset"] else "desired"
+        else:
+            verbose_value = verbose_field.get("default")
+            verbose_source = "default"
+            if compatibility_loader is not None:
+                compatibility = compatibility_loader()
+                verbose_value = validate_value(verbose_field, compatibility["value"])
+                verbose_source = "compatibility"
+
+        memory_row = rows.get((MEMORY_TARGET, MEMORY_WARNING))
+        memory_value = (memory_field.get("default")
+                        if memory_row is None or memory_row["unset"]
+                        else memory_row["value"])
+        memory_source = "default" if memory_row is None or memory_row["unset"] else "desired"
+
+        return {
+            "schema_version": 1,
+            "revision": int(metadata["revision"]),
+            "ai_verbose": {"value": verbose_value, "source": verbose_source},
+            "system_memory_warning_mib": {"value": memory_value, "source": memory_source},
+        }
+
     def export(self):
         with self._store() as db:
             metadata = self._metadata(db)
@@ -614,15 +746,70 @@ def capability_records(system_active=False):
 
 def cli():
     try:
-        request = decode(sys.stdin.read())
-        root = Path(request["igor_dir"])
-        # Runtime callers supply the actual loader-owned activation snapshot.
-        # Standalone inspection admits no module writes without that snapshot.
-        active = set(request.get("active_owners", ["core"]))
-        service = ConfigurationService(Path(request["data_dir"]), schemas=installed_schemas(root),
-                                       owner_active=lambda owner: owner == "core" or owner in active)
         action = sys.argv[1]
-        if action == "capabilities":
+        if action == "resolve-ai-verbose":
+            # Dedicated startup consumer: arguments arrive as environment data
+            # rather than paying for a separate Python JSON-builder process.
+            # This path is Core-only and intentionally has no module activation
+            # or state-token authority.
+            request = {
+                "igor_dir": os.environ["IGOR_CONFIGURATION_ROOT"],
+                "data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"],
+                "inherited_verbose": os.environ.get("IGOR_CONFIGURATION_INHERITED_VERBOSE") or None,
+            }
+            root = Path(request["igor_dir"])
+            active = {"core"}
+            schemas = []
+        elif action in {"resolve-system-memory-warning", "resolve-startup-snapshot"}:
+            # Boundary O/P consume the loader's already-validated System
+            # configuration contribution. They neither rediscover installed
+            # schemas nor compute a global state token.
+            record = decode(os.environ["IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD"])
+            if (type(record) is not dict or record.get("kind") != "configuration" or
+                    record.get("id") != "system.memory.preferences" or
+                    type(record.get("schema")) is not dict):
+                raise ConfigurationError("invalid System memory configuration declaration")
+            request = {
+                "data_dir": os.environ["IGOR_CONFIGURATION_DATA_DIR"],
+                "igor_dir": os.environ.get("IGOR_CONFIGURATION_ROOT"),
+                "inherited_verbose": os.environ.get("IGOR_CONFIGURATION_INHERITED_VERBOSE") or None,
+            }
+            root = Path(request["igor_dir"]) if request["igor_dir"] else None
+            active = {"core", "system"}
+            schemas = [("system", record["schema"])]
+        else:
+            request = decode(sys.stdin.read())
+            root = Path(request["igor_dir"])
+            # Runtime callers supply the actual loader-owned activation snapshot.
+            # Standalone inspection admits no module writes without that snapshot.
+            active = set(request.get("active_owners", ["core"]))
+            schemas = installed_schemas(root)
+        service = ConfigurationService(Path(request["data_dir"]), schemas=schemas,
+                                       owner_active=lambda owner: owner == "core" or owner in active)
+        if action == "resolve-ai-verbose":
+            result = service.resolve_ai_verbose(
+                compatibility_loader=lambda: legacy_verbose(
+                    root, request.get("inherited_verbose")
+                )
+            )
+        elif action == "resolve-system-memory-warning":
+            result = service.resolve_system_memory_warning()
+            # Fixed internal framing keeps startup to one Python process. Both
+            # fields are schema-validated integers before they reach the shell.
+            print(f'{result["resolved"]["value"]}:{result["revision"]}')
+            return 0
+        elif action == "resolve-startup-snapshot":
+            if root is None:
+                raise ConfigurationError("startup snapshot requires Igor root")
+            result = service.resolve_startup_snapshot(
+                compatibility_loader=lambda: legacy_verbose(
+                    root, request.get("inherited_verbose")
+                )
+            )
+            verbose = "true" if result["ai_verbose"]["value"] else "false"
+            print(f'{verbose}:{result["system_memory_warning_mib"]["value"]}:{result["revision"]}')
+            return 0
+        elif action == "capabilities":
             result = capability_records("system" in active)
         elif action == "declarations":
             result = service.declarations()

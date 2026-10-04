@@ -60,6 +60,31 @@ teardown() { rm -rf "$TEST_ROOT"; }
     [ "$(cat "$TEST_ROOT/target")" = original ]
 }
 
+@test "sequence cache preserves ordering and recovers from stale or corrupt state" {
+    _ai_event_emit session_started '{"session_id":"s1"}'
+    _ai_event_emit warning '{"display":"first"}'
+    [ -f "$IGOR_AI_EVENT_STREAM.seq" ]
+    [ "$(stat -c '%a' "$IGOR_AI_EVENT_STREAM.seq")" = 600 ]
+
+    printf 'corrupt\n' > "$IGOR_AI_EVENT_STREAM.seq"
+    _ai_event_emit warning '{"display":"after-corrupt-cache"}'
+    run python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json,sys
+events=[json.loads(line) for line in open(sys.argv[1])]
+assert [item["sequence"] for item in events] == [1,2,3]
+PY
+    [ "$status" -eq 0 ]
+
+    : > "$IGOR_AI_EVENT_STREAM"
+    _ai_event_emit warning '{"display":"after-truncate"}'
+    run python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json,sys
+events=[json.loads(line) for line in open(sys.argv[1])]
+assert [item["sequence"] for item in events] == [1]
+PY
+    [ "$status" -eq 0 ]
+}
+
 @test "payload cannot replace envelope identity or ordering" {
     _ai_event_emit warning '{"event_type":"action_started","sequence":99,"timestamp":"fake","status":"validation"}'
     run python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'

@@ -172,6 +172,21 @@ class OperationalHistoryTests(unittest.TestCase):
                 with self.assertRaises(HistoryError):
                     service.inspect(row["operation_id"] if field == "correlation" else "op-" + "0" * 32)
 
+    def test_running_can_atomically_record_direct_caller_authority(self):
+        candidate = proposal(tier="READ")
+        row = prepare(self.history, source=candidate, tier="READ")
+        self.history.running(
+            row["operation_id"], proposal=candidate,
+            approval="auto_approved", privilege="not_required",
+        )
+        inspected = self.history.inspect(row["operation_id"])
+        self.assertEqual(inspected["approval"]["result"], "auto_approved")
+        self.assertEqual(inspected["privilege"]["result"], "not_required")
+        self.assertEqual(
+            [item["state"] for item in inspected["transitions"]],
+            ["admitted", "authority", "running"],
+        )
+
     def test_invalid_authority_execution_and_terminal_combinations_are_rejected(self):
         row = prepare(self.history)
         with self.assertRaises(HistoryError):
@@ -374,6 +389,24 @@ print(row["operation_id"])
         row = self.history.inspect(ident)
         self.assertEqual(row["outcome"], "interrupted_unknown")
         self.assertEqual(row["verification"]["reconciliation"]["status"], "passed")
+
+    def test_recover_does_not_decode_terminal_history(self):
+        terminal_ids = {
+            self.record_terminal(tier="READ", privilege="not_required")["operation_id"]
+            for _ in range(12)
+        }
+        original_read = OperationalHistory._read
+        calls = []
+
+        def recording_read(db, ident):
+            calls.append(ident)
+            return original_read(db, ident)
+
+        with patch.object(OperationalHistory, "_read", side_effect=recording_read):
+            self.assertEqual(self.history.recover(), [])
+
+        self.assertTrue(terminal_ids)
+        self.assertEqual(calls, [])
 
     def test_export_restore_is_idempotent_and_unknown_versions_fail_closed(self):
         row = self.record_terminal(tier="READ", privilege="not_required")

@@ -138,6 +138,77 @@ def test_system_health_consumer_uses_applied_value_and_keeps_critical_boundary(m
     assert check(79, 220)["status"] == "CRITICAL"
 
 
+def test_system_startup_consumes_threshold_without_eager_state_token(tmp_path):
+    _igor_dir, result = run_system_shell(tmp_path, r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+_ml_log() { :; }
+igor_load_all_modules >/dev/null || exit 2
+printf 'consumer=%s:%s\n' "$IGOR_SYSTEM_MEMORY_WARNING_MIB" "$IGOR_SYSTEM_MEMORY_WARNING_REVISION"
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 3
+request='{"api_version":2,"contribution_id":"host.memory.health","input":{"facts":{"memory.available_bytes":{"availability":"known","value":104857600,"recorded_at":"test"}}}}'
+check="$(printf '%s\n' "$request" | system__check_memory)" || exit 4
+printf 'CHECK=%s\n' "$check"
+''')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "consumer=150:0" in result.stdout
+    check = json.loads(next(line.removeprefix("CHECK=") for line in result.stdout.splitlines()
+                            if line.startswith("CHECK=")))
+    assert check["status"] == "ok"
+    assert check["result"]["status"] == "WARN"
+    assert "warning_mib=150;revision=0" in check["result"]["evidence"]
+
+
+def test_tui_startup_snapshot_feeds_system_and_ai_once(tmp_path):
+    _igor_dir, result = run_system_shell(tmp_path, r'''
+export IGOR_TUI_MODE=true
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+_ml_log() { :; }
+igor_load_all_modules >/dev/null || exit 2
+printf 'memory=%s:%s\n' "$IGOR_SYSTEM_MEMORY_WARNING_MIB" "$IGOR_SYSTEM_MEMORY_WARNING_REVISION"
+printf 'verbose=%s:%s\n' "$IGOR_VERBOSE" "$IGOR_VERBOSE_REVISION"
+printf 'pending=%s\n' "$IGOR_CONFIGURATION_STARTUP_AI_PENDING"
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 3
+_igor_configuration_ai_verbose_resolve() { touch "$SECOND_READ_MARKER"; return 91; }
+_ai_configuration_verbose_load || exit 4
+[ ! -e "$SECOND_READ_MARKER" ] || exit 5
+[ -z "${IGOR_CONFIGURATION_STARTUP_AI_PENDING+x}" ] || exit 6
+printf 'reuse=%s:%s:%s\n' "$IGOR_VERBOSE" "$_IGOR_TUI_CONFIGURATION_SERVICE_MS" "$_IGOR_TUI_CONFIGURATION_DECODE_MS"
+'''.replace("$SECOND_READ_MARKER", str(tmp_path / "second-read")))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "memory=150:0" in result.stdout
+    assert "verbose=true:0" in result.stdout
+    assert "pending=1" in result.stdout
+    assert "reuse=true:0:0" in result.stdout
+
+
+def test_explicit_readback_acquires_full_state_proof_just_in_time(tmp_path):
+    _igor_dir, result = run_system_shell(tmp_path, r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+_ml_log() { :; }
+igor_load_all_modules >/dev/null || exit 2
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 3
+view="$(_igor_configuration_call inspect '{"id":"system.memory.warning_threshold_mib","target":"module:system"}')" || exit 4
+inputs="$(python3 -c 'import json,sys; s=json.loads(sys.argv[1]); print(json.dumps({"revision":s["revision"],"state":s["state_token"]},separators=(",",":")))' "$view")" || exit 5
+proposal="$(igor_capability_prepare system.memory.warning.readback "$inputs" system 2)" || exit 6
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 7
+envelope="$(_igor_capability_invoke_handler "$proposal")" || exit 8
+[ -z "${IGOR_SYSTEM_MEMORY_WARNING_STATE+x}" ] || exit 9
+printf 'VIEW=%s\nENVELOPE=%s\n' "$view" "$envelope"
+''', timeout=180)
+    assert result.returncode == 0, result.stdout + result.stderr
+    view = json.loads(next(line.removeprefix("VIEW=") for line in result.stdout.splitlines()
+                           if line.startswith("VIEW=")))
+    envelope = json.loads(next(line.removeprefix("ENVELOPE=") for line in result.stdout.splitlines()
+                               if line.startswith("ENVELOPE=")))
+    assert envelope["status"] == "ok"
+    assert envelope["result"]["value"] == 150
+    assert envelope["result"]["revision"] == view["revision"]
+    assert envelope["result"]["state"] == view["state_token"]
+
+
 def test_system_module_capabilities_remain_core_policy_boundaries():
     contract = json.loads((ROOT / "modules/system/contracts/host.json").read_text())
     capabilities = {row["id"]: row for row in contract["contributions"]

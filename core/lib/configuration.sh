@@ -18,6 +18,44 @@ print(json.dumps(r,separators=(",", ":")))
     printf '%s' "$_request" | python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" "$_action"
 }
 
+# Startup-only Core consumer.  Configuration Service remains authoritative: the
+# Python process reads the current private SQLite store and compatibility source,
+# but does not discover module schemas or compute a global state token because
+# this consumer needs only ai.verbose plus the current global revision.
+_igor_configuration_ai_verbose_resolve() {
+    IGOR_CONFIGURATION_ROOT="$IGOR_DIR" \
+    IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+    IGOR_CONFIGURATION_INHERITED_VERBOSE="${verbose:-}" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" resolve-ai-verbose
+}
+
+# Startup-only System health consumer. The declaration comes from the canonical
+# loader registry after Module API validation; Configuration Service revalidates
+# that single schema and reads the authoritative store directly. No global
+# state token is computed here.
+_igor_configuration_system_memory_warning_resolve() {
+    local _record="${_IGOR_CONTRIBUTIONS[configuration:system.memory.preferences]:-}"
+    [ -n "$_record" ] || return 1
+    IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+    IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD="$_record" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" \
+            resolve-system-memory-warning
+}
+
+# Boundary P: one process-scoped authoritative startup read for the standalone
+# TUI's Core + active System consumers. The loader registry supplies System's
+# already-validated schema; Configuration Service reads the same SQLite store.
+_igor_configuration_startup_snapshot_resolve() {
+    local _record="${_IGOR_CONTRIBUTIONS[configuration:system.memory.preferences]:-}"
+    [ -n "$_record" ] || return 1
+    IGOR_CONFIGURATION_ROOT="$IGOR_DIR" \
+    IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+    IGOR_CONFIGURATION_INHERITED_VERBOSE="${verbose:-}" \
+    IGOR_CONFIGURATION_SYSTEM_MEMORY_RECORD="$_record" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" \
+            resolve-startup-snapshot
+}
+
 # Read-only schema projection for generic frontends. This creates no store and
 # exposes no desired/secret values.
 igor_configuration_declarations() {
@@ -25,9 +63,9 @@ igor_configuration_declarations() {
 }
 
 _igor_configuration_precondition() {
-    local _proposal="$1" _inputs _id
-    _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
-    _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+    local _proposal="$1" _id="${2:-}" _inputs="${3:-}"
+    [ -n "$_id" ] || _id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
+    [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
     case "$_id" in
         system.memory.warning.apply|system.memory.warning.readback)
             _igor_configuration_memory_warning_contract "$_proposal" || return 1
@@ -87,9 +125,65 @@ igor_configuration_cli() {
     esac
 }
 
+# Boundary P coalesces the standalone-TUI startup consumers. This snapshot is
+# valid only for the initial process bootstrap; it is consumed once by AI
+# startup and is never used as mutation/readback authority.
+_igor_configuration_startup_snapshot_load() {
+    _ml_owner_active system || return 1
+    local _snapshot _verbose_value _memory_value _revision _started="" _ended=""
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && declare -f _ml_now_ms >/dev/null 2>&1; then
+        _started="$(_ml_now_ms)"
+    fi
+    _snapshot="$(_igor_configuration_startup_snapshot_resolve)" || return 1
+    if [[ "$_started" =~ ^[0-9]+$ ]]; then
+        _ended="$(_ml_now_ms)"
+        if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
+            _IGOR_TUI_CONFIGURATION_STARTUP_SNAPSHOT_MS=$((_ended - _started))
+        fi
+    fi
+    IFS=: read -r _verbose_value _memory_value _revision <<< "$_snapshot"
+    case "$_verbose_value" in true|false) ;; *) return 1 ;; esac
+    [[ "$_memory_value" =~ ^[0-9]+$ ]] &&
+        [ "$_memory_value" -ge 81 ] && [ "$_memory_value" -le 4096 ] || return 1
+    [[ "$_revision" =~ ^[0-9]+$ ]] || return 1
+
+    IGOR_VERBOSE="$_verbose_value"
+    IGOR_VERBOSE_REVISION="$_revision"
+    IGOR_SYSTEM_MEMORY_WARNING_MIB="$_memory_value"
+    IGOR_SYSTEM_MEMORY_WARNING_REVISION="$_revision"
+    unset IGOR_SYSTEM_MEMORY_WARNING_STATE
+    IGOR_SYSTEM_MEMORY_CONSUMER_ID="${IGOR_AI_EVENT_SESSION_ID:-${BASHPID:-0}}"
+    IGOR_CONFIGURATION_STARTUP_AI_PENDING=1
+    export IGOR_VERBOSE IGOR_VERBOSE_REVISION
+    export IGOR_SYSTEM_MEMORY_WARNING_MIB IGOR_SYSTEM_MEMORY_WARNING_REVISION IGOR_SYSTEM_MEMORY_CONSUMER_ID
+    export IGOR_CONFIGURATION_STARTUP_AI_PENDING
+}
+
+# Boundary O remains the non-coalesced fallback. Classic/late AI entry must not
+# reuse the TUI bootstrap snapshot because configuration may have changed since
+# module loading.
+_igor_configuration_memory_warning_startup_load() {
+    if [ "${IGOR_TUI_MODE:-false}" = true ]; then
+        _igor_configuration_startup_snapshot_load
+        return $?
+    fi
+    _ml_owner_active system || return 1
+    local _snapshot _value _revision
+    _snapshot="$(_igor_configuration_system_memory_warning_resolve)" || return 1
+    IFS=: read -r _value _revision <<< "$_snapshot"
+    [[ "$_value" =~ ^[0-9]+$ ]] && [ "$_value" -ge 81 ] && [ "$_value" -le 4096 ] || return 1
+    [[ "$_revision" =~ ^[0-9]+$ ]] || return 1
+
+    IGOR_SYSTEM_MEMORY_WARNING_MIB="$_value"
+    IGOR_SYSTEM_MEMORY_WARNING_REVISION="$_revision"
+    unset IGOR_SYSTEM_MEMORY_WARNING_STATE
+    IGOR_SYSTEM_MEMORY_CONSUMER_ID="${IGOR_AI_EVENT_SESSION_ID:-${BASHPID:-0}}"
+    export IGOR_SYSTEM_MEMORY_WARNING_MIB IGOR_SYSTEM_MEMORY_WARNING_REVISION IGOR_SYSTEM_MEMORY_CONSUMER_ID
+}
+
 # Boundary 3 is one reviewed process consumer, not a generic settings engine.
-# Registration consumes a prior authorized resolution without declaring it
-# verified. Explicit changes still use the canonical CHANGE and READ paths.
+# This full loader is retained for explicit apply/readback workflows that must
+# prove a global configuration revision/state pair.
 _igor_configuration_memory_warning_load() {
     _ml_owner_active system || return 1
     local _view _snapshot
@@ -181,10 +275,50 @@ PY
 # Consume only the current authoritative resolution. This records no observed
 # fact and never treats a desired commit as proof of application.
 _ai_configuration_verbose_load() {
-    local _state _value _revision
-    _state="$(_igor_configuration_call resolve)" || return 1
-    _value="$(printf '%s' "$_state" | python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["resolved"]["value"] else "false")')" || return 1
-    _revision="$(printf '%s' "$_state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])')" || return 1
+    local _state _decoded _value _revision _started="" _ended=""
+
+    # Boundary P consumes the process-scoped startup snapshot exactly once.
+    # Classic/late AI entry and all later reloads continue through the fresh
+    # authoritative resolver below.
+    if [ "${IGOR_TUI_MODE:-false}" = true ] &&
+       [ "${IGOR_CONFIGURATION_STARTUP_AI_PENDING:-0}" = 1 ]; then
+        case "${IGOR_VERBOSE:-}" in true|false) ;; *) return 1 ;; esac
+        [[ "${IGOR_VERBOSE_REVISION:-}" =~ ^[0-9]+$ ]] || return 1
+        [ -z "${1:-}" ] || [ "${IGOR_VERBOSE_REVISION}" = "$1" ] || return 1
+        unset IGOR_CONFIGURATION_STARTUP_AI_PENDING
+        _IGOR_TUI_CONFIGURATION_SERVICE_MS=0
+        _IGOR_TUI_CONFIGURATION_DECODE_MS=0
+        export IGOR_VERBOSE IGOR_VERBOSE_REVISION
+        return 0
+    fi
+
+    if [ "${IGOR_TUI_MODE:-false}" = true ] && declare -f _ai_now_ms >/dev/null 2>&1; then
+        _started="$(_ai_now_ms)"
+    fi
+    _state="$(_igor_configuration_ai_verbose_resolve)" || return 1
+    if [[ "$_started" =~ ^[0-9]+$ ]]; then
+        _ended="$(_ai_now_ms)"
+        if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
+            _IGOR_TUI_CONFIGURATION_SERVICE_MS=$((_ended - _started))
+        fi
+        _started="$_ended"
+    fi
+    _decoded="$(printf '%s' "$_state" | python3 -c '
+import json,sys
+state=json.load(sys.stdin)
+value=state["resolved"]["value"]
+revision=state["revision"]
+if type(value) is not bool or type(revision) is not int or revision < 0:
+    raise SystemExit(1)
+print(("true" if value else "false") + ":" + str(revision))
+')" || return 1
+    IFS=: read -r _value _revision <<< "$_decoded"
+    if [[ "$_started" =~ ^[0-9]+$ ]]; then
+        _ended="$(_ai_now_ms)"
+        if [[ "$_ended" =~ ^[0-9]+$ ]] && [ "$_ended" -ge "$_started" ]; then
+            _IGOR_TUI_CONFIGURATION_DECODE_MS=$((_ended - _started))
+        fi
+    fi
     [ -z "${1:-}" ] || [ "$_revision" = "$1" ] || return 1
     IGOR_VERBOSE="$_value"
     IGOR_VERBOSE_REVISION="$_revision"

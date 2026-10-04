@@ -80,6 +80,44 @@ class AutomationRegistryTests(unittest.TestCase):
         value.update(fields)
         return value
 
+    def test_event_prefilter_is_exact_but_never_authoritative(self):
+        row = self.create_event()
+        self.registry.mutate("enable", row["id"], "operator")
+        prefilter = Registry(self.root, [], [], [])
+        self.assertEqual(prefilter.prefilter_event(self.event(), "Assist"), [row["id"]])
+        self.assertEqual(prefilter.prefilter_event(self.event(owner="other"), "Assist"), [])
+        self.assertEqual(prefilter.prefilter_event(self.event(related_objects=["host:other"]), "Assist"), [])
+        self.assertEqual(prefilter.prefilter_event(self.event(), "Guide"), [])
+        # The raw trigger candidate has no authority without current capability
+        # and event-type context; the canonical matcher still rejects it.
+        self.assertEqual(prefilter.match_event(self.event(), "Assist",
+                                               datetime(2030, 1, 1, tzinfo=timezone.utc)), [])
+
+    def test_event_callback_skips_global_context_when_no_trigger_can_match(self):
+        marker = self.root / "global-context-called"
+        event = json.dumps(self.event(), separators=(",", ":"))
+        script = r"""
+            export IGOR_DIR="$PWD"
+            _subscriber=''
+            igor_domain_event_subscribe() { _subscriber="$1"; }
+            igor_capability_list() { touch "$MARKER"; printf '[]\n'; }
+            igor_automation_proposals() { touch "$MARKER"; }
+            igor_domain_event_types() { touch "$MARKER"; printf '[]\n'; }
+            ai_get_mode() { printf 'assist\n'; }
+            source core/lib/automation.sh
+            [ -n "$_subscriber" ]
+            "$_subscriber" "$EVENT_JSON"
+            [ ! -e "$MARKER" ]
+            [ ! -s "$IGOR_AUTOMATION_EVENT_QUEUE" ]
+        """
+        run = subprocess.run(
+            ["bash", "-c", script], cwd=ROOT,
+            env={**os.environ, "IGOR_DATA_DIR": str(self.root),
+                 "MARKER": str(marker), "EVENT_JSON": event},
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
+
     def test_event_filters_are_exact_and_payload_cannot_match(self):
         row = self.create_event()
         self.registry.mutate("enable", row["id"], "operator")

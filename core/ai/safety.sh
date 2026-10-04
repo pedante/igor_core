@@ -164,20 +164,16 @@ _ai_event_payload() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local operation_id="$1" tool="$2" tier="$3" approval="$4" status="$5"
     local text_value="${6:-}" output_value="${7:-}" exit_value="${8:-}"
-    local admin_required="${9:-false}"
-    local scrubbed_text scrubbed_output
-    if declare -f ai_scrub_outbound >/dev/null 2>&1; then
-        scrubbed_text=$(ai_scrub_outbound "$text_value") || scrubbed_text=""
-        scrubbed_output=$(ai_scrub_outbound "$output_value") || scrubbed_output=""
-    else
-        scrubbed_text=""
-        scrubbed_output=""
-    fi
+    local admin_required="${9:-false}" duration_value="${10:-}"
+    # Frontend events stay on the owner-only local stream. Scrub only when
+    # crossing provider/export boundaries; local scrubbing is both expensive
+    # for large output and can damage valid host identifiers.
     AI_EVENT_OPERATION="$operation_id" AI_EVENT_NATIVE_ID="${AI_EVENT_NATIVE_ID:-}" \
         AI_EVENT_TOOL="$tool" \
         AI_EVENT_TIER="$tier" AI_EVENT_APPROVAL="$approval" \
-        AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$scrubbed_text" \
-        AI_EVENT_OUTPUT="$scrubbed_output" AI_EVENT_EXIT="$exit_value" \
+        AI_EVENT_STATUS="$status" AI_EVENT_TEXT="$text_value" \
+        AI_EVENT_OUTPUT="$output_value" AI_EVENT_EXIT="$exit_value" \
+        AI_EVENT_DURATION="$duration_value" \
         AI_EVENT_MODE="$(ai_get_mode 2>/dev/null || printf '%s' assist)" \
         AI_EVENT_ADMIN_REQUIRED="$admin_required" \
         python3 - <<'PY'
@@ -204,6 +200,9 @@ if output:
 exit_code = os.environ.get("AI_EVENT_EXIT", "")
 if exit_code.isdigit():
     payload["exit_code"] = int(exit_code)
+duration = os.environ.get("AI_EVENT_DURATION", "")
+if duration.isdigit():
+    payload["duration_ms"] = int(duration)
 print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 PY
 }
@@ -1111,17 +1110,9 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
     _ai_write_tool_meta "$tier" "$_meta_approval" pending "" ""
     _ai_audit_dispatch APPROVAL "$T_TOOL" "$tier" "$approval_mode" \
         "$_approval_outcome" 0 "${_ria_owner:-}" "$tool_json" "" "$_operation_id"
-    if [ "$T_TOOL" = run_capability ]; then
-        local _history_privilege=not_required
-        [ "$_cap_privilege" = required ] && _history_privilege=not_requested
-        [ "$run" = true ] && [ "$_cap_privilege" = required ] && _history_privilege=required
-        if ! _igor_history_update authority "$IGOR_HISTORY_OPERATION_ID" "$_meta_approval" "$_history_privilege"; then
-            output="$(_igor_capability_nonexecution_result "$_cap_prepared" history_unavailable "$_meta_approval" "$_history_privilege")"
-            IGOR_CAPABILITY_LAST_RESULT="$output"
-            printf '%s\n' "$output"
-            return 1
-        fi
-    fi
+    # Operational History records one canonical authority transition only after
+    # the final privilege outcome is known. Declined/stopped/auth-failed paths
+    # terminalize directly from admitted with their canonical result.
     if [ "$approval_mode" = "stopped" ]; then
         output="[USER STOPPED] Pending action cancelled: ${display_cmd}"
         if [ "$T_TOOL" = run_capability ]; then
@@ -1136,6 +1127,8 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
         (( AI_CMD_BLOCKED++ )) || true
     elif $run; then
         local exit_code=0
+        local _action_started_ms=""
+        _action_started_ms=$(date +%s%3N 2>/dev/null || true)
         _ai_emit_event action_started "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" started "$display_cmd" "" "" "$_requires_admin")"
         local _admin_auth_failed=false
         if [ "$_requires_admin" = true ]; then
@@ -1306,6 +1299,15 @@ ${tail_out}"
 [... truncated at 2500 chars ...]"
         fi
 
+        # Keep the local presentation copy separate from the provider
+        # TOOL:/OUTPUT: transport envelope and attach one wall-clock duration.
+        local _display_output="$output" _duration_ms="" _action_finished_ms=""
+        _action_finished_ms=$(date +%s%3N 2>/dev/null || true)
+        if [[ "$_action_started_ms" =~ ^[0-9]+$ && "$_action_finished_ms" =~ ^[0-9]+$ ]] &&
+           [ "$_action_finished_ms" -ge "$_action_started_ms" ]; then
+            _duration_ms=$((_action_finished_ms - _action_started_ms))
+        fi
+
         if [ "$_ui_quiet" = "false" ]; then
             echo -e "  ${CYAN}── OUTPUT ────────────────────────────────────────────────────${NC}" >&2
             while IFS= read -r _oline; do echo "  $_oline" >&2; done <<< "$output"
@@ -1316,6 +1318,12 @@ ${tail_out}"
             echo -e "  ${CYAN}──────────────────────────────────────────────────────────────${NC}" >&2
         fi
 
+        # The canonical capability result is already committed at this point.
+        # Publish its local presentation before non-authoritative tool metadata
+        # and audit bookkeeping so diagnostics cannot hold the UI behind a
+        # terminal result.
+        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$_display_output" "$_display_output" "$exit_code" "$_requires_admin" "$_duration_ms")"
+
         output="TOOL:${T_TOOL} EXIT:${exit_code}\nOUTPUT:\n${output}"
         local _exec_status="tool_succeeded"; [ "$exit_code" -ne 0 ] && _exec_status="tool_failed"
         _ai_write_tool_meta "$tier" "$_meta_approval" "$_exec_status" "$exit_code" \
@@ -1324,7 +1332,6 @@ ${tail_out}"
             "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
         unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
-        _ai_emit_event action_output "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" output "$output" "$output" "$exit_code" "$_requires_admin")"
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
             [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
         # P3-2: track executed command counts
