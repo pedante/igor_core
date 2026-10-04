@@ -2,6 +2,74 @@
 
 Last updated: 2026-10-04
 
+## Module Loader Startup Performance — Boundary H candidate
+
+Boundary G's first real-host startup profile made the remaining bottleneck
+unambiguous on the same operator path:
+
+```text
+[TIMING] tui.bootstrap_config=63ms
+[TIMING] tui.bootstrap_modules=22624ms
+[TIMING] tui.bootstrap_module_config=50ms
+[TIMING] operator_surface=399ms
+[TIMING] tui.startup_to_input_ready=28445ms
+```
+
+Module bootstrap therefore consumed about **79.5%** of the measured 28.445s
+time to first `input_ready`. Boundary H targets that phase only.
+
+Module API v2 previously validated each package in a Python process and then
+restarted Python repeatedly while sorting and registering the same validated
+JSON: module requirements, manifest fields, contribution rows/records,
+requirement indexes, handler metadata and static capability policy. Boundary H
+replaces that interpreter storm with one registry compiler invocation per
+startup:
+
+- `core/lib/module_registry.py` validates every installed v2 package in one
+  Python process and emits normalized structural registration frames;
+- the derived document is persisted as
+  `${IGOR_DATA_DIR}/cache/module-registry-v2.json` with an owner-private 0700
+  directory, 0600 lock/cache files, locking and atomic replacement;
+- the source digest covers the compiler/validator semantics plus the complete
+  installed v2 package contents, so manifest, contract, handler/entrypoint or
+  package-file changes invalidate the cache;
+- a warm cache still fingerprints current package files, but it does not
+  revalidate/reparse every contribution;
+- the shell loader populates the existing canonical contribution, requirement,
+  handler and dependency registries from the compiled frames. It does not add a
+  second execution registry;
+- v1 loading and compatibility registration remain unchanged and the fast path
+  delegates to the original v2 implementation if compiled state is unavailable.
+
+The cache is deliberately **structural metadata, not authority**. Module
+enablement, required-module/provider state, platform family, required binaries
+and contribution-local requirements are evaluated from the current process/host
+at the existing loader or dispatch boundary. Approval, privilege mediation,
+preconditions, execution fence, verification and Operational History are
+unchanged. A cache hit therefore cannot make an absent binary, inactive owner
+or stale provider appear available.
+
+Boundary H adds internal attribution under the existing module-bootstrap timer:
+
+```text
+[TIMING] module.discovery=<ms>
+[TIMING] module.v2_registry=<ms>
+[TIMING] module.sort=<ms>
+[TIMING] module.registration=<ms>
+[MODULE] v2_registry_cache=<hit|miss|bypass|fallback|none>
+```
+
+The proof contract includes a Python-process counter: for a v2-only fixture the
+cold startup must use one Python compiler process and a warm startup one more,
+rather than one process per field/contribution. A separate test changes a
+required binary between two cache-hit startups and requires contribution
+availability to change accordingly, guarding the runtime-truth boundary.
+
+No post-Boundary-H real-host speed claim is made yet. Closure requires rerunning
+the same TUI startup on the measured host and comparing
+`tui.bootstrap_modules`, `module.v2_registry` and
+`tui.startup_to_input_ready` against the 22.624s / 28.445s baseline above.
+
 ## TUI Readiness Performance — Boundary G candidate
 
 The compiled operator surface in Boundary F removes repeated namespace work, but
