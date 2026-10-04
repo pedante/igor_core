@@ -17,16 +17,27 @@ section selection; Page Up/Down scrolls section content. Terminal resize and
 panel toggling preserve the composer and backend projection.
 
 Ctrl+P opens the existing local command palette. Typing `:` on an empty draft
-opens the contract-driven operator explorer. The explorer immediately requests a
-fresh `operator_snapshot` projected by the backend from already-loaded module,
-contribution, capability and configuration registries. Type a segment to filter;
-`.` or Enter descends; Backspace/Esc returns toward the root; `Ctrl+R`
-requests another snapshot without losing the backend authority boundary.
+opens the contract-driven operator explorer. Session startup publishes a
+compiled `operator_snapshot` from loader-validated registration metadata. The
+derived projection is cached at
+`${IGOR_DATA_DIR}/cache/operator-surface-v1.json` and keyed by the current
+structural registration digest, so unchanged sessions reuse it instead of
+walking dynamic capability/configuration registries again. Type a segment to
+filter; `.` or Enter descends; Backspace/Esc returns toward the root; `Ctrl+R`
+requests the current compiled snapshot without losing the backend authority
+boundary.
 
-The explorer displays total/source counts and distinguishes a populated
-projection, a genuinely empty set of registered operator contracts, registry
-source failures and a backend that has not returned a snapshot. Browsing and
-refresh perform no model call or host probe.
+The compiled surface is presentation metadata, not runtime authority. Its
+`availability_model` is `registration`: package/module/schema/enablement and
+base contract changes invalidate the structural digest, while changing host
+facts such as a binary appearing or disappearing do not. Selecting a capability
+still enters the canonical dispatcher, which freshly resolves provider,
+requirements, approval, privilege, execution-fence preconditions and
+verification before effect. The explorer displays total/source counts and
+distinguishes a populated projection, a genuinely empty set of registered
+operator contracts, projection failures and a backend that has not returned a
+snapshot. Browsing and refresh perform no model call or host probe. The cache is
+disposable derived state; deleting or corrupting it causes a safe rebuild.
 
 ## Panel and inspection
 
