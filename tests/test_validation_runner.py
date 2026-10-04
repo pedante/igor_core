@@ -221,10 +221,12 @@ class ValidationRunnerTests(unittest.TestCase):
             log.write_text("1..1\nok 1 fixture in 1ms\n")
             return {"status": "PASS", "returncode": 0, "elapsed_seconds": 0, "log": str(log)}
 
-        with patch.dict(os.environ, {"BATS_TEST_TIMEOUT": "999"}, clear=False):
-            with patch.object(runner, "execute", side_effect=fake_execute):
-                runner.run_group({"id": "fixture", "kind": "bats", "files": ["tests/test_fixture.bats"]},
-                                 self.root, self.root, 0, args)
+        with (
+            patch.dict(os.environ, {"BATS_TEST_TIMEOUT": "999"}, clear=False),
+            patch.object(runner, "execute", side_effect=fake_execute),
+        ):
+            runner.run_group({"id": "fixture", "kind": "bats", "files": ["tests/test_fixture.bats"]},
+                             self.root, self.root, 0, args)
 
     def test_system_administration_slice_uses_larger_file_budget(self):
         args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",
