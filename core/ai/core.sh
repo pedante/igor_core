@@ -3106,6 +3106,10 @@ except: pass
             printf '[TIMING] tui.ai_pre_keys=%sms\n' "$_IGOR_TUI_AI_PRE_KEYS_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_PRE_SETTINGS_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.ai_pre_settings=%sms\n' "$_IGOR_TUI_AI_PRE_SETTINGS_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_CONFIGURATION_SERVICE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] configuration.core_resolve=%sms\n' "$_IGOR_TUI_CONFIGURATION_SERVICE_MS" >> "$session_file"
+        [[ "${_IGOR_TUI_CONFIGURATION_DECODE_MS:-}" =~ ^[0-9]+$ ]] &&
+            printf '[TIMING] configuration.decode=%sms\n' "$_IGOR_TUI_CONFIGURATION_DECODE_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_PRE_CONFIGURATION_MS:-}" =~ ^[0-9]+$ ]] &&
             printf '[TIMING] tui.ai_pre_configuration=%sms\n' "$_IGOR_TUI_AI_PRE_CONFIGURATION_MS" >> "$session_file"
         [[ "${_IGOR_TUI_AI_PRE_MODEL_COST_MS:-}" =~ ^[0-9]+$ ]] &&
