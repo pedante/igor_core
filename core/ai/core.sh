@@ -2490,9 +2490,10 @@ menu_ai() {
     )
     [ -n "$_or_balance" ] && _rargs+=("Balance" "${_bal_val}")
 
-    if declare -f igor_right_render &>/dev/null; then
+    if [ "${IGOR_TUI_MODE:-false}" != true ] &&
+       declare -f igor_right_render &>/dev/null; then
         igor_right_render "${_rargs[@]}"
-    else
+    elif [ "${IGOR_TUI_MODE:-false}" != true ]; then
         # No right pane — brief inline display
         echo -e "  ${CYAN}Provider:${NC} ${_prov_label}  ${CYAN}Key:${NC} ${_key_status}"
         echo -e "  ${CYAN}Model:${NC}    ${model}  ${CYAN}Temp:${NC} ${NEXUS_TEMPERATURE:-0.7}"
