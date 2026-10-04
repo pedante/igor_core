@@ -102,6 +102,50 @@ class CapabilityRuntimeTests(unittest.TestCase):
         self.assertEqual(invalid_output.returncode, 3)
         self.assertNotIn("99", invalid_output.stdout + invalid_output.stderr)
 
+    def test_prepare_shell_matches_json_prepare_contract(self):
+        record = {
+            "index_key": "capability:system.service.restart",
+            "id": "system.service.restart",
+            "owner": "system",
+            "provider": "system",
+            "source": "host.json",
+            "availability": "active",
+            "unavailable_reason": None,
+            "descriptor": descriptor().inspect(),
+        }
+        record["descriptor"].pop("available", None)
+        records = [record]
+        inputs = {"unit": "demo.service"}
+        request = {
+            "op": "prepare",
+            "records": records,
+            "id": "system.service.restart",
+            "inputs": inputs,
+            "provider": "system",
+            "platform_family": "arch",
+            "capability_version": 1,
+        }
+        normal = subprocess.run(
+            [sys.executable, "core/lib/capability_runtime.py"],
+            input=json.dumps(request), text=True, capture_output=True, check=False,
+        )
+        direct = subprocess.run(
+            [sys.executable, "core/lib/capability_runtime.py", "prepare-shell",
+             "system.service.restart", json.dumps(inputs, separators=(",", ":")),
+             "system", "1", "arch"],
+            input=json.dumps(records), text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(normal.returncode, 0, normal.stderr)
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+        self.assertEqual(json.loads(direct.stdout), json.loads(normal.stdout))
+
+        bad_version = subprocess.run(
+            [sys.executable, "core/lib/capability_runtime.py", "prepare-shell",
+             "system.service.restart", json.dumps(inputs), "system", "3", "arch"],
+            input=json.dumps(records), text=True, capture_output=True, check=False,
+        )
+        self.assertNotEqual(bad_version.returncode, 0)
+
     def test_prepare_cli_rejects_explicit_null_version(self):
         request = {"op": "prepare", "descriptors": [descriptor().inspect()], "id": "system.service.restart", "inputs": {"unit": "demo.service"}, "capability_version": None}
         # Inspection-only availability keys are not descriptor syntax.
