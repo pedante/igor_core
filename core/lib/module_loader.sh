@@ -749,6 +749,219 @@ print(json.dumps(rows,sort_keys=True,separators=(",",":")))
 '
 }
 
+# Build the operator namespace from already-validated registration data.
+# This is structural metadata only: it deliberately does not evaluate dynamic
+# contribution requirements such as command/binary availability. Canonical
+# capability prepare/execution remains the authority for current availability.
+igor_operator_surface_seed() {
+    local _name _api _status _reason _enabled _metadata
+    local _key _owner _source _state _record
+    {
+        while IFS= read -r _name; do
+            [ -n "$_name" ] || continue
+            _api="${_IGOR_MODULE_API[$_name]:-1}"
+            _status="${_IGOR_MODULE_STATUS[$_name]:-discovered}"
+            _reason="${_IGOR_MODULE_REASON[$_name]:-}"
+            if igor_module_enabled "$_name"; then _enabled=true; else _enabled=false; fi
+            if [ "$_api" = 2 ] && [ -n "${_IGOR_V2_DATA[$_name]:-}" ]; then
+                _metadata="${_IGOR_V2_DATA[$_name]}"
+            else
+                _metadata="$(_ml_read_conf "${_IGOR_MODULE_DIRS[$_name]}" display_name 2>/dev/null || printf '%s' "$_name")"
+            fi
+            printf 'module\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+                "$_name" "$_api" "$_status" "$_reason" "$_enabled" "$_metadata"
+        done < <(printf '%s\n' "${!_IGOR_MODULE_DIRS[@]}" | sort)
+
+        while IFS= read -r _key; do
+            [ -n "$_key" ] || continue
+            _owner="${_IGOR_CONTRIBUTION_OWNER[$_key]:-}"
+            _source="${_IGOR_CONTRIBUTION_SOURCE[$_key]:-unknown}"
+            _state="${_IGOR_CONTRIBUTION_STATE[$_key]:-active}"
+            _reason="${_IGOR_CONTRIBUTION_REASON[$_key]:-}"
+            _record="${_IGOR_CONTRIBUTIONS[$_key]:-}"
+            printf 'contribution\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+                "$_key" "$_owner" "$_source" "$_state" "$_reason" "$_record"
+        done < <(printf '%s\n' "${!_IGOR_CONTRIBUTIONS[@]}" | sort)
+    } | "$(_ml_python)" - "${_IGOR_LOADER_DIR}/core/lib" <<'PY'
+import copy
+import json
+import sys
+
+lib_dir = sys.argv[1]
+sys.path.insert(0, lib_dir)
+from configuration import CORE_SCHEMA, capability_records as configuration_capabilities
+from deployment_attachment import capability_records as deployment_capabilities
+
+parts = sys.stdin.buffer.read().split(b"\0")
+if parts[-1:] == [b""]:
+    parts.pop()
+if len(parts) % 7:
+    raise SystemExit("invalid operator surface seed framing")
+
+modules_raw = {}
+overrides = {}
+for offset in range(0, len(parts), 7):
+    kind, one, two, three, four, five, six = (
+        value.decode() for value in parts[offset:offset + 7]
+    )
+    if kind == "module":
+        name, api_text, status, reason, enabled_text, metadata = one, two, three, four, five, six
+        try:
+            api = int(api_text)
+        except ValueError:
+            api = 0
+        modules_raw[name] = {
+            "name": name,
+            "module_api": api,
+            "status": status,
+            "reason": reason or None,
+            "enabled": enabled_text == "true",
+            "metadata": metadata,
+        }
+    elif kind == "contribution":
+        key, owner, source, state, reason, raw = one, two, three, four, five, six
+        try:
+            descriptor = json.loads(raw)
+        except (TypeError, ValueError):
+            descriptor = {"kind": key.split(":", 1)[0],
+                          "id": key.split(":", 1)[1].split("@", 1)[0],
+                          "handler": raw}
+        overrides[(descriptor.get("kind"), descriptor.get("id"), owner)] = {
+            "index_key": key,
+            "owner": owner,
+            "source": source,
+            "availability": state,
+            "unavailable_reason": reason or None,
+            "descriptor": descriptor,
+        }
+    else:
+        raise SystemExit("invalid operator surface seed record")
+
+modules = []
+contributions = []
+represented = set()
+active_owners = set()
+
+for name in sorted(modules_raw):
+    raw = modules_raw[name]
+    registration = None
+    display_name = name
+    if raw["module_api"] == 2 and raw["metadata"]:
+        try:
+            registration = json.loads(raw["metadata"])
+        except ValueError:
+            registration = None
+        if isinstance(registration, dict):
+            manifest = registration.get("manifest")
+            if isinstance(manifest, dict) and isinstance(manifest.get("display_name"), str):
+                display_name = manifest["display_name"]
+    else:
+        display_name = raw["metadata"] or name
+
+    modules.append({
+        "name": name,
+        "display_name": display_name,
+        "status": raw["status"],
+        "reason": raw["reason"],
+        "enabled": raw["enabled"],
+        "module_api": raw["module_api"],
+    })
+    if raw["status"] == "active" and raw["enabled"]:
+        active_owners.add(name)
+
+    if not isinstance(registration, dict):
+        continue
+    rows = registration.get("contributions")
+    if not isinstance(rows, list):
+        continue
+    for descriptor in rows:
+        if not isinstance(descriptor, dict):
+            continue
+        kind = descriptor.get("kind")
+        ident = descriptor.get("id")
+        if not isinstance(kind, str) or not isinstance(ident, str):
+            continue
+        identity = (kind, ident, name)
+        represented.add(identity)
+        override = overrides.get(identity)
+        if raw["status"] == "active" and raw["enabled"]:
+            availability = override["availability"] if override else "active"
+            reason = override["unavailable_reason"] if override else None
+        elif raw["status"] == "disabled" or not raw["enabled"]:
+            availability = "inactive"
+            reason = raw["reason"]
+        else:
+            availability = "unavailable"
+            reason = raw["reason"] or raw["status"]
+        contributions.append({
+            "index_key": override["index_key"] if override else f"{kind}:{ident}",
+            "id": ident,
+            "kind": kind,
+            "owner": name,
+            "source": str(descriptor.get("source") or "module_contract"),
+            "availability": availability,
+            "unavailable_reason": reason,
+            "descriptor": copy.deepcopy(descriptor),
+        })
+
+# Preserve legacy/non-v2 registrations and any Core-owned structural records.
+for identity, row in sorted(overrides.items(), key=lambda item: item[1]["index_key"]):
+    if identity in represented:
+        continue
+    owner = row["owner"]
+    owner_record = modules_raw.get(owner)
+    if owner_record is not None:
+        if owner_record["status"] == "disabled" or not owner_record["enabled"]:
+            row = {**row, "availability": "inactive",
+                   "unavailable_reason": owner_record["reason"]}
+        elif owner_record["status"] != "active":
+            row = {**row, "availability": "unavailable",
+                   "unavailable_reason": owner_record["reason"] or owner_record["status"]}
+    contributions.append(copy.deepcopy(row))
+
+capabilities = []
+for row in contributions:
+    if row.get("kind") != "capability":
+        continue
+    capabilities.append({
+        "index_key": row["index_key"],
+        "id": row["id"],
+        "owner": row["owner"],
+        "provider": row["owner"],
+        "source": row["source"],
+        "availability": row["availability"],
+        "unavailable_reason": row["unavailable_reason"],
+        "descriptor": copy.deepcopy(row["descriptor"]),
+    })
+
+# Core-owned capability descriptors are pure registry metadata. Their active
+# flags depend only on the loader-owned module activation snapshot above.
+capabilities.extend(configuration_capabilities("system" in active_owners))
+capabilities.extend(deployment_capabilities("nextcloud_docker" in active_owners))
+
+configurations = [{
+    "owner": "core",
+    "schema": copy.deepcopy(CORE_SCHEMA),
+}]
+
+payload = {
+    "seed_version": 1,
+    "availability_model": "registration",
+    "modules": modules,
+    "contributions": contributions,
+    "capabilities": capabilities,
+    "configurations": configurations,
+    "sources": {
+        "modules": "ok",
+        "contributions": "ok",
+        "capabilities": "ok",
+        "configurations": "ok",
+    },
+}
+print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+PY
+}
+
 igor_module_records() {
     local _name _display _status _reason _enabled
     {
