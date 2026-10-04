@@ -1,0 +1,18 @@
+name: tmp-boundary-k-proof
+on:
+  push:
+    branches:
+      - perf/ai-pre-session-fast-path-boundary-k
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: |
+          bash -n igor.sh
+          bash -n core/ai/core.sh
+          python -m py_compile tests/test_ai_menu_startup.py core/ai/tui.py
+      - name: Boundary K startup contracts
+        run: |
+          python tests/test_ai_menu_startup.py
