@@ -172,12 +172,11 @@ class EventState:
                 self.mode = str(snapshot.get("mode") or self.mode)
                 self.provider = str(snapshot.get("provider") or self.provider)
                 self.model = str(snapshot.get("model") or self.model)
-            if isinstance(sources, dict):
-                self.settings_sources = {
-                    str(key): str(value)
-                    for key, value in sources.items()
-                    if isinstance(key, str) and isinstance(value, str)
-                }
+            self.settings_sources = ({
+                str(key): str(value)
+                for key, value in sources.items()
+                if isinstance(key, str) and isinstance(value, str)
+            } if isinstance(sources, dict) else {})
             return True
         if kind == "approval_waiting":
             self.pending_action = dict(event)
