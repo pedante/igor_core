@@ -471,37 +471,43 @@ signals and are not the only durability path. Persistent records refer to
 scoped objects and canonical contracts/providers rather than handlers, paths
 or UI names.
 
-## Step 16 — Baselines & Local Learning — PARTIAL
+## Step 16 — Baselines and Local Learning — PARTIAL
 
 The owner-scoped **Step 16 — Architecture Integration Review and Readiness
 Assessment** is complete; see [ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md)
 and [closure evidence](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete).
-That documentation-only review does not implement the Baselines work below or
-start Step 17. Configuration ownership, a representative application workflow
-and cutover evidence remain readiness gates.
+The architecture integration review is complete. Step 16A explainable
+Operational History baselines are merged. Step 16B evidence-backed local
+learning is implemented with passing focused and vertical-slice evidence. The
+broader repository release gate remains non-green; see [STATUS.md](STATUS.md). This partial status
+does not start or complete Step 17. Configuration ownership, a representative
+application workflow and cutover evidence remain separate readiness gates.
 
 Use transparent operational history to learn normal ranges/behavior for this machine.
 
-Step 16A explainable Operational History baselines are implemented. Step 16C
-extends durable Investigations with explicit typed symptom/cause/action/
-verification findings and evidence bindings, providing a safe semantic
-foundation for later causal learning without inferring causality from prose or
-resolution state.
+Step 16B adds recurring outcome and Investigation-backed finding candidates,
+with explicit operator review and durable reference-only snapshots outside
+installed module packages. Causal patterns and verified runbook derivation are
+deferred until source contracts support those claims. See
+[BASELINES.md](BASELINES.md) and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
 
-The reviewed Local Learning lifecycle remains a separate Step 16B integration
-until it is present on the `igor2` baseline. Later work may consume supported
-typed findings through that explicit reference-only review boundary.
-
-Also allow evidence-backed local learning such as patterns, runbooks and
-symptom/cause/resolution relationships, stored outside installed module
-packages with provenance and reset semantics.
+Step 16C is also implemented: durable Investigations now carry typed
+`symptom`, `cause`, `action` and `verification` findings with explicit evidence
+bindings and v1→v2 migration. These typed findings remain Investigation-scoped
+reference knowledge. Local Learning still consumes its original bounded Step
+16B sources until a separately reviewed integration teaches it to consume typed
+findings without inferring causality automatically. See
+[INVESTIGATIONS.md](INVESTIGATIONS.md).
 
 Local experience may later be crystallized into a candidate Agent Skill/runbook
 or module contribution through the same import/promotion pipeline used for
 external knowledge. Promotion creates a reviewable candidate first; it does not
 let Igor silently rewrite its installed executable modules.
 
-Begin with explainable statistics and thresholds, not opaque ML. A learned baseline describes evidence about normal behavior; it is not desired state or responsibility. Learned artifacts remain reference material under D053 until an explicit authoritative transition exists.
+Begin with explainable statistics and rules, not opaque ML. A learned baseline
+describes evidence about normal behavior; a candidate does not establish
+causality. Reviewed learning artifacts remain reference material under D053
+until a future, explicit authoritative transition exists.
 
 ### Memory/knowledge remaining work — planning size, not completion evidence
 
@@ -514,8 +520,8 @@ For planning, the remaining memory/knowledge work is approximately:
 
 | Missing outcome | Focused engineering effort | Needed now | Impact | Foundation / dependency | Timing |
 |---|---:|---:|---:|---:|---|
-| Explainable Step 16 baselines over retained history | 4–6 days | 5/5 | 5/5 | 4/5 | next memory feature |
-| Evidence-backed local pattern/runbook lifecycle | 3–5 days | 4/5 | 5/5 | 4/5 | after first baseline slice |
+| Step 16A explainable baselines over retained history | implemented | 5/5 | 5/5 | 4/5 | bounded first slice |
+| Step 16B evidence-backed local learning review lifecycle | implemented | 4/5 | 5/5 | 4/5 | bounded reviewed-reference slice |
 | Portable Knowledge Artifact import/export, OKF-compatible where practical | 2–3 days | 3/5 | 4/5 | 3/5 | bounded, can accompany learning |
 | Deterministic knowledge discovery/index improvements | 2–4 days | 3/5 | 4/5 | 3/5 | grow from real corpus needs |
 | Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | wait for measured need |
