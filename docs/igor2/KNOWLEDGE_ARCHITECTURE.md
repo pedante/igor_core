@@ -176,11 +176,15 @@ from active Context while retaining inspection. Accepted artifacts can inform
 context but cannot establish machine facts, desired configuration,
 responsibility, approval, privilege, automation or executable behavior.
 
-This initial implementation has no LLM dependency and does not infer causes or
-verified procedures absent typed supporting Investigation evidence. Legacy
-pattern files and session notes remain compatibility references without
-automatic import or dual-write. Portable OKF-compatible import/export remains
-separate work.
+This implementation has no LLM dependency. Legacy pattern files and session
+notes remain compatibility references without automatic import or dual-write.
+
+Step 16F implements the first portable Knowledge Artifact interchange boundary.
+Accepted Local Learning can be exported as one-concept OKF v0.2 bundles with an
+Igor extension carrying typed reference semantics. Import validates and
+normalizes a bundle as untrusted reference material only; it does not persist,
+enter Context, or become local Igor acceptance/authority. See
+[KNOWLEDGE_ARTIFACTS.md](KNOWLEDGE_ARTIFACTS.md).
 
 Step 16D adds one deterministic cross-incident pattern layer above reviewed
 typed incident learning. It groups only exact reviewed symptom/cause pairs with
@@ -195,6 +199,13 @@ authority.
 
 Semantic-equivalence grouping, multi-step procedure sequencing and executable
 promotion remain later explicit contracts.
+
+Step 16F makes those reviewed reference objects portable without making OKF a
+runtime. Igor's initial producer/consumer profile uses Markdown plus frontmatter,
+standard OKF provenance/trust/lifecycle fields and a producer-defined
+`igor_artifact` extension. Imported verification/trust signals are advisory
+provenance only and never grant local authority.
+
 
 The intended architecture is:
 
