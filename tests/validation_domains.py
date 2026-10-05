@@ -12,6 +12,8 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     "learning": (
         "tests/test_local_learning.py",
         "tests/test_local_learning_integration.py",
+        "tests/test_knowledge_artifacts.py",
+        "tests/test_knowledge_artifacts_integration.py",
         "tests/test_baselines.py",
         "tests/test_operational_history.py",
         "tests/test_investigations.py",
@@ -123,7 +125,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
 }
 
 _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("local_learning",), "learning"),
+    (("local_learning", "knowledge_artifact"), "learning"),
     (("capability", "capabilities", "approval", "safety", "privilege", "package", "core/lib/pkg.sh", "service_admission", "modules/docker/", "modules/system/"), "capability"),
     (("operational_history", "history"), "history"),
     (("module_contract", "module_loader", "module_contracts", "module_v2", "modules/"), "module"),
