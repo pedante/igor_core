@@ -2,7 +2,29 @@
 
 Last updated: 2026-10-05
 
-## Step 16F Portable Knowledge Artifacts — implementation complete; validation pending
+## Step 16 learning/knowledge track — COMPLETE
+
+Steps 16A–16F now form one closed bounded foundation:
+
+- explainable baselines over canonical Operational History;
+- explicit evidence-backed Local Learning review;
+- typed Investigation symptom/cause/action/verification evidence;
+- reviewed typed incident learning;
+- deterministic cross-incident symptom/cause patterns;
+- evidence-backed reference procedures;
+- portable OKF v0.2-compatible Knowledge Artifact interchange.
+
+All remain reference-oriented unless another explicit authoritative contract
+applies. Imported knowledge is still untrusted/nonpersistent; reviewed patterns
+and procedures grant no execution, approval, privilege, automation, desired
+state or responsibility.
+
+Deterministic corpus indexing, semantic/vector search and executable promotion
+are now deferred optimization/horizon work rather than the next Step 16 slices.
+The active Igor 2 roadmap returns to system-completion gates, beginning with
+reusable Resource Discovery & Domain Recognition.
+
+## Step 16F Portable Knowledge Artifacts — implemented; clean rebased validation green
 
 D068 adds a stateless Core portability boundary for reviewed reference knowledge.
 The initial profile targets **OKF v0.2** and one Knowledge Artifact per bundle.
@@ -30,7 +52,13 @@ promotion is introduced.
 import review/acceptance, imported Context retrieval, corpus indexing and
 semantic/vector search remain separate later work.
 
-**Validation:** pending final affected CI evidence on this branch.
+**Validation (2026-10-05):** after merging Step 16E and rebuilding PR #61 as
+a clean 16F-only delta on the new `igor2` baseline, affected validation is
+green: **439 PASS**, **0 new failures**, **0 new timeouts**, **1 reviewed
+baseline failure**, **2 baseline identities now fixed**, **0 skips/tool
+errors**, and **no new regressions** in **254.432 s**. Repository-wide audit
+jobs remain reserved for explicit full-release validation under the accepted
+validation-economics policy.
 
 ## Step 16E Evidence-Backed Reference Procedures — implemented; affected validation green
 
