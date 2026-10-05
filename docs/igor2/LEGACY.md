@@ -243,6 +243,12 @@ unchanged by the v2 package contract.
 
 ## Wave E cutover disposition
 
+The later [Ownership Foundation Boundary A inventory](OWNERSHIP_FOUNDATION_PROPOSAL.md)
+traces current AI key loaders/writers, provider/role/hybrid consumers, direct
+privacy readers and backup restore paths. Its OpenRouter cutover is **proposed**;
+these compatibility paths have not migrated or retired. The isolated adapter
+proof below remains narrower than a durable real secret lifecycle.
+
 - Keep v1 `ai_capabilities` and `run_igor_action` for existing actions,
   especially Nextcloud v1. Their synthetic `legacy.<owner>.<action>` records
   are inspection/advertising compatibility, not a second v2 executor. No v1

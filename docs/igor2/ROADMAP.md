@@ -793,6 +793,13 @@ Before Igor 2 consolidation, close the Ownership Foundation with evidence for:
 External secret-manager integrations are not required for Igor 2. The core
 requirement is one authoritative local contract and safe migration.
 
+[Ownership Foundation Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) now records
+the implementation inventory and proposes an OpenRouter credential lifecycle
+that can be proved without Nextcloud or Docker. Its storage, registration,
+consumer, precedence and recovery choices remain unaccepted; Boundary B requires
+owner confirmation and intended-master reconciliation before implementation.
+The proposal does not close this completion gate or start application work.
+
 ## Resumable Work — FUTURE IMPLEMENTATION GATE
 
 [RESUMABLE_WORK.md](RESUMABLE_WORK.md) already defines the architecture for

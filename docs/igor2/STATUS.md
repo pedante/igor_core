@@ -2,6 +2,28 @@
 
 Last updated: 2026-10-05
 
+## Ownership Foundation Boundary A — discovery/proposal complete; implementation unaccepted
+
+[Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) audits clean `igor2` at
+`8850b67` and recommends one OpenRouter credential lifecycle as the next bounded
+implementation: existing setup/request/update, protected material and durable
+registration, references-only configuration, trusted consumption/redaction,
+value-free audit, inspection and explicit legacy-source cutover/recovery.
+Storage/registration, consumer admission, import precedence, recovery/backup and
+private-input mutation contracts remain **proposed**, requiring owner confirmation.
+
+Configuration Service already has demonstrated `ai.verbose` and System warning
+consumers. The secret-reference adapter has isolated FD/access tests, but no
+durable real AI credential lifecycle. One selected credential would not close
+the entire Ownership Foundation or application/native-readback gates.
+
+This documentation audit reads no personal credential values and runs no runtime
+tests or provider requests. It records current local `master=54782bd` as
+non-ancestor and identifies a missing master tool-envelope regex correction;
+older reconciliation against `852ce8f` is not current-baseline proof. Intended
+master reconciliation is a prerequisite to later implementation. No runtime
+repair, migration, Nextcloud work or Boundary B is performed here.
+
 ## Step 16 learning/knowledge track — COMPLETE
 
 Steps 16A–16F now form one closed bounded foundation:
