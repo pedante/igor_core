@@ -41,16 +41,40 @@ def context_request(value):
     return json.loads(json.dumps(value))
 
 
-def evidence_sources(request, data_dir):
+def evidence_sources(request, data_dir, *, active_owners=None):
     """Only explicit scoped episode/investigation IDs; absent targets stay absent."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
     from investigations import InvestigationError, InvestigationService
+    from local_learning import LearningError, LocalLearningService
     from operational_history import HistoryError, OperationalHistory
     sources = []
     for ident in request.get("ids", []):
-        if not ident.startswith(("inv-", "op-")):
+        if not ident.startswith(("inv-", "op-", "learn-")):
             continue
         try:
+            if ident.startswith("learn-"):
+                learning = LocalLearningService(Path(data_dir))
+                row = learning.inspect(ident)
+                if row["status"] != "accepted" or not request.get("scope_id") or row["scope_id"] != request["scope_id"]:
+                    continue
+                candidate = row["candidate"]
+                owners = set(active_owners or ()) | {"core"}
+                eligible = set(candidate["applicability_owners"]) <= owners
+                sources.append({"id": ident, "kind": "local_learning", "owner": "core",
+                                "source_id": "local_learning", "source_version": row["version"],
+                                "scope_id": row["scope_id"], "authority_class": "reference",
+                                "provenance": ident + ":" + candidate["candidate_revision"],
+                                "recorded_at": row["timestamps"]["created_at"],
+                                "availability": "available" if eligible else "inactive",
+                                "freshness": "reviewed_reference", "sensitivity": "public",
+                                "content": {"learning_type": candidate["learning_type"],
+                                            "statement": candidate["statement"], "uncertainty": candidate["uncertainty"],
+                                            "related_objects": candidate["related_objects"],
+                                            "compatibility": candidate["compatibility"],
+                                            "evidence": candidate["evidence"], "counts": candidate["counts"],
+                                            "provenance": candidate["provenance"], "review": row["review"],
+                                            "evidence_status": learning.evidence_status(ident)["evidence"]}})
+                continue
             if ident.startswith("inv-"):
                 row = InvestigationService(Path(data_dir)).inspect(ident)
                 kind = "investigation"
@@ -76,7 +100,7 @@ def evidence_sources(request, data_dir):
                                     "owner": "core", "source_id": ident,
                                     "scope_id": row["scope_id"], "tags": request.get("tags", []),
                                     "recorded_at": record["completed_at"], "content": record})
-        except (InvestigationError, HistoryError, ValueError, KeyError):
+        except (InvestigationError, HistoryError, LearningError, ValueError, KeyError):
             # Selector records the explicitly requested missing ID without exception text.
             continue
     return sources
@@ -136,7 +160,7 @@ def assemble(reference, request, *, active_owners=None, data_dir=None, include_r
                         "availability": "unavailable" if capability.get("availability") in {"inactive", "unavailable"} else "available",
                         "content": descriptor})
     if data_dir:
-        sources.extend(evidence_sources(request, data_dir))
+        sources.extend(evidence_sources(request, data_dir, active_owners=active_owners))
     # Reject accidental sensitive metadata before it can become an inspection label.
     pairs = redactions()
     safe = scrub_data(sources, pairs)
