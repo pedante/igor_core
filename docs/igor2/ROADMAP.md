@@ -515,6 +515,13 @@ with passed verification. The procedure requires another explicit review and
 remains reference-only. Multi-step sequencing, semantic action equivalence and
 executable runbook/capability promotion remain deferred.
 
+Step 16F adds **portable Knowledge Artifact interchange**. Accepted Local
+Learning may be exported as a one-concept OKF v0.2 bundle. Import validates and
+normalizes either an Igor-extended artifact or a generic bounded OKF concept as
+untrusted reference material, with no persistence or Context admission. OKF is
+an interchange format only; it does not become Igor memory or authority. See
+[KNOWLEDGE_ARTIFACTS.md](KNOWLEDGE_ARTIFACTS.md).
+
 Local experience may later be crystallized into a candidate Agent Skill/runbook
 or module contribution through the same import/promotion pipeline used for
 external knowledge. Promotion creates a reviewable candidate first; it does not
@@ -538,7 +545,7 @@ For planning, the remaining memory/knowledge work is approximately:
 |---|---:|---:|---:|---:|---|
 | Step 16A explainable baselines over retained history | implemented | 5/5 | 5/5 | 4/5 | bounded first slice |
 | Step 16B evidence-backed local learning review lifecycle | implemented | 4/5 | 5/5 | 4/5 | bounded reviewed-reference slice |
-| Portable Knowledge Artifact import/export, OKF-compatible where practical | 2–3 days | 3/5 | 4/5 | 3/5 | bounded, can accompany learning |
+| Step 16F Portable Knowledge Artifact import/export, OKF v0.2-compatible profile | implemented | 3/5 | 4/5 | 3/5 | bounded interchange slice |
 | Deterministic knowledge discovery/index improvements | 2–4 days | 3/5 | 4/5 | 3/5 | grow from real corpus needs |
 | Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | wait for measured need |
 | Automatic learning/promotion into executable capability candidates | 8–15+ days | 1/5 | 4/5 | 2/5 | post-2.0 unless reprioritized |
