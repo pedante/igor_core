@@ -2,6 +2,36 @@
 
 Last updated: 2026-10-05
 
+## Step 16F Portable Knowledge Artifacts — implementation complete; validation pending
+
+D068 adds a stateless Core portability boundary for reviewed reference knowledge.
+The initial profile targets **OKF v0.2** and one Knowledge Artifact per bundle.
+
+**Export:** only accepted Local Learning is eligible. Igor produces a root
+`index.md` declaring `okf_version: "0.2"` plus one Markdown concept using
+standard OKF type/title/description/resource/tags/status/generated/verified/
+sources metadata. A producer-defined `igor_artifact` field preserves Igor's
+typed pattern/procedure semantics, applicability, derivation and evidence
+digests. Artifact identity is deterministic for the reviewed semantic revision.
+
+**Import:** one-concept bundles are parsed through a bounded dependency-free
+profile. Generic OKF concepts and Igor-extended concepts normalize to
+`reference_only`, `trust: untrusted_import`, `persistence: none`.
+External human/process verification is retained as provenance but never becomes
+Igor acceptance. Unsupported versions, advanced/multiline YAML, secret-bearing
+content, symlinked paths and oversized/ambiguous bundles fail closed.
+
+**Authority:** import writes no Local Learning/Context/System Model/
+Configuration/deployment/module/capability state and executes nothing. No
+knowledge database, background importer, automatic acceptance or executable
+promotion is introduced.
+
+**Profile limits:** multi-concept/recursive bundles, general YAML, persistent
+import review/acceptance, imported Context retrieval, corpus indexing and
+semantic/vector search remain separate later work.
+
+**Validation:** pending final affected CI evidence on this branch.
+
 ## Step 16E Evidence-Backed Reference Procedures — implemented; affected validation green
 
 D067 adds a deterministic `reference_procedure` candidate above an already
