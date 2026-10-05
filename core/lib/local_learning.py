@@ -1042,6 +1042,143 @@ class LocalLearningService:
                 omitted.append({"source": "cross_incident_pattern",
                                 "reason": "unsafe_or_invalid_pattern"})
 
+        # Step 16E: derive a single-action reference procedure only from an
+        # accepted current cross-incident pattern plus accepted action and
+        # verification learning from the pattern's incidents. Action and
+        # verification must bind the same canonical operation, whose execution
+        # succeeded and canonical verification passed.
+        procedure_sources = {}
+        for source_item in accepted_typed_sources:
+            kind = source_item["typed_ref"]["finding_kind"]
+            if kind not in {"action", "verification"}:
+                continue
+            ident = source_item["typed_ref"]["investigation_id"]
+            procedure_sources.setdefault(ident, {}).setdefault(kind, []).append(source_item)
+
+        pattern_candidates = [
+            candidate for candidate in candidates
+            if candidate["learning_type"] == "cross_incident_pattern"
+        ]
+        for pattern_candidate in pattern_candidates:
+            pattern_artifact = reviewed.get(
+                (pattern_candidate["candidate_id"], pattern_candidate["candidate_revision"]))
+            if pattern_artifact is None or pattern_artifact["status"] != "accepted":
+                continue
+            # Initial 16E contract is deliberately single-compatibility. This
+            # avoids fabricating a portable procedure across heterogeneous
+            # providers/capability versions before a richer relation contract.
+            if len(pattern_candidate["compatibility"]) != 1:
+                omitted.append({"source": pattern_candidate["candidate_id"],
+                                "reason": "procedure_requires_single_compatibility"})
+                continue
+            pattern_investigations = sorted({
+                ref["investigation_id"]
+                for ref in pattern_candidate["evidence"]
+                if ref["kind"] == "reviewed_learning"
+            })
+            procedure_groups = {}
+            for ident in pattern_investigations:
+                kinds = procedure_sources.get(ident, {})
+                for action in sorted(kinds.get("action", []),
+                                     key=lambda item: item["artifact"]["learning_id"]):
+                    for verification in sorted(
+                            kinds.get("verification", []),
+                            key=lambda item: item["artifact"]["learning_id"]):
+                        if (action["candidate"]["related_objects"]
+                                != pattern_candidate["related_objects"]
+                                or verification["candidate"]["related_objects"]
+                                != pattern_candidate["related_objects"]
+                                or action["candidate"]["compatibility"]
+                                != pattern_candidate["compatibility"]
+                                or verification["candidate"]["compatibility"]
+                                != pattern_candidate["compatibility"]
+                                or action["candidate"]["applicability_owners"]
+                                != pattern_candidate["applicability_owners"]
+                                or verification["candidate"]["applicability_owners"]
+                                != pattern_candidate["applicability_owners"]):
+                            continue
+                        action_ops = {
+                            ref["operation_id"] for ref in action["candidate"]["evidence"]
+                            if ref["kind"] == "operational_history"
+                        }
+                        verification_ops = {
+                            ref["operation_id"] for ref in verification["candidate"]["evidence"]
+                            if ref["kind"] == "operational_history"
+                        }
+                        for operation_id in sorted(action_ops & verification_ops):
+                            row = cache.get(operation_id)
+                            if (row is None or not _usable(row)
+                                    or row["execution_status"] != "succeeded"
+                                    or row["verification"]["status"] != "passed"
+                                    or [_canonical_compatibility(row)]
+                                    != pattern_candidate["compatibility"]):
+                                continue
+                            key = _compact({
+                                "action": action["finding"]["statement"],
+                                "verification": verification["finding"]["statement"],
+                            })
+                            choice = (action, verification, operation_id)
+                            current = procedure_groups.setdefault(key, {}).get(ident)
+                            if current is None or (
+                                action["artifact"]["learning_id"],
+                                verification["artifact"]["learning_id"],
+                                operation_id,
+                            ) < (
+                                current[0]["artifact"]["learning_id"],
+                                current[1]["artifact"]["learning_id"],
+                                current[2],
+                            ):
+                                procedure_groups[key][ident] = choice
+
+            for grouped in procedure_groups.values():
+                if len(grouped) < MIN_PROCEDURE_INVESTIGATIONS:
+                    continue
+                pairs = [grouped[ident] for ident in sorted(grouped)]
+                action_statement = pairs[0][0]["finding"]["statement"]
+                verification_statement = pairs[0][1]["finding"]["statement"]
+                rows = [cache[pair[2]] for pair in pairs]
+                evidence = [_history_ref(row) for row in rows]
+                evidence.append(_reviewed_artifact_ref(pattern_artifact))
+                for action, verification, operation_id in pairs:
+                    evidence.append(_reviewed_learning_ref(
+                        action["artifact"], action["typed_ref"], [operation_id]))
+                    evidence.append(_reviewed_learning_ref(
+                        verification["artifact"], verification["typed_ref"], [operation_id]))
+                procedure = {
+                    "kind": "single_action_verified",
+                    "pattern_candidate_id": pattern_candidate["candidate_id"],
+                    "symptom": pattern_candidate["pattern"]["symptom"],
+                    "cause": pattern_candidate["pattern"]["cause"],
+                    "action": action_statement,
+                    "verification": verification_statement,
+                    "distinct_investigations": len(pairs),
+                }
+                try:
+                    candidates.append(_make_candidate(
+                        scope_id=scope_id,
+                        learning_type="reference_procedure",
+                        statement=(
+                            f"Across {len(pairs)} reviewed investigations within an accepted "
+                            "symptom/cause pattern, the same reviewed action was bound to "
+                            "canonical successful execution and passed verification."
+                        ),
+                        uncertainty=[
+                            "This is reference guidance from repeated reviewed evidence, not permission to execute.",
+                            "The procedure does not prove the action will succeed in a future incident.",
+                            "Only one action bound to the same canonically verified operation is represented; sequencing and multi-step runbooks are not inferred.",
+                        ],
+                        rows=rows,
+                        related_objects=copy.deepcopy(pattern_candidate["related_objects"]),
+                        evidence=evidence,
+                        query=query,
+                        procedure=procedure,
+                        investigation_count=len(pairs),
+                        minimum_samples=MIN_PROCEDURE_INVESTIGATIONS,
+                    ))
+                except LearningError:
+                    omitted.append({"source": pattern_candidate["candidate_id"],
+                                    "reason": "unsafe_or_invalid_reference_procedure"})
+
         candidates.sort(key=lambda row: row["candidate_id"])
         current = []
         for candidate in candidates:
