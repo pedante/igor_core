@@ -471,17 +471,21 @@ signals and are not the only durability path. Persistent records refer to
 scoped objects and canonical contracts/providers rather than handlers, paths
 or UI names.
 
-## Step 16 — Baselines and Local Learning — PARTIAL
+## Step 16 — Baselines, Local Learning and Portable Knowledge — COMPLETE
 
 The owner-scoped **Step 16 — Architecture Integration Review and Readiness
 Assessment** is complete; see [ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md)
 and [closure evidence](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete).
-The architecture integration review is complete. Step 16A explainable
-Operational History baselines are merged. Step 16B evidence-backed local
-learning is implemented with passing focused and vertical-slice evidence. The
-broader repository release gate remains non-green; see [STATUS.md](STATUS.md). This partial status
-does not start or complete Step 17. Configuration ownership, a representative
-application workflow and cutover evidence remain separate readiness gates.
+The architecture integration review is complete. The bounded learning/knowledge
+foundation is also complete through Step 16F: explainable baselines, explicit
+reviewed local learning, typed Investigation evidence, cross-incident patterns,
+evidence-backed reference procedures and portable OKF-compatible Knowledge
+Artifact interchange are all implemented with focused/affected evidence.
+
+This closes the Step 16 learning/knowledge track. It does **not** make the
+repository-wide release gate green or complete later Igor 2 ownership,
+application, provisioning, resumable-work or operator-interface gates; see
+[STATUS.md](STATUS.md).
 
 Use transparent operational history to learn normal ranges/behavior for this machine.
 
@@ -532,23 +536,25 @@ describes evidence about normal behavior; a candidate does not establish
 causality. Reviewed learning artifacts remain reference material under D053
 until a future, explicit authoritative transition exists.
 
-### Memory/knowledge remaining work — planning size, not completion evidence
+### Post-foundation knowledge improvements — deferred until measured need
 
 The repository already has the important memory foundations: current System
 Model state, Operational History, durable Investigations and bounded context
 retrieval. Do not schedule another generic "memory foundation" or replace those
 services with one database.
 
-For planning, the remaining memory/knowledge work is approximately:
+The Step 16 memory/learning/portability foundation is complete. The following
+are optional later improvements, not blockers for continuing the Igor 2 main
+roadmap:
 
 | Missing outcome | Focused engineering effort | Needed now | Impact | Foundation / dependency | Timing |
 |---|---:|---:|---:|---:|---|
 | Step 16A explainable baselines over retained history | implemented | 5/5 | 5/5 | 4/5 | bounded first slice |
 | Step 16B evidence-backed local learning review lifecycle | implemented | 4/5 | 5/5 | 4/5 | bounded reviewed-reference slice |
 | Step 16F Portable Knowledge Artifact import/export, OKF v0.2-compatible profile | implemented | 3/5 | 4/5 | 3/5 | bounded interchange slice |
-| Deterministic knowledge discovery/index improvements | 2–4 days | 3/5 | 4/5 | 3/5 | grow from real corpus needs |
-| Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | wait for measured need |
-| Automatic learning/promotion into executable capability candidates | 8–15+ days | 1/5 | 4/5 | 2/5 | post-2.0 unless reprioritized |
+| Deterministic knowledge discovery/index improvements | 2–4 days | 2/5 | 4/5 | 3/5 | defer until real corpus/retrieval pain appears |
+| Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | post-foundation; only with measured need |
+| Automatic learning/promotion into executable capability candidates | 8–15+ days | 1/5 | 4/5 | 2/5 | post-2.0 unless explicitly reprioritized |
 
 These are rough focused-development estimates including focused tests and
 documentation, not elapsed-time commitments.
