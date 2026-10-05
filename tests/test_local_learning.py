@@ -155,6 +155,82 @@ def accept_typed_pair(service, investigation_id):
     return reviewed
 
 
+def resolved_typed_procedure_incident(
+    data,
+    operation_id,
+    *,
+    verification_operation_id=None,
+    symptom="Service became unavailable",
+    cause="Storage exhaustion caused the service failure",
+    action="Restarted the affected service",
+    verification="Service health verification passed",
+):
+    service = InvestigationService(data)
+    row = service.create(
+        title="Reference procedure fixture",
+        summary="Typed symptom, cause, action and verification retained",
+        source="operator",
+        owner="operator",
+        provenance={"source": "operator.cli", "recorded_at": "2026-10-01T12:00:00Z"},
+    )
+    ident = row["investigation_id"]
+    verification_operation_id = verification_operation_id or operation_id
+    service.add_evidence(ident, {
+        "id": "incident-operation",
+        "kind": "operation",
+        "scope_id": row["scope_id"],
+        "target": operation_id,
+        "source": "operational_history",
+        "recorded_at": "2026-10-01T12:00:00Z",
+        "availability": "available",
+    })
+    service.add_evidence(ident, {
+        "id": "incident-verification",
+        "kind": "verification",
+        "scope_id": row["scope_id"],
+        "target": verification_operation_id,
+        "source": "operational_history",
+        "recorded_at": "2026-10-01T12:00:00Z",
+        "availability": "available",
+    })
+    findings = {}
+    for kind, statement, evidence_id in (
+        ("symptom", symptom, "incident-operation"),
+        ("cause", cause, "incident-operation"),
+        ("action", action, "incident-operation"),
+        ("verification", verification, "incident-verification"),
+    ):
+        current = service.add_typed_finding(
+            ident,
+            kind=kind,
+            statement=statement,
+            status="supported",
+            supporting_evidence=[evidence_id],
+        )
+        findings[kind] = current["typed_findings"][-1]["finding_id"]
+    service.set_questions(ident, ["Does this response remain appropriate in future incidents?"])
+    service.transition(ident, "evaluating", "Procedure evidence assessed")
+    resolved_row = service.transition(ident, "resolved", "Procedure evidence retained as reference")
+    return resolved_row, findings
+
+
+def accept_typed_kinds(service, investigation_id, kinds):
+    wanted = set(kinds)
+    candidates = [
+        row for row in service.candidates()["candidates"]
+        if row["learning_type"] == "typed_investigation_finding"
+        and any(ref.get("investigation_id") == investigation_id for ref in row["evidence"])
+    ]
+    by_kind = {}
+    for candidate in candidates:
+        kind = next(ref["finding_kind"] for ref in candidate["evidence"]
+                    if ref["kind"] == "investigation_typed_finding")
+        if kind in wanted:
+            by_kind[kind] = review(service, candidate)
+    assert set(by_kind) == wanted
+    return by_kind
+
+
 def choose(service, kind="recurring_outcome", **kwargs):
     return next(row for row in service.candidates(**kwargs)["candidates"] if row["learning_type"] == kind)
 
@@ -506,6 +582,139 @@ def test_pattern_evidence_status_tracks_reviewed_source_without_rewriting_snapsh
                 if item["reference"]["kind"] == "reviewed_learning"]
     assert any(item["status"] == "changed" for item in reviewed)
     assert service.inspect(accepted["learning_id"]) == frozen
+
+
+def build_reference_procedure_sources(tmp_path, *, verification_statuses=None, split_verification=False):
+    service = LocalLearningService(tmp_path)
+    artifacts = []
+    statuses = verification_statuses or ["passed", "passed", "passed"]
+    for index, verification_status in enumerate(statuses):
+        action_operation = operation(
+            tmp_path, outcome="success", execution="succeeded", verification=verification_status)
+        verification_operation = action_operation
+        if split_verification and index == len(statuses) - 1:
+            verification_operation = operation(
+                tmp_path, outcome="success", execution="succeeded", verification="passed")
+        investigation, _ = resolved_typed_procedure_incident(
+            tmp_path, action_operation, verification_operation_id=verification_operation)
+        artifacts.append(accept_typed_kinds(
+            service, investigation["investigation_id"],
+            {"symptom", "cause", "action", "verification"}))
+    return service, artifacts
+
+
+def test_reference_procedure_requires_accepted_pattern_and_verified_repeated_response(tmp_path):
+    service, _artifacts = build_reference_procedure_sources(tmp_path)
+    pattern = choose(service, "cross_incident_pattern")
+    assert not any(row["learning_type"] == "reference_procedure"
+                   for row in service.candidates()["candidates"])
+
+    accepted_pattern = review(service, pattern)
+    procedure = choose(service, "reference_procedure")
+    assert procedure["provenance"]["derivation_version"] == 4
+    assert procedure["procedure"] == {
+        "kind": "single_action_verified",
+        "pattern_candidate_id": pattern["candidate_id"],
+        "symptom": "Service became unavailable",
+        "cause": "Storage exhaustion caused the service failure",
+        "action": "Restarted the affected service",
+        "verification": "Service health verification passed",
+        "distinct_investigations": 3,
+    }
+    assert procedure["counts"] == {
+        "operations": 3, "investigations": 3, "baselines": 0, "minimum_samples": 3}
+    refs = procedure["evidence"]
+    pattern_refs = [ref for ref in refs if ref["kind"] == "reviewed_learning_artifact"]
+    typed_refs = [ref for ref in refs if ref["kind"] == "reviewed_learning"]
+    history_refs = [ref for ref in refs if ref["kind"] == "operational_history"]
+    assert len(pattern_refs) == 1
+    assert pattern_refs[0]["learning_id"] == accepted_pattern["learning_id"]
+    assert len(typed_refs) == 6
+    assert {ref["finding_kind"] for ref in typed_refs} == {"action", "verification"}
+    assert all(len(ref["operation_ids"]) == 1 for ref in typed_refs)
+    assert len(history_refs) == 3
+    for ident in {ref["investigation_id"] for ref in typed_refs}:
+        pair = [ref for ref in typed_refs if ref["investigation_id"] == ident]
+        assert len(pair) == 2 and pair[0]["operation_ids"] == pair[1]["operation_ids"]
+    assert procedure["authority"] == "reference_only"
+    assert procedure["capability"] is None and procedure["provider"] is None
+    assert "permission to execute" in " ".join(procedure["uncertainty"])
+
+
+def test_reference_procedure_requires_canonical_passed_verification_in_all_three_incidents(tmp_path):
+    service, _ = build_reference_procedure_sources(
+        tmp_path, verification_statuses=["passed", "passed", "failed"])
+    pattern = choose(service, "cross_incident_pattern")
+    review(service, pattern)
+    assert not any(row["learning_type"] == "reference_procedure"
+                   for row in service.candidates()["candidates"])
+
+
+def test_reference_procedure_refuses_unrelated_action_and_verification_operations(tmp_path):
+    service, _ = build_reference_procedure_sources(tmp_path, split_verification=True)
+    pattern = choose(service, "cross_incident_pattern")
+    review(service, pattern)
+    assert not any(row["learning_type"] == "reference_procedure"
+                   for row in service.candidates()["candidates"])
+
+
+def test_reference_procedure_identity_survives_new_incident_but_requires_pattern_rereview(tmp_path):
+    service, _ = build_reference_procedure_sources(tmp_path)
+    first_pattern = choose(service, "cross_incident_pattern")
+    review(service, first_pattern)
+    first = choose(service, "reference_procedure")
+    accepted = review(service, first)
+
+    operation_id = operation(
+        tmp_path, outcome="success", execution="succeeded", verification="passed")
+    investigation, _ = resolved_typed_procedure_incident(tmp_path, operation_id)
+    accept_typed_kinds(
+        service, investigation["investigation_id"],
+        {"symptom", "cause", "action", "verification"})
+
+    candidates = service.candidates()["candidates"]
+    second_pattern = next(row for row in candidates
+                          if row["learning_type"] == "cross_incident_pattern")
+    assert second_pattern["candidate_id"] == first_pattern["candidate_id"]
+    assert second_pattern["candidate_revision"] != first_pattern["candidate_revision"]
+    assert not any(row["learning_type"] == "reference_procedure" for row in candidates)
+
+    review(service, second_pattern)
+    second = choose(service, "reference_procedure")
+    assert second["candidate_id"] == first["candidate_id"]
+    assert second["candidate_revision"] != first["candidate_revision"]
+    assert second["procedure"]["distinct_investigations"] == 4
+    assert service.inspect(accepted["learning_id"]) == accepted
+
+
+def test_reference_procedure_stale_review_and_evidence_status_follow_reviewed_sources(tmp_path):
+    service, artifacts = build_reference_procedure_sources(tmp_path)
+    pattern_artifact = review(service, choose(service, "cross_incident_pattern"))
+    procedure = choose(service, "reference_procedure")
+
+    source = artifacts[0]["action"]
+    service.supersede(
+        source["learning_id"], **cas(service),
+        actor="operator", interface="operator.cli", reason="Action assessment replaced")
+    with pytest.raises(LearningError):
+        review(service, procedure)
+
+    # Rebuild a fresh independent fixture to prove frozen accepted procedure
+    # evidence reports later source changes without rewriting the snapshot.
+    data = tmp_path / "status"
+    status_service, status_artifacts = build_reference_procedure_sources(data)
+    status_pattern = review(status_service, choose(status_service, "cross_incident_pattern"))
+    accepted = review(status_service, choose(status_service, "reference_procedure"))
+    frozen = copy.deepcopy(accepted)
+    status_service.supersede(
+        status_pattern["learning_id"], **cas(status_service),
+        actor="operator", interface="operator.cli", reason="Pattern replaced")
+    result = status_service.evidence_status(accepted["learning_id"])
+    pattern_status = next(item for item in result["evidence"]
+                          if item["reference"]["kind"] == "reviewed_learning_artifact")
+    assert pattern_status["status"] == "changed"
+    assert status_service.inspect(accepted["learning_id"]) == frozen
+    assert status_artifacts
 
 
 @pytest.mark.parametrize("source", ["missing", "unfinished", "no_history", "reopened"])
