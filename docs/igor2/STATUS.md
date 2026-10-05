@@ -1840,6 +1840,49 @@ Jet/Laya and Step 20 are excluded. This implementation supplies Step 20's contex
 routing dependency; normal-workflow readiness and default-launch consolidation
 remain separate gates. No Step 20 work starts here.
 
+## Step 16C Typed Investigation Evidence — implementation complete; validation in progress
+
+The Project Owner approved D064's bounded extension of the existing
+Investigation authority. Version 2 adds stable typed `symptom`, `cause`,
+`action` and `verification` findings with explicit supporting/contradicting
+evidence and optional hypothesis/judgment references. Existing free-form
+`findings` remain compatibility reference text and are never promoted
+automatically.
+
+**Authority:** typed findings remain Investigation-scoped reference knowledge.
+Supported cause does not become a System Model fact; supported action does not
+grant execution permission; supported verification does not replace canonical
+capability verification or Operational History. The service still owns no
+executor, approval, privilege, observer, verifier, automation or model adapter.
+
+**Persistence/migration:** current new stores use v2. Existing valid v1 stores
+remain readable/exportable without rewrite, and ordinary legacy mutations may
+remain v1. The first successful typed-finding mutation performs an additive
+atomic whole-document v1→v2 migration, adding empty typed-finding collections to
+existing records before the explicit change. Invalid typed claims and interrupted
+replacement retain the original v1 document. Valid v1/v2 export/restore preserve
+their storage version.
+
+**Typed evidence rules:** supported claims require attached supporting evidence;
+contradicted claims require attached contradicting evidence; one evidence ID
+cannot occupy both roles. Supported `action` requires operation or
+capability-result evidence. Supported `verification` requires verification
+evidence. Finding kind/statement are immutable after creation; reassessment
+updates status/reference links only. Terminal Investigations still require
+explicit reopen before any mutation.
+
+**Inspection/vertical slice:** the existing headless `--investigations` bridge
+accepts the two typed-finding mutations, and generic structured inspection/15UI
+rendering exposes the resulting records without a new UI authority.
+
+**Validation:** pending final focused/affected CI evidence on this branch.
+
+**Deferrals:** no causal inference, runbook derivation, automatic Local Learning
+promotion/consumption, model invocation, remediation or execution authority is
+introduced. The Local Learning Step 16B implementation is not yet part of the
+current `igor2` baseline, so this slice exposes only the typed Investigation
+foundation and an explicit later integration seam.
+
 ## Step 15C Durable Investigations — complete
 
 The Project Owner confirmed D056's bounded architecture and the explicit rule
