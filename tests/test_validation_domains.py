@@ -8,6 +8,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AffectedDomainTests(unittest.TestCase):
+    def test_learning_mapping_retains_source_context_and_authority_regressions(self):
+        domains, tests = affected_tests(["core/lib/local_learning.py"], ROOT)
+        self.assertEqual(domains, ["learning"])
+        self.assertTrue(
+            {
+                "tests/test_operational_history.py",
+                "tests/test_investigations.py",
+                "tests/test_baselines.py",
+                "tests/test_context_engine.py",
+                "tests/test_capability_runtime.py",
+                "tests/core/test_ai_approval.bats",
+                "tests/core/test_ai_privilege.bats",
+            }.issubset(tests)
+        )
+
+        domains, tests = affected_tests(["igor.sh", "core/lib/local_learning.py"], ROOT)
+        self.assertEqual(domains, ["entrypoint", "learning"])
+        self.assertIn("tests/test_local_learning.py", tests)
+        self.assertIn("tests/test_ai_architecture.py", tests)
+        self.assertNotIn("tests/test_ai_tui.py", tests)
+
     def test_d064_capability_change_selects_required_domains_without_tui(self):
         domains, tests = affected_tests(
             [
