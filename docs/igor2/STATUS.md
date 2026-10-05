@@ -35,7 +35,14 @@ review is still required before Context admission, and accepted content remains
 derivation, executable promotion, remediation, background learning or direct
 typed-Investigation-to-model bypass is introduced.
 
-**Validation:** pending final affected CI evidence on this branch.
+**Validation (2026-10-05):** final affected CI is green. The shared harness
+reports **298 PASS**, **0 new/baseline failures**, **0 timeouts**, **0 skips/tool
+errors**, and no new regressions in **55.38 s**. Changed Python Ruff passes.
+The affected selection includes Local Learning unit/integration, Investigations,
+Operational History, baselines, Context, capability authority, secret handling,
+and approval/privilege regressions. Repository-wide audit jobs remain reserved
+for the explicit full-release mode under the accepted validation-economics
+policy.
 
 ## Step 16B — Evidence-Backed Local Learning — implemented; broader release gate non-green
 
