@@ -49,6 +49,10 @@ def evidence(data):
     investigation.add_evidence(row["investigation_id"], {"id": "attempt", "kind": "operation",
         "scope_id": row["scope_id"], "target": episode["operation_id"], "source": "operational_history",
         "recorded_at": "2026-10-01T12:00:00Z", "availability": "available"})
+    investigation.add_typed_finding(
+        row["investigation_id"], kind="cause",
+        statement="Retained operation evidence supports this investigation cause",
+        status="supported", supporting_evidence=["attempt"])
     return {"ids": [row["investigation_id"], episode["operation_id"]], "scope_id": row["scope_id"]}
 
 
@@ -74,6 +78,7 @@ def test_real_evidence_transport_panel_and_headless_provenance(environment):
         body = json.loads(connection.return_value.request.call_args.kwargs["body"])
     text = json.dumps(body)
     assert "Cause uncertain" in text and selection["ids"][1] in text
+    assert "Retained operation evidence supports this investigation cause" in text
     assert "approve DESTROY" not in text
     assert body["model"] == "fixture-reasoner"
     assert all(p.read_bytes() == value for p, value in before.items())
