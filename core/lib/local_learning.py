@@ -289,7 +289,7 @@ def _candidate_identity(candidate: dict) -> str:
         identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
                     "investigation_id": investigation["investigation_id"],
                     "finding_id": investigation["finding_id"]}
-    else:
+    elif candidate["learning_type"] == "cross_incident_pattern":
         pattern = candidate["pattern"]
         identity = {
             "scope_id": candidate["scope_id"],
@@ -300,13 +300,25 @@ def _candidate_identity(candidate: dict) -> str:
             "related_objects": candidate["related_objects"],
             "compatibility": candidate["compatibility"],
         }
+    else:
+        procedure = candidate["procedure"]
+        identity = {
+            "scope_id": candidate["scope_id"],
+            "learning_type": candidate["learning_type"],
+            "kind": procedure["kind"],
+            "pattern_candidate_id": procedure["pattern_candidate_id"],
+            "action": procedure["action"],
+            "verification": procedure["verification"],
+            "related_objects": candidate["related_objects"],
+            "compatibility": candidate["compatibility"],
+        }
     return "lc-" + _digest(identity)
 
 
 def validate_candidate(value: Any) -> dict:
     """Validate the closed frozen reference contract, including its revision."""
     value = _copy(value)
-    _closed(value, _CANDIDATE_FIELDS, {"pattern"})
+    _closed(value, _CANDIDATE_FIELDS, {"pattern", "procedure"})
     _check(value["contract"] == CANDIDATE_CONTRACT and type(value["version"]) is int and value["version"] == VERSION)
     _check(value["authority"] == "reference_only" and value["owner"] == "core")
     _identifier(value["candidate_id"], _CANDIDATE)
@@ -314,7 +326,7 @@ def validate_candidate(value: Any) -> dict:
     scope_id = _scope(value["scope_id"])
     _check(type(value["learning_type"]) is str and value["learning_type"] in {
         "recurring_outcome", "investigation_finding", "typed_investigation_finding",
-        "cross_incident_pattern"})
+        "cross_incident_pattern", "reference_procedure"})
     owners = _array(value["applicability_owners"], 128)
     for owner in owners:
         _identifier(owner)
@@ -340,6 +352,7 @@ def validate_candidate(value: Any) -> dict:
     investigations = [ref for ref in evidence
                       if ref["kind"] in {"investigation", "investigation_typed_finding"}]
     reviewed_learning = [ref for ref in evidence if ref["kind"] == "reviewed_learning"]
+    reviewed_artifacts = [ref for ref in evidence if ref["kind"] == "reviewed_learning_artifact"]
     baselines = [ref for ref in evidence if ref["kind"] == "baseline"]
     _check(len(operations) == len(set(operations)) and bool(operations))
     counts = _closed(value["counts"], {"operations", "investigations", "baselines", "minimum_samples"})
@@ -351,13 +364,14 @@ def validate_candidate(value: Any) -> dict:
     expected_derivation = {
         "typed_investigation_finding": TYPED_DERIVATION_VERSION,
         "cross_incident_pattern": PATTERN_DERIVATION_VERSION,
+        "reference_procedure": PROCEDURE_DERIVATION_VERSION,
     }.get(value["learning_type"], DERIVATION_VERSION)
     _check(type(provenance["derivation_version"]) is int
            and provenance["derivation_version"] == expected_derivation)
     _check(provenance["rule"] == value["learning_type"])
     _query(provenance["query"])
     if value["learning_type"] == "recurring_outcome":
-        _check("pattern" not in value)
+        _check("pattern" not in value and "procedure" not in value)
         _compatibility({"capability": value["capability"], "provider": value["provider"]})
         _check(compatibility == [{"capability": value["capability"], "provider": value["provider"]}])
         outcome = _closed(value["outcome"], {"outcome", "execution_status", "verification_status"})
@@ -366,9 +380,10 @@ def validate_candidate(value: Any) -> dict:
         _check(type(outcome["verification_status"]) is str and outcome["verification_status"] in {"not_applicable", "passed", "failed", "unknown", "unavailable"})
         _check(not outcome["outcome"].startswith("interrupted_"))
         _check(type(counts["minimum_samples"]) is int and counts["minimum_samples"] == MIN_SAMPLES and len(operations) >= MIN_SAMPLES)
-        _check(not investigations and not reviewed_learning and len(baselines) == 1
+        _check(not investigations and not reviewed_learning and not reviewed_artifacts and len(baselines) == 1
                and baselines[0]["operation_ids"] == sorted(operations))
     elif value["learning_type"] == "cross_incident_pattern":
+        _check("procedure" not in value)
         _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
         pattern = _pattern(value.get("pattern"))
         _check(type(counts["minimum_samples"]) is int
@@ -383,11 +398,30 @@ def validate_candidate(value: Any) -> dict:
         _check(all(kinds == {"symptom", "cause"} for kinds in by_investigation.values()),
                "pattern requires one reviewed symptom/cause pair per investigation")
         _check(len(reviewed_learning) == 2 * counts["investigations"])
-    else:
+        _check(not reviewed_artifacts)
+    elif value["learning_type"] == "reference_procedure":
         _check("pattern" not in value)
         _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
+        procedure = _procedure(value.get("procedure"))
+        _check(type(counts["minimum_samples"]) is int
+               and counts["minimum_samples"] == MIN_PROCEDURE_INVESTIGATIONS)
+        _check(counts["investigations"] == procedure["distinct_investigations"]
+               and counts["investigations"] >= MIN_PROCEDURE_INVESTIGATIONS)
+        _check(not investigations and not baselines)
+        _check(len(reviewed_artifacts) == 1
+               and reviewed_artifacts[0]["candidate_id"] == procedure["pattern_candidate_id"])
+        by_investigation = {}
+        for ref in reviewed_learning:
+            by_investigation.setdefault(ref["investigation_id"], set()).add(ref["finding_kind"])
+        _check(len(by_investigation) == counts["investigations"])
+        _check(all(kinds == {"action", "verification"} for kinds in by_investigation.values()),
+               "procedure requires one reviewed action/verification pair per investigation")
+        _check(len(reviewed_learning) == 2 * counts["investigations"])
+    else:
+        _check("pattern" not in value and "procedure" not in value)
+        _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
         _check(type(counts["minimum_samples"]) is int and counts["minimum_samples"] == 1)
-        _check(len(investigations) == 1 and not reviewed_learning and not baselines)
+        _check(len(investigations) == 1 and not reviewed_learning and not reviewed_artifacts and not baselines)
     _check(value["candidate_id"] == _candidate_identity(value), "candidate identity mismatch")
     _check(value["candidate_revision"] == _digest({key: child for key, child in value.items() if key != "candidate_revision"}),
            "candidate revision mismatch")
