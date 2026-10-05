@@ -29,6 +29,18 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertIn("tests/test_ai_architecture.py", tests)
         self.assertNotIn("tests/test_ai_tui.py", tests)
 
+    def test_knowledge_artifact_mapping_uses_learning_and_entrypoint_domains(self):
+        domains, tests = affected_tests(
+            ["core/lib/knowledge_artifacts.py", "core/lib/knowledge_artifacts.sh", "igor.sh"],
+            ROOT,
+        )
+        self.assertEqual(domains, ["entrypoint", "learning"])
+        self.assertIn("tests/test_knowledge_artifacts.py", tests)
+        self.assertIn("tests/test_knowledge_artifacts_integration.py", tests)
+        self.assertIn("tests/test_local_learning.py", tests)
+        self.assertIn("tests/test_ai_architecture.py", tests)
+        self.assertNotIn("tests/test_ai_tui.py", tests)
+
     def test_d064_capability_change_selects_required_domains_without_tui(self):
         domains, tests = affected_tests(
             [
