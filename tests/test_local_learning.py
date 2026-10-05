@@ -91,6 +91,70 @@ def resolved_typed(data, operation_id, *, kind="cause", status="supported",
     return resolved_row, finding_id
 
 
+def resolved_typed_pair(
+    data,
+    operation_id,
+    *,
+    symptom="Service became unavailable",
+    cause="Storage exhaustion caused the service failure",
+):
+    service = InvestigationService(data)
+    row = service.create(
+        title="Cross-incident fixture",
+        summary="Typed symptom and cause retained",
+        source="operator",
+        owner="operator",
+        provenance={"source": "operator.cli", "recorded_at": "2026-10-01T12:00:00Z"},
+    )
+    ident = row["investigation_id"]
+    service.add_evidence(ident, {
+        "id": "incident-operation",
+        "kind": "operation",
+        "scope_id": row["scope_id"],
+        "target": operation_id,
+        "source": "operational_history",
+        "recorded_at": "2026-10-01T12:00:00Z",
+        "availability": "available",
+    })
+    symptom_row = service.add_typed_finding(
+        ident,
+        kind="symptom",
+        statement=symptom,
+        status="supported",
+        supporting_evidence=["incident-operation"],
+    )
+    cause_row = service.add_typed_finding(
+        ident,
+        kind="cause",
+        statement=cause,
+        status="supported",
+        supporting_evidence=["incident-operation"],
+    )
+    service.set_questions(ident, ["Does the same pair recur in other incidents?"])
+    service.transition(ident, "evaluating", "Typed pair assessed")
+    resolved_row = service.transition(ident, "resolved", "Typed pair retained as reference")
+    ids = {
+        "symptom": symptom_row["typed_findings"][0]["finding_id"],
+        "cause": cause_row["typed_findings"][-1]["finding_id"],
+    }
+    return resolved_row, ids
+
+
+def accept_typed_pair(service, investigation_id):
+    candidates = [
+        row for row in service.candidates()["candidates"]
+        if row["learning_type"] == "typed_investigation_finding"
+        and any(ref.get("investigation_id") == investigation_id for ref in row["evidence"])
+    ]
+    assert {next(ref["finding_kind"] for ref in row["evidence"]
+                 if ref["kind"] == "investigation_typed_finding")
+            for row in candidates} == {"symptom", "cause"}
+    reviewed = []
+    for candidate in sorted(candidates, key=lambda row: row["candidate_id"]):
+        reviewed.append(review(service, candidate))
+    return reviewed
+
+
 def choose(service, kind="recurring_outcome", **kwargs):
     return next(row for row in service.candidates(**kwargs)["candidates"] if row["learning_type"] == kind)
 
@@ -314,6 +378,134 @@ def test_legacy_and_typed_investigation_candidates_coexist_without_rewriting_ide
     assert refreshed_legacy["candidate_id"] == legacy_candidate["candidate_id"]
     assert refreshed_legacy["provenance"]["derivation_version"] == 1
     assert typed_candidate["candidate_id"] != refreshed_legacy["candidate_id"]
+
+
+def test_cross_incident_pattern_requires_three_reviewed_matching_incidents(tmp_path):
+    service = LocalLearningService(tmp_path)
+    investigations = []
+    for _ in range(3):
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+        investigations.append(investigation)
+        accept_typed_pair(service, investigation["investigation_id"])
+
+    candidate = choose(service, "cross_incident_pattern")
+    assert candidate["provenance"]["derivation_version"] == 3
+    assert candidate["authority"] == "reference_only"
+    assert candidate["pattern"] == {
+        "kind": "symptom_cause",
+        "symptom": "Service became unavailable",
+        "cause": "Storage exhaustion caused the service failure",
+        "distinct_investigations": 3,
+    }
+    assert candidate["counts"] == {
+        "operations": 3,
+        "investigations": 3,
+        "baselines": 0,
+        "minimum_samples": 3,
+    }
+    learning_refs = [ref for ref in candidate["evidence"] if ref["kind"] == "reviewed_learning"]
+    assert len(learning_refs) == 6
+    assert {ref["finding_kind"] for ref in learning_refs} == {"symptom", "cause"}
+    assert len({ref["investigation_id"] for ref in learning_refs}) == 3
+    assert "always has this cause" in " ".join(candidate["uncertainty"])
+    assert candidate["capability"] is None and candidate["provider"] is None
+    assert candidate["outcome"] is None
+    assert "procedure" not in candidate
+
+
+def test_cross_incident_pattern_does_not_group_semantically_different_prose(tmp_path):
+    service = LocalLearningService(tmp_path)
+    causes = [
+        "Storage exhaustion caused the service failure",
+        "Storage exhaustion caused the service failure",
+        "The disk being full caused the service failure",
+    ]
+    for cause in causes:
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path), cause=cause)
+        accept_typed_pair(service, investigation["investigation_id"])
+    assert not any(row["learning_type"] == "cross_incident_pattern"
+                   for row in service.candidates()["candidates"])
+
+
+def test_unreviewed_or_partially_reviewed_incident_does_not_count_toward_pattern(tmp_path):
+    service = LocalLearningService(tmp_path)
+    for _ in range(2):
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+        accept_typed_pair(service, investigation["investigation_id"])
+
+    third, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+    candidates = [
+        row for row in service.candidates()["candidates"]
+        if row["learning_type"] == "typed_investigation_finding"
+        and any(ref.get("investigation_id") == third["investigation_id"] for ref in row["evidence"])
+    ]
+    symptom = next(row for row in candidates
+                   if any(ref.get("finding_kind") == "symptom" for ref in row["evidence"]))
+    review(service, symptom)
+    assert not any(row["learning_type"] == "cross_incident_pattern"
+                   for row in service.candidates()["candidates"])
+
+
+def test_pattern_identity_is_semantic_and_new_incident_requires_new_review(tmp_path):
+    service = LocalLearningService(tmp_path)
+    for _ in range(3):
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+        accept_typed_pair(service, investigation["investigation_id"])
+    first = choose(service, "cross_incident_pattern")
+    accepted = review(service, first)
+
+    fourth, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+    accept_typed_pair(service, fourth["investigation_id"])
+    second = choose(service, "cross_incident_pattern")
+    assert second["candidate_id"] == first["candidate_id"]
+    assert second["candidate_revision"] != first["candidate_revision"]
+    assert second["pattern"]["distinct_investigations"] == 4
+    assert service.inspect(accepted["learning_id"]) == accepted
+
+
+def test_superseded_incident_learning_invalidates_stale_pattern_review(tmp_path):
+    service = LocalLearningService(tmp_path)
+    source_artifacts = []
+    for _ in range(3):
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+        source_artifacts.extend(accept_typed_pair(service, investigation["investigation_id"]))
+    candidate = choose(service, "cross_incident_pattern")
+
+    source = next(row for row in source_artifacts
+                  if row["candidate"]["learning_type"] == "typed_investigation_finding")
+    service.supersede(
+        source["learning_id"],
+        **cas(service),
+        actor="operator",
+        interface="operator.cli",
+        reason="Incident assessment replaced",
+    )
+    with pytest.raises(LearningError):
+        review(service, candidate)
+
+
+def test_pattern_evidence_status_tracks_reviewed_source_without_rewriting_snapshot(tmp_path):
+    service = LocalLearningService(tmp_path)
+    source_artifacts = []
+    for _ in range(3):
+        investigation, _ = resolved_typed_pair(tmp_path, operation(tmp_path))
+        source_artifacts.extend(accept_typed_pair(service, investigation["investigation_id"]))
+    accepted = review(service, choose(service, "cross_incident_pattern"))
+    frozen = copy.deepcopy(accepted)
+    source = source_artifacts[0]
+    service.supersede(
+        source["learning_id"],
+        **cas(service),
+        actor="operator",
+        interface="operator.cli",
+        reason="Source no longer applicable",
+    )
+
+    status = service.evidence_status(accepted["learning_id"])
+    reviewed = [item for item in status["evidence"]
+                if item["reference"]["kind"] == "reviewed_learning"]
+    assert any(item["status"] == "changed" for item in reviewed)
+    assert service.inspect(accepted["learning_id"]) == frozen
 
 
 @pytest.mark.parametrize("source", ["missing", "unfinished", "no_history", "reopened"])
