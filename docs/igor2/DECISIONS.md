@@ -919,6 +919,71 @@ If remote control is added, which READ/CHANGE/DESTROY operations may execute wit
 
 Decision target: Step 22.
 
+### Q013 — `:sys` operator alias and canonical System identity
+
+The existing first-class package is `system`, its capability IDs are
+`system.*`, and the generated operator namespace is currently `:system.*`.
+Creating a second `sys` or `sysadmin` package would split the accepted D020
+host-domain ownership boundary.
+
+Should Step 20 add `:sys` as a presentation-only alias for the existing
+`:system` namespace while preserving `system` as the package owner,
+capability prefix and durable identity?
+
+**Recommendation:** yes. Keep `system` and `system.*` canonical everywhere
+outside presentation. If implemented, `:sys` resolves to the same operator
+projection and backend target IDs; it does not register another provider,
+capability, module or durable alias identity. Keep `:system` working.
+
+Decision target: before implementing an operator namespace alias.
+
+### Q014 — Bounded semantic selector metadata for capability inputs
+
+Current capability input properties express validation such as type, bounds and
+validators, and the Operator Surface projects that schema. Required-input
+capabilities still require the operator to supply explicit JSON. Richer System
+administration needs generic UI/CLI selection for values such as an existing
+service, user/group, filesystem, interface or safe path without teaching the
+frontend System-specific commands.
+
+Should Module API v2 allow an **optional bounded selector declaration on an
+existing capability input property**, or should dynamic selection become a new
+contribution/provider kind?
+
+**Recommendation:** extend the existing capability-input property descriptor
+with the smallest optional selector metadata proven by a real consumer. Selector
+metadata is discovery/presentation only: it cannot relax the property's normal
+validator, satisfy a precondition, select privilege, approve execution or make a
+candidate authoritative. Do not add a new contribution kind or second action
+registry for this use case. The exact selector field/schema must be accepted
+before implementation.
+
+Decision target: before changing Module API validation or Operator Surface input
+metadata.
+
+### Q015 — Dynamic candidate source, freshness and authority
+
+A semantic selector needs current candidates. Some candidates may already exist
+as fresh System Model objects/facts; others, such as current systemd units, may
+be cheapest and most accurate through a bounded normalized Core/Platform read.
+This must not become a parallel inventory database, Resource Recognition
+candidate, broad machine scanner or frontend shell executor.
+
+May a generic Core-owned candidate-resolution interface use both fresh
+authoritative model state and bounded deterministic Platform reads?
+
+**Recommendation:** yes, with strict separation. Prefer an eligible fresh System
+Model projection where one exists; otherwise permit an explicitly declared,
+bounded read-only Platform resolver for that selector. Candidate rows are
+ephemeral reference/selection data only, carry source/freshness where relevant,
+are never persisted as facts, and cannot create adoption, desired state,
+responsibility, approval or execution authority. The chosen value still enters
+the existing capability input contract and is revalidated/precondition-checked
+during canonical preparation/execution. No AI call, secret enumeration,
+unbounded filesystem scan or network-wide scan belongs in candidate resolution.
+
+Decision target: before the first dynamic service-selector vertical slice.
+
 ## Resolved questions retained for traceability
 
 Resolved questions stay here only so older references to their Q-numbers remain

@@ -67,3 +67,14 @@ application or readback. Removing the package/schema remains outside this proof.
 - `systemctl` (required)
 - `vcgencmd` (optional — Raspberry Pi hardware sensors)
 - `lsblk`, `findmnt`, `udevadm` (optional — storage enumeration)
+
+## Proposed `:sys` operator evolution
+
+The discovery/proposal for evolving this existing `system` Module API v2
+package into a richer typed system-administration surface is in
+[SYS_OPERATOR_PROPOSAL.md](SYS_OPERATOR_PROPOSAL.md).
+
+That document is a **DISCOVERY proposal**, not an accepted runtime contract.
+Open public-contract questions are tracked in
+`docs/igor2/DECISIONS.md` as Q013–Q015. No new module identity, contribution
+kind or execution authority is implied by the proposal.
