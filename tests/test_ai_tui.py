@@ -1,5 +1,6 @@
 """Focused tests for the lightweight structured-event TUI boundary."""
 
+import importlib
 import json
 import os
 import subprocess
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
-import tui
+tui = importlib.import_module("tui")
 
 
 def event(kind, sequence, **fields):
