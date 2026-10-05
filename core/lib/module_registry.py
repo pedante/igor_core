@@ -115,6 +115,7 @@ def source_digest(module_dirs: list[Path]) -> str:
         "module_registry.py",
         "module_loader_fast.sh",
         "module_contract.py",
+        "input_candidates.py",
         "capability_runtime.py",
         "configuration_schema.py",
     ):
