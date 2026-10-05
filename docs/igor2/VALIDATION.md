@@ -51,8 +51,17 @@ selects structural checks. Shared test helpers or unknown implementation paths
 select all discovered tests as a safe fallback. This can be expensive: inspect
 `--dry-run` when a path is unfamiliar. This fallback still does not call `full`.
 
+The root `igor.sh` entrypoint is treated specially because most feature work
+only adds a thin CLI/router branch there. A standalone `igor.sh` change remains
+broad and selects all tests. When the same change set also contains a recognized
+implementation domain, affected selection adds a small direct-entrypoint
+regression set plus that domain instead of allowing the facade path alone to
+escalate the run to every repository test. Unknown implementation files still
+retain the broad fallback.
+
 | Changed domain | Broader regression coverage |
 |---|---|
+| Root entrypoint/router | Root CLI inspection/startup plus non-TTY TUI fallback; standalone `igor.sh` changes still select all |
 | Capability/package/safety/approval/privilege | Contracts, resolution/dispatch, admission, safety, privilege, History and Docker/System composition |
 | Module API/loader/modules | Module contracts, loading, activation, composition and inspection |
 | History | Python History/deployment History and canonical event/History BATS |
@@ -88,10 +97,15 @@ host availability.
 Each test file runs in its own process session, with output written directly
 to a log. Default outer bounds are 600 seconds per file and 1200 seconds for
 the System configuration and administration vertical slices (`--group-timeout`, `--slow-timeout`).
-BATS has a native 180-second per-test timeout (`--bats-timeout`) and continues
-to later tests when its runner supports it. Python outer timeout ends the file
-and moves to the next file; the active reported node receives the timeout,
-not tests that never started. Passing subtests with nonliteral parameters
+Those process-group bounds are the default timeout authority for BATS as well as
+Python. BATS' native `BATS_TEST_TIMEOUT` watchdog is **disabled by default**;
+`--bats-timeout N` is an explicit diagnostic opt-in. This avoids the confirmed
+BATS 1.13.0 fast-failure watchdog defect described in
+[bats-core #1206](https://github.com/bats-core/bats-core/issues/1206), where an
+assertion can finish immediately while the runner remains alive until the native
+watchdog deadline. The outer bound still fails closed and preserves the raw log.
+Python outer timeout ends the file and moves to the next file; the active
+reported node receives the timeout, not tests that never started. Passing subtests with nonliteral parameters
 (such as NaN) are counted under their declared parent node; a failing subtest
 without representable parameters remains a fail-closed error. Typed test-owned `TimeoutExpired`/`TimeoutError`
 exceptions also retain their node/subtest identity. No arbitrary sleeps are
@@ -113,18 +127,20 @@ exit code. Counts combine unique test identities and structural/tool groups,
 not just test cases. Raw group failures remain visible even if accepted by the
 baseline. Human output shows classifications, identities and evidence paths.
 
-### BATS watchdog cleanup limitation
+### BATS watchdog economics
 
-BATS 1.13.0 can emit an assertion failure immediately but leave its watchdog
-alive until the native timeout deadline. This was reproduced directly outside
-the harness: a tiny failure exited immediately without a watchdog, in 3–4s
-with a 3s timeout, and in 5s with a 5s timeout; a passing case exited in 1s.
-The three Boundary B probes waiting approximately 180s have this same pattern.
-It is a native BATS cleanup interaction, not an accepted product-test timeout.
-The failure remains nonzero and its TAP identity remains visible. Native and
-outer group bounds limit the delay; the harness does not terminate a runner
-merely because TAP appears complete, which could truncate finalization. No
-external BATS implementation or product fixture was patched.
+BATS 1.13.0 can emit an assertion failure immediately but leave its native
+`BATS_TEST_TIMEOUT` watchdog alive until the configured deadline. Igor
+reproduced this behavior locally, and bats-core tracks the same defect as
+[#1206](https://github.com/bats-core/bats-core/issues/1206). Upstream's published
+workaround is to avoid the native watchdog and bound the suite/process instead.
+
+Igor therefore leaves `BATS_TEST_TIMEOUT` unset by default and relies on the
+existing process-session outer timeout. This removes the pathological
+approximately-180-second wait after fast assertions without treating the
+failure as a pass or truncating TAP finalization. Targeted timeout diagnostics
+can still opt into the native watchdog with `--bats-timeout N`. No BATS source,
+product fixture, reviewed baseline or result classification is rewritten.
 
 ## Reviewed baseline and environmental permissions
 
@@ -178,12 +194,15 @@ until a separate reviewed metadata change removes it.
 [CI](../../.github/workflows/ci.yml) covers PRs targeting `master`, `main` and
 `igor2`, and pushes to those branches. Ordinary events run the shared
 `affected` entry point. PR selection uses the base SHA; pushes use the previous
-SHA. Checkout fetches local history. Manual `workflow_dispatch` selects
-focused/affected/full and a comparison ref; full is an explicit operator
-choice. Logs and JSON are uploaded even on failure. Existing repository-wide
-Ruff and ShellCheck jobs retain their existing lint policy and are separate
-from harness baseline comparison; this milestone does not bless their backlog.
-A first-ever branch push with no valid prior SHA needs a manual comparison ref.
+SHA. Checkout fetches local history. The affected harness already runs Ruff and
+ShellCheck on every changed Python/shell/BATS file, so ordinary PRs do not also
+pay for duplicate whole-repository lint scans. Repository-wide Ruff and
+ShellCheck remain available as explicit `workflow_dispatch` + `full` audit
+jobs; their existing backlog/policy is unchanged and is not silently accepted.
+Manual `workflow_dispatch` also selects focused/affected/full validation and a
+comparison ref; full is an explicit operator choice. Logs and JSON are uploaded
+even on failure. A first-ever branch push with no valid prior SHA needs a manual
+comparison ref.
 
 Local Markdown validation checks inline file links, not anchors, external URLs
 or reference-style links. YAML workflow parsing/review is separate. Per-file

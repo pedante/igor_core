@@ -51,6 +51,21 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertIn("tests/test_ai_tui.py", tests)
         self.assertIn("tests/modules/test_loader_regressions.bats", tests)
 
+    def test_root_entrypoint_alone_remains_broad_but_mapped_feature_bounds_it(self):
+        domains, tests = affected_tests(["igor.sh"], ROOT)
+        self.assertEqual(domains, ["all", "entrypoint"])
+        self.assertIn("tests/test_ai_tui.py", tests)
+        self.assertIn("tests/modules/test_loader_regressions.bats", tests)
+
+        domains, tests = affected_tests(["igor.sh", "core/lib/operational_history.py"], ROOT)
+        self.assertEqual(domains, ["entrypoint", "history"])
+        self.assertIn("tests/test_ai_architecture.py", tests)
+        self.assertIn("tests/test_startup_privilege.py", tests)
+        self.assertIn("tests/core/test_ai_tui_backend.bats", tests)
+        self.assertIn("tests/test_operational_history.py", tests)
+        self.assertNotIn("tests/test_ai_tui.py", tests)
+        self.assertNotIn("tests/modules/test_loader_regressions.bats", tests)
+
     def test_docs_only_change_selects_no_test_files(self):
         self.assertEqual(affected_tests(["docs/igor2/STATUS.md"], ROOT), (["documentation"], []))
 

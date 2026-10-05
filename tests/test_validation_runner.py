@@ -3,6 +3,7 @@
 import contextlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -209,6 +210,43 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertEqual(result["native_timeout_count"], 1)
         self.assertEqual(result["runner_skip_count"], 1)
         self.assertIn("ok 2 after", Path(result["log"]).read_text())
+
+    def test_fast_failing_bats_does_not_pay_native_watchdog_deadline_by_default(self):
+        bats = shutil.which("bats")
+        self.assertIsNotNone(bats, "BATS required for harness acceptance")
+        self.write("tests/test_fixture.bats", '@test "fast failure" { false; }\n')
+        args = type("Args", (), {"bats": bats, "python": sys.executable, "ruff": "ruff",
+                                 "shellcheck": "shellcheck", "bats_timeout": 0,
+                                 "group_timeout": 5, "slow_timeout": 20})()
+
+        result = runner.run_group(
+            {"id": "fixture", "kind": "bats", "files": ["tests/test_fixture.bats"]},
+            self.root,
+            self.root,
+            0,
+            args,
+        )
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["native_failure_count"], 1)
+        self.assertEqual(result["native_timeout_count"], 0)
+        self.assertLess(result["elapsed_seconds"], 3)
+
+    def test_bats_watchdog_is_disabled_unless_explicitly_requested(self):
+        args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",
+                                 "shellcheck": "shellcheck", "bats_timeout": 0,
+                                 "group_timeout": 600, "slow_timeout": 1200})()
+
+        def fake_execute(command, root, log, seconds, env):
+            self.assertNotIn("BATS_TEST_TIMEOUT", env)
+            log.write_text("1..1\nok 1 fixture in 1ms\n")
+            return {"status": "PASS", "returncode": 0, "elapsed_seconds": 0, "log": str(log)}
+
+        with (
+            patch.dict(os.environ, {"BATS_TEST_TIMEOUT": "999"}, clear=False),
+            patch.object(runner, "execute", side_effect=fake_execute),
+        ):
+            runner.run_group({"id": "fixture", "kind": "bats", "files": ["tests/test_fixture.bats"]},
+                             self.root, self.root, 0, args)
 
     def test_system_administration_slice_uses_larger_file_budget(self):
         args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",

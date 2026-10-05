@@ -9,6 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 
 _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
+    "entrypoint": (
+        "tests/test_ai_architecture.py",
+        "tests/test_startup_privilege.py",
+        "tests/core/test_ai_tui_backend.bats",
+    ),
     "capability": (
         "tests/test_module_contract.py",
         "tests/test_capability_runtime.py",
@@ -135,6 +140,8 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
     domains: set[str] = set()
     selected: set[str] = set()
     all_tests = _all_tests(root)
+    root_entrypoint_seen = False
+    mapped_implementation_seen = False
 
     for raw_path in paths:
         path = Path(raw_path)
@@ -168,8 +175,19 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
             selected.update(p for p in all_tests if p.startswith("tests/test_validation_"))
             continue
 
+        # igor.sh is a shared CLI/router. A root-only edit remains broad because
+        # its impact is ambiguous, but when a feature change also touches a
+        # recognized implementation domain we add direct entrypoint regressions
+        # without letting this thin facade force the entire repository suite.
+        if relative == "igor.sh":
+            root_entrypoint_seen = True
+            domains.add("entrypoint")
+            selected.update(_DOMAIN_TESTS["entrypoint"])
+            continue
+
         matches = [domain for tokens, domain in _PATH_DOMAINS if any(token in relative.lower() for token in tokens)]
         if matches:
+            mapped_implementation_seen = True
             for domain in matches:
                 domains.add(domain)
                 selected.update(_DOMAIN_TESTS[domain])
@@ -177,6 +195,11 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
 
         # Unknown implementation changes receive broad coverage. This is the
         # deliberate safe fallback until an explicit domain is added.
+        domains.add("all")
+        selected.update(all_tests)
+
+    if root_entrypoint_seen and not mapped_implementation_seen and "all" not in domains:
+        # Preserve the safe fallback for standalone root-entrypoint changes.
         domains.add("all")
         selected.update(all_tests)
 
