@@ -924,8 +924,7 @@ class LocalLearningService:
                     learning_type="cross_incident_pattern",
                     statement=(
                         f"Across {len(pairs)} reviewed investigations with matching compatibility, "
-                        f"symptom '{symptom_statement}' was paired with supported cause "
-                        f"'{cause_statement}'."
+                        "the same supported symptom/cause pair recurred."
                     ),
                     uncertainty=[
                         "Repeated reviewed incident evidence does not prove this symptom always has this cause.",
