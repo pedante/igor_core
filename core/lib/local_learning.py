@@ -474,8 +474,26 @@ def _typed_history_ids(source: dict) -> list[str]:
     return sorted(ids)
 
 
+def _reviewed_learning_ref(artifact: dict, typed_ref: dict) -> dict:
+    return {
+        "kind": "reviewed_learning",
+        "scope_id": artifact["scope_id"],
+        "source_version": artifact["version"],
+        "digest": _digest(artifact),
+        "learning_id": artifact["learning_id"],
+        "candidate_id": artifact["candidate"]["candidate_id"],
+        "candidate_revision": artifact["candidate"]["candidate_revision"],
+        "investigation_id": typed_ref["investigation_id"],
+        "finding_id": typed_ref["finding_id"],
+        "finding_kind": typed_ref["finding_kind"],
+        "reviewed_at": artifact["review"]["at"],
+    }
+
+
 def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncertainty: list,
-                    rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None) -> dict:
+                    rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None,
+                    pattern: dict | None = None, investigation_count: int | None = None,
+                    minimum_samples: int | None = None) -> dict:
     compatibility = {_compact(_canonical_compatibility(row)): _canonical_compatibility(row) for row in rows}
     ordered = [compatibility[key] for key in sorted(compatibility)]
     value = {"contract": CANDIDATE_CONTRACT, "version": VERSION, "authority": "reference_only",
@@ -486,19 +504,28 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
              "provider": ordered[0]["provider"] if learning_type == "recurring_outcome" else None,
              "compatibility": ordered, "outcome": outcome, "evidence": sorted(evidence, key=_compact),
              "counts": {"operations": len(rows),
-                        "investigations": int(learning_type in {
-                            "investigation_finding", "typed_investigation_finding"}),
+                        "investigations": (
+                            investigation_count
+                            if investigation_count is not None
+                            else int(learning_type in {
+                                "investigation_finding", "typed_investigation_finding"})
+                        ),
                         "baselines": int(learning_type == "recurring_outcome"),
-                        "minimum_samples": MIN_SAMPLES if learning_type == "recurring_outcome" else 1},
+                        "minimum_samples": (
+                            minimum_samples
+                            if minimum_samples is not None
+                            else MIN_SAMPLES if learning_type == "recurring_outcome" else 1
+                        )},
              "provenance": {
-                 "derivation_version": (
-                     TYPED_DERIVATION_VERSION
-                     if learning_type == "typed_investigation_finding"
-                     else DERIVATION_VERSION
-                 ),
+                 "derivation_version": {
+                     "typed_investigation_finding": TYPED_DERIVATION_VERSION,
+                     "cross_incident_pattern": PATTERN_DERIVATION_VERSION,
+                 }.get(learning_type, DERIVATION_VERSION),
                  "rule": learning_type,
                  "query": query,
              }}
+    if pattern is not None:
+        value["pattern"] = copy.deepcopy(pattern)
     value["candidate_id"] = _candidate_identity(value)
     value["candidate_revision"] = _digest({key: child for key, child in value.items() if key != "candidate_revision"})
     return validate_candidate(value)
