@@ -30,11 +30,24 @@ history through the existing public `--history recent` CLI, without observer ref
 replay, recovery, reset or execution. Session mode, provider/model, approvals
 and execution results come from the current backend event projection.
 
-Schema/property controls collect proposed values. The existing AI settings
-backend is the concrete editable semantic-setting integration; frontend code
-sends its existing commands and waits for a backend snapshot. This is not a
-new Configuration Service, module schema contract or file writer. Future
-configuration owners must supply schema and bind submission to their own
+Schema/property controls collect proposed values. Frontend code sends existing
+backend commands and waits for a backend-completed snapshot; it never queues a
+refresh behind a mutation because some settings may enter the normal
+approval/privilege lifecycle before completion. A settings snapshot is a
+presentation envelope, not evidence that every field shares one persistence
+authority.
+
+The current AI settings view is deliberately mixed during migration:
+`ai.verbose` resolves through Configuration Service, mode is owned by the AI
+mode/session control and is still persisted through the legacy AI preferences,
+and provider/model/temperature/max-tokens plus launcher preferences remain on
+the legacy AI settings writer. The snapshot therefore carries per-field source
+metadata and the TUI exposes that source rather than inventing a single
+"settings" owner. Backend failure must restore the actual value before
+publishing the completion snapshot.
+
+This is not a new Configuration Service, module schema contract or file writer.
+Future configuration owners must supply schema and bind submission to their own
 validated authority boundary. Secret-value editing/display is excluded.
 
 Current backend contracts do not publish a model-role registry, live judgment
