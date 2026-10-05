@@ -80,10 +80,12 @@ Initial kinds are:
 - `verification` — an investigation claim about verification evidence.
 
 Assessment is one of `supported`, `contradicted` or `inconclusive`.
-`supported` requires supporting evidence and `contradicted` requires
-contradicting evidence. The same evidence cannot support and contradict one
-finding. All evidence, hypothesis and judgment IDs must already be attached to
-that Investigation.
+`supported` requires supporting evidence recorded as `available`;
+`contradicted` requires contradicting evidence recorded as `available`.
+Unknown/unavailable references may remain attached to inconclusive findings but
+cannot establish an asserted assessment. The same evidence cannot support and
+contradict one finding. All evidence, hypothesis and judgment IDs must already
+be attached to that Investigation.
 
 Additional fail-closed semantics prevent typed prose from impersonating an
 operational authority:
@@ -253,6 +255,7 @@ selection provenance is not automatically retained as investigation knowledge.
 Deferred: autonomous/recursive investigation, agents, background monitoring,
 self-healing/remediation, plans/workflows, scheduling/automation integration,
 remote scopes, relationships/deployments, automatic causal inference, runbook
-generation/promotion, Local Learning consumption of typed findings and Jet/Laya. Step 15C added
+generation/promotion, Local Learning consumption of typed findings, typed-finding
+projection into the existing AI Context adapter and Jet/Laya. Step 15C added
 no model routing/selection; the subsequent Step 15D contract owns that explicit
 integration. Step 20 owns the separate default interface transition.
