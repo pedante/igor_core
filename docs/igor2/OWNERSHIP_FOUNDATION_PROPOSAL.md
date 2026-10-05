@@ -1,8 +1,13 @@
 # Configuration, Secrets and Ownership Foundation — Boundary A
 
-Status: **discovery complete; implementation proposal, not accepted architecture**.
+Status: **Boundary A complete; B1–B5 accepted by the Project Owner on 2026-10-05 (D069); Boundary B implementation in progress**.
 Audit date: 2026-10-05. Audited checkout: `igor2`,
 `8850b6777345e1bee27a2982f0cea8f2d96c6198`; initial working tree clean.
+
+The proposal below preserves the Boundary A audit. Its B1–B5 recommendations
+are now accepted in [D069](DECISIONS.md); historical statements that approval
+was pending describe the audit state. Completion still requires the acceptance
+checks below and evidence in [STATUS.md](STATUS.md).
 
 ## Recommendation
 

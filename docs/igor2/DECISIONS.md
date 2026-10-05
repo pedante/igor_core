@@ -858,6 +858,42 @@ approval/privilege, create a capability/runbook, or execute anything. A later
 explicit review/persistence contract is required before imported knowledge can
 become active Igor reference knowledge.
 
+### D069 — OpenRouter credential lifecycle and explicit local cutover (Ownership Boundary B)
+
+Accepted by the Project Owner on 2026-10-05 after the Boundary A proposal.
+[OWNERSHIP_FOUNDATION_PROPOSAL.md](OWNERSHIP_FOUNDATION_PROPOSAL.md) B1–B5
+are approved for one OpenRouter credential only:
+
+- **B1:** private SQLite metadata and separately protected immutable material
+  generations, extending the existing secret-reference service. Configuration
+  stores only the installation-scoped opaque handle; current path roots remain.
+- **B2:** trusted Core transport, validation, balance and redaction bindings;
+  durable registration cannot invent consumers. Mandatory value-free access
+  audit precedes material release; audit failure denies access.
+- **B3:** explicit source-selected import and durable single-source cutover.
+  Environment credentials become import-only after cutover; missing/corrupt
+  managed state never silently restores env/home/file/cache fallback.
+- **B4:** one protected previous generation plus explicit approved local recovery
+  or re-import. Ordinary exports contain metadata only. New ordinary backups
+  omit selected managed and retained legacy material, with visible omission
+  status; direct legacy restore cannot overwrite managed authority. No new
+  portable secret-value export or provider-side revocation rollback is promised.
+- **B5:** private staged credential input bound to the canonical CHANGE operation,
+  reference and revisions; values never enter public inputs/proposals/History.
+  Existing setup and key-change entry points retain normal policy admission.
+
+Preserve existing provider selection, model-role routing, OpenRouter validation,
+balance and request paths. Anthropic/Ollama and unrelated backup behavior remain
+supported. Prove production routing and HTTP serialization with synthetic
+credentials and only the final HTTP connection mocked; live provider testing
+and personal credential migration are outside this task.
+
+Configuration, secret state, Operational History and runtime remain separate
+owners. Cross-store transitions require explicit crash fences, idempotent
+re-entry and recovery proof; no generic distributed transaction or workflow
+engine is introduced. Approval accepts the contract, not implementation closure.
+The broader Ownership Foundation and real application-binding gates remain open.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy

@@ -2,6 +2,31 @@
 
 Last updated: 2026-10-05
 
+## Ownership Foundation Boundary B — approved; implementation in progress
+
+The Project Owner approved Boundary A recommendations B1–B5 on 2026-10-05,
+including import-only environment credentials after cutover and the explicit
+local-only recovery/ordinary-backup limits. [D069](DECISIONS.md) records the
+accepted contract. Runtime closure and the broader Ownership Foundation remain
+open; no personal credential or application migration is authorized by this entry.
+
+**Baseline reconciliation:** fetched origin before implementation:
+`origin/master=54782bd`, `origin/igor2=b81a4f0`. Master is not an ancestor.
+The unmatched older roadmap/orchestration changes are superseded by current
+Igor 2 contracts/project policy. Inspected local-output separation, provider
+latency, systemd-identifier scrubbing, rendering regression coverage and private
+frontend documentation are present or subsequently evolved on igor2; the scrubber
+test patch is Git-equivalent. The missing `4c8a0dd` tool-envelope regex correction
+was reproduced by the existing failing rendering test, then reconciled alone as
+`6ecb492`, preserving current TUI changes. All five TimingPresentationTests pass;
+the broader test_ai_tui.py run stalled after 24 passing cases and was interrupted
+(exit 130), not recorded as a passing file/full gate. Diff check passed. No
+blanket merge or full-release certification is implied.
+
+Boundary B uses isolated synthetic credentials and mocked HTTP transport. Its
+required validation is the proposal's focused/affected plus supplemental proof
+plan, with existing release debt reported separately.
+
 ## Ownership Foundation Boundary A — discovery/proposal complete; implementation unaccepted
 
 [Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) audits clean `igor2` at
