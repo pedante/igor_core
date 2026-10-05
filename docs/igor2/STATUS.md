@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-05
 
-## Step 16D Cross-Incident Pattern Candidates — implementation complete; validation pending
+## Step 16D Cross-Incident Pattern Candidates — implemented; affected validation green
 
 D066 adds a deterministic `cross_incident_pattern` candidate above already
 reviewed typed incident learning. The initial pattern kind is
@@ -34,9 +34,15 @@ stale pattern review fail. Historical reviewed pattern snapshots remain
 immutable; `evidence_status` reports changed/missing source learning without
 rewriting them.
 
-**Validation:** pending final affected CI evidence on this branch.
+**Validation (2026-10-05):** the final affected gate is green: **315 PASS**,
+**0 new/baseline failures**, **0 timeouts**, **0 skips/tool errors**, and no new
+regressions in **93.168 s**. The run includes Local Learning unit/integration,
+Investigations, Operational History, baselines, Context/routing, capability
+authority, secret handling and approval/privilege regressions. Changed Python
+Ruff passes. Repository-wide audit jobs remain reserved for explicit full-release
+validation under the accepted validation-economics policy.
 
-## Step 16C → Local Learning typed-evidence integration — implementation complete; validation pending
+## Step 16C → Local Learning typed-evidence integration — implemented; affected validation green
 
 The Step 16B Local Learning service and Step 16C typed Investigation contract are
 now connected through a separate `typed_investigation_finding` candidate path.
