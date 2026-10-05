@@ -590,7 +590,11 @@ def build_reference_procedure_sources(tmp_path, *, verification_statuses=None, s
     statuses = verification_statuses or ["passed", "passed", "passed"]
     for index, verification_status in enumerate(statuses):
         action_operation = operation(
-            tmp_path, outcome="success", execution="succeeded", verification=verification_status)
+            tmp_path,
+            outcome="success" if verification_status == "passed" else "failed",
+            execution="succeeded",
+            verification=verification_status,
+        )
         verification_operation = action_operation
         if split_verification and index == len(statuses) - 1:
             verification_operation = operation(
@@ -689,7 +693,7 @@ def test_reference_procedure_identity_survives_new_incident_but_requires_pattern
 
 def test_reference_procedure_stale_review_and_evidence_status_follow_reviewed_sources(tmp_path):
     service, artifacts = build_reference_procedure_sources(tmp_path)
-    pattern_artifact = review(service, choose(service, "cross_incident_pattern"))
+    review(service, choose(service, "cross_incident_pattern"))
     procedure = choose(service, "reference_procedure")
 
     source = artifacts[0]["action"]
