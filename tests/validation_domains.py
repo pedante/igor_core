@@ -93,6 +93,12 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
         "tests/test_ai_settings_backend.py",
         "tests/core/test_ai_tui_backend.bats",
     ),
+    "operator": (
+        "tests/test_input_candidates.py",
+        "tests/test_operator_surface.py",
+        "tests/test_ai_tui_operator.py",
+        "tests/test_ai_operator_backend.py",
+    ),
     "deployment": (
         "tests/test_deployments.py",
         "tests/test_deployment_attachment.py",
@@ -137,7 +143,8 @@ _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("operational_history", "history"), "history"),
     (("module_contract", "module_loader", "module_contracts", "module_v2", "modules/"), "module"),
     (("config", "secret", "variables"), "configuration"),
-    (("tui", "frontend", "operator_backend", "operator_surface", "input_candidates", "ai_render", "ai_settings"), "tui"),
+    (("operator_surface", "input_candidates", "operator_backend"), "operator"),
+    (("tui", "frontend", "ai_render", "ai_settings"), "tui"),
     (("deployment", "deployments", "nextcloud_docker/lib/attachment"), "deployment"),
     (("domain_event", "event_bus", "ai_events"), "events"),
     (("automation", "healing", "judgment"), "automation"),

@@ -78,16 +78,18 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertEqual(pkg_domains, ["capability"])
         self.assertFalse(any("tui" in path for path in pkg_tests))
 
-    def test_operator_candidate_foundation_uses_capability_and_tui_domains(self):
+    def test_operator_candidate_foundation_uses_capability_and_operator_domains(self):
         domains, tests = affected_tests(
             ["core/lib/input_candidates.py", "core/lib/operator_surface.py"],
             ROOT,
         )
-        self.assertEqual(domains, ["capability", "tui"])
+        self.assertEqual(domains, ["capability", "operator"])
         self.assertIn("tests/test_input_candidates.py", tests)
         self.assertIn("tests/test_operator_surface.py", tests)
         self.assertIn("tests/test_module_contract.py", tests)
         self.assertIn("tests/test_ai_tui_operator.py", tests)
+        self.assertIn("tests/test_ai_operator_backend.py", tests)
+        self.assertNotIn("tests/test_ai_tui.py", tests)
         self.assertNotIn("tests/test_local_learning.py", tests)
 
     def test_unknown_implementation_change_falls_back_to_all_tests(self):
