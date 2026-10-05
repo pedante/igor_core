@@ -585,6 +585,56 @@ class TimingPresentationTests(unittest.TestCase):
             ["Output (1.25 s): svc.service\tactive\trunning"],
         )
 
+    def test_operator_capability_json_is_rendered_as_structured_payload(self):
+        state = tui.EventState()
+        payload = {
+            "affected_objects": ["host:local"],
+            "approval_status": "approved",
+            "capability_id": "system.service.list",
+            "capability_version": 2,
+            "execution_status": "succeeded",
+            "operation_id": "op-fixture",
+            "outcome": "success",
+            "owner": "system",
+            "provider": "system",
+            "result": {
+                "count": 3,
+                "services": (
+                    "alpha.service\tactive\trunning\n"
+                    "beta.service\tinactive\tdead\n"
+                    "broken.service\tfailed\tfailed"
+                ),
+                "api_key": "must-not-render",
+            },
+        }
+        tui.apply_event(state, event(
+            "action_output",
+            1,
+            display=json.dumps(payload, separators=(",", ":")),
+            duration_ms=3540,
+            exit_code=0,
+        ))
+
+        rendered = tui.render_activity(state, 120)
+        self.assertEqual(rendered[0], "Output (3.54 s):")
+        self.assertIn("  count: 3", rendered)
+        self.assertIn("  services:", rendered)
+        self.assertIn("    alpha.service active running", rendered)
+        self.assertIn("    beta.service inactive dead", rendered)
+        self.assertIn("    broken.service failed failed", rendered)
+        self.assertIn("  api_key: [secret hidden]", rendered)
+        joined = "\n".join(rendered)
+        self.assertNotIn('"capability_id"', joined)
+        self.assertNotIn('"operation_id"', joined)
+        self.assertNotIn("must-not-render", joined)
+        self.assertNotIn(r"\n", joined)
+
+    def test_malformed_json_action_output_falls_back_to_opaque_text(self):
+        state = tui.EventState()
+        raw = '{"result":{"count":2'
+        tui.apply_event(state, event("action_output", 1, display=raw))
+        self.assertEqual(tui.render_activity(state, 120), [f"Output: {raw}"])
+
     def test_local_result_strips_provider_transport_envelope(self):
         state = tui.EventState()
         tui.apply_event(state, event(
