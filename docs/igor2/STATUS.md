@@ -2,6 +2,44 @@
 
 Last updated: 2026-10-05
 
+## Step 16E Evidence-Backed Reference Procedures — implementation complete; validation pending
+
+D067 adds a deterministic `reference_procedure` candidate above an already
+accepted, still-current Step 16D pattern. The initial procedure kind is
+`single_action_verified`.
+
+**Eligibility:** at least three distinct Investigations represented by the
+accepted pattern must each have accepted, still-current typed `action` and
+`verification` Local Learning artifacts. Action text, verification text,
+related-object scope, compatibility and applicability owners must match. The
+initial contract supports one compatibility set and one action only.
+
+**Verification binding:** Investigation v2 has no general action→verification
+relationship. Step 16E therefore requires action and verification in each
+incident to bind the **same canonical Operational History operation**. That
+operation must have `execution_status=succeeded` and canonical
+`verification.status=passed`. Separate operations, failed/unknown verification
+or prose-only association cannot become a procedure.
+
+**Identity/revision:** procedure identity is semantic (scope, procedure kind,
+accepted pattern candidate identity, exact action/verification, objects and
+compatibility). Revision binds the exact accepted pattern artifact, accepted
+action/verification artifacts and one verified canonical operation per incident.
+Additional matching evidence keeps identity while changing revision and requiring
+another explicit review.
+
+**Authority:** accepted procedures are reference guidance only. They do not
+grant execution, approval, privilege, automation, remediation, desired state,
+responsibility, capability or executable runbook/playbook authority. They enter
+Context only through the existing explicit accepted Local Learning boundary.
+
+**Deferrals:** no multi-step sequencing, separate verification-operation
+relationship inference, semantic/fuzzy action equivalence, automatic acceptance,
+executable runbook generation, capability/playbook promotion or autonomous
+remediation is introduced.
+
+**Validation:** pending final affected CI evidence on this branch.
+
 ## Step 16D Cross-Incident Pattern Candidates — implemented; affected validation green
 
 D066 adds a deterministic `cross_incident_pattern` candidate above already
