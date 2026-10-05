@@ -158,6 +158,30 @@ source of truth.
 The LLM is a knowledge compiler/reasoning engine, not Igor's memory or
 authority.
 
+## Evidence-backed local learning
+
+Step 16B implements the first bounded local-learning contract in
+[LOCAL_LEARNING.md](LOCAL_LEARNING.md). Core derives recurring operational
+outcomes and attributed findings from resolved Investigations using canonical
+History/Investigation references. Derivation is deterministic and on demand;
+the operator explicitly reviews a revision-bound snapshot before it becomes
+accepted local reference knowledge. Baselines are explicit evidence summaries,
+not causal explanations.
+
+The service owns learning semantics and review state; it does not become a
+generic memory store or take ownership of source records. Reviewed artifacts
+preserve content, applicability, provenance and exact evidence references when
+source records disappear. Owner/module inactivity may withhold the artifact
+from active Context while retaining inspection. Accepted artifacts can inform
+context but cannot establish machine facts, desired configuration,
+responsibility, approval, privilege, automation or executable behavior.
+
+This initial implementation has no LLM dependency and does not infer causes or
+verified procedures absent typed supporting Investigation evidence. Legacy
+pattern files and session notes remain compatibility references without
+automatic import or dual-write. Portable OKF-compatible import/export remains
+separate work.
+
 The intended architecture is:
 
 ```text

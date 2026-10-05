@@ -9,6 +9,19 @@ from __future__ import annotations
 from pathlib import Path
 
 _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
+    "learning": (
+        "tests/test_local_learning.py",
+        "tests/test_local_learning_integration.py",
+        "tests/test_baselines.py",
+        "tests/test_operational_history.py",
+        "tests/test_investigations.py",
+        "tests/test_context_engine.py",
+        "tests/test_context_routing_integration.py",
+        "tests/test_capability_runtime.py",
+        "tests/test_secret_refs.py",
+        "tests/core/test_ai_approval.bats",
+        "tests/core/test_ai_privilege.bats",
+    ),
     "entrypoint": (
         "tests/test_ai_architecture.py",
         "tests/test_startup_privilege.py",
@@ -110,6 +123,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
 }
 
 _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("local_learning",), "learning"),
     (("capability", "capabilities", "approval", "safety", "privilege", "package", "core/lib/pkg.sh", "service_admission", "modules/docker/", "modules/system/"), "capability"),
     (("operational_history", "history"), "history"),
     (("module_contract", "module_loader", "module_contracts", "module_v2", "modules/"), "module"),

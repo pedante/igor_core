@@ -1,6 +1,8 @@
 # Step 16 — Explainable Operational Baselines
 
-Status: **bounded implementation candidate**.
+Status: **Step 16A and bounded Step 16B implemented; Step 16 remains PARTIAL**. See
+[LOCAL_LEARNING.md](LOCAL_LEARNING.md) for the reviewed local-learning
+contract and [STATUS.md](STATUS.md) for final implementation evidence.
 
 This first Step 16 slice derives explainable local baselines from existing
 canonical Operational History. It adds no new durable authority and no learning
@@ -124,14 +126,23 @@ If later baseline persistence is justified, it must retain source episode
 references/provenance and follow the persistent identity/migration rules in
 [PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md).
 
+## Step 16B boundary
+
+Step 16B adds evidence-backed candidates and explicitly reviewed local
+reference artifacts through the separate Local Learning Service. It may use
+baseline summaries as explicit supporting references, but a baseline alone
+does not establish causality or justify a cause/resolution claim. Candidate
+types, grouping and review semantics are defined in
+[LOCAL_LEARNING.md](LOCAL_LEARNING.md).
+
 ## Later Step 16 work
 
 This slice does not yet implement:
 
 - fact time-series baselines;
 - learned health thresholds;
-- symptom/cause/resolution patterns;
-- runbook lifecycle;
+- causal patterns and verified runbook derivation (deferred until evidence
+  contracts support those claims);
 - knowledge-artifact persistence/export;
 - OKF interchange;
 - semantic/vector indexing;

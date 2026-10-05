@@ -142,6 +142,26 @@ failure as a pass or truncating TAP finalization. Targeted timeout diagnostics
 can still opt into the native watchdog with `--bats-timeout N`. No BATS source,
 product fixture, reviewed baseline or result classification is rewritten.
 
+### Step 16B validation-runtime debt
+
+The Step 16B affected run on 2026-10-05 took **4,227.582 seconds (70.5 minutes)**:
+1,491 passing test/check identities, seven reviewed baseline failures, 12
+unmatched failures, two unmatched TUI palette timeouts and two permitted skips.
+The existing unknown-path fallback for `igor.sh` selected all tests even though
+its change was a thin headless Local Learning entry point. Repeated BATS
+failure cleanup and two 600-second palette group deadlines made that gate
+disproportionate to the bounded implementation. The full gate was started once,
+then stopped on explicit Project Owner instruction; it has only partial logs,
+not a completed release result.
+
+This is infrastructure/test-suite debt: broad entry-point selection, failed
+BATS watchdog cleanup, and historical unaccepted palette hangs need a separate
+bounded investigation. Step 16B changes no timeout, accepted baseline, unrelated
+test expectation or fallback mapping to resolve it. Completed focused/affected
+and real vertical-slice evidence supports review of the bounded change; the
+repository-wide gate remains non-green. See [STATUS.md](STATUS.md) for the
+failure attribution and Owner-directed finalization boundary.
+
 ## Reviewed baseline and environmental permissions
 
 [validation_baseline.json](../../tests/validation_baseline.json) is reviewed

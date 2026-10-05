@@ -23,7 +23,8 @@ if [ "${IGOR_TUI_MODE:-false}" = true ]; then
 fi
 
 # ── Script directory detection ───────────────────────────────────────────────────────
-export IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export IGOR_DIR
 
 # The UI, AI session, and private runtime belong to the invoking user. Root
 # execution would mix root state with a user's checkout and runtime directory.
@@ -41,6 +42,13 @@ export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 # source its code, run its validators, or create a tmux session first.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --learning)
+            # Reference discovery/review only; bypass all operational startup.
+            source "${IGOR_DIR}/core/lib/local_learning.sh"
+            [ "$#" -le 3 ] || exit 2
+            igor_learning_cli "${2:-status}" "${3:-}"
+            exit $?
+            ;;
         --deployments)
             # Query the owning registry before any module/config startup.
             source "${IGOR_DIR}/core/lib/deployments.sh"
@@ -1079,7 +1087,8 @@ _igor_run_ai_menu() {
 main_menu() {
     # ── Alert banner — show once on first launch if pending.log exists ────────
     # Skipped when _IGOR_STARTUP_ALERT_SHOWN=true (already shown before layout built).
-    local _pending="$(_igor_resolve_dir "alerts")/pending.log"
+    local _pending
+    _pending="$(_igor_resolve_dir "alerts")/pending.log"
     if [ "${_IGOR_STARTUP_ALERT_SHOWN:-false}" = "false" ] && \
        [ -f "$_pending" ] && [ -s "$_pending" ]; then
         clear

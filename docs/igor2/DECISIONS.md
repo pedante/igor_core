@@ -735,6 +735,32 @@ verification/Operational History. This step adds no automatic inference,
 runbook generation, Local Learning promotion/consumer change, model call,
 remediation or execution authority.
 
+### D065 — Local learning stores only explicitly reviewed evidence snapshots (Step 16B)
+
+The Project Owner approved [LOCAL_LEARNING.md](LOCAL_LEARNING.md) for the
+bounded Step 16B implementation. One Core-owned Local Learning Service derives
+deterministic, bounded candidates on demand from canonical Operational History,
+Investigations and explicit Step 16A baseline references. Initial types are
+recurring terminal outcomes and attributed findings from resolved
+Investigations. Statistical correlation alone does not establish cause,
+resolution or verification.
+
+Candidates are derived, not durably queued. Explicit review freezes the exact
+candidate/derivation revision, content, applicability, provenance, disposition
+and canonical evidence references in a private versioned snapshot. Source
+records are referenced rather than copied. Revision/state-token comparison
+rejects stale review; changed evidence requires a new candidate and review.
+Lifecycle is candidate to accepted, rejected or superseded, and accepted to
+superseded; rejected and superseded are terminal. Owner/module inactivity may
+exclude an accepted artifact from active Context but cannot erase it or its
+provenance. Explicit scoped reset/delete remains available.
+
+Only accepted, eligible artifacts enter bounded Context retrieval. All learning
+is reference-only and cannot set machine/desired state, responsibility,
+approval, privilege, automation or executable capability. No legacy pattern or
+session-note import/dual-write, causal pattern derivation, verified runbook
+generation, automatic acceptance, or LLM dependency is introduced.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy

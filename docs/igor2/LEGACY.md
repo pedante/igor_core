@@ -104,9 +104,11 @@ resource cleanup or responsibility transfer before those inventories exist.
 
 The packaged `system` host knowledge is now tracked independently of ignored
 installation-local `/knowledge/`. Root runbook selection and ownerless learned
-pattern/primer paths remain compatibility debt: migrate each source through
-explicit eligibility/provenance and recovery, rather than importing it into
-module authority or changing legacy selection in this boundary.
+pattern/primer paths remain compatibility/reference paths. Step 16B does not
+automatically import or dual-write `.pattern` files or session notes into Local
+Learning. A future explicit migration/import contract must establish
+eligibility, exact provenance and recovery first. Retire each path only after
+an equivalent reviewed artifact flow and its consumers are proven.
 
 Step 18 Boundary 2 repairs v2 knowledge candidate package-version provenance:
 the candidate now uses Core's validated manifest instead of an absent

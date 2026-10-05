@@ -1,6 +1,58 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-04
+Last updated: 2026-10-05
+
+## Step 16B — Evidence-Backed Local Learning — implemented; broader release gate non-green
+
+The Project Owner approved [D065](DECISIONS.md) and
+[LOCAL_LEARNING.md](LOCAL_LEARNING.md). Step 16A operational baselines are
+implemented; Step 16B adds one Core-owned service with deterministic on-demand
+derivation for recurring terminal outcomes and attributed findings from
+resolved Investigations. Candidates are not persisted. Explicit review stores
+the immutable candidate revision/content/applicability and canonical evidence
+references with disposition in private versioned persistence. Only accepted,
+eligible artifacts enter bounded Context retrieval. Legacy patterns/session
+notes are not imported or dual-written.
+
+The Step 16A audit found no substantive correctness issue: capability/version/
+provider/owner grouping, bounded terminal evidence, exact operation IDs, minimum
+samples, failed outcomes, deterministic summaries and reference-only authority
+remain intact. Learning adds stricter outcome/object-scope grouping without
+replacing the baseline projection.
+
+| Evidence | Result |
+|---|---|
+| Contract and lifecycle | 57 Local Learning tests pass: deterministic bounded derivation, isolation, stale source/store rejection, review dispositions, frozen retention, concurrency, schema/privacy/path validation and reset/export/recovery. |
+| Vertical slice and inspection | Eight integration tests pass, including real packaged System READ execution through canonical History, a resolved Investigation, headless review/restart, accepted Context retrieval and mock provider payload. Source authorities remain unchanged by derivation/review/inspection. |
+| Authority and eligibility | Reference text cannot create capability/policy/privilege, configuration, deployment, automation or System Model authority. Only explicit accepted IDs in matching scope with all applicability owners active enter Context; inactive-owner artifacts remain inspectable. |
+| Focused validation | Harness: 77 passing test/check identities and one nonzero ShellCheck group. The group contains only the two existing `igor.sh` SC2155 warnings; the new bridge is clean. Changed Python Ruff, shell syntax, structural/link checks and eight validation-domain tests pass. |
+| Repository lint | All 164 Ruff diagnostic identities match the pre-task `igor2` baseline; no new findings. No lint debt or reviewed validation baseline was changed. |
+| Affected regression | Preserved broad `igor.sh` mapping: 1,491 pass, seven exact reviewed baseline failures, three baseline identities passing, 12 unmatched failures, two unmatched palette timeouts and two permitted environment skips; no tool-unavailable/error result. All learning/source/Context/capability and configuration workflow groups pass. The full run was subsequently stopped on explicit Project Owner instruction; no completed full-run result is claimed. This is not a green release gate. |
+
+Unmatched failures include the two unchanged ShellCheck warnings, obsolete WIP/
+legacy System-bin assertions, composition/static-CLI file snapshots, service
+verification, palette filtering and four automation assertions. The palette
+hangs are historical **unaccepted** evidence in
+[validation_baseline_evidence.md](../../tests/validation_baseline_evidence.md),
+not accepted baseline entries. Bounded attribution found no Step 16B call path
+for these failures; composition/static inspection and automation remain
+unresolved broader-gate failures, rather than proven baseline reproductions.
+No baseline entry or mapping was weakened and no unrelated repair was made.
+Affected raw logs and exact identities are retained in
+`/tmp/igor16b-affected/summary.json`; focused evidence is in
+`/tmp/igor16b-focused/summary.json`. The affected run took 4,227.582 seconds
+(70.5 minutes), including repeated 180-second BATS failure cleanup and two
+600-second palette group timeouts. Full validation was started once and
+interrupted with exit 130 on the Owner’s instruction; its partial raw logs are
+in `/tmp/igor16b-full/`, with no final summary. The Owner authorized finalization
+using the completed focused/affected and vertical-slice evidence. The repository-
+wide release gate remains non-green; this authorization does not accept new
+baseline entries or claim repository regression closure. Validation-runtime
+and suite debt are recorded in [VALIDATION.md](VALIDATION.md).
+
+Step 16 remains **PARTIAL**. Causal patterns, verified runbooks, portable knowledge
+import/export and automatic retrieval remain deferred; no unfinished deployment,
+provisioning, resumable-work or TUI feature is required by this slice.
 
 ## Memory architecture reconciliation — documentation candidate
 
@@ -1887,9 +1939,9 @@ policy; no full release gate was required for this bounded slice.
 **Deferrals:** no causal inference, runbook derivation, automatic Local Learning
 promotion/consumption, typed-finding projection into the existing AI Context
 adapter, model invocation, remediation or execution authority is introduced.
-The Local Learning Step 16B implementation is not yet part of the current
-`igor2` baseline, so this slice exposes only the typed Investigation foundation
-and explicit later integration seams.
+The Local Learning Step 16B implementation is now reconciled into the same
+`igor2` baseline. Typed-finding consumption remains a separately bounded
+integration seam; Step 16C does not silently change Step 16B candidate meaning.
 
 ## Step 15C Durable Investigations — complete
 
