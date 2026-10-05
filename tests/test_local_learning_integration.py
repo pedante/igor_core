@@ -12,7 +12,6 @@ from unittest.mock import patch
 
 import pytest
 from test_local_learning import (
-    accept_typed_kinds,
     accept_typed_pair,
     build_reference_procedure_sources,
     choose,
