@@ -296,8 +296,12 @@ def _typed_finding(value: Any, evidence: dict[str, dict], hypothesis_ids: set[st
     _unique(value["judgments"])
     if value["status"] == "supported":
         _check(bool(value["supporting_evidence"]), "supported typed finding requires supporting evidence")
+        _check(all(evidence[ident]["availability"] == "available" for ident in value["supporting_evidence"]),
+               "supported typed finding requires available evidence")
     if value["status"] == "contradicted":
         _check(bool(value["contradicting_evidence"]), "contradicted typed finding requires contradicting evidence")
+        _check(all(evidence[ident]["availability"] == "available" for ident in value["contradicting_evidence"]),
+               "contradicted typed finding requires available evidence")
     supporting_kinds = {evidence[ident]["kind"] for ident in value["supporting_evidence"]}
     if value["status"] == "supported" and value["kind"] == "action":
         _check(bool(supporting_kinds & {"operation", "capability_result"}),
