@@ -1,8 +1,10 @@
 # Step 16 — Explainable Operational Baselines
 
-Status: **Step 16A and bounded Step 16B implemented; Step 16 remains PARTIAL**. See
-[LOCAL_LEARNING.md](LOCAL_LEARNING.md) for the reviewed local-learning
-contract and [STATUS.md](STATUS.md) for final implementation evidence.
+Status: **Step 16A implemented; retained baseline contract within the completed Step 16 learning/knowledge track**.
+The later Step 16B–16F layers are documented in
+[LOCAL_LEARNING.md](LOCAL_LEARNING.md), [KNOWLEDGE_ARTIFACTS.md](KNOWLEDGE_ARTIFACTS.md)
+and [STATUS.md](STATUS.md). This document remains the contract for the bounded
+Operational History baseline projection; it does not describe the whole Step 16 track.
 
 This first Step 16 slice derives explainable local baselines from existing
 canonical Operational History. It adds no new durable authority and no learning

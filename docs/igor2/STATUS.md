@@ -2,6 +2,14 @@
 
 Last updated: 2026-10-05
 
+## How to read this file
+
+The first current-focus section below is the active implementation status. Older
+sections are retained as scoped implementation/validation evidence and are not a
+linear work queue. For architecture decisions, use the authority order in
+[README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
+entries supersede historical timing statements.
+
 ## Ownership Foundation Boundary B — approved; implementation in progress
 
 The Project Owner approved Boundary A recommendations B1–B5 on 2026-10-05,
@@ -27,27 +35,29 @@ Boundary B uses isolated synthetic credentials and mocked HTTP transport. Its
 required validation is the proposal's focused/affected plus supplemental proof
 plan, with existing release debt reported separately.
 
-## Ownership Foundation Boundary A — discovery/proposal complete; implementation unaccepted
+## Ownership Foundation Boundary A — discovery/proposal complete; recommendations accepted
 
 [Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) audits clean `igor2` at
 `8850b67` and recommends one OpenRouter credential lifecycle as the next bounded
 implementation: existing setup/request/update, protected material and durable
 registration, references-only configuration, trusted consumption/redaction,
 value-free audit, inspection and explicit legacy-source cutover/recovery.
-Storage/registration, consumer admission, import precedence, recovery/backup and
-private-input mutation contracts remain **proposed**, requiring owner confirmation.
+Those Boundary A recommendations are now accepted by [D069](DECISIONS.md).
+Implementation remains bounded to the currently authorized OpenRouter Boundary B
+slice; broader ownership, application and personal-credential migration is not
+authorized by that acceptance.
 
 Configuration Service already has demonstrated `ai.verbose` and System warning
 consumers. The secret-reference adapter has isolated FD/access tests, but no
 durable real AI credential lifecycle. One selected credential would not close
 the entire Ownership Foundation or application/native-readback gates.
 
-This documentation audit reads no personal credential values and runs no runtime
-tests or provider requests. It records current local `master=54782bd` as
-non-ancestor and identifies a missing master tool-envelope regex correction;
-older reconciliation against `852ce8f` is not current-baseline proof. Intended
-master reconciliation is a prerequisite to later implementation. No runtime
-repair, migration, Nextcloud work or Boundary B is performed here.
+This Boundary A audit read no personal credential values and ran no runtime
+tests or provider requests. It recorded local `master=54782bd` as a
+non-ancestor and identified the tool-envelope regex reconciliation later handled
+above. Its original pre-approval timing is historical; D069 and the current
+Boundary B section govern present implementation status. Boundary A itself
+performed no runtime repair, migration or Nextcloud work.
 
 ## Step 16 learning/knowledge track — COMPLETE
 

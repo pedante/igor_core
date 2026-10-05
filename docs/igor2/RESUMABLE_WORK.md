@@ -1,8 +1,6 @@
 # Igor 2 resumable work and external dependencies
 
-Status: **accepted design direction; explicit Igor 2 runtime proof still future**.
-
-Status: **design proposal for architectural review; no implementation is implied by this document**.
+Status: **accepted design direction; runtime implementation and explicit Igor 2 proof remain future**.
 
 This document extends structured plans with durable waiting and resumption semantics for work that cannot complete synchronously.
 

@@ -905,14 +905,6 @@ permissions, isolation and signing policy is needed?
 
 Decision target: before a third-party distribution or marketplace contract.
 
-### Q007 — Relationship/deployment ownership — architecture resolved by D063
-
-D063 settles the architecture under owner-scoped Step 19. Preserve source
-claims, require explicitly approved deterministic transitions to accepted
-bindings/grants, and retain conflicts/drift rather than applying source-priority
-or last-write-wins. Runtime brownfield adoption, configuration targeting and
-application cutover remain the separate Boundary 2/3 proof gates.
-
 ### Q009 — Integration-rule packaging
 
 Do cross-module rules live with one module, separate integration packages, or a registry supporting both?
@@ -927,7 +919,20 @@ If remote control is added, which READ/CHANGE/DESTROY operations may execute wit
 
 Decision target: Step 22.
 
-### Q012 — Effective `system` threshold configuration — warning setting resolved by D062
+## Resolved questions retained for traceability
+
+Resolved questions stay here only so older references to their Q-numbers remain
+understandable. Their accepted D-decisions, not this section, are authoritative.
+
+### Q007 — Relationship/deployment ownership — resolved by D063
+
+D063 settles the architecture under owner-scoped Step 19. Preserve source
+claims, require explicitly approved deterministic transitions to accepted
+bindings/grants, and retain conflicts/drift rather than applying source-priority
+or last-write-wins. Runtime brownfield adoption, configuration targeting and
+application cutover remain the separate Boundary 2/3 proof gates.
+
+### Q012 — Effective `system` warning threshold — resolved for the bounded D062 setting
 
 D062 settles the first warning threshold: Core-owned
 `system.memory.warning_threshold_mib`, default 150 MiB, range 81–4096 MiB,

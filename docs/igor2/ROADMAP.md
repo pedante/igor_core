@@ -7,7 +7,10 @@ Status labels describe the current `igor2` baseline:
 - **CURRENT** — substantially present; audit/formalize rather than rebuild.
 - **PARTIAL** — useful implementation exists but target contract is incomplete.
 - **FUTURE** — target architecture is not yet established.
-- **NOW** — current work.
+
+The moving current-work cursor lives in [STATUS.md](STATUS.md), not in stable
+roadmap step headings. This prevents an old `NOW` label from becoming false
+after later boundaries advance.
 
 ## Execution gates
 
@@ -104,7 +107,7 @@ concrete requirement moves one into scope.
 
 ---
 
-## Step 1 — Legacy Audit & Cleanup Map — NOW
+## Step 1 — Legacy Audit & Cleanup Map — COMPLETE / HISTORICAL FOUNDATION
 
 Audit the **current** repository against Igor 2 invariants.
 

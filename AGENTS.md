@@ -12,7 +12,7 @@ For current implementation details, start with:
 For Igor 2 work, also read:
 
 1. [docs/igor2/README.md](docs/igor2/README.md)
-2. [docs/igor2/STATUS.md](docs/igor2/STATUS.md)
+2. the current-focus section at the top of [docs/igor2/STATUS.md](docs/igor2/STATUS.md); read older status sections only when the task needs their evidence
 3. [docs/igor2/EXECUTION.md](docs/igor2/EXECUTION.md) before implementing or closing a roadmap wave
 4. [docs/igor2/INFLUENCES.md](docs/igor2/INFLUENCES.md) when changing discovery, memory, plans, learning or AI/system boundaries
 5. only the remaining Igor 2 documents relevant to the task
@@ -31,6 +31,11 @@ For target architecture and migration decisions, use this order:
 6. current implementation documentation
 
 The code and current docs remain the authority for how Igor works **today**. Igor 2 documents describe the target and migration boundaries. If current behavior conflicts with a target invariant, surface the conflict instead of silently inventing a third design.
+
+The lifecycle rules in `docs/igor2/README.md` are part of this reading discipline.
+Proposal, future, exploration and historical-review documents are supporting
+context; they do not override the authority order above or silently authorize
+implementation.
 
 ## Existing foundations are not greenfield work
 

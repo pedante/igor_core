@@ -9,6 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
+    "documentation": (
+        "tests/test_documentation_health.py",
+    ),
     "learning": (
         "tests/test_local_learning.py",
         "tests/test_local_learning_integration.py",
@@ -68,6 +71,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
         "tests/modules/test_subsystem_activation.bats",
     ),
     "configuration": (
+        "tests/test_documentation_health.py",
         "tests/test_configuration.py",
         "tests/test_system_configuration_workflow.py",
         "tests/test_secret_refs.py",
@@ -173,6 +177,7 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
 
         if relative.startswith("docs/") or relative.endswith((".md", ".rst")):
             domains.add("documentation")
+            selected.update(_DOMAIN_TESTS["documentation"])
             continue
 
         if relative.startswith("tests/") and Path(relative).name.startswith("test_"):

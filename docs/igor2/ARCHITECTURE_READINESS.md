@@ -1,5 +1,7 @@
 # Architecture integration review and readiness assessment
 
+Status: **historical review snapshot; not current implementation authority**.
+
 Reviewed on 2026-10-01 against local `igor2` commit `d6229f0`, after 15B,
 D055, 15UI, 15C and 15D. The checkout was clean at review start.
 
@@ -10,14 +12,13 @@ application administration. Configuration ownership and a representative
 application workflow, together with default-launch cutover evidence, remain
 the principal readiness gaps.
 
-**Step 16 — Architecture Integration Review and Readiness Assessment is
-complete.** This is the requested review, not implementation or completion of
-the roadmap's [Step 16 — Baselines](ROADMAP.md#step-16--baselines--future).
-It accepts no new architecture and authorizes no later work. The read-only
-review is preserved here; finalization adds only documentation closure notes
-in [STATUS](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete)
-and [ROADMAP](ROADMAP.md#step-16--baselines--future). Runtime code and
-configuration are unchanged. Existing test evidence is attributed to
+**This architecture integration review is complete.** It is a dated readiness
+snapshot, not roadmap Step 16 and not current implementation authority. The
+later [Step 16 learning/knowledge track](ROADMAP.md) has its own contracts and
+status. This review accepts no new architecture and authorizes no later work.
+The read-only review is preserved here; current implementation state belongs in
+[STATUS.md](STATUS.md) and [ROADMAP.md](ROADMAP.md). Runtime code and
+configuration were unchanged by the review. Existing test evidence is attributed to
 [STATUS.md](STATUS.md), not presented as tests rerun during this review. No
 live-provider, terminal usability, remote Git freshness or deployment test was
 performed. Recommendations below require their own owner-scoped work.
@@ -270,10 +271,10 @@ implement them now. They preserve existing foundations and roadmap ordering.
    and separately approve the launcher/default transition with CLI and
    `--ai-tui` compatibility. No Step 20 implementation begins in this review.
 
-### Step 17 prerequisites identified
+### Historical relationship/deployment prerequisites (now owner-scoped Step 19)
 
-Before [Relationships & Deployments](ROADMAP.md#step-17--relationships--deployments--future)
-implementation, obtain owner confirmation for its bounded contract and workflow
+Before the work now tracked under [Step 19](ROADMAP.md), the review required
+owner confirmation for its bounded contract and workflow
 scope. Reuse Step 15A scoped identities and preserve relationship source claims
 and reconciliation across discovered, configured, installer-created,
 user-declared and AI-proposed evidence. Configuration ownership, effective
@@ -284,9 +285,9 @@ Use the representative application slice to prove structured plans, capability
 selection, approval/privilege, deterministic verification and retained
 deployment/relationship evidence under [EXECUTION](EXECUTION.md). Preserve v1
 Nextcloud compatibility. Durable external waits need their own accepted
-resumption contract if the selected workflow requires them. These are later
-design and evidence gates; Step 17 is not started or declared implementation-ready
-by this review.
+resumption contract if the selected workflow requires them. At review time
+these were later design and evidence gates; subsequent accepted Step 19
+contracts and current STATUS evidence supersede this timing statement.
 
 ## 6. Step 20 readiness assessment
 
@@ -297,7 +298,7 @@ provenance. Additional views can consume those contracts without another
 executor, configuration writer, context database or UI-owned policy.
 
 **Not established:** readiness to change `./igor.sh`'s default launch. The
-[roadmap](ROADMAP.md#step-20--igor-tui-as-default--partial) explicitly requires
+[roadmap](ROADMAP.md) explicitly requires
 normal workflows to use shared backend foundations. The current launcher still
 has the classic menu path, and the panel consolidates only part of the backend
 inspection set. Recent milestone completion supplies dependencies, not that
@@ -329,22 +330,24 @@ relationship/deployment reconciliation; durable external waits/resumable work.
 A workflow claiming restart-safe external waits must first supply that contract.
 None of these should be inferred from existing presentation primitives.
 
-Roadmap Step 16 baselines, all of Steps 17–19, named model specialists and a
-provider optimizer are not automatic prerequisites for an explicitly bounded
-Step 20 interface cutover. Their features cannot be promised before their
-separate contracts and evidence exist. This assessment does not authorize
-reordering or starting those milestones.
+At review time, roadmap Step 16 baselines and Steps 17–19 were not treated as
+automatic prerequisites for an explicitly bounded Step 20 interface cutover.
+Their later completion/implementation state is recorded in STATUS and ROADMAP
+and supersedes this dated schedule snapshot. This assessment still does not
+authorize work beyond its own review boundary.
 
 ## 7. Explicitly deferred items
 
 No code changes, feature implementation, module migration, default-launch
-change, new database, broad cleanup or new architecture decision accompanies
-this review. Deferred: baselines/local-learning authority transitions;
-autonomous agents/gathering or recursive reasoning; embeddings/compression
-services; automatic rankers/scouts; provider marketplace/optimizer/expansion;
-Jet/Laya; hidden background AI; unrestricted tools; automatic remediation or
-unattended CHANGE; generic workflow/resume engine; Nextcloud decomposition;
-remote approval; and Step 20 itself.
+change, new database, broad cleanup or new architecture decision accompanied
+this review. At the review date, deferred items included baselines/local
+learning, autonomous agents/gathering or recursive reasoning,
+embeddings/compression services, automatic rankers/scouts, provider
+marketplace/optimizer/expansion, Jet/Laya, hidden background AI, unrestricted
+tools, automatic remediation or unattended CHANGE, generic workflow/resume
+engine, Nextcloud decomposition, remote approval and Step 20 itself. Later
+accepted decisions and current STATUS/ROADMAP entries supersede this dated
+deferral list.
 
 Further work must retain one backend authority, explicit owner approval for
 new contracts and the [migration](MIGRATION.md) and
