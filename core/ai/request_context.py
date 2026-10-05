@@ -69,6 +69,8 @@ def evidence_sources(request, data_dir, *, active_owners=None):
                            "evidence_status": learning.evidence_status(ident)["evidence"]}
                 if "pattern" in candidate:
                     content["pattern"] = candidate["pattern"]
+                if "procedure" in candidate:
+                    content["procedure"] = candidate["procedure"]
                 sources.append({"id": ident, "kind": "local_learning", "owner": "core",
                                 "source_id": "local_learning", "source_version": row["version"],
                                 "scope_id": row["scope_id"], "authority_class": "reference",

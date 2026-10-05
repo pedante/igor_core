@@ -507,6 +507,14 @@ pair with matching object scope and compatibility. The pattern remains
 reference-only and requires its own explicit review. Similar prose is not merged
 automatically; reference procedures/runbooks remain deferred.
 
+Step 16E adds deterministic **evidence-backed reference procedure
+candidates** over an accepted current pattern. At least three pattern incidents
+must contribute the same exact reviewed action/verification pair; in each
+incident both findings must bind the same canonical successful History operation
+with passed verification. The procedure requires another explicit review and
+remains reference-only. Multi-step sequencing, semantic action equivalence and
+executable runbook/capability promotion remain deferred.
+
 Local experience may later be crystallized into a candidate Agent Skill/runbook
 or module contribution through the same import/promotion pipeline used for
 external knowledge. Promotion creates a reviewable candidate first; it does not
