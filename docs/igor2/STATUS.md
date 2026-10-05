@@ -1863,11 +1863,11 @@ existing records before the explicit change. Invalid typed claims and interrupte
 replacement retain the original v1 document. Valid v1/v2 export/restore preserve
 their storage version.
 
-**Typed evidence rules:** supported claims require attached supporting evidence;
-contradicted claims require attached contradicting evidence; one evidence ID
-cannot occupy both roles. Supported `action` requires operation or
-capability-result evidence. Supported `verification` requires verification
-evidence. Finding kind/statement are immutable after creation; reassessment
+**Typed evidence rules:** supported claims require attached supporting evidence
+recorded as available; contradicted claims require attached contradicting
+evidence recorded as available; one evidence ID cannot occupy both roles.
+Supported `action` requires operation or capability-result evidence. Supported
+`verification` requires verification evidence. Finding kind/statement are immutable after creation; reassessment
 updates status/reference links only. Terminal Investigations still require
 explicit reopen before any mutation.
 
@@ -1878,10 +1878,11 @@ rendering exposes the resulting records without a new UI authority.
 **Validation:** pending final focused/affected CI evidence on this branch.
 
 **Deferrals:** no causal inference, runbook derivation, automatic Local Learning
-promotion/consumption, model invocation, remediation or execution authority is
-introduced. The Local Learning Step 16B implementation is not yet part of the
-current `igor2` baseline, so this slice exposes only the typed Investigation
-foundation and an explicit later integration seam.
+promotion/consumption, typed-finding projection into the existing AI Context
+adapter, model invocation, remediation or execution authority is introduced.
+The Local Learning Step 16B implementation is not yet part of the current
+`igor2` baseline, so this slice exposes only the typed Investigation foundation
+and explicit later integration seams.
 
 ## Step 15C Durable Investigations — complete
 
