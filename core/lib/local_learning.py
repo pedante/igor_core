@@ -35,8 +35,10 @@ VERSION = 1
 DERIVATION_VERSION = 1
 TYPED_DERIVATION_VERSION = 2
 PATTERN_DERIVATION_VERSION = 3
+PROCEDURE_DERIVATION_VERSION = 4
 MIN_SAMPLES = 3
 MIN_PATTERN_INVESTIGATIONS = 3
+MIN_PROCEDURE_INVESTIGATIONS = 3
 MAX_LIMIT = 100
 INVESTIGATION_LIMIT = 20
 MAX_SOURCE_OPERATIONS = 256
@@ -195,6 +197,19 @@ def _pattern(value: Any) -> dict:
     return value
 
 
+def _procedure(value: Any) -> dict:
+    value = _closed(value, {
+        "kind", "pattern_candidate_id", "symptom", "cause", "action", "verification",
+        "distinct_investigations",
+    })
+    _check(value["kind"] == "single_action_verified", "invalid reference procedure kind")
+    _identifier(value["pattern_candidate_id"], _CANDIDATE)
+    for key in ("symptom", "cause", "action", "verification"):
+        _text(value[key], 2048)
+    _integer(value["distinct_investigations"], MIN_PROCEDURE_INVESTIGATIONS, INVESTIGATION_LIMIT)
+    return value
+
+
 def _evidence(value: Any, scope_id: str) -> None:
     _check(type(value) is dict and type(value.get("kind")) is str)
     kind = value["kind"]
@@ -223,8 +238,17 @@ def _evidence(value: Any, scope_id: str) -> None:
         _identifier(value["candidate_revision"], _DIGEST)
         _identifier(value["investigation_id"], _INVESTIGATION)
         _identifier(value["finding_id"], _TYPED_FINDING)
-        _check(value["finding_kind"] in {"symptom", "cause"},
-               "cross-incident patterns require symptom/cause learning")
+        _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
+               "invalid reviewed typed learning kind")
+        _timestamp(value["reviewed_at"])
+    elif kind == "reviewed_learning_artifact":
+        _closed(value, common | {"learning_id", "candidate_id", "candidate_revision",
+                                 "learning_type", "reviewed_at"})
+        _identifier(value["learning_id"], _LEARNING)
+        _identifier(value["candidate_id"], _CANDIDATE)
+        _identifier(value["candidate_revision"], _DIGEST)
+        _check(value["learning_type"] == "cross_incident_pattern",
+               "reference procedure requires reviewed cross-incident pattern")
         _timestamp(value["reviewed_at"])
     elif kind == "baseline":
         _closed(value, common | {"operation_ids"})
@@ -241,7 +265,7 @@ def _evidence(value: Any, scope_id: str) -> None:
         _check(source_version == HISTORY_VERSION, "unsupported History evidence version")
     elif kind == "baseline":
         _check(source_version == BASELINE_VERSION, "unsupported baseline evidence version")
-    elif kind == "reviewed_learning":
+    elif kind in {"reviewed_learning", "reviewed_learning_artifact"}:
         _check(source_version == VERSION, "unsupported reviewed learning evidence version")
     else:
         _check(source_version in INVESTIGATION_VERSIONS,
