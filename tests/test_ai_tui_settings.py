@@ -123,6 +123,14 @@ class SettingsViewTests(unittest.TestCase):
         self.assertEqual(properties["provider"]["source"],
                          "AI settings (legacy persistence)")
 
+    def test_legacy_snapshot_clears_stale_source_metadata(self):
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(
+            state, event(1, sources=SOURCES, **SNAPSHOT)))
+        self.assertEqual(state.settings_sources, SOURCES)
+        self.assertTrue(tui.apply_event(state, event(2, **SNAPSHOT)))
+        self.assertEqual(state.settings_sources, {})
+
     def test_snapshot_metadata_does_not_hide_typed_command_output(self):
         state = tui.EventState()
         state.begin_terminal_capture()
@@ -219,6 +227,7 @@ class SettingsViewTests(unittest.TestCase):
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._settings_overlay(Screen(keys), 17, reader, tui.EventState())
         self.assertIn((17, "mode executive"), sent)
+        self.assertEqual(sent.count((17, "settings snapshot")), 1)
 
     def test_provider_enum_selection_uses_settings_backend(self):
         keys = [10, tui.curses.KEY_DOWN, 10, 27]
@@ -232,6 +241,7 @@ class SettingsViewTests(unittest.TestCase):
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._settings_overlay(Screen(keys), 17, reader, tui.EventState())
         self.assertIn((17, "settings provider anthropic"), sent)
+        self.assertEqual(sent.count((17, "settings snapshot")), 1)
 
     def test_numeric_and_text_editing_use_single_line_input(self):
         numeric = Screen([tui.curses.KEY_END, ord("2"), 10])
@@ -256,6 +266,7 @@ class SettingsViewTests(unittest.TestCase):
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._settings_overlay(Screen(keys), 17, reader, tui.EventState())
         self.assertIn((17, "settings temperature 1.2"), sent)
+        self.assertEqual(sent.count((17, "settings snapshot")), 1)
 
     def test_backend_warning_is_not_replaced_by_a_saved_notice(self):
         keys = [tui.curses.KEY_DOWN] * 5 + [10, 27]
