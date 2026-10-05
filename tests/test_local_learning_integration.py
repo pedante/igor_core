@@ -12,7 +12,9 @@ from unittest.mock import patch
 
 import pytest
 from test_local_learning import (
+    accept_typed_kinds,
     accept_typed_pair,
+    build_reference_procedure_sources,
     choose,
     operation,
     repeated,
@@ -221,6 +223,33 @@ def test_reviewed_cross_incident_pattern_enters_context_as_reference_only(enviro
     assert "symptom_cause" in content
     assert "Storage exhaustion caused the service failure" in content
     assert "Service became unavailable" in content
+    assert model.dump() == model_before
+
+
+def test_reviewed_reference_procedure_is_headless_context_reference_not_capability(environment):
+    service, _artifacts = build_reference_procedure_sources(environment)
+    pattern = review(service, choose(service, "cross_incident_pattern"))
+    candidate = choose(service, "reference_procedure")
+    row = review(service, candidate)
+
+    assert cli(environment, "inspect", row["learning_id"]) == row
+    assert candidate["procedure"]["pattern_candidate_id"] == pattern["candidate"]["candidate_id"]
+
+    model, registry = SystemModel(), CapabilityRegistry()
+    model_before = model.dump()
+    with pytest.raises(CapabilityError):
+        registry.resolve(row["learning_id"])
+
+    selected, _view = request_context.assemble(
+        {}, selection(row), active_owners=["system"], data_dir=environment)
+    item = selected["context_items"][0]
+    content = json.dumps(item["content"])
+    assert item["kind"] == "local_learning"
+    assert item["authority_class"] == "reference"
+    assert "reference_procedure" in content
+    assert "single_action_verified" in content
+    assert "Restarted the affected service" in content
+    assert "Service health verification passed" in content
     assert model.dump() == model_before
 
 
