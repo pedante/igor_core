@@ -791,6 +791,40 @@ automation or executable behavior. Step 16D deliberately excludes action/
 verification procedure synthesis, runbook generation and capability promotion;
 those require a later explicit contract.
 
+### D067 — Reference procedures require an accepted pattern and same-operation passed verification (Step 16E)
+
+The Project Owner selected Step 16E after Step 16D was merged. Core may derive
+a `reference_procedure` only from an already **accepted, still-current**
+`cross_incident_pattern` plus accepted typed `action` and
+`verification` Local Learning artifacts from at least three of that pattern's
+distinct Investigations.
+
+The first bounded procedure kind is `single_action_verified`. Action and
+verification text must match exactly across the contributing incidents, and
+their object scope, compatibility and applicability owners must match the
+accepted pattern. The initial contract is deliberately single-compatibility.
+
+Investigation v2 does not encode a general “verification V verifies action A”
+relationship. Therefore Step 16E may pair an action and verification only when
+both reviewed typed findings reference the **same canonical Operational History
+operation** in that incident. That operation must have
+`execution_status=succeeded` and canonical `verification.status=passed`.
+Separate operations, failed/unknown verification and prose-only association do
+not qualify.
+
+The candidate references the exact accepted pattern artifact, accepted action/
+verification artifacts and one bound canonical operation per contributing
+Investigation. Procedure identity is semantic (scope, procedure kind, pattern
+candidate identity, exact action/verification, objects and compatibility);
+revision binds the exact reviewed evidence. New evidence therefore requires a
+fresh review without rewriting prior accepted snapshots.
+
+A reviewed procedure is `reference_only` guidance. It grants no execution,
+approval, privilege, automation, remediation, desired state, responsibility,
+capability or executable runbook/playbook authority. Multi-step sequencing,
+separate verification-operation relationships, semantic/fuzzy equivalence,
+automatic acceptance and executable promotion remain later explicit contracts.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
