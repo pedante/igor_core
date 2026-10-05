@@ -821,10 +821,130 @@ class LocalLearningService:
                     ))
                 except LearningError:
                     omitted.append({"source": finding_id, "reason": "unsafe_or_invalid_typed_finding"})
-        candidates.sort(key=lambda row: row["candidate_id"])
         with self._store() as (document, _):
             reviewed = {(row["candidate"]["candidate_id"], row["candidate"]["candidate_revision"]): row
                         for row in document["records"]} if document else {}
+
+        # Step 16D: derive cross-incident symptom/cause patterns only from
+        # already-accepted, still-current typed incident learning. Exact text,
+        # object scope and compatibility must match; semantic similarity is not
+        # inferred by this deterministic layer.
+        investigation_by_id = {row["investigation_id"]: row for row in investigations}
+        typed_sources = []
+        for candidate in candidates:
+            if candidate["learning_type"] != "typed_investigation_finding":
+                continue
+            artifact = reviewed.get((candidate["candidate_id"], candidate["candidate_revision"]))
+            if artifact is None or artifact["status"] != "accepted":
+                continue
+            typed_ref = next(ref for ref in candidate["evidence"]
+                             if ref["kind"] == "investigation_typed_finding")
+            if typed_ref["finding_kind"] not in {"symptom", "cause"}:
+                continue
+            investigation = investigation_by_id.get(typed_ref["investigation_id"])
+            if investigation is None:
+                continue
+            finding = next((item for item in investigation.get("typed_findings", [])
+                            if item["finding_id"] == typed_ref["finding_id"]), None)
+            if finding is None or finding["status"] != "supported":
+                continue
+            typed_sources.append({
+                "artifact": artifact,
+                "candidate": candidate,
+                "finding": finding,
+                "typed_ref": typed_ref,
+            })
+
+        per_investigation = {}
+        for source_item in typed_sources:
+            ident = source_item["typed_ref"]["investigation_id"]
+            kind = source_item["typed_ref"]["finding_kind"]
+            per_investigation.setdefault(ident, {}).setdefault(kind, []).append(source_item)
+
+        pattern_groups = {}
+        for ident, kinds in sorted(per_investigation.items()):
+            for symptom in sorted(kinds.get("symptom", []),
+                                  key=lambda item: item["artifact"]["learning_id"]):
+                for cause in sorted(kinds.get("cause", []),
+                                    key=lambda item: item["artifact"]["learning_id"]):
+                    if (symptom["candidate"]["related_objects"] != cause["candidate"]["related_objects"]
+                            or symptom["candidate"]["compatibility"] != cause["candidate"]["compatibility"]
+                            or symptom["candidate"]["applicability_owners"]
+                            != cause["candidate"]["applicability_owners"]):
+                        continue
+                    key = _compact({
+                        "symptom": symptom["finding"]["statement"],
+                        "cause": cause["finding"]["statement"],
+                        "related_objects": symptom["candidate"]["related_objects"],
+                        "compatibility": symptom["candidate"]["compatibility"],
+                    })
+                    current_pair = pattern_groups.setdefault(key, {}).get(ident)
+                    pair = (symptom, cause)
+                    if current_pair is None or (
+                        symptom["artifact"]["learning_id"], cause["artifact"]["learning_id"]
+                    ) < (
+                        current_pair[0]["artifact"]["learning_id"],
+                        current_pair[1]["artifact"]["learning_id"],
+                    ):
+                        pattern_groups[key][ident] = pair
+
+        for grouped in pattern_groups.values():
+            if len(grouped) < MIN_PATTERN_INVESTIGATIONS:
+                continue
+            pairs = [grouped[ident] for ident in sorted(grouped)]
+            symptom_statement = pairs[0][0]["finding"]["statement"]
+            cause_statement = pairs[0][1]["finding"]["statement"]
+            operation_ids = sorted({
+                ref["operation_id"]
+                for pair in pairs
+                for item in pair
+                for ref in item["candidate"]["evidence"]
+                if ref["kind"] == "operational_history"
+            })
+            rows = [cache.get(operation_id) for operation_id in operation_ids]
+            if not rows or any(row is None or not _usable(row) for row in rows):
+                omitted.append({"source": "cross_incident_pattern",
+                                "reason": "pattern_history_unavailable"})
+                continue
+            evidence = [_history_ref(row) for row in rows]
+            for pair in pairs:
+                for item in pair:
+                    evidence.append(_reviewed_learning_ref(
+                        item["artifact"], item["typed_ref"]))
+            related_objects = copy.deepcopy(pairs[0][0]["candidate"]["related_objects"])
+            pattern = {
+                "kind": "symptom_cause",
+                "symptom": symptom_statement,
+                "cause": cause_statement,
+                "distinct_investigations": len(pairs),
+            }
+            try:
+                candidates.append(_make_candidate(
+                    scope_id=scope_id,
+                    learning_type="cross_incident_pattern",
+                    statement=(
+                        f"Across {len(pairs)} reviewed investigations with matching compatibility, "
+                        f"symptom '{symptom_statement}' was paired with supported cause "
+                        f"'{cause_statement}'."
+                    ),
+                    uncertainty=[
+                        "Repeated reviewed incident evidence does not prove this symptom always has this cause.",
+                        "This pattern is reference-only and does not authorize diagnosis, remediation or execution.",
+                        "Only exact typed statements, object scope and compatibility are grouped; semantic similarity is not inferred.",
+                    ],
+                    rows=rows,
+                    related_objects=related_objects,
+                    evidence=evidence,
+                    query=query,
+                    pattern=pattern,
+                    investigation_count=len(pairs),
+                    minimum_samples=MIN_PATTERN_INVESTIGATIONS,
+                ))
+            except LearningError:
+                omitted.append({"source": "cross_incident_pattern",
+                                "reason": "unsafe_or_invalid_pattern"})
+
+        candidates.sort(key=lambda row: row["candidate_id"])
         current = []
         for candidate in candidates:
             row = reviewed.get((candidate["candidate_id"], candidate["candidate_revision"]))
