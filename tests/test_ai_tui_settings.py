@@ -1,19 +1,21 @@
-#!/usr/bin/env python3
 """Focused coverage for the interactive TUI settings view."""
 
+import importlib
 import os
 import sys
 import unittest
 from unittest.mock import patch
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
-import tui  # noqa: E402
+tui = importlib.import_module("tui")
 
 
-def event(sequence, **fields):
-    return {"event_type": "settings_snapshot", "sequence": sequence,
-            "settings": fields}
+def event(sequence, *, sources=None, **fields):
+    payload = {"event_type": "settings_snapshot", "sequence": sequence,
+               "settings": fields}
+    if sources is not None:
+        payload["sources"] = sources
+    return payload
 
 
 class Screen:
@@ -66,6 +68,17 @@ class Reader:
         return []
 
 
+SOURCES = {
+    "provider": "AI settings (legacy persistence)",
+    "model": "AI settings (legacy persistence)",
+    "temperature": "AI settings (legacy persistence)",
+    "max_tokens": "AI settings (legacy persistence)",
+    "mode": "AI mode control + legacy persistence",
+    "verbose": "Configuration Service resolver",
+    "ai_autostart": "Launcher preference (legacy persistence)",
+    "hybrid_menu": "Launcher preference (legacy persistence)",
+}
+
 SNAPSHOT = {
     "provider": "openrouter",
     "model": "deepseek/deepseek-chat-v3-0324",
@@ -95,12 +108,20 @@ class SettingsViewTests(unittest.TestCase):
     def test_settings_snapshot_is_projected_without_parallel_state(self):
         state = tui.EventState()
         snapshot = {**SNAPSHOT, "temperature": 0.7, "max_tokens": 4096}
-        self.assertTrue(tui.apply_event(state, event(1, **snapshot)))
+        self.assertTrue(tui.apply_event(
+            state, event(1, sources=SOURCES, **snapshot)))
         self.assertEqual(state.settings_snapshot, snapshot)
+        self.assertEqual(state.settings_sources, SOURCES)
         self.assertEqual((state.mode, state.provider, state.model),
                          ("assist", "openrouter", SNAPSHOT["model"]))
         self.assertEqual(tui.settings_value(snapshot, "mode"), "Assist")
         self.assertEqual(tui.settings_value(snapshot, "verbose"), "Off")
+        properties = {row["id"]: row for row in
+                      tui.settings_properties(snapshot, state.settings_sources)}
+        self.assertEqual(properties["verbose"]["source"],
+                         "Configuration Service resolver")
+        self.assertEqual(properties["provider"]["source"],
+                         "AI settings (legacy persistence)")
 
     def test_snapshot_metadata_does_not_hide_typed_command_output(self):
         state = tui.EventState()
@@ -123,9 +144,20 @@ class SettingsViewTests(unittest.TestCase):
         self.assertTrue(any("Provider" in line for line in selected))
         self.assertTrue(any("Model" in line for line in selected))
 
+    def test_settings_view_shows_backend_owned_field_source(self):
+        screen = Screen([27])
+        state = tui.EventState()
+        reader = Reader([event(1, sources=SOURCES, **SNAPSHOT)])
+        with patch.object(tui, "_send"), patch.object(
+                tui.os, "read", side_effect=BlockingIOError):
+            tui._settings_overlay(screen, 17, reader, state)
+        rendered = [str(call[2]) for call in screen.all_drawn if len(call) > 2]
+        self.assertTrue(any("AI settings (legacy persistence)" in row
+                            for row in rendered))
+
     def test_boolean_toggle_uses_existing_settings_command_route(self):
-        # Verbose is row 5. The second snapshot is what the backend would
-        # emit after accepting the command and persisting the new value.
+        # Verbose is row 5. The backend emits the changed snapshot only after
+        # the canonical Configuration Service mutation has completed.
         keys = [tui.curses.KEY_DOWN] * 5 + [10, 27]
         changed = {**SNAPSHOT, "verbose": "true"}
         state = tui.EventState()
@@ -140,10 +172,33 @@ class SettingsViewTests(unittest.TestCase):
                 patch.object(tui.os, "read", side_effect=BlockingIOError):
             tui._settings_overlay(screen, 17, reader, state)
         self.assertIn((17, "verbose on"), sent)
-        self.assertEqual(sent.count((17, "settings snapshot")), 2)
+        self.assertEqual(sent.count((17, "settings snapshot")), 1)
         self.assertEqual(state.settings_snapshot["verbose"], "true")
         self.assertTrue(any(len(call) > 2 and call[2] == "Saved"
                             for call in screen.all_drawn))
+
+    def test_verbose_change_never_queues_snapshot_as_approval_input(self):
+        keys = [tui.curses.KEY_DOWN] * 5 + [10]
+        sent = []
+        approval = {
+            "event_type": "approval_waiting",
+            "sequence": 2,
+            "operation_id": "op-settings",
+            "classification": "CHANGE",
+            "display": "Change ai.verbose",
+        }
+        reader = Reader(
+            [event(1, sources=SOURCES, **SNAPSHOT)],
+            after_send=lambda: approval if (17, "verbose on") in sent else None,
+        )
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), patch.object(
+                              tui.os, "read", side_effect=BlockingIOError):
+            tui._settings_overlay(Screen(keys), 17, reader, tui.EventState())
+        self.assertEqual(sent, [
+            (17, "settings snapshot"),
+            (17, "verbose on"),
+        ])
 
     def test_enum_selection_returns_canonical_value(self):
         screen = Screen([tui.curses.KEY_DOWN, 10])
