@@ -714,10 +714,11 @@ free-form findings.
 
 A typed finding binds an immutable kind/statement to explicit attached evidence,
 optional hypotheses/judgments and an assessment of `supported`,
-`contradicted` or `inconclusive`. Supported findings require supporting
-evidence. Supported actions additionally require operation/capability-result
-evidence; supported verification findings require verification evidence.
-Resolution of an Investigation never promotes a claim automatically.
+`contradicted` or `inconclusive`. Supported/contradicted assessments require
+evidence recorded as available on the asserted side. Supported actions
+additionally require operation/capability-result evidence; supported verification
+findings require verification evidence. Resolution of an Investigation never
+promotes a claim automatically.
 
 Existing version-1 stores remain readable/exportable without migration.
 Ordinary legacy mutations may remain v1. The first successful typed-finding
