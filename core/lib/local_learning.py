@@ -34,10 +34,13 @@ from privacy import scrub_text
 VERSION = 1
 DERIVATION_VERSION = 1
 TYPED_DERIVATION_VERSION = 2
+PATTERN_DERIVATION_VERSION = 3
 MIN_SAMPLES = 3
+MIN_PATTERN_INVESTIGATIONS = 3
 MAX_LIMIT = 100
 INVESTIGATION_LIMIT = 20
 MAX_SOURCE_OPERATIONS = 256
+MAX_EVIDENCE_REFS = MAX_SOURCE_OPERATIONS + 2 * INVESTIGATION_LIMIT + 2
 MAX_RECORDS = 256
 MAX_RECORD_BYTES = 262144
 MAX_STORE_BYTES = 8388608
@@ -183,6 +186,15 @@ def _query(value: Any) -> None:
         _check("." in value["capability_id"])
 
 
+def _pattern(value: Any) -> dict:
+    value = _closed(value, {"kind", "symptom", "cause", "distinct_investigations"})
+    _check(value["kind"] == "symptom_cause", "invalid cross-incident pattern kind")
+    _text(value["symptom"], 2048)
+    _text(value["cause"], 2048)
+    _integer(value["distinct_investigations"], MIN_PATTERN_INVESTIGATIONS, INVESTIGATION_LIMIT)
+    return value
+
+
 def _evidence(value: Any, scope_id: str) -> None:
     _check(type(value) is dict and type(value.get("kind")) is str)
     kind = value["kind"]
@@ -203,6 +215,17 @@ def _evidence(value: Any, scope_id: str) -> None:
         _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
                "invalid typed finding evidence kind")
         _timestamp(value["recorded_at"])
+    elif kind == "reviewed_learning":
+        _closed(value, common | {"learning_id", "candidate_id", "candidate_revision",
+                                 "investigation_id", "finding_id", "finding_kind", "reviewed_at"})
+        _identifier(value["learning_id"], _LEARNING)
+        _identifier(value["candidate_id"], _CANDIDATE)
+        _identifier(value["candidate_revision"], _DIGEST)
+        _identifier(value["investigation_id"], _INVESTIGATION)
+        _identifier(value["finding_id"], _TYPED_FINDING)
+        _check(value["finding_kind"] in {"symptom", "cause"},
+               "cross-incident patterns require symptom/cause learning")
+        _timestamp(value["reviewed_at"])
     elif kind == "baseline":
         _closed(value, common | {"operation_ids"})
         ids = _array(value["operation_ids"])
@@ -218,6 +241,8 @@ def _evidence(value: Any, scope_id: str) -> None:
         _check(source_version == HISTORY_VERSION, "unsupported History evidence version")
     elif kind == "baseline":
         _check(source_version == BASELINE_VERSION, "unsupported baseline evidence version")
+    elif kind == "reviewed_learning":
+        _check(source_version == VERSION, "unsupported reviewed learning evidence version")
     else:
         _check(source_version in INVESTIGATION_VERSIONS,
                "unsupported Investigation evidence version")
