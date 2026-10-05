@@ -57,8 +57,6 @@ def evidence_sources(request, data_dir):
                 content = {key: row[key] for key in (
                     "title", "summary", "status", "hypotheses", "findings",
                     "unresolved_questions", "evidence")}
-                if "typed_findings" in row:
-                    content["typed_findings"] = row["typed_findings"]
             else:
                 row = OperationalHistory(Path(data_dir)).inspect(ident)
                 kind, content = "operational_history", row
