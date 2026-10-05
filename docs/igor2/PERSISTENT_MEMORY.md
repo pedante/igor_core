@@ -586,6 +586,22 @@ No transition between those meanings is implicit.
 Learning artifacts retain evidence/provenance and reset semantics outside
 installed module packages.
 
+Step 16A baselines are on-demand read-only projections of bounded Operational
+History. Step 16B's [Local Learning Service](LOCAL_LEARNING.md) derives
+candidates on demand and persists only explicit reviewed snapshots and their
+dispositions. Each snapshot freezes the exact candidate revision, content,
+applicability, provenance and canonical source references the operator
+reviewed; it does not copy History episodes or Investigation records. Changed
+evidence requires a new candidate and review. Missing/pruned source records
+remain visible as unavailable references, while the reviewed artifact stays
+inspectable until explicit Local Learning reset/delete or supersession.
+
+Learning uses private bounded versioned persistence outside installed module
+directories. Module/owner inactivity affects Context eligibility, never
+retention or inspectability. Its reset/delete scope is separate from History,
+Investigations, desired configuration and module installation. Candidates are
+not persisted as a discovery queue.
+
 ## Persistence/backend contract
 
 ### Services are the API
