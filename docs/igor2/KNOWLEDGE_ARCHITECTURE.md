@@ -182,12 +182,19 @@ pattern files and session notes remain compatibility references without
 automatic import or dual-write. Portable OKF-compatible import/export remains
 separate work.
 
-Step 16D now adds one deterministic cross-incident pattern layer above reviewed
+Step 16D adds one deterministic cross-incident pattern layer above reviewed
 typed incident learning. It groups only exact reviewed symptom/cause pairs with
 matching scope/compatibility across at least three distinct Investigations.
-This produces reviewable reference knowledge, not a knowledge-graph edge,
-diagnostic rule or procedure. Semantic equivalence and reference-procedure
-synthesis remain later explicit contracts.
+
+Step 16E adds one bounded reference-procedure layer above an accepted current
+pattern. It requires exact reviewed action/verification pairs across at least
+three pattern incidents, with each pair bound to the same canonical successful
+History operation whose verification passed. The result is portable reference
+guidance, not an executable runbook, capability, automation or remediation
+authority.
+
+Semantic-equivalence grouping, multi-step procedure sequencing and executable
+promotion remain later explicit contracts.
 
 The intended architecture is:
 
