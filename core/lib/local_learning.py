@@ -21,8 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from baselines import VERSION as BASELINE_VERSION
 from baselines import BaselineError, summarize_episodes
+from investigations import SUPPORTED_VERSIONS as INVESTIGATION_VERSIONS
 from investigations import InvestigationError, InvestigationService
+from operational_history import VERSION as HISTORY_VERSION
 from operational_history import HistoryError, OperationalHistory, object_ref
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ai"))
@@ -200,7 +203,15 @@ def _evidence(value: Any, scope_id: str) -> None:
     else:
         raise LearningError("unknown learning evidence kind")
     _check(value["scope_id"] == scope_id, "nonlocal learning evidence")
-    _check(type(value["source_version"]) is int and value["source_version"] == VERSION)
+    source_version = value["source_version"]
+    _check(type(source_version) is int, "invalid learning source version")
+    if kind == "operational_history":
+        _check(source_version == HISTORY_VERSION, "unsupported History evidence version")
+    elif kind == "baseline":
+        _check(source_version == BASELINE_VERSION, "unsupported baseline evidence version")
+    else:
+        _check(source_version in INVESTIGATION_VERSIONS,
+               "unsupported Investigation evidence version")
     _identifier(value["digest"], _DIGEST)
 
 
