@@ -192,7 +192,13 @@ def render_properties(schemas: Any) -> list[str]:
     return rows or ["No properties supplied"]
 
 
-def render_structured(data: Any, *, max_rows: int = 200, max_depth: int = 6) -> list[str]:
+def render_structured(
+    data: Any,
+    *,
+    max_rows: int = 200,
+    max_depth: int = 6,
+    root_label: str = "backend",
+) -> list[str]:
     """Bounded read-only rendering for already sanitized inspection results."""
     rows: list[str] = []
     seen: set[int] = set()
@@ -217,12 +223,19 @@ def render_structured(data: Any, *, max_rows: int = 200, max_depth: int = 6) -> 
                 if len(rows) >= max_rows:
                     break
             seen.remove(id(value))
+        elif isinstance(value, str) and ("\n" in value or "\r" in value):
+            rows.append(prefix + ":")
+            continuation = "  " * (depth + 1)
+            for line in value.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+                if len(rows) >= max_rows:
+                    break
+                rows.append(continuation + display_text(line, 400))
         elif value is None or type(value) in (str, int, float, bool):
             rows.append(prefix + ": " + display_text(value))
         else:
             rows.append(prefix + ": [unsupported]")
 
-    visit(data, "backend", 0)
+    visit(data, root_label, 0)
     if len(rows) == max_rows:
         rows[-1] = "[inspection display bounded]"
     return rows

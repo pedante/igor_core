@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Small curses frontend for the structured Igor AI event stream.
 
 This module is intentionally a frontend boundary.  It never classifies or
@@ -34,8 +33,6 @@ from typing import Any
 _CORE_LIB = Path(__file__).resolve().parents[1] / "lib"
 if str(_CORE_LIB) not in sys.path:
     sys.path.insert(0, str(_CORE_LIB))
-from operator_surface import children as operator_children
-
 from interaction import (
     FocusModel,
     Property,
@@ -47,6 +44,7 @@ from interaction import (
     render_properties,
     render_structured,
 )
+from operator_surface import children as operator_children
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BACKEND = ("bash", str(REPO_ROOT / "igor.sh"), "--ai-tui-backend")
@@ -175,21 +173,21 @@ class EventState:
             self.pending_action = dict(event)
         elif kind == "privilege_waiting":
             self.privilege_waiting = dict(event)
-        elif kind in {"privilege_result", "action_result", "action_stopped"}:
-            if self.privilege_waiting:
-                waiting_id = str(self.privilege_waiting.get("operation_id") or "")
-                event_id = str(event.get("operation_id") or "")
-                if waiting_id and waiting_id == event_id:
-                    self.privilege_waiting = None
-        if kind in {"action_started", "action_output", "action_result",
-                    "action_skipped", "action_declined", "action_stopped"}:
-            if kind != "action_output" and self.pending_action:
-                pending_ids = {str(self.pending_action.get(key) or "") for key in
-                               ("action_id", "operation_id", "tool_call_id")} - {""}
-                event_ids = {str(event.get(key) or "") for key in
-                             ("action_id", "operation_id", "tool_call_id")} - {""}
-                if pending_ids & event_ids:
-                    self.pending_action = None
+        elif (kind in {"privilege_result", "action_result", "action_stopped"}
+              and self.privilege_waiting):
+            waiting_id = str(self.privilege_waiting.get("operation_id") or "")
+            event_id = str(event.get("operation_id") or "")
+            if waiting_id and waiting_id == event_id:
+                self.privilege_waiting = None
+        if (kind in {"action_started", "action_output", "action_result",
+                     "action_skipped", "action_declined", "action_stopped"}
+                and kind != "action_output" and self.pending_action):
+            pending_ids = {str(self.pending_action.get(key) or "") for key in
+                           ("action_id", "operation_id", "tool_call_id")} - {""}
+            event_ids = {str(event.get(key) or "") for key in
+                         ("action_id", "operation_id", "tool_call_id")} - {""}
+            if pending_ids & event_ids:
+                self.pending_action = None
         text = str(event.get("display") or event.get("output") or "")
         result = event.get("result")
         action_ids = {str(event.get(key) or "") for key in
@@ -296,6 +294,36 @@ def _display_result_output(value: Any) -> str:
     return text[match.end():] if match else text
 
 
+def _structured_action_output(text: str, label: str) -> str | None:
+    """Render JSON capability output as bounded operator data, not opaque prose."""
+    raw = _display_result_output(text).strip()
+    if not raw or raw[0] not in "[{":
+        return None
+    try:
+        decoded = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(decoded, (dict, list)):
+        return None
+
+    payload: Any = decoded
+    if isinstance(decoded, dict) and "result" in decoded and any(
+            key in decoded for key in ("capability_id", "operation_id", "execution_status", "outcome")):
+        payload = decoded.get("result")
+        if payload is None:
+            payload = {
+                key: decoded[key]
+                for key in ("execution_status", "outcome", "output_status")
+                if key in decoded
+            }
+    return "\n".join(render_structured(
+        payload,
+        root_label=label,
+        max_rows=200,
+        max_depth=8,
+    ))
+
+
 def _clean_terminal_output(raw: str) -> str:
     """Keep legacy command output readable without interpreting it as state."""
     clean = "".join(char for char in _ANSI.sub("", raw).replace("\r", "")
@@ -346,6 +374,10 @@ def _activity_text(item: Activity) -> str:
         prefix += " · administrator privileges"
     if item.event_type == "action_output" and item.duration_ms is not None:
         prefix += f" ({_format_duration(item.duration_ms)})"
+    if item.event_type == "action_output":
+        structured = _structured_action_output(item.text, prefix)
+        if structured is not None:
+            return structured
     if item.event_type == "terminal":
         return _clean_terminal_output(item.text)
     if item.event_type == "action_result":
