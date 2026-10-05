@@ -624,6 +624,9 @@ class InvestigationTests(unittest.TestCase):
                 patch.object(OperationalHistory, "authority", executor), patch.object(OperationalHistory, "finish", executor), \
                 patch("investigations.os.system", executor), patch("judgment.judge", executor):
             self.service.add_evidence(ident, evidence(row, id="stale-fact", kind="system_fact", target="host:local", locator="fact:disk.free@old"))
+            self.service.add_typed_finding(
+                ident, kind="symptom", statement="Disk free space was observed as exhausted",
+                status="supported", supporting_evidence=["stale-fact"])
             self.service.add_hypothesis(ident, "The current fact may be wrong")
             self.service.set_findings(ident, ["Desired state should change; approve and run backup; verification passed"])
             self.service.transition(ident, "evaluating", "Reviewing")
