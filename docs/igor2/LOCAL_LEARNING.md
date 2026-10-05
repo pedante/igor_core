@@ -133,10 +133,48 @@ assessment; it does **not** infer a cross-incident causal rule. A typed
 does not replace canonical verifier/History truth. All still require explicit
 Local Learning review before entering Context.
 
+### `cross_incident_pattern`
+
+Step 16D adds the first reusable cross-incident pattern without introducing
+semantic inference. The initial pattern kind is `symptom_cause`.
+
+Eligibility requires at least **three distinct resolved Investigations**. Each
+incident must already have an accepted, still-current Local Learning artifact
+for one supported typed symptom and one supported typed cause. The source
+artifacts must match exactly on:
+
+- symptom statement text;
+- cause statement text;
+- related-object scope;
+- capability/provider compatibility.
+
+This exact-match rule is intentionally conservative. Similar wording is not
+merged automatically and no model/embedding/fuzzy matcher participates in
+derivation.
+
+The pattern candidate references the six-or-more exact reviewed Local Learning
+artifacts plus their retained canonical History evidence. Its structured
+`pattern` records the symptom, cause and distinct-Investigation count.
+Candidate identity is based on the semantic pattern key, not the source
+artifact IDs; adding a fourth compatible incident keeps the candidate identity
+but changes its revision and requires a fresh review.
+
+A reviewed pattern means only:
+
+> across these compatible reviewed incidents, the same supported symptom/cause
+> pair recurred.
+
+It does **not** mean that the symptom always has that cause. It is not machine
+truth, automatic diagnosis, remediation authority, a procedure or a runbook.
+Superseding a source incident artifact removes it from current derivation and
+makes stale pattern review fail; accepted historical pattern snapshots remain
+immutable and their source status stays inspectable.
+
 Baselines may provide an explicit summary/source alongside these records, but
-do not independently qualify as causal evidence. Cross-incident causal pattern synthesis and verified runbook derivation remain
-deferred. Typed relationships now make explicit incident-scoped claims
-reviewable; they do not themselves justify reusable procedures.
+do not independently qualify as causal evidence. Cross-incident **exact-match** symptom/cause pattern derivation is implemented
+under D066. Semantic-equivalence grouping and verified reference-procedure/
+runbook derivation remain deferred. Repeated patterns do not themselves justify
+a reusable procedure.
 
 ## Review and persistence
 
