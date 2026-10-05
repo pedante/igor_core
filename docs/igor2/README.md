@@ -20,6 +20,8 @@ For most Igor 2 work:
    - `PERSISTENT_MEMORY.md` — accepted Step 15A persistent identity, System Model persistence, durable-reference and memory-ownership contract; [Operational History](../operational_history.md) documents the Step 15B service.
    - `INVESTIGATIONS.md` — accepted Step 15C durable local investigation lifecycle, typed references, hypotheses, scoped findings, private persistence and read-only inspection.
    - `CONTEXT_ROUTING.md` — accepted Step 15D bounded context relevance, optional judgment ranking, provider-neutral roles, explicit bindings and operational provenance.
+   - `BASELINES.md` — implemented Step 16A bounded explainable projections over retained Operational History.
+   - `LOCAL_LEARNING.md` — approved Step 16B candidate, reviewed snapshot, lifecycle, persistence, Context and authority contract.
    - `INTERACTION_SURFACE.md` — implemented Step 15UI interaction foundation: scrolling, selection/focus, toggleable control panel, schema-driven inputs/properties and backend-reported AI role visibility.
    - `OPERATOR_SURFACE.md` — initial contract-driven operator projection and `:` namespace explorer over existing module/capability/configuration registries; no parallel execution or menu authority.
    - `SYSTEM_ADMIN_EXPERIMENT.md` — experimental System 2.3.0 administration surface: distro-neutral host/package/service/log semantics over Debian/Arch platform mechanics and reviewed privileged adapters.
