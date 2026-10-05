@@ -1,7 +1,8 @@
-"""Durable investigation v1: scoped reference knowledge, never operational authority.
+"""Durable investigations: scoped reference knowledge, never operational authority.
 
-The JSON backend is private. Public records/export documents retain meaning and
-provenance; no method invokes a model, capability, observer or policy service.
+Version 2 adds typed investigation findings while preserving version-1 stores
+without read-time migration. No method invokes a model, capability, observer or
+policy service.
 """
 from __future__ import annotations
 
@@ -26,7 +27,9 @@ from operational_history import HistoryError, OperationalHistory, object_ref
 from privacy import redactions, scrub_text
 
 CONTRACT = "igor.investigation"
-VERSION = 1
+LEGACY_VERSION = 1
+VERSION = 2
+SUPPORTED_VERSIONS = {LEGACY_VERSION, VERSION}
 EXPORT_CONTRACT = "igor.investigations.export"
 _STORE_CONTRACT = "igor.investigations.store"
 MAX_RECORD_BYTES = 524288
@@ -44,16 +47,20 @@ TRANSITIONS = {
 HYPOTHESIS_STATES = {"proposed", "supported", "contradicted", "inconclusive"}
 # Reassessment is explicit and remains a claim, including a return to proposed.
 HYPOTHESIS_TRANSITIONS = {state: HYPOTHESIS_STATES - {state} for state in HYPOTHESIS_STATES}
+TYPED_FINDING_KINDS = {"symptom", "cause", "action", "verification"}
+TYPED_FINDING_STATES = {"supported", "contradicted", "inconclusive"}
 EVIDENCE_KINDS = {"operation", "verification", "capability_result", "system_fact", "file", "judgment"}
 _INVESTIGATION = re.compile(r"inv-[0-9a-f]{32}")
 _HYPOTHESIS = re.compile(r"hyp-[0-9a-f]{32}")
+_TYPED_FINDING = re.compile(r"tf-[0-9a-f]{32}")
 _OPERATION = re.compile(r"op-[0-9a-f]{32}")
 _JUDGMENT = re.compile(r"[0-9a-f]{32}")
 _IDENT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}")
 _SENSITIVE = re.compile(r"password|passwd|credential|api[_-]?key|(?:^|_)token(?:$|_)|secret(?!_ref)", re.IGNORECASE)
-_FIELDS = {"contract", "version", "investigation_id", "scope_id", "title", "summary", "source", "owner",
-           "provenance", "status", "timestamps", "related_objects", "related_history", "evidence",
-           "hypotheses", "judgments", "findings", "unresolved_questions", "closure_reason", "transitions"}
+_FIELDS_V1 = {"contract", "version", "investigation_id", "scope_id", "title", "summary", "source", "owner",
+              "provenance", "status", "timestamps", "related_objects", "related_history", "evidence",
+              "hypotheses", "judgments", "findings", "unresolved_questions", "closure_reason", "transitions"}
+_FIELDS_V2 = _FIELDS_V1 | {"typed_findings"}
 
 
 class InvestigationError(ValueError):
@@ -260,6 +267,60 @@ def _hypothesis(value: Any, evidence_ids: set[str], judgment_ids: set[str]) -> N
     confidence = value["confidence"]
     _check(confidence is None or (type(confidence) in {int, float} and math.isfinite(confidence) and 0 <= confidence <= 1))
     _check(_timestamp(value["created_at"]) <= _timestamp(value["updated_at"]))
+
+
+def _typed_finding(value: Any, evidence: dict[str, dict], hypothesis_ids: set[str],
+                   judgment_ids: set[str]) -> None:
+    _closed(value, {"finding_id", "kind", "statement", "status", "supporting_evidence",
+                    "contradicting_evidence", "hypotheses", "judgments", "created_at", "updated_at"})
+    _identifier(value["finding_id"], _TYPED_FINDING)
+    _check(type(value["kind"]) is str and value["kind"] in TYPED_FINDING_KINDS,
+           "invalid typed finding kind")
+    _text(value["statement"])
+    _check(type(value["status"]) is str and value["status"] in TYPED_FINDING_STATES,
+           "invalid typed finding status")
+    for key in ("supporting_evidence", "contradicting_evidence"):
+        for ident in _array(value[key]):
+            _identifier(ident)
+            _check(ident in evidence, "typed finding evidence unavailable")
+        _unique(value[key])
+    _check(not set(value["supporting_evidence"]) & set(value["contradicting_evidence"]),
+           "typed finding evidence conflicts")
+    for ident in _array(value["hypotheses"]):
+        _identifier(ident, _HYPOTHESIS)
+        _check(ident in hypothesis_ids, "typed finding hypothesis unavailable")
+    _unique(value["hypotheses"])
+    for ident in _array(value["judgments"]):
+        _identifier(ident, _JUDGMENT)
+        _check(ident in judgment_ids, "typed finding judgment unavailable")
+    _unique(value["judgments"])
+    if value["status"] == "supported":
+        _check(bool(value["supporting_evidence"]), "supported typed finding requires supporting evidence")
+    if value["status"] == "contradicted":
+        _check(bool(value["contradicting_evidence"]), "contradicted typed finding requires contradicting evidence")
+    supporting_kinds = {evidence[ident]["kind"] for ident in value["supporting_evidence"]}
+    if value["status"] == "supported" and value["kind"] == "action":
+        _check(bool(supporting_kinds & {"operation", "capability_result"}),
+               "supported action requires operation evidence")
+    if value["status"] == "supported" and value["kind"] == "verification":
+        _check("verification" in supporting_kinds,
+               "supported verification requires verification evidence")
+    _check(_timestamp(value["created_at"]) <= _timestamp(value["updated_at"]))
+
+
+def _upgrade_document(document: dict) -> dict:
+    """In-memory v1->v2 migration; caller persists only after a valid typed mutation."""
+    _check(document["version"] in SUPPORTED_VERSIONS, "unsupported investigation version")
+    if document["version"] == VERSION:
+        return document
+    _check(document["version"] == LEGACY_VERSION)
+    document["version"] = VERSION
+    for row in document["investigations"]:
+        _check(row["version"] == LEGACY_VERSION)
+        row["version"] = VERSION
+        row["typed_findings"] = []
+    _document(document, _STORE_CONTRACT)
+    return document
 
 
 def validate_investigation(value: Any) -> dict:
