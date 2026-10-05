@@ -2,6 +2,41 @@
 
 Last updated: 2026-10-05
 
+## Step 16C → Local Learning typed-evidence integration — implementation complete; validation pending
+
+The Step 16B Local Learning service and Step 16C typed Investigation contract are
+now connected through a separate `typed_investigation_finding` candidate path.
+Only explicitly `supported` typed findings from resolved version-2
+Investigations are eligible, and only when their available supporting evidence
+resolves to retained usable Operational History. Local Learning does not infer
+finding kind, support, cause, action success or verification.
+
+**Compatibility:** existing `recurring_outcome` and free-form
+`investigation_finding` candidates keep derivation version 1 and their existing
+identity/review semantics. Typed candidates use derivation version 2 and stable
+identity from scope + Investigation ID + typed `finding_id`. Existing reviewed
+Local Learning artifacts therefore remain valid and unchanged.
+
+**Evidence/provenance:** the typed candidate freezes the exact typed finding plus
+only the supporting evidence metadata it references, related objects, unresolved
+questions and Investigation resolution state. Canonical History episodes remain
+references. Reopening the Investigation or changing the finding/support makes a
+previous candidate stale; evidence-status inspection reports the changed source
+without rewriting a reviewed snapshot.
+
+**Authority:** a supported typed cause is still incident-scoped reference
+knowledge, not System Model truth or an automatically reusable causal rule. A
+supported action grants no permission to repeat it. A supported verification
+does not replace canonical capability verification. Explicit Local Learning
+review is still required before Context admission, and accepted content remains
+`reference` authority only.
+
+**Deferrals:** no automatic acceptance, cross-incident causal synthesis, runbook
+derivation, executable promotion, remediation, background learning or direct
+typed-Investigation-to-model bypass is introduced.
+
+**Validation:** pending final affected CI evidence on this branch.
+
 ## Step 16B — Evidence-Backed Local Learning — implemented; broader release gate non-green
 
 The Project Owner approved [D065](DECISIONS.md) and
