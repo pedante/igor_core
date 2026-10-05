@@ -927,7 +927,7 @@ class LocalLearningService:
         # object scope and compatibility must match; semantic similarity is not
         # inferred by this deterministic layer.
         investigation_by_id = {row["investigation_id"]: row for row in investigations}
-        typed_sources = []
+        accepted_typed_sources = []
         for candidate in candidates:
             if candidate["learning_type"] != "typed_investigation_finding":
                 continue
@@ -936,8 +936,6 @@ class LocalLearningService:
                 continue
             typed_ref = next(ref for ref in candidate["evidence"]
                              if ref["kind"] == "investigation_typed_finding")
-            if typed_ref["finding_kind"] not in {"symptom", "cause"}:
-                continue
             investigation = investigation_by_id.get(typed_ref["investigation_id"])
             if investigation is None:
                 continue
@@ -945,13 +943,17 @@ class LocalLearningService:
                             if item["finding_id"] == typed_ref["finding_id"]), None)
             if finding is None or finding["status"] != "supported":
                 continue
-            typed_sources.append({
+            accepted_typed_sources.append({
                 "artifact": artifact,
                 "candidate": candidate,
                 "finding": finding,
                 "typed_ref": typed_ref,
             })
 
+        typed_sources = [
+            item for item in accepted_typed_sources
+            if item["typed_ref"]["finding_kind"] in {"symptom", "cause"}
+        ]
         per_investigation = {}
         for source_item in typed_sources:
             ident = source_item["typed_ref"]["investigation_id"]
