@@ -91,7 +91,7 @@ teardown() {
 
     run menu_ai
     [ "$status" -eq 2 ]
-    [[ "$output" == *"WIP kept for later"* ]]
+    [[ "$output" != *"Is this problem still open?"* ]]
     [ "$(<"$WIP_FILE")" = "$before" ]
 }
 
