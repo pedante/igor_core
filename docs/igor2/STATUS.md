@@ -36,7 +36,7 @@ rewriting them.
 
 **Validation (2026-10-05):** the final affected gate is green: **315 PASS**,
 **0 new/baseline failures**, **0 timeouts**, **0 skips/tool errors**, and no new
-regressions in **93.168 s**. The run includes Local Learning unit/integration,
+regressions in **under two minutes**. The run includes Local Learning unit/integration,
 Investigations, Operational History, baselines, Context/routing, capability
 authority, secret handling and approval/privilege regressions. Changed Python
 Ruff passes. Repository-wide audit jobs remain reserved for explicit full-release
