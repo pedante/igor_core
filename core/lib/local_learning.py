@@ -232,7 +232,8 @@ def _evidence(value: Any, scope_id: str) -> None:
         _timestamp(value["recorded_at"])
     elif kind == "reviewed_learning":
         _closed(value, common | {"learning_id", "candidate_id", "candidate_revision",
-                                 "investigation_id", "finding_id", "finding_kind", "reviewed_at"})
+                                 "investigation_id", "finding_id", "finding_kind", "reviewed_at"},
+                {"operation_ids"})
         _identifier(value["learning_id"], _LEARNING)
         _identifier(value["candidate_id"], _CANDIDATE)
         _identifier(value["candidate_revision"], _DIGEST)
@@ -240,6 +241,12 @@ def _evidence(value: Any, scope_id: str) -> None:
         _identifier(value["finding_id"], _TYPED_FINDING)
         _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
                "invalid reviewed typed learning kind")
+        if "operation_ids" in value:
+            ids = _array(value["operation_ids"], 8)
+            for ident in ids:
+                _identifier(ident, _OPERATION)
+            _check(ids == sorted(set(ids)) and bool(ids),
+                   "reviewed learning operation IDs must be nonempty, unique and ordered")
         _timestamp(value["reviewed_at"])
     elif kind == "reviewed_learning_artifact":
         _closed(value, common | {"learning_id", "candidate_id", "candidate_revision",
@@ -412,11 +419,21 @@ def validate_candidate(value: Any) -> dict:
                and reviewed_artifacts[0]["candidate_id"] == procedure["pattern_candidate_id"])
         by_investigation = {}
         for ref in reviewed_learning:
-            by_investigation.setdefault(ref["investigation_id"], set()).add(ref["finding_kind"])
+            by_investigation.setdefault(ref["investigation_id"], []).append(ref)
         _check(len(by_investigation) == counts["investigations"])
-        _check(all(kinds == {"action", "verification"} for kinds in by_investigation.values()),
-               "procedure requires one reviewed action/verification pair per investigation")
+        bound_operations = []
+        for refs in by_investigation.values():
+            _check({ref["finding_kind"] for ref in refs} == {"action", "verification"} and len(refs) == 2,
+                   "procedure requires one reviewed action/verification pair per investigation")
+            _check(all("operation_ids" in ref and len(ref["operation_ids"]) == 1 for ref in refs),
+                   "procedure findings require one shared canonical operation")
+            _check(refs[0]["operation_ids"] == refs[1]["operation_ids"],
+                   "procedure action and verification must bind the same operation")
+            bound_operations.extend(refs[0]["operation_ids"])
         _check(len(reviewed_learning) == 2 * counts["investigations"])
+        _check(sorted(bound_operations) == sorted(operations)
+               and len(operations) == counts["investigations"],
+               "procedure History evidence must match bound incident operations")
     else:
         _check("pattern" not in value and "procedure" not in value)
         _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
@@ -532,8 +549,9 @@ def _typed_history_ids(source: dict) -> list[str]:
     return sorted(ids)
 
 
-def _reviewed_learning_ref(artifact: dict, typed_ref: dict) -> dict:
-    return {
+def _reviewed_learning_ref(artifact: dict, typed_ref: dict,
+                           operation_ids: list[str] | None = None) -> dict:
+    value = {
         "kind": "reviewed_learning",
         "scope_id": artifact["scope_id"],
         "source_version": artifact["version"],
@@ -546,6 +564,9 @@ def _reviewed_learning_ref(artifact: dict, typed_ref: dict) -> dict:
         "finding_kind": typed_ref["finding_kind"],
         "reviewed_at": artifact["review"]["at"],
     }
+    if operation_ids is not None:
+        value["operation_ids"] = sorted(set(operation_ids))
+    return value
 
 
 def _reviewed_artifact_ref(artifact: dict) -> dict:
