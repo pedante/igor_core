@@ -10,7 +10,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
 tui = importlib.import_module("tui")
 
