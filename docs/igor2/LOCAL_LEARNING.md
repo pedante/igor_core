@@ -170,11 +170,51 @@ Superseding a source incident artifact removes it from current derivation and
 makes stale pattern review fail; accepted historical pattern snapshots remain
 immutable and their source status stays inspectable.
 
+### `reference_procedure`
+
+Step 16E adds the first reviewed procedure layer above an **accepted current**
+Step 16D pattern. The initial procedure kind is `single_action_verified`.
+
+A candidate requires at least three distinct Investigations from the accepted
+pattern. Each contributing incident must already have accepted, current typed
+`action` and `verification` Local Learning artifacts. The action text and
+verification text must match exactly across incidents, and both artifacts must
+match the pattern's related-object scope, capability/provider compatibility and
+applicability owners.
+
+The critical evidence rule is stronger than simple co-occurrence. Investigation
+v2 does not yet encode arbitrary action→verification relationships, so action
+and verification qualify only when they both bind the **same canonical History
+operation**. That operation must have successful execution and canonical passed
+verification. A separate verification operation, failed/unknown verification,
+or two related prose findings cannot be synthesized into a procedure.
+
+The structured `procedure` contains:
+
+- `kind: single_action_verified`;
+- the accepted pattern's stable candidate identity;
+- symptom and cause copied from that reviewed pattern meaning;
+- exact action and verification statements;
+- distinct-Investigation count.
+
+Procedure identity is semantic and stable across additional matching evidence.
+Its revision freezes the exact accepted pattern artifact, exact accepted action/
+verification artifacts and one canonical verified operation per incident.
+Changed/superseded source learning removes current eligibility and makes stale
+review fail while historical accepted procedure snapshots remain inspectable.
+
+A reviewed procedure is **reference guidance only**. It may explain what was
+repeatedly done and successfully verified in comparable reviewed incidents, but
+it is not permission to run anything, an approval, an automation, remediation,
+a capability or an executable runbook/playbook. The current slice represents
+one action only; ordering, multi-step flows, rollback and separate
+verification-operation linkage remain future contracts.
+
 Baselines may provide an explicit summary/source alongside these records, but
-do not independently qualify as causal evidence. Cross-incident **exact-match** symptom/cause pattern derivation is implemented
-under D066. Semantic-equivalence grouping and verified reference-procedure/
-runbook derivation remain deferred. Repeated patterns do not themselves justify
-a reusable procedure.
+do not independently qualify as causal evidence. Cross-incident exact-match
+symptom/cause patterns are implemented under D066 and same-operation verified
+reference procedures under D067. Semantic-equivalence grouping and executable
+runbook/capability promotion remain deferred.
 
 ## Review and persistence
 
