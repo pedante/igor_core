@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-05
 
-## Step 16E Evidence-Backed Reference Procedures — implementation complete; validation pending
+## Step 16E Evidence-Backed Reference Procedures — implemented; affected validation green
 
 D067 adds a deterministic `reference_procedure` candidate above an already
 accepted, still-current Step 16D pattern. The initial procedure kind is
@@ -38,7 +38,13 @@ relationship inference, semantic/fuzzy action equivalence, automatic acceptance,
 executable runbook generation, capability/playbook promotion or autonomous
 remediation is introduced.
 
-**Validation:** pending final affected CI evidence on this branch.
+**Validation (2026-10-05):** the affected gate is green: **321 PASS**,
+**0 new/baseline failures**, **0 timeouts**, **0 skips/tool errors**, and no new
+regressions in **under four minutes**. The run covers Local Learning
+unit/integration, Investigations, Operational History, baselines, Context/routing,
+capability authority, secret handling and approval/privilege regressions.
+Changed Python Ruff passes. Repository-wide audit jobs remain reserved for
+explicit full-release validation under the accepted validation-economics policy.
 
 ## Step 16D Cross-Incident Pattern Candidates — implemented; affected validation green
 
