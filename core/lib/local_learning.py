@@ -33,6 +33,7 @@ from privacy import scrub_text
 
 VERSION = 1
 DERIVATION_VERSION = 1
+TYPED_DERIVATION_VERSION = 2
 MIN_SAMPLES = 3
 MAX_LIMIT = 100
 INVESTIGATION_LIMIT = 20
@@ -279,7 +280,13 @@ def validate_candidate(value: Any) -> dict:
     for key, actual in (("operations", len(operations)), ("investigations", len(investigations)), ("baselines", len(baselines))):
         _check(type(counts[key]) is int and counts[key] == actual)
     provenance = _closed(value["provenance"], {"derivation_version", "rule", "query"})
-    _check(type(provenance["derivation_version"]) is int and provenance["derivation_version"] == DERIVATION_VERSION)
+    expected_derivation = (
+        TYPED_DERIVATION_VERSION
+        if value["learning_type"] == "typed_investigation_finding"
+        else DERIVATION_VERSION
+    )
+    _check(type(provenance["derivation_version"]) is int
+           and provenance["derivation_version"] == expected_derivation)
     _check(provenance["rule"] == value["learning_type"])
     _query(provenance["query"])
     if value["learning_type"] == "recurring_outcome":
@@ -422,7 +429,15 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
                             "investigation_finding", "typed_investigation_finding"}),
                         "baselines": int(learning_type == "recurring_outcome"),
                         "minimum_samples": MIN_SAMPLES if learning_type == "recurring_outcome" else 1},
-             "provenance": {"derivation_version": DERIVATION_VERSION, "rule": learning_type, "query": query}}
+             "provenance": {
+                 "derivation_version": (
+                     TYPED_DERIVATION_VERSION
+                     if learning_type == "typed_investigation_finding"
+                     else DERIVATION_VERSION
+                 ),
+                 "rule": learning_type,
+                 "query": query,
+             }}
     value["candidate_id"] = _candidate_identity(value)
     value["candidate_revision"] = _digest({key: child for key, child in value.items() if key != "candidate_revision"})
     return validate_candidate(value)
@@ -770,6 +785,16 @@ class LocalLearningService:
                     resolved[ref["operation_id"]] = source
                 elif ref["kind"] == "investigation":
                     source = self._investigations.inspect(ref["investigation_id"])
+                elif ref["kind"] == "investigation_typed_finding":
+                    investigation = self._investigations.inspect(ref["investigation_id"])
+                    finding = next(
+                        (item for item in investigation.get("typed_findings", [])
+                         if item["finding_id"] == ref["finding_id"]),
+                        None,
+                    )
+                    if finding is None:
+                        raise InvestigationError("typed finding unavailable")
+                    source = _typed_finding_source(investigation, finding)
                 else:
                     # Evidence lists are canonically ordered, not traversal-ordered;
                     # resolve exact baseline references independently if necessary.
