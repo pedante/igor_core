@@ -1875,7 +1875,14 @@ explicit reopen before any mutation.
 accepts the two typed-finding mutations, and generic structured inspection/15UI
 rendering exposes the resulting records without a new UI authority.
 
-**Validation:** pending final focused/affected CI evidence on this branch.
+**Validation (2026-10-05):** the final affected gate is green. The focused
+Investigation service suite passed **30 tests and 96 subtests**; the real
+headless/15UI inspection slice passed **4 tests**. Changed Python files pass
+Ruff, the Investigation shell bridge passes ShellCheck and Bash syntax, and the
+shared affected harness reports **111 PASS**, **0 new failures**, **0 new
+timeouts**, **0 skips/tool errors**, in **7.757 s**. Ordinary-PR repository-wide
+Ruff/ShellCheck audit jobs were skipped by the accepted validation-economics
+policy; no full release gate was required for this bounded slice.
 
 **Deferrals:** no causal inference, runbook derivation, automatic Local Learning
 promotion/consumption, typed-finding projection into the existing AI Context
