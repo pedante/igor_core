@@ -204,13 +204,14 @@ class InvestigationTests(unittest.TestCase):
     def test_typed_finding_evidence_semantics_fail_closed_and_atomically(self):
         row = create(self.service)
         ident = row["investigation_id"]
-        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation"))
-        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification"))
+        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="unknown-evidence", kind="operation"))
         before = self.snapshot()
         invalid = [
             {"kind": "cause", "statement": "Unsupported cause", "status": "supported"},
             {"kind": "cause", "statement": "Unknown evidence cannot support", "status": "supported",
-             "supporting_evidence": ["backup-failure"]},
+             "supporting_evidence": ["unknown-evidence"]},
             {"kind": "cause", "statement": "Missing evidence", "status": "supported",
              "supporting_evidence": ["missing"]},
             {"kind": "action", "statement": "Action claim", "status": "supported",
@@ -275,7 +276,7 @@ class InvestigationTests(unittest.TestCase):
         ident = row["investigation_id"]
         downgrade_store_to_v1(self.store)
         legacy = self.service.inspect(ident)
-        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation"))
+        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation", availability="available"))
         before = self.snapshot()
         with patch("investigations.os.replace", side_effect=OSError("fixture migration interruption")), \
                 self.assertRaises(InvestigationError):
