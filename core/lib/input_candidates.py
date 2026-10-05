@@ -87,7 +87,7 @@ def validate_selector(value: Any, *, input_type: str | None = None) -> dict[str,
     return copy.deepcopy(value)
 
 
-def _candidate_rows(value: Any, limit: int) -> list[dict[str, Any]]:
+def _candidate_rows(value: Any, limit: int, *, input_type: str | None = None) -> list[dict[str, Any]]:
     if not isinstance(value, list) or len(value) > limit:
         raise _error("candidates must be a bounded array")
     result: list[dict[str, Any]] = []
@@ -96,6 +96,8 @@ def _candidate_rows(value: Any, limit: int) -> list[dict[str, Any]]:
         if not isinstance(raw, dict) or set(raw) - {"value", "label", "detail", "object_id"}:
             raise _error(f"candidates[{index}] has invalid fields")
         candidate_value = _bounded_text(raw.get("value"), f"candidates[{index}].value", 512)
+        if input_type == "object_id" and not _OBJECT_ID.fullmatch(candidate_value):
+            raise _error(f"candidates[{index}].value is not an object identity")
         if candidate_value in seen:
             raise _error("candidate values must be unique")
         seen.add(candidate_value)
@@ -121,6 +123,7 @@ def _normalize_result(
     source_kind: str,
     source_id: str,
     limit: int,
+    input_type: str | None,
 ) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise _error("candidate resolver result must be an object")
@@ -131,7 +134,7 @@ def _normalize_result(
     state = raw.get("state")
     if state not in _STATES:
         raise _error("candidate resolver state is invalid")
-    rows = _candidate_rows(raw.get("candidates", []), limit)
+    rows = _candidate_rows(raw.get("candidates", []), limit, input_type=input_type)
     reason = raw.get("reason")
     if state == "ready" and not rows:
         raise _error("ready candidate result must contain candidates")
@@ -256,6 +259,7 @@ class CandidateResolverRegistry:
                 source_kind=source_kind,
                 source_id=source_id,
                 limit=self._max_candidates,
+                input_type=input_type,
             )
             if result["state"] in {"ready", "empty"}:
                 return result

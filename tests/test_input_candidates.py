@@ -133,6 +133,17 @@ class InputCandidateTests(unittest.TestCase):
         self.assertIsNone(result["source"])
         self.assertEqual(result["candidates"], [])
 
+
+    def test_object_id_selector_rejects_non_object_candidate_values(self):
+        selector = {"schema_version": 1, "kind": "resource", "resource_kind": "service"}
+        registry = CandidateResolverRegistry()
+        registry.register(
+            "service", "platform", "systemd.service.objects",
+            lambda selected: {"state": "ready", "candidates": [{"value": "cron.service"}]},
+        )
+        with self.assertRaisesRegex(CandidateError, "object identity"):
+            registry.resolve(selector, input_type="object_id")
+
     def test_selector_metadata_never_relaxes_capability_validation(self):
         schema = {
             "properties": {

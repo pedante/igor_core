@@ -575,7 +575,10 @@ def cached_build_surface(
     if not isinstance(payload, dict) or payload.get("seed_version") != 1:
         raise SurfaceError("invalid operator surface seed")
     if source_digest is None:
-        implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        implementation = hashlib.sha256()
+        for path in (Path(__file__), Path(__file__).with_name("input_candidates.py")):
+            implementation.update(path.read_bytes())
+        implementation_digest = implementation.hexdigest()
         source_raw = json.dumps(
             {"implementation": implementation_digest, "seed": payload},
             sort_keys=True, separators=(",", ":"),
