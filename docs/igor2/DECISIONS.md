@@ -761,6 +761,36 @@ approval, privilege, automation or executable capability. No legacy pattern or
 session-note import/dual-write, causal pattern derivation, verified runbook
 generation, automatic acceptance, or LLM dependency is introduced.
 
+### D066 — Cross-incident patterns require repeated reviewed typed incident knowledge (Step 16D)
+
+The Project Owner selected Step 16D after the Step 16B/16C learning foundation
+was merged. Core may derive a `cross_incident_pattern` candidate only from
+already **accepted**, still-current `typed_investigation_finding` Local
+Learning artifacts. Raw Investigation prose, unresolved typed findings and
+unreviewed incident candidates do not qualify.
+
+The first bounded pattern is `symptom_cause`. It requires at least three
+distinct resolved Investigations, each contributing one accepted supported
+symptom and one accepted supported cause. The deterministic layer groups only
+**exactly equal typed symptom text, cause text, related-object scope and
+compatibility**. It does not use an LLM, embeddings, fuzzy matching or inferred
+semantic equivalence. Similar wording remains separate evidence until a future
+explicit proposal/review contract exists.
+
+Pattern identity is semantic (scope, pattern kind, exact symptom/cause,
+objects and compatibility), while revision includes the exact reviewed source
+artifacts and retained History evidence. A fourth compatible incident therefore
+keeps the pattern identity but creates a new revision requiring another explicit
+review. Superseded/changed source learning makes stale review fail and remains
+visible through evidence-status inspection.
+
+The pattern remains `reference_only`. Repetition does not prove that every
+future occurrence of the symptom has the cause, does not authorize diagnosis or
+remediation, and does not create desired state, responsibility, permission,
+automation or executable behavior. Step 16D deliberately excludes action/
+verification procedure synthesis, runbook generation and capability promotion;
+those require a later explicit contract.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
