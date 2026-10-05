@@ -60,6 +60,15 @@ def evidence_sources(request, data_dir, *, active_owners=None):
                 candidate = row["candidate"]
                 owners = set(active_owners or ()) | {"core"}
                 eligible = set(candidate["applicability_owners"]) <= owners
+                content = {"learning_type": candidate["learning_type"],
+                           "statement": candidate["statement"], "uncertainty": candidate["uncertainty"],
+                           "related_objects": candidate["related_objects"],
+                           "compatibility": candidate["compatibility"],
+                           "evidence": candidate["evidence"], "counts": candidate["counts"],
+                           "provenance": candidate["provenance"], "review": row["review"],
+                           "evidence_status": learning.evidence_status(ident)["evidence"]}
+                if "pattern" in candidate:
+                    content["pattern"] = candidate["pattern"]
                 sources.append({"id": ident, "kind": "local_learning", "owner": "core",
                                 "source_id": "local_learning", "source_version": row["version"],
                                 "scope_id": row["scope_id"], "authority_class": "reference",
@@ -67,13 +76,7 @@ def evidence_sources(request, data_dir, *, active_owners=None):
                                 "recorded_at": row["timestamps"]["created_at"],
                                 "availability": "available" if eligible else "inactive",
                                 "freshness": "reviewed_reference", "sensitivity": "public",
-                                "content": {"learning_type": candidate["learning_type"],
-                                            "statement": candidate["statement"], "uncertainty": candidate["uncertainty"],
-                                            "related_objects": candidate["related_objects"],
-                                            "compatibility": candidate["compatibility"],
-                                            "evidence": candidate["evidence"], "counts": candidate["counts"],
-                                            "provenance": candidate["provenance"], "review": row["review"],
-                                            "evidence_status": learning.evidence_status(ident)["evidence"]}})
+                                "content": content})
                 continue
             if ident.startswith("inv-"):
                 row = InvestigationService(Path(data_dir)).inspect(ident)
