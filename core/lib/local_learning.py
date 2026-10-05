@@ -48,6 +48,7 @@ _CANDIDATE = re.compile(r"lc-[0-9a-f]{64}")
 _LEARNING = re.compile(r"learn-[0-9a-f]{32}")
 _OPERATION = re.compile(r"op-[0-9a-f]{32}")
 _INVESTIGATION = re.compile(r"inv-[0-9a-f]{32}")
+_TYPED_FINDING = re.compile(r"tf-[0-9a-f]{32}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _IDENT = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*")
 _STATES = {"accepted", "rejected", "superseded"}
@@ -194,6 +195,13 @@ def _evidence(value: Any, scope_id: str) -> None:
         _identifier(value["investigation_id"], _INVESTIGATION)
         _timestamp(value["recorded_at"])
         _integer(value["finding_index"], 0, 31)
+    elif kind == "investigation_typed_finding":
+        _closed(value, common | {"investigation_id", "recorded_at", "finding_id", "finding_kind"})
+        _identifier(value["investigation_id"], _INVESTIGATION)
+        _identifier(value["finding_id"], _TYPED_FINDING)
+        _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
+               "invalid typed finding evidence kind")
+        _timestamp(value["recorded_at"])
     elif kind == "baseline":
         _closed(value, common | {"operation_ids"})
         ids = _array(value["operation_ids"])
@@ -212,6 +220,8 @@ def _evidence(value: Any, scope_id: str) -> None:
     else:
         _check(source_version in INVESTIGATION_VERSIONS,
                "unsupported Investigation evidence version")
+        if kind == "investigation_typed_finding":
+            _check(source_version >= 2, "typed finding evidence requires Investigation v2")
     _identifier(value["digest"], _DIGEST)
 
 
@@ -219,10 +229,16 @@ def _candidate_identity(candidate: dict) -> str:
     if candidate["learning_type"] == "recurring_outcome":
         identity = {key: candidate[key] for key in (
             "scope_id", "learning_type", "capability", "provider", "related_objects", "outcome")}
-    else:
+    elif candidate["learning_type"] == "investigation_finding":
         investigation = next(ref for ref in candidate["evidence"] if ref["kind"] == "investigation")
         identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
                     "investigation_id": investigation["investigation_id"], "finding_index": investigation["finding_index"]}
+    else:
+        investigation = next(ref for ref in candidate["evidence"]
+                             if ref["kind"] == "investigation_typed_finding")
+        identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
+                    "investigation_id": investigation["investigation_id"],
+                    "finding_id": investigation["finding_id"]}
     return "lc-" + _digest(identity)
 
 
@@ -235,7 +251,8 @@ def validate_candidate(value: Any) -> dict:
     _identifier(value["candidate_id"], _CANDIDATE)
     _identifier(value["candidate_revision"], _DIGEST)
     scope_id = _scope(value["scope_id"])
-    _check(type(value["learning_type"]) is str and value["learning_type"] in {"recurring_outcome", "investigation_finding"})
+    _check(type(value["learning_type"]) is str and value["learning_type"] in {
+        "recurring_outcome", "investigation_finding", "typed_investigation_finding"})
     owners = _array(value["applicability_owners"], 128)
     for owner in owners:
         _identifier(owner)
@@ -254,7 +271,8 @@ def validate_candidate(value: Any) -> dict:
         _evidence(ref, scope_id)
     _check([_compact(ref) for ref in evidence] == sorted({_compact(ref) for ref in evidence}))
     operations = [ref["operation_id"] for ref in evidence if ref["kind"] == "operational_history"]
-    investigations = [ref for ref in evidence if ref["kind"] == "investigation"]
+    investigations = [ref for ref in evidence
+                      if ref["kind"] in {"investigation", "investigation_typed_finding"}]
     baselines = [ref for ref in evidence if ref["kind"] == "baseline"]
     _check(len(operations) == len(set(operations)) and bool(operations))
     counts = _closed(value["counts"], {"operations", "investigations", "baselines", "minimum_samples"})
