@@ -1238,7 +1238,7 @@ class LocalLearningService:
                     if finding is None:
                         raise InvestigationError("typed finding unavailable")
                     source = _typed_finding_source(investigation, finding)
-                elif ref["kind"] == "reviewed_learning":
+                elif ref["kind"] in {"reviewed_learning", "reviewed_learning_artifact"}:
                     source = self.inspect(ref["learning_id"])
                 else:
                     # Evidence lists are canonically ordered, not traversal-ordered;
