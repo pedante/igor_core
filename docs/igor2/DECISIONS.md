@@ -704,6 +704,36 @@ deterministic approval/CAS controls accepted topology and responsibility;
 conflict/drift is explicit. It does not claim brownfield/runtime proof before
 Boundaries 2/3. General integration-rule packaging Q009 remains deferred.
 
+### D064 — Typed Investigation findings require explicit evidence relationships (Step 16C)
+
+The Project Owner approved the bounded Step 16C extension to
+[INVESTIGATIONS.md](INVESTIGATIONS.md). Investigation schema version 2 adds
+stable typed findings for `symptom`, `cause`, `action` and `verification`
+without changing the authority of Investigations or reinterpreting existing
+free-form findings.
+
+A typed finding binds an immutable kind/statement to explicit attached evidence,
+optional hypotheses/judgments and an assessment of `supported`,
+`contradicted` or `inconclusive`. Supported findings require supporting
+evidence. Supported actions additionally require operation/capability-result
+evidence; supported verification findings require verification evidence.
+Resolution of an Investigation never promotes a claim automatically.
+
+Existing version-1 stores remain readable/exportable without migration.
+Ordinary legacy mutations may remain v1. The first successful typed-finding
+mutation performs one atomic additive v1->v2 document migration, preserving
+existing semantics and adding empty typed-finding collections before applying
+the explicit change. Failed validation or interrupted persistence retains the
+original v1 document. New stores use v2; v1/v2 export and restore preserve their
+version.
+
+Typed findings remain investigation-scoped reference knowledge. Cause does not
+become a System Model fact, action does not grant execution permission, and an
+Investigation verification claim does not replace canonical capability
+verification/Operational History. This step adds no automatic inference,
+runbook generation, Local Learning promotion/consumer change, model call,
+remediation or execution authority.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
