@@ -324,11 +324,12 @@ def _upgrade_document(document: dict) -> dict:
 
 
 def validate_investigation(value: Any) -> dict:
-    """Validate/detach v1 knowledge. Shape/binding never proves factual truth."""
+    """Validate/detach investigation knowledge. Shape/binding never proves factual truth."""
     value = _copy(value)
-    _closed(value, _FIELDS)
-    _check(value["contract"] == CONTRACT and type(value["version"]) is int and value["version"] == VERSION,
+    _check(type(value.get("version")) is int and value["version"] in SUPPORTED_VERSIONS,
            "unsupported investigation version")
+    _closed(value, _FIELDS_V2 if value["version"] == VERSION else _FIELDS_V1)
+    _check(value["contract"] == CONTRACT)
     _identifier(value["investigation_id"], _INVESTIGATION)
     scope_id = _scope(value["scope_id"])
     _text(value["title"], 160)
@@ -344,10 +345,12 @@ def validate_investigation(value: Any) -> dict:
     _check(created <= updated)
     _object_refs(value["related_objects"], scope_id)
     _history_refs(value["related_history"], scope_id)
+    evidence_by_id = {}
     for evidence in _array(value["evidence"], 128):
         _evidence(evidence, scope_id)
         if evidence["kind"] in {"operation", "verification", "capability_result"}:
             _check(evidence["target"] in {ref["operation_id"] for ref in value["related_history"]})
+        evidence_by_id[evidence["id"]] = evidence
     _unique(value["evidence"], "id")
     for attached in _array(value["judgments"], 8):
         _judgment(attached, scope_id)
@@ -355,9 +358,15 @@ def validate_investigation(value: Any) -> dict:
     judgment_ids = [item["record"]["judgment_id"] for item in value["judgments"]]
     _unique(judgment_ids)
     for hypothesis in _array(value["hypotheses"]):
-        _hypothesis(hypothesis, {ref["id"] for ref in value["evidence"]}, set(judgment_ids))
+        _hypothesis(hypothesis, set(evidence_by_id), set(judgment_ids))
         _check(created <= _timestamp(hypothesis["created_at"]) <= _timestamp(hypothesis["updated_at"]) <= updated)
+    hypothesis_ids = {item["hypothesis_id"] for item in value["hypotheses"]}
     _unique(value["hypotheses"], "hypothesis_id")
+    if value["version"] == VERSION:
+        for finding in _array(value["typed_findings"]):
+            _typed_finding(finding, evidence_by_id, hypothesis_ids, set(judgment_ids))
+            _check(created <= _timestamp(finding["created_at"]) <= _timestamp(finding["updated_at"]) <= updated)
+        _unique(value["typed_findings"], "finding_id")
     for key in ("findings", "unresolved_questions"):
         for item in _array(value[key]):
             _text(item)
@@ -389,11 +398,13 @@ def validate_investigation(value: Any) -> dict:
 def _document(value: Any, contract: str) -> dict:
     value = _copy(value, MAX_STORE_BYTES)
     _closed(value, {"contract", "version", "scope_id", "investigations"})
-    _check(value["contract"] == contract and type(value["version"]) is int and value["version"] == VERSION,
+    _check(value["contract"] == contract and type(value["version"]) is int
+           and value["version"] in SUPPORTED_VERSIONS,
            "unsupported investigation document version; original retained")
     scope_id = _scope(value["scope_id"])
     for record in _array(value["investigations"], MAX_INVESTIGATIONS):
         validate_investigation(record)
+        _check(record["version"] == value["version"], "mixed investigation versions are not supported")
         _check(record["scope_id"] == scope_id, "investigation document scope mismatch")
     _unique(value["investigations"], "investigation_id")
     return value
