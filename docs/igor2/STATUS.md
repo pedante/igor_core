@@ -2,6 +2,40 @@
 
 Last updated: 2026-10-05
 
+## Step 16D Cross-Incident Pattern Candidates — implementation complete; validation pending
+
+D066 adds a deterministic `cross_incident_pattern` candidate above already
+reviewed typed incident learning. The initial pattern kind is
+`symptom_cause`.
+
+**Eligibility:** at least three distinct resolved Investigations must each have
+an accepted, still-current typed symptom artifact and accepted, still-current
+typed cause artifact. The exact symptom statement, cause statement,
+related-object set and capability/provider compatibility must match. The
+derivation layer performs no semantic similarity, model call, embedding lookup
+or fuzzy grouping.
+
+**Identity/revision:** pattern identity is semantic (scope, pattern kind, exact
+symptom/cause, objects and compatibility). The revision binds the current
+reviewed source artifacts and retained History evidence. Additional compatible
+incidents therefore keep identity while changing revision and requiring another
+explicit review.
+
+**Authority:** a reviewed pattern states only that the same supported
+symptom/cause pair recurred across the cited compatible incidents. It does not
+claim the symptom always has that cause, create a diagnostic rule, alter System
+Model truth, authorize remediation, grant capability authority or create a
+procedure/runbook. Accepted patterns enter Context only through the existing
+Local Learning reference boundary.
+
+**Source lifecycle:** only accepted typed incident artifacts count. A
+superseded/changed source removes the current pattern contribution and makes a
+stale pattern review fail. Historical reviewed pattern snapshots remain
+immutable; `evidence_status` reports changed/missing source learning without
+rewriting them.
+
+**Validation:** pending final affected CI evidence on this branch.
+
 ## Step 16C → Local Learning typed-evidence integration — implementation complete; validation pending
 
 The Step 16B Local Learning service and Step 16C typed Investigation contract are
