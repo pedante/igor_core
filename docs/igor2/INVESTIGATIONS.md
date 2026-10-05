@@ -110,6 +110,15 @@ stable typed `finding_id` and explicit kind/status; it does not infer support,
 promote the finding automatically, or change Investigation authority. Local
 Learning acceptance remains a second explicit reference-knowledge review.
 
+Step 16E does not add a new Investigation relationship schema. In particular,
+Igor still cannot infer that an arbitrary typed verification “verifies” an
+arbitrary typed action. Reference-procedure derivation is permitted only when
+accepted action and verification findings from the same Investigation both
+resolve to the **same canonical History operation**, and that operation records
+successful execution with canonical passed verification. Multi-operation
+sequencing and explicit action→verification relations remain future
+Investigation-contract work.
+
 ## Evidence and subsystem ownership
 
 Evidence has a local ID, kind, scope, target identity, source, recorded timestamp,
