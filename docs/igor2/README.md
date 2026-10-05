@@ -81,3 +81,4 @@ These files are architectural memory, not a second implementation.
 - Significant compatibility/debt belongs in `LEGACY.md`.
 - Current implementation details belong next to current code/tests/docs.
 - Git history is the archive for superseded planning/handoff documents; stale copies should not remain in active docs merely for history.
+\n- [Portable Knowledge Artifacts](KNOWLEDGE_ARTIFACTS.md) — Step 16F OKF-compatible reference interchange.\n

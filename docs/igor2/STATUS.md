@@ -2,6 +2,64 @@
 
 Last updated: 2026-10-05
 
+## Step 16 learning/knowledge track — COMPLETE
+
+Steps 16A–16F now form one closed bounded foundation:
+
+- explainable baselines over canonical Operational History;
+- explicit evidence-backed Local Learning review;
+- typed Investigation symptom/cause/action/verification evidence;
+- reviewed typed incident learning;
+- deterministic cross-incident symptom/cause patterns;
+- evidence-backed reference procedures;
+- portable OKF v0.2-compatible Knowledge Artifact interchange.
+
+All remain reference-oriented unless another explicit authoritative contract
+applies. Imported knowledge is still untrusted/nonpersistent; reviewed patterns
+and procedures grant no execution, approval, privilege, automation, desired
+state or responsibility.
+
+Deterministic corpus indexing, semantic/vector search and executable promotion
+are now deferred optimization/horizon work rather than the next Step 16 slices.
+The active Igor 2 roadmap returns to system-completion gates, beginning with
+reusable Resource Discovery & Domain Recognition.
+
+## Step 16F Portable Knowledge Artifacts — implemented; clean rebased validation green
+
+D068 adds a stateless Core portability boundary for reviewed reference knowledge.
+The initial profile targets **OKF v0.2** and one Knowledge Artifact per bundle.
+
+**Export:** only accepted Local Learning is eligible. Igor produces a root
+`index.md` declaring `okf_version: "0.2"` plus one Markdown concept using
+standard OKF type/title/description/resource/tags/status/generated/verified/
+sources metadata. A producer-defined `igor_artifact` field preserves Igor's
+typed pattern/procedure semantics, applicability, derivation and evidence
+digests. Artifact identity is deterministic for the reviewed semantic revision.
+
+**Import:** one-concept bundles are parsed through a bounded dependency-free
+profile. Generic OKF concepts and Igor-extended concepts normalize to
+`reference_only`, `trust: untrusted_import`, `persistence: none`.
+External human/process verification is retained as provenance but never becomes
+Igor acceptance. Unsupported versions, advanced/multiline YAML, secret-bearing
+content, symlinked paths and oversized/ambiguous bundles fail closed.
+
+**Authority:** import writes no Local Learning/Context/System Model/
+Configuration/deployment/module/capability state and executes nothing. No
+knowledge database, background importer, automatic acceptance or executable
+promotion is introduced.
+
+**Profile limits:** multi-concept/recursive bundles, general YAML, persistent
+import review/acceptance, imported Context retrieval, corpus indexing and
+semantic/vector search remain separate later work.
+
+**Validation (2026-10-05):** after merging Step 16E and rebuilding PR #61 as
+a clean 16F-only delta on the new `igor2` baseline, affected validation is
+green: **439 PASS**, **0 new failures**, **0 new timeouts**, **1 reviewed
+baseline failure**, **2 baseline identities now fixed**, **0 skips/tool
+errors**, and **no new regressions** in **254.432 s**. Repository-wide audit
+jobs remain reserved for explicit full-release validation under the accepted
+validation-economics policy.
+
 ## Step 16E Evidence-Backed Reference Procedures — implemented; affected validation green
 
 D067 adds a deterministic `reference_procedure` candidate above an already

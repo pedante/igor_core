@@ -42,6 +42,14 @@ export IGOR_STACKS="${IGOR_STACKS:-${IGOR_DIR}/config/stacks}"
 # source its code, run its validators, or create a tmux session first.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     case "${1:-}" in
+        --knowledge)
+            # Portable reference-knowledge interchange only; import validates
+            # and normalizes but never persists or activates knowledge.
+            source "${IGOR_DIR}/core/lib/knowledge_artifacts.sh"
+            [ "$#" -le 3 ] || exit 2
+            igor_knowledge_cli "${2:-status}" "${3:-}"
+            exit $?
+            ;;
         --learning)
             # Reference discovery/review only; bypass all operational startup.
             source "${IGOR_DIR}/core/lib/local_learning.sh"
