@@ -377,6 +377,35 @@ def _history_ref(row: dict) -> dict:
             "source_version": row["schema_version"], "digest": _digest(row), "recorded_at": row["timestamps"]["terminal_at"]}
 
 
+def _typed_finding_source(investigation: dict, finding: dict) -> dict:
+    """Freeze only semantic source material used by one typed learning candidate."""
+    supporting = set(finding["supporting_evidence"])
+    evidence = sorted(
+        (copy.deepcopy(item) for item in investigation["evidence"] if item["id"] in supporting),
+        key=_compact,
+    )
+    _check(len(evidence) == len(supporting), "typed finding supporting evidence unavailable")
+    return {
+        "investigation_id": investigation["investigation_id"],
+        "scope_id": investigation["scope_id"],
+        "status": investigation["status"],
+        "related_objects": copy.deepcopy(investigation["related_objects"]),
+        "unresolved_questions": copy.deepcopy(investigation["unresolved_questions"]),
+        "finding": copy.deepcopy(finding),
+        "supporting_evidence": evidence,
+    }
+
+
+def _typed_history_ids(source: dict) -> list[str]:
+    ids = {
+        item["target"]
+        for item in source["supporting_evidence"]
+        if item["kind"] in {"operation", "verification", "capability_result"}
+        and item["availability"] == "available"
+    }
+    return sorted(ids)
+
+
 def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncertainty: list,
                     rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None) -> dict:
     compatibility = {_compact(_canonical_compatibility(row)): _canonical_compatibility(row) for row in rows}
@@ -388,7 +417,9 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
              "capability": ordered[0]["capability"] if learning_type == "recurring_outcome" else None,
              "provider": ordered[0]["provider"] if learning_type == "recurring_outcome" else None,
              "compatibility": ordered, "outcome": outcome, "evidence": sorted(evidence, key=_compact),
-             "counts": {"operations": len(rows), "investigations": int(learning_type == "investigation_finding"),
+             "counts": {"operations": len(rows),
+                        "investigations": int(learning_type in {
+                            "investigation_finding", "typed_investigation_finding"}),
                         "baselines": int(learning_type == "recurring_outcome"),
                         "minimum_samples": MIN_SAMPLES if learning_type == "recurring_outcome" else 1},
              "provenance": {"derivation_version": DERIVATION_VERSION, "rule": learning_type, "query": query}}
