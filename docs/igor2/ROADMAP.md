@@ -471,7 +471,7 @@ signals and are not the only durability path. Persistent records refer to
 scoped objects and canonical contracts/providers rather than handlers, paths
 or UI names.
 
-## Step 16 — Baselines — FUTURE
+## Step 16 — Baselines & Local Learning — PARTIAL
 
 The owner-scoped **Step 16 — Architecture Integration Review and Readiness
 Assessment** is complete; see [ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md)
@@ -481,6 +481,16 @@ start Step 17. Configuration ownership, a representative application workflow
 and cutover evidence remain readiness gates.
 
 Use transparent operational history to learn normal ranges/behavior for this machine.
+
+Step 16A explainable Operational History baselines are implemented. Step 16C
+extends durable Investigations with explicit typed symptom/cause/action/
+verification findings and evidence bindings, providing a safe semantic
+foundation for later causal learning without inferring causality from prose or
+resolution state.
+
+The reviewed Local Learning lifecycle remains a separate Step 16B integration
+until it is present on the `igor2` baseline. Later work may consume supported
+typed findings through that explicit reference-only review boundary.
 
 Also allow evidence-backed local learning such as patterns, runbooks and
 symptom/cause/resolution relationships, stored outside installed module

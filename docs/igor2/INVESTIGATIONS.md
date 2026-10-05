@@ -1,23 +1,28 @@
-# Step 15C — Durable Investigations
+# Step 15C / Step 16C — Durable Investigations and Typed Findings
 
-Status: **accepted bounded contract** (D056); implementation evidence is in
-[STATUS.md](STATUS.md). The owning service is
-[InvestigationService](../../core/lib/investigations.py).
+Status: **Step 15C implemented under D056; Step 16C typed-evidence extension
+implemented under D064**. Evidence is recorded in [STATUS.md](STATUS.md). The
+owning service remains [InvestigationService](../../core/lib/investigations.py).
 
 An investigation is something Igor or an operator wants to understand, track,
 evaluate or resolve over time. It owns knowledge organization and its explicit
 lifecycle. It does not own execution, current system state or responsibility.
 
-## Version 1 record
+## Versioned record
 
-The closed `igor.investigation` version-1 record contains:
+Version 2 is the current contract. Version-1 stores remain valid, readable and
+exportable without read-time migration. The closed `igor.investigation` record
+retains the original fields:
 
 - fresh opaque `investigation_id` and the installation's stable local `scope_id`;
 - title, summary, creation source, owner and timestamped source provenance;
 - status, creation/update/closure timestamps and explicit transition history;
 - scoped related objects and Operational History episode references;
 - bounded evidence references and hypotheses;
-- validated judgments used, findings, unresolved questions and closure reason.
+- validated judgments used, free-form compatibility findings, unresolved
+  questions and closure reason;
+- in version 2 only, bounded `typed_findings` that bind an investigation claim
+  to already-attached evidence/hypotheses/judgments.
 
 Unknown fields and versions, invalid timestamps, duplicate JSON fields,
 nonfinite numbers, invalid IDs and cross-scope links fail validation. Limits
@@ -60,6 +65,44 @@ hypothesis. Updates are explicit. A hypothesis is not a fact,
 plan, permission or verification result. Conclusions remain investigation-scoped
 findings even when a hypothesis is supported.
 
+## Step 16C typed findings
+
+Version 2 adds stable typed findings without reinterpreting existing free-form
+`findings`. A typed finding has an opaque `tf-` identity, immutable
+`kind` and `statement`, assessment `status`, supporting/contradicting
+evidence IDs, optional hypothesis/judgment IDs and creation/update timestamps.
+
+Initial kinds are:
+
+- `symptom` — an investigation-scoped description of observed behavior;
+- `cause` — an explicitly assessed causal claim;
+- `action` — an investigation claim that an action occurred;
+- `verification` — an investigation claim about verification evidence.
+
+Assessment is one of `supported`, `contradicted` or `inconclusive`.
+`supported` requires supporting evidence recorded as `available`;
+`contradicted` requires contradicting evidence recorded as `available`.
+Unknown/unavailable references may remain attached to inconclusive findings but
+cannot establish an asserted assessment. The same evidence cannot support and
+contradict one finding. All evidence, hypothesis and judgment IDs must already
+be attached to that Investigation.
+
+Additional fail-closed semantics prevent typed prose from impersonating an
+operational authority:
+
+- a supported `action` must include attached `operation` or
+  `capability_result` evidence;
+- a supported `verification` must include attached `verification` evidence;
+- a resolved Investigation does not automatically support any typed finding;
+- free-form legacy findings are never promoted automatically;
+- changing a typed finding's meaning requires a new finding identity. The update
+  operation may reassess status/evidence links but cannot rewrite kind/statement.
+
+A supported cause is still an **Investigation assessment**, not a System Model
+fact. A supported action is not execution permission. A supported verification
+finding is not the canonical capability verifier result; Operational History
+continues to own that result.
+
 ## Evidence and subsystem ownership
 
 Evidence has a local ID, kind, scope, target identity, source, recorded timestamp,
@@ -101,20 +144,35 @@ verification or execution. Read-only investigation operations never allocate a
 scope or create a store. Stored investigation scope must match the installation's
 history scope; identity mismatch fails closed.
 
-The source layout for this milestone has **no investigation store**. The target
-is an empty version-1 private store created on the first valid mutation. No chat,
-legacy journal, System Model cache or history records are imported. Existing
-history storage/schema is unchanged. Repeated initialization reuses the local
-scope. This service is the single investigation authority; there is no dual write.
+The original Step 15C source layout had **no investigation store** and created
+version 1 on the first valid mutation. Step 16C introduces a deterministic
+version-1 to version-2 migration:
+
+- read-only status/list/inspect/export of a v1 store never rewrites it;
+- ordinary legacy mutations may continue writing valid v1 records;
+- the first **successful typed-finding mutation** upgrades the complete document
+  atomically to v2, preserving every original semantic field and adding
+  `typed_findings: []` to existing records before applying the requested typed
+  finding change;
+- failed validation or interrupted atomic replacement retains the original v1
+  document;
+- new stores created by current code start directly at v2.
+
+There is no interpretation/import of legacy finding strings. Existing history
+storage/schema is unchanged. Repeated initialization reuses the local scope.
+This service remains the single Investigation authority; there is no dual write.
 
 Export before recovery. Restore validates the complete versioned export, accepts
 an empty destination or an identical already-restored document, and rejects a
 nonempty different store. Restore continues the same managed installation and
 preserves IDs/scope. Restore Operational History's export first when recovering
 into a new data destination; investigations cannot invent/rebind installation
-identity. Unknown/corrupt versions remain untouched and refuse operations.
-Recover a validated export into a fresh private destination; no repair guessing
-or automatic version migration is provided. Future versions must specify source,
+identity. Unknown/corrupt versions remain untouched and refuse operations. Both valid v1
+and v2 exports restore only into an empty matching-scope destination (or an
+identical already-restored document) and preserve their storage version. A
+restored v1 document migrates only through the same explicit typed mutation
+boundary. Recover a validated export into a fresh private destination; no repair
+guessing is provided. Future versions must specify source,
 target, validation, idempotency, cutover, verification and recovery explicitly.
 A distinct installation starts with fresh identity and no imported investigations.
 
@@ -127,8 +185,9 @@ provenance and locators must not contain secret values.
 
 `InvestigationService(data_dir).handle(action, fields)` dispatches only a closed
 set of data operations: `create`, `add_evidence`, `add_hypothesis`,
-`update_hypothesis`, `attach_judgment`, `set_findings`, `set_questions`,
-`transition`, `close`, `reopen`, `list`, `status`, `inspect`, `export`, `restore`.
+`update_hypothesis`, `attach_judgment`, `set_findings`,
+`add_typed_finding`, `update_typed_finding`, `set_questions`, `transition`,
+`close`, `reopen`, `list`, `status`, `inspect`, `export`, `restore`.
 Mutations identify `investigation_id`; each operation validates its own fields.
 Python callers may also use the named service methods.
 
@@ -139,7 +198,9 @@ Python callers may also use the named service methods.
 | `add_hypothesis` | `statement`; initial status is `proposed` |
 | `update_hypothesis` | `hypothesis_id`, required `status`, optional `supporting_evidence`, `contradicting_evidence`, `judgments`, `assessment`, `confidence` |
 | `attach_judgment` | `request`, `record` from the existing Judgment Contract |
-| `set_findings` | `findings`: bounded strings, replacing investigation findings |
+| `set_findings` | `findings`: bounded free-form compatibility strings, replacing investigation findings |
+| `add_typed_finding` | `kind`, immutable `statement`, `status`; optional supporting/contradicting evidence, hypotheses and judgments |
+| `update_typed_finding` | stable `finding_id`, `status`; optional replacement evidence/hypothesis/judgment links; kind/statement are immutable |
 | `set_questions` | `unresolved_questions`: bounded strings, replacing unanswered questions |
 | `transition` | `status`, `reason` |
 | `close` | `reason`, optional terminal `status` |
@@ -173,7 +234,7 @@ The headless CLI bypasses module/configuration and AI startup. List/status/
 inspect/export are read-only. The existing 15UI panel adds an Investigations
 section with lazy read-only loading through this CLI and the existing bounded
 structured renderer. It displays lifecycle, evidence, hypotheses, judgments,
-findings, uncertainty and provenance. No special investigation UI/editor exists;
+findings, typed findings, uncertainty and provenance. No special investigation UI/editor exists;
 panel selection/Enter only requests inspection. Headless inspection exposes the
 full bounded record even when the renderer truncates long content.
 
@@ -193,6 +254,8 @@ selection provenance is not automatically retained as investigation knowledge.
 
 Deferred: autonomous/recursive investigation, agents, background monitoring,
 self-healing/remediation, plans/workflows, scheduling/automation integration,
-remote scopes, relationships/deployments, learning and Jet/Laya. Step 15C added
+remote scopes, relationships/deployments, automatic causal inference, runbook
+generation/promotion, Local Learning consumption of typed findings, typed-finding
+projection into the existing AI Context adapter and Jet/Laya. Step 15C added
 no model routing/selection; the subsequent Step 15D contract owns that explicit
 integration. Step 20 owns the separate default interface transition.

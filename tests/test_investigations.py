@@ -18,7 +18,9 @@ sys.path.insert(0, str(ROOT / "core/ai"))
 
 from capability_runtime import CapabilityRegistry
 from investigations import (
+    LEGACY_VERSION,
     MAX_INVESTIGATIONS,
+    VERSION,
     InvestigationError,
     InvestigationService,
     validate_investigation,
@@ -52,6 +54,16 @@ def judgment_pair(row, *, status="valid", content=None):
                 "reason": None if status == "valid" else "insufficient_information", "evidence": ["backup-failure"]}
     record = judge(request, lambda _: response, provider="fixture", model="fixture-small")
     return request, record
+
+
+def downgrade_store_to_v1(path):
+    document = json.loads(path.read_text())
+    document["version"] = LEGACY_VERSION
+    for row in document["investigations"]:
+        row["version"] = LEGACY_VERSION
+        row.pop("typed_findings", None)
+    path.write_text(json.dumps(document, sort_keys=True, separators=(",", ":")))
+    return document
 
 
 def history_episode(history):
@@ -90,9 +102,10 @@ class InvestigationTests(unittest.TestCase):
     def test_closed_versioned_schema_and_bounded_data(self):
         row = create(self.service)
         self.assertEqual(validate_investigation(row), row)
-        changes = ({"version": 2}, {"version": True}, {"approved": True}, {"desired_state": {}},
-                   {"investigation_id": "../escape"}, {"title": ""}, {"summary": "x" * 1025},
-                   {"status": []}, {"owner": None}, {"findings": ["x"] * 33}, {"provenance": {"source": "operator"}})
+        changes = ({"version": LEGACY_VERSION}, {"version": 3}, {"version": True}, {"approved": True},
+                   {"desired_state": {}}, {"investigation_id": "../escape"}, {"title": ""},
+                   {"summary": "x" * 1025}, {"status": []}, {"owner": None},
+                   {"findings": ["x"] * 33}, {"provenance": {"source": "operator"}})
         for change in changes:
             with self.subTest(change=change), self.assertRaises(InvestigationError):
                 validate_investigation({**row, **change})
@@ -143,6 +156,137 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(reopened["transitions"][:-1], resolved["transitions"])
         self.assertEqual(self.service.inspect(ident), reopened)
 
+    def test_typed_findings_bind_supported_claims_to_attached_evidence(self):
+        row = create(self.service)
+        ident = row["investigation_id"]
+        self.assertEqual(row["version"], VERSION)
+        self.assertEqual(row["typed_findings"], [])
+        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification", availability="available"))
+        request, record = judgment_pair(row)
+        self.service.attach_judgment(ident, request, record)
+        hypothesis = self.service.add_hypothesis(ident, "Storage exhaustion caused the backup failure")
+        hypothesis_id = hypothesis["hypotheses"][0]["hypothesis_id"]
+
+        cause = self.service.add_typed_finding(
+            ident, kind="cause", statement="Storage exhaustion caused the backup failure", status="supported",
+            supporting_evidence=["operation-evidence"], hypotheses=[hypothesis_id],
+            judgments=[record["judgment_id"]],
+        )
+        cause_finding = cause["typed_findings"][0]
+        self.assertEqual(cause_finding["kind"], "cause")
+        self.assertEqual(cause_finding["status"], "supported")
+        self.assertEqual(cause_finding["supporting_evidence"], ["operation-evidence"])
+
+        action = self.service.add_typed_finding(
+            ident, kind="action", statement="The backup operation was attempted", status="supported",
+            supporting_evidence=["operation-evidence"],
+        )
+        self.assertEqual(action["typed_findings"][-1]["kind"], "action")
+
+        verified = self.service.add_typed_finding(
+            ident, kind="verification", statement="Post-action verification failed", status="supported",
+            supporting_evidence=["verification-evidence"],
+        )
+        self.assertEqual(verified["typed_findings"][-1]["kind"], "verification")
+
+        updated = self.service.update_typed_finding(
+            ident, cause_finding["finding_id"], status="contradicted",
+            supporting_evidence=[], contradicting_evidence=["verification-evidence"],
+            hypotheses=[hypothesis_id], judgments=[record["judgment_id"]],
+        )
+        revised = next(item for item in updated["typed_findings"]
+                       if item["finding_id"] == cause_finding["finding_id"])
+        self.assertEqual(revised["statement"], cause_finding["statement"])
+        self.assertEqual(revised["kind"], "cause")
+        self.assertEqual(revised["status"], "contradicted")
+
+    def test_typed_finding_evidence_semantics_fail_closed_and_atomically(self):
+        row = create(self.service)
+        ident = row["investigation_id"]
+        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="unknown-evidence", kind="operation"))
+        before = self.snapshot()
+        invalid = [
+            {"kind": "cause", "statement": "Unsupported cause", "status": "supported"},
+            {"kind": "cause", "statement": "Unknown evidence cannot support", "status": "supported",
+             "supporting_evidence": ["unknown-evidence"]},
+            {"kind": "cause", "statement": "Missing evidence", "status": "supported",
+             "supporting_evidence": ["missing"]},
+            {"kind": "action", "statement": "Action claim", "status": "supported",
+             "supporting_evidence": ["verification-evidence"]},
+            {"kind": "verification", "statement": "Verification claim", "status": "supported",
+             "supporting_evidence": ["operation-evidence"]},
+            {"kind": "cause", "statement": "Conflicting evidence", "status": "inconclusive",
+             "supporting_evidence": ["operation-evidence"], "contradicting_evidence": ["operation-evidence"]},
+            {"kind": "cause", "statement": "Missing hypothesis", "status": "supported",
+             "supporting_evidence": ["operation-evidence"], "hypotheses": ["hyp-" + "0" * 32]},
+            {"kind": "root_cause", "statement": "Unknown kind", "status": "inconclusive"},
+        ]
+        for fields in invalid:
+            with self.subTest(fields=fields), self.assertRaises(InvestigationError):
+                self.service.add_typed_finding(ident, **fields)
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(self.service.inspect(ident)["typed_findings"], [])
+
+    def test_v1_reads_and_legacy_mutations_do_not_migrate_until_valid_typed_mutation(self):
+        row = create(self.service)
+        ident = row["investigation_id"]
+        self.service.set_findings(ident, ["Legacy finding remains free-form"])
+        downgrade_store_to_v1(self.store)
+        before_read = self.snapshot()
+
+        inspected = self.service.inspect(ident)
+        self.assertEqual(inspected["version"], LEGACY_VERSION)
+        self.assertNotIn("typed_findings", inspected)
+        self.assertEqual(self.service.status()["storage_version"], LEGACY_VERSION)
+        self.assertEqual(self.service.export()["version"], LEGACY_VERSION)
+        self.assertEqual(self.snapshot(), before_read)
+
+        self.service.set_questions(ident, ["Legacy mutation stays version 1"])
+        self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
+        legacy = self.service.inspect(ident)
+        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation", availability="available"))
+        self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
+
+        before_failed = self.snapshot()
+        with self.assertRaises(InvestigationError):
+            self.service.add_typed_finding(
+                ident, kind="verification", statement="Not canonical verification", status="supported",
+                supporting_evidence=["operation-evidence"],
+            )
+        self.assertEqual(self.snapshot(), before_failed)
+        self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
+
+        migrated = self.service.add_typed_finding(
+            ident, kind="cause", statement="Operator-reviewed causal finding", status="supported",
+            supporting_evidence=["operation-evidence"],
+        )
+        self.assertEqual(migrated["version"], VERSION)
+        self.assertEqual(migrated["findings"], ["Legacy finding remains free-form"])
+        self.assertEqual(migrated["typed_findings"][0]["kind"], "cause")
+        document = json.loads(self.store.read_text())
+        self.assertEqual(document["version"], VERSION)
+        self.assertTrue(all(item["version"] == VERSION and "typed_findings" in item
+                            for item in document["investigations"]))
+
+    def test_v1_to_v2_migration_is_atomic_on_write_failure(self):
+        row = create(self.service)
+        ident = row["investigation_id"]
+        downgrade_store_to_v1(self.store)
+        legacy = self.service.inspect(ident)
+        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation", availability="available"))
+        before = self.snapshot()
+        with patch("investigations.os.replace", side_effect=OSError("fixture migration interruption")), \
+                self.assertRaises(InvestigationError):
+            self.service.add_typed_finding(
+                ident, kind="cause", statement="Would migrate", status="supported",
+                supporting_evidence=["operation-evidence"],
+            )
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
+
     def test_invalid_lifecycle_transitions_and_fake_transition_history_fail(self):
         row = create(self.service)
         ident = row["investigation_id"]
@@ -173,6 +317,7 @@ class InvestigationTests(unittest.TestCase):
             request, record = judgment_pair(row)
             updates = [("add_evidence", {"evidence": evidence(row)}), ("add_hypothesis", {"statement": "Possible storage loss"}),
                        ("attach_judgment", {"request": request, "record": record}), ("set_findings", {"findings": ["Changed"]}),
+                       ("add_typed_finding", {"kind": "symptom", "statement": "Changed", "status": "inconclusive"}),
                        ("set_questions", {"unresolved_questions": []}), ("transition", {"status": "open", "reason": "Silent reopen"}),
                        ("close", {"reason": "Rewrite closure"})]
             for action, fields in updates:
@@ -357,7 +502,7 @@ class InvestigationTests(unittest.TestCase):
         before = {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in (destination / "investigations").iterdir()}
         self.assertEqual(recovered.restore(exported)["existing"], 1)
         self.assertEqual(before, {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in (destination / "investigations").iterdir()})
-        for altered in ({**exported, "version": 2}, {**exported, "investigations": []},
+        for altered in ({**exported, "version": 99}, {**exported, "investigations": []},
                         {**exported, "scope_id": "scope:" + "0" * 32}):
             with self.subTest(altered=altered), self.assertRaises(InvestigationError):
                 recovered.restore(altered)
@@ -368,6 +513,19 @@ class InvestigationTests(unittest.TestCase):
         with self.assertRaises(InvestigationError):
             recovered.restore(disjoint)
         self.assertEqual(recovered.export(), exported)
+
+    def test_v1_export_restore_preserves_version_until_typed_mutation(self):
+        create(self.service)
+        downgrade_store_to_v1(self.store)
+        exported = self.service.export()
+        self.assertEqual(exported["version"], LEGACY_VERSION)
+        destination = self.root / "legacy-recovery"
+        OperationalHistory(destination).restore(OperationalHistory(self.root).export())
+        recovered = InvestigationService(destination)
+        result = recovered.restore(exported)
+        self.assertEqual(result["version"], LEGACY_VERSION)
+        self.assertEqual(recovered.export(), exported)
+        self.assertEqual(recovered.status()["storage_version"], LEGACY_VERSION)
 
     def test_atomic_failure_preserves_original_and_cleans_pending_file(self):
         row = create(self.service)
@@ -437,6 +595,9 @@ class InvestigationTests(unittest.TestCase):
                                                       "object_id": "host:private-secret-value"}])
         with patch.dict(os.environ, {"IGOR_TEST_PASSWORD": "abc"}), self.assertRaises(InvestigationError):
             self.service.set_questions(ident, ["Is abc available?"])
+        with patch.dict(os.environ, {"IGOR_TYPED_SECRET": "typed-private-value"}), self.assertRaises(InvestigationError):
+            self.service.add_typed_finding(
+                ident, kind="symptom", statement="typed-private-value", status="inconclusive")
         request, _ = judgment_pair(row)
         request["input"]["api_key"] = "not-even-configured"
         record = judge(request, lambda _: {"status": "abstain", "payload": None, "reason": "cannot_decide", "evidence": []},
@@ -465,7 +626,10 @@ class InvestigationTests(unittest.TestCase):
         with patch.object(CapabilityRegistry, "prepare", executor), patch.object(SystemModel, "upsert_from_source", executor), \
                 patch.object(OperationalHistory, "authority", executor), patch.object(OperationalHistory, "finish", executor), \
                 patch("investigations.os.system", executor), patch("judgment.judge", executor):
-            self.service.add_evidence(ident, evidence(row, id="stale-fact", kind="system_fact", target="host:local", locator="fact:disk.free@old"))
+            self.service.add_evidence(ident, evidence(row, id="stale-fact", kind="system_fact", target="host:local", locator="fact:disk.free@old", availability="available"))
+            self.service.add_typed_finding(
+                ident, kind="symptom", statement="Disk free space was observed as exhausted",
+                status="supported", supporting_evidence=["stale-fact"])
             self.service.add_hypothesis(ident, "The current fact may be wrong")
             self.service.set_findings(ident, ["Desired state should change; approve and run backup; verification passed"])
             self.service.transition(ident, "evaluating", "Reviewing")

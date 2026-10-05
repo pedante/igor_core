@@ -1,7 +1,8 @@
-"""Durable investigation v1: scoped reference knowledge, never operational authority.
+"""Durable investigations: scoped reference knowledge, never operational authority.
 
-The JSON backend is private. Public records/export documents retain meaning and
-provenance; no method invokes a model, capability, observer or policy service.
+Version 2 adds typed investigation findings while preserving version-1 stores
+without read-time migration. No method invokes a model, capability, observer or
+policy service.
 """
 from __future__ import annotations
 
@@ -26,7 +27,9 @@ from operational_history import HistoryError, OperationalHistory, object_ref
 from privacy import redactions, scrub_text
 
 CONTRACT = "igor.investigation"
-VERSION = 1
+LEGACY_VERSION = 1
+VERSION = 2
+SUPPORTED_VERSIONS = {LEGACY_VERSION, VERSION}
 EXPORT_CONTRACT = "igor.investigations.export"
 _STORE_CONTRACT = "igor.investigations.store"
 MAX_RECORD_BYTES = 524288
@@ -44,16 +47,20 @@ TRANSITIONS = {
 HYPOTHESIS_STATES = {"proposed", "supported", "contradicted", "inconclusive"}
 # Reassessment is explicit and remains a claim, including a return to proposed.
 HYPOTHESIS_TRANSITIONS = {state: HYPOTHESIS_STATES - {state} for state in HYPOTHESIS_STATES}
+TYPED_FINDING_KINDS = {"symptom", "cause", "action", "verification"}
+TYPED_FINDING_STATES = {"supported", "contradicted", "inconclusive"}
 EVIDENCE_KINDS = {"operation", "verification", "capability_result", "system_fact", "file", "judgment"}
 _INVESTIGATION = re.compile(r"inv-[0-9a-f]{32}")
 _HYPOTHESIS = re.compile(r"hyp-[0-9a-f]{32}")
+_TYPED_FINDING = re.compile(r"tf-[0-9a-f]{32}")
 _OPERATION = re.compile(r"op-[0-9a-f]{32}")
 _JUDGMENT = re.compile(r"[0-9a-f]{32}")
 _IDENT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}")
 _SENSITIVE = re.compile(r"password|passwd|credential|api[_-]?key|(?:^|_)token(?:$|_)|secret(?!_ref)", re.IGNORECASE)
-_FIELDS = {"contract", "version", "investigation_id", "scope_id", "title", "summary", "source", "owner",
-           "provenance", "status", "timestamps", "related_objects", "related_history", "evidence",
-           "hypotheses", "judgments", "findings", "unresolved_questions", "closure_reason", "transitions"}
+_FIELDS_V1 = {"contract", "version", "investigation_id", "scope_id", "title", "summary", "source", "owner",
+              "provenance", "status", "timestamps", "related_objects", "related_history", "evidence",
+              "hypotheses", "judgments", "findings", "unresolved_questions", "closure_reason", "transitions"}
+_FIELDS_V2 = _FIELDS_V1 | {"typed_findings"}
 
 
 class InvestigationError(ValueError):
@@ -262,12 +269,71 @@ def _hypothesis(value: Any, evidence_ids: set[str], judgment_ids: set[str]) -> N
     _check(_timestamp(value["created_at"]) <= _timestamp(value["updated_at"]))
 
 
+def _typed_finding(value: Any, evidence: dict[str, dict], hypothesis_ids: set[str],
+                   judgment_ids: set[str]) -> None:
+    _closed(value, {"finding_id", "kind", "statement", "status", "supporting_evidence",
+                    "contradicting_evidence", "hypotheses", "judgments", "created_at", "updated_at"})
+    _identifier(value["finding_id"], _TYPED_FINDING)
+    _check(type(value["kind"]) is str and value["kind"] in TYPED_FINDING_KINDS,
+           "invalid typed finding kind")
+    _text(value["statement"])
+    _check(type(value["status"]) is str and value["status"] in TYPED_FINDING_STATES,
+           "invalid typed finding status")
+    for key in ("supporting_evidence", "contradicting_evidence"):
+        for ident in _array(value[key]):
+            _identifier(ident)
+            _check(ident in evidence, "typed finding evidence unavailable")
+        _unique(value[key])
+    _check(not set(value["supporting_evidence"]) & set(value["contradicting_evidence"]),
+           "typed finding evidence conflicts")
+    for ident in _array(value["hypotheses"]):
+        _identifier(ident, _HYPOTHESIS)
+        _check(ident in hypothesis_ids, "typed finding hypothesis unavailable")
+    _unique(value["hypotheses"])
+    for ident in _array(value["judgments"]):
+        _identifier(ident, _JUDGMENT)
+        _check(ident in judgment_ids, "typed finding judgment unavailable")
+    _unique(value["judgments"])
+    if value["status"] == "supported":
+        _check(bool(value["supporting_evidence"]), "supported typed finding requires supporting evidence")
+        _check(all(evidence[ident]["availability"] == "available" for ident in value["supporting_evidence"]),
+               "supported typed finding requires available evidence")
+    if value["status"] == "contradicted":
+        _check(bool(value["contradicting_evidence"]), "contradicted typed finding requires contradicting evidence")
+        _check(all(evidence[ident]["availability"] == "available" for ident in value["contradicting_evidence"]),
+               "contradicted typed finding requires available evidence")
+    supporting_kinds = {evidence[ident]["kind"] for ident in value["supporting_evidence"]}
+    if value["status"] == "supported" and value["kind"] == "action":
+        _check(bool(supporting_kinds & {"operation", "capability_result"}),
+               "supported action requires operation evidence")
+    if value["status"] == "supported" and value["kind"] == "verification":
+        _check("verification" in supporting_kinds,
+               "supported verification requires verification evidence")
+    _check(_timestamp(value["created_at"]) <= _timestamp(value["updated_at"]))
+
+
+def _upgrade_document(document: dict) -> dict:
+    """In-memory v1->v2 migration; caller persists only after a valid typed mutation."""
+    _check(document["version"] in SUPPORTED_VERSIONS, "unsupported investigation version")
+    if document["version"] == VERSION:
+        return document
+    _check(document["version"] == LEGACY_VERSION)
+    document["version"] = VERSION
+    for row in document["investigations"]:
+        _check(row["version"] == LEGACY_VERSION)
+        row["version"] = VERSION
+        row["typed_findings"] = []
+    _document(document, _STORE_CONTRACT)
+    return document
+
+
 def validate_investigation(value: Any) -> dict:
-    """Validate/detach v1 knowledge. Shape/binding never proves factual truth."""
+    """Validate/detach investigation knowledge. Shape/binding never proves factual truth."""
     value = _copy(value)
-    _closed(value, _FIELDS)
-    _check(value["contract"] == CONTRACT and type(value["version"]) is int and value["version"] == VERSION,
+    _check(type(value.get("version")) is int and value["version"] in SUPPORTED_VERSIONS,
            "unsupported investigation version")
+    _closed(value, _FIELDS_V2 if value["version"] == VERSION else _FIELDS_V1)
+    _check(value["contract"] == CONTRACT)
     _identifier(value["investigation_id"], _INVESTIGATION)
     scope_id = _scope(value["scope_id"])
     _text(value["title"], 160)
@@ -283,10 +349,12 @@ def validate_investigation(value: Any) -> dict:
     _check(created <= updated)
     _object_refs(value["related_objects"], scope_id)
     _history_refs(value["related_history"], scope_id)
+    evidence_by_id = {}
     for evidence in _array(value["evidence"], 128):
         _evidence(evidence, scope_id)
         if evidence["kind"] in {"operation", "verification", "capability_result"}:
             _check(evidence["target"] in {ref["operation_id"] for ref in value["related_history"]})
+        evidence_by_id[evidence["id"]] = evidence
     _unique(value["evidence"], "id")
     for attached in _array(value["judgments"], 8):
         _judgment(attached, scope_id)
@@ -294,9 +362,15 @@ def validate_investigation(value: Any) -> dict:
     judgment_ids = [item["record"]["judgment_id"] for item in value["judgments"]]
     _unique(judgment_ids)
     for hypothesis in _array(value["hypotheses"]):
-        _hypothesis(hypothesis, {ref["id"] for ref in value["evidence"]}, set(judgment_ids))
+        _hypothesis(hypothesis, set(evidence_by_id), set(judgment_ids))
         _check(created <= _timestamp(hypothesis["created_at"]) <= _timestamp(hypothesis["updated_at"]) <= updated)
+    hypothesis_ids = {item["hypothesis_id"] for item in value["hypotheses"]}
     _unique(value["hypotheses"], "hypothesis_id")
+    if value["version"] == VERSION:
+        for finding in _array(value["typed_findings"]):
+            _typed_finding(finding, evidence_by_id, hypothesis_ids, set(judgment_ids))
+            _check(created <= _timestamp(finding["created_at"]) <= _timestamp(finding["updated_at"]) <= updated)
+        _unique(value["typed_findings"], "finding_id")
     for key in ("findings", "unresolved_questions"):
         for item in _array(value[key]):
             _text(item)
@@ -328,11 +402,13 @@ def validate_investigation(value: Any) -> dict:
 def _document(value: Any, contract: str) -> dict:
     value = _copy(value, MAX_STORE_BYTES)
     _closed(value, {"contract", "version", "scope_id", "investigations"})
-    _check(value["contract"] == contract and type(value["version"]) is int and value["version"] == VERSION,
+    _check(value["contract"] == contract and type(value["version"]) is int
+           and value["version"] in SUPPORTED_VERSIONS,
            "unsupported investigation document version; original retained")
     scope_id = _scope(value["scope_id"])
     for record in _array(value["investigations"], MAX_INVESTIGATIONS):
         validate_investigation(record)
+        _check(record["version"] == value["version"], "mixed investigation versions are not supported")
         _check(record["scope_id"] == scope_id, "investigation document scope mismatch")
     _unique(value["investigations"], "investigation_id")
     return value
@@ -443,19 +519,26 @@ class InvestigationService:
                 document = {"contract": _STORE_CONTRACT, "version": VERSION, "scope_id": scope, "investigations": []}
             _check(len(document["investigations"]) < MAX_INVESTIGATIONS, "investigation capacity reached")
             stamp = now()
-            row = {"contract": CONTRACT, "version": VERSION, "investigation_id": "inv-" + uuid.uuid4().hex,
+            record_version = document["version"]
+            row = {"contract": CONTRACT, "version": record_version, "investigation_id": "inv-" + uuid.uuid4().hex,
                    "scope_id": document["scope_id"], "title": title, "summary": summary,
                    "source": source, "owner": owner, "provenance": provenance, "status": "open",
                    "timestamps": {"created_at": stamp, "updated_at": stamp, "closed_at": None},
                    "related_objects": related_objects, "related_history": related_history,
                    "evidence": [], "hypotheses": [], "judgments": [], "findings": [], "unresolved_questions": [],
                    "closure_reason": None, "transitions": [{"from": None, "to": "open", "at": stamp, "reason": "created"}]}
+            if record_version == VERSION:
+                row["typed_findings"] = []
             document["investigations"].append(row)
             self._save(document, fd)
             return validate_investigation(row)
 
-    def _update(self, investigation_id: str, mutate, *, reopen: bool = False) -> dict:
+    def _update(self, investigation_id: str, mutate, *, reopen: bool = False,
+                require_v2: bool = False) -> dict:
         with self._store(write=True) as (document, fd):
+            _check(document is not None, "investigation unavailable")
+            if require_v2:
+                _upgrade_document(document)
             row = self._record(document, investigation_id, editable=not reopen)
             mutate(row)
             row["timestamps"]["updated_at"] = now()
@@ -511,6 +594,56 @@ class InvestigationService:
     def set_findings(self, investigation_id: str, findings: list) -> dict:
         return self._update(investigation_id, lambda row: row.update(findings=_copy(findings)))
 
+    def add_typed_finding(self, investigation_id: str, *, kind: str, statement: str, status: str,
+                          supporting_evidence: list | None = None,
+                          contradicting_evidence: list | None = None,
+                          hypotheses: list | None = None, judgments: list | None = None) -> dict:
+        _check(type(kind) is str and kind in TYPED_FINDING_KINDS, "invalid typed finding kind")
+        _text(statement)
+        _check(type(status) is str and status in TYPED_FINDING_STATES, "invalid typed finding status")
+        supporting_evidence = [] if supporting_evidence is None else _copy(supporting_evidence)
+        contradicting_evidence = [] if contradicting_evidence is None else _copy(contradicting_evidence)
+        hypotheses = [] if hypotheses is None else _copy(hypotheses)
+        judgments = [] if judgments is None else _copy(judgments)
+
+        def mutate(row):
+            stamp = now()
+            row["typed_findings"].append({
+                "finding_id": "tf-" + uuid.uuid4().hex,
+                "kind": kind,
+                "statement": statement,
+                "status": status,
+                "supporting_evidence": supporting_evidence,
+                "contradicting_evidence": contradicting_evidence,
+                "hypotheses": hypotheses,
+                "judgments": judgments,
+                "created_at": stamp,
+                "updated_at": stamp,
+            })
+        return self._update(investigation_id, mutate, require_v2=True)
+
+    def update_typed_finding(self, investigation_id: str, finding_id: str, *, status: str,
+                             supporting_evidence: list | None = None,
+                             contradicting_evidence: list | None = None,
+                             hypotheses: list | None = None, judgments: list | None = None) -> dict:
+        _identifier(finding_id, _TYPED_FINDING)
+        _check(type(status) is str and status in TYPED_FINDING_STATES, "invalid typed finding status")
+
+        def mutate(row):
+            finding = next((item for item in row["typed_findings"] if item["finding_id"] == finding_id), None)
+            _check(finding is not None, "typed finding unavailable")
+            finding["status"] = status
+            for key, values in (
+                ("supporting_evidence", supporting_evidence),
+                ("contradicting_evidence", contradicting_evidence),
+                ("hypotheses", hypotheses),
+                ("judgments", judgments),
+            ):
+                if values is not None:
+                    finding[key] = _copy(values)
+            finding["updated_at"] = now()
+        return self._update(investigation_id, mutate, require_v2=True)
+
     def set_questions(self, investigation_id: str, unresolved_questions: list) -> dict:
         return self._update(investigation_id, lambda row: row.update(unresolved_questions=_copy(unresolved_questions)))
 
@@ -560,7 +693,8 @@ class InvestigationService:
 
     def status(self) -> dict:
         with self._store() as (document, _):
-            return {"contract": CONTRACT, "version": VERSION, "availability": "available" if document else "not_created",
+            return {"contract": CONTRACT, "version": VERSION, "storage_version": document["version"] if document else None,
+                    "availability": "available" if document else "not_created",
                     "scope_id": document["scope_id"] if document else self._local_scope(),
                     "count": len(document["investigations"]) if document else 0}
 
@@ -574,16 +708,21 @@ class InvestigationService:
         _check(export["scope_id"] == self._local_scope(), "restore requires matching local history scope")
         with self._store(write=True, initialize=True) as (document, fd):
             if document is None:
-                document = {"contract": _STORE_CONTRACT, "version": VERSION, "scope_id": export["scope_id"], "investigations": []}
+                document = {"contract": _STORE_CONTRACT, "version": export["version"],
+                            "scope_id": export["scope_id"], "investigations": []}
+            _check(document["version"] == export["version"],
+                   "restore version differs from destination; existing retained")
             existing = document["investigations"]
             if existing:
                 by_id = {row["investigation_id"]: row for row in existing}
                 imported = {row["investigation_id"]: row for row in export["investigations"]}
                 _check(by_id == imported, "restore requires empty or identical destination; existing retained")
-                return {"version": VERSION, "scope_id": document["scope_id"], "restored": 0, "existing": len(existing)}
+                return {"version": document["version"], "scope_id": document["scope_id"],
+                        "restored": 0, "existing": len(existing)}
             document["investigations"] = export["investigations"]
             self._save(document, fd)
-            return {"version": VERSION, "scope_id": document["scope_id"], "restored": len(export["investigations"]), "existing": 0}
+            return {"version": document["version"], "scope_id": document["scope_id"],
+                    "restored": len(export["investigations"]), "existing": 0}
 
     def handle(self, action: str, fields: dict) -> Any:
         """Strict programmatic/CLI dispatch; no arbitrary method or tool access."""
@@ -595,6 +734,16 @@ class InvestigationService:
                                   {"supporting_evidence", "contradicting_evidence", "judgments", "assessment", "confidence"}),
             "attach_judgment": (self.attach_judgment, {"investigation_id", "request", "record"}, set()),
             "set_findings": (self.set_findings, {"investigation_id", "findings"}, set()),
+            "add_typed_finding": (
+                self.add_typed_finding,
+                {"investigation_id", "kind", "statement", "status"},
+                {"supporting_evidence", "contradicting_evidence", "hypotheses", "judgments"},
+            ),
+            "update_typed_finding": (
+                self.update_typed_finding,
+                {"investigation_id", "finding_id", "status"},
+                {"supporting_evidence", "contradicting_evidence", "hypotheses", "judgments"},
+            ),
             "set_questions": (self.set_questions, {"investigation_id", "unresolved_questions"}, set()),
             "transition": (self.transition, {"investigation_id", "status", "reason"}, set()),
             "close": (self.close, {"investigation_id", "reason"}, {"status"}),

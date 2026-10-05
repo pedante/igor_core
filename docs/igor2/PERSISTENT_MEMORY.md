@@ -488,9 +488,13 @@ invented later from chat text.
 ## Investigations are separate durable state
 
 The bounded [Step 15C implementation](INVESTIGATIONS.md) formalizes this
-ownership under D056. Investigation findings remain scoped reference data;
-creation provenance grants no operational responsibility or authority. It uses
-15B installation identity without duplicating operational episodes.
+ownership under D056. Step 16C/D064 extends that same authority with typed
+symptom/cause/action/verification findings bound to already-attached evidence.
+These remain investigation-scoped assessments: a supported cause is not a
+System Model fact, a supported action is not execution authority, and a
+verification finding does not replace canonical capability verification.
+Creation provenance grants no operational responsibility or authority. The
+service uses 15B installation identity without duplicating operational episodes.
 
 An investigation answers:
 
@@ -516,7 +520,10 @@ Actions and evidence point to canonical history records where possible.
 Investigation text is reference material and cannot authorize execution.
 
 Investigation lifecycle can be mutable/versioned while history remains
-append-oriented/audit-oriented.
+append-oriented/audit-oriented. Version-1 Investigation stores remain readable
+and exportable; Step 16C migrates them atomically only when an explicit valid
+typed-finding mutation first requires version 2. No read-time or prose-to-typed
+migration occurs.
 
 ## Resumable Work is separate durable state
 

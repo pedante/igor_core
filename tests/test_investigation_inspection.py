@@ -87,6 +87,8 @@ def test_real_cli_creation_panel_and_inspection_are_read_only(tmp_path):
                    provider="fixture", model="fixture")
     update("attach_judgment", request=request, record=record)
     update("set_findings", findings=["No established cause"])
+    update("add_typed_finding", kind="cause", statement="Backup failure followed the retained operation evidence",
+           status="supported", supporting_evidence=["operation-1"])
     row = update("set_questions", unresolved_questions=["Which condition caused backup failure?"])
     before = {p.relative_to(data): p.read_bytes() for p in data.rglob("*") if p.is_file()}
     query = tui.InvestigationInspection()
@@ -96,8 +98,9 @@ def test_real_cli_creation_panel_and_inspection_are_read_only(tmp_path):
                    if s["id"] == "investigations")
     rendered = " ".join(tui.panel_rows(section))
     for text in ("Understand backup failure", "scope_id", "status", "evidence",
-                 "hypotheses", "judgments", "findings", "unresolved_questions", "fixture",
-                 "Failure cause remains uncertain", "abstain", "No established cause",
+                 "hypotheses", "judgments", "findings", "typed_findings", "unresolved_questions", "fixture",
+                 "Failure cause remains uncertain", "abstain", "No established cause", "supported",
+                 "Backup failure followed the retained operation evidence",
                  "Which condition caused backup failure?", episode["operation_id"]):
         assert text in rendered
     inspected = subprocess.run(["bash", str(ROOT / "igor.sh"), "--investigations", "inspect", ident],
