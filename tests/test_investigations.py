@@ -161,8 +161,8 @@ class InvestigationTests(unittest.TestCase):
         ident = row["investigation_id"]
         self.assertEqual(row["version"], VERSION)
         self.assertEqual(row["typed_findings"], [])
-        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation"))
-        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification"))
+        self.service.add_evidence(ident, evidence(row, id="operation-evidence", kind="operation", availability="available"))
+        self.service.add_evidence(ident, evidence(row, id="verification-evidence", kind="verification", availability="available"))
         request, record = judgment_pair(row)
         self.service.attach_judgment(ident, request, record)
         hypothesis = self.service.add_hypothesis(ident, "Storage exhaustion caused the backup failure")
@@ -209,6 +209,8 @@ class InvestigationTests(unittest.TestCase):
         before = self.snapshot()
         invalid = [
             {"kind": "cause", "statement": "Unsupported cause", "status": "supported"},
+            {"kind": "cause", "statement": "Unknown evidence cannot support", "status": "supported",
+             "supporting_evidence": ["backup-failure"]},
             {"kind": "cause", "statement": "Missing evidence", "status": "supported",
              "supporting_evidence": ["missing"]},
             {"kind": "action", "statement": "Action claim", "status": "supported",
@@ -244,7 +246,7 @@ class InvestigationTests(unittest.TestCase):
         self.service.set_questions(ident, ["Legacy mutation stays version 1"])
         self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
         legacy = self.service.inspect(ident)
-        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation"))
+        self.service.add_evidence(ident, evidence(legacy, id="operation-evidence", kind="operation", availability="available"))
         self.assertEqual(json.loads(self.store.read_text())["version"], LEGACY_VERSION)
 
         before_failed = self.snapshot()
@@ -623,7 +625,7 @@ class InvestigationTests(unittest.TestCase):
         with patch.object(CapabilityRegistry, "prepare", executor), patch.object(SystemModel, "upsert_from_source", executor), \
                 patch.object(OperationalHistory, "authority", executor), patch.object(OperationalHistory, "finish", executor), \
                 patch("investigations.os.system", executor), patch("judgment.judge", executor):
-            self.service.add_evidence(ident, evidence(row, id="stale-fact", kind="system_fact", target="host:local", locator="fact:disk.free@old"))
+            self.service.add_evidence(ident, evidence(row, id="stale-fact", kind="system_fact", target="host:local", locator="fact:disk.free@old", availability="available"))
             self.service.add_typed_finding(
                 ident, kind="symptom", statement="Disk free space was observed as exhausted",
                 status="supported", supporting_evidence=["stale-fact"])
