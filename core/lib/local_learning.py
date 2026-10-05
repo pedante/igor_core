@@ -548,9 +548,24 @@ def _reviewed_learning_ref(artifact: dict, typed_ref: dict) -> dict:
     }
 
 
+def _reviewed_artifact_ref(artifact: dict) -> dict:
+    return {
+        "kind": "reviewed_learning_artifact",
+        "scope_id": artifact["scope_id"],
+        "source_version": artifact["version"],
+        "digest": _digest(artifact),
+        "learning_id": artifact["learning_id"],
+        "candidate_id": artifact["candidate"]["candidate_id"],
+        "candidate_revision": artifact["candidate"]["candidate_revision"],
+        "learning_type": artifact["candidate"]["learning_type"],
+        "reviewed_at": artifact["review"]["at"],
+    }
+
+
 def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncertainty: list,
                     rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None,
-                    pattern: dict | None = None, investigation_count: int | None = None,
+                    pattern: dict | None = None, procedure: dict | None = None,
+                    investigation_count: int | None = None,
                     minimum_samples: int | None = None) -> dict:
     compatibility = {_compact(_canonical_compatibility(row)): _canonical_compatibility(row) for row in rows}
     ordered = [compatibility[key] for key in sorted(compatibility)]
@@ -578,12 +593,15 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
                  "derivation_version": {
                      "typed_investigation_finding": TYPED_DERIVATION_VERSION,
                      "cross_incident_pattern": PATTERN_DERIVATION_VERSION,
+                     "reference_procedure": PROCEDURE_DERIVATION_VERSION,
                  }.get(learning_type, DERIVATION_VERSION),
                  "rule": learning_type,
                  "query": query,
              }}
     if pattern is not None:
         value["pattern"] = copy.deepcopy(pattern)
+    if procedure is not None:
+        value["procedure"] = copy.deepcopy(procedure)
     value["candidate_id"] = _candidate_identity(value)
     value["candidate_revision"] = _digest({key: child for key, child in value.items() if key != "candidate_revision"})
     return validate_candidate(value)
