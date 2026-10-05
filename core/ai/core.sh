@@ -126,6 +126,16 @@ print(json.dumps({
         "ai_autostart": value("AI_EVENT_AUTOSTART", "false"),
         "hybrid_menu": value("AI_EVENT_HYBRID", "false"),
     },
+    "sources": {
+        "provider": "AI settings (legacy persistence)",
+        "model": "AI settings (legacy persistence)",
+        "temperature": "AI settings (legacy persistence)",
+        "max_tokens": "AI settings (legacy persistence)",
+        "mode": "AI mode control + legacy persistence",
+        "verbose": "Configuration Service resolver",
+        "ai_autostart": "Launcher preference (legacy persistence)",
+        "hybrid_menu": "Launcher preference (legacy persistence)",
+    },
 }, ensure_ascii=True))
 PY
         _ai_event_emit settings_snapshot "$_snapshot" >/dev/null 2>&1 || true
@@ -380,7 +390,7 @@ _ai_mode_has_pending_approval() {
 # untouched and blocks switching, so a mode change can never bypass it.
 # If _ai_save_settings exists (the interactive session defines it), persist it.
 _ai_set_mode() {
-    local _requested _mode
+    local _requested _mode _previous_mode _previous_executive
     _requested="${1:-}"
     _mode=$(_ai_normalize_mode "$_requested" 2>/dev/null) || {
         printf 'Invalid mode: %s (use guide, assist, or executive)\n' "$_requested" >&2
@@ -390,12 +400,19 @@ _ai_set_mode() {
         printf 'Cannot switch mode while an approval is pending. Resolve it first.\n' >&2
         return 1
     fi
+    _previous_mode="${ai_mode:-assist}"
+    _previous_executive="${executive_mode:-false}"
     ai_mode="$_mode"
     executive_mode=false
     [ "$_mode" = executive ] && executive_mode=true
     export ai_mode executive_mode
     if declare -f _ai_save_settings >/dev/null 2>&1 && ! _ai_save_settings; then
-        printf 'Mode changed to %s, but settings could not be saved.\n' "$_mode" >&2
+        ai_mode="$_previous_mode"
+        executive_mode="$_previous_executive"
+        export ai_mode executive_mode
+        printf 'Mode was not changed because settings could not be saved.\n' >&2
+        _ai_frontend_event warning 'Mode was not changed because AI settings could not be saved.'
+        _ai_emit_settings_snapshot
         return 1
     fi
     # A standalone TUI may carry a deliberately deferred prompt until the first
@@ -409,6 +426,7 @@ _ai_set_mode() {
         system_prompt=$(_ai_build_system_prompt "$knowledge_block" "$scrubbed_context")
     fi
     _ai_frontend_event mode_changed "Mode: $_mode" "$_mode"
+    _ai_emit_settings_snapshot
     printf '%s' "$_mode"
 }
 
@@ -3794,21 +3812,47 @@ except: print('unknown')
                 echo ""
                 python3 "${_AI_DIR}/session_commands.py" help
                 echo ""; continue ;;
-            "settings autostart on")
-                AI_AUTOSTART=true; _ai_save_settings
-                ok "AI Autostart ON — igor.sh will launch AI directly on next start"
+            "settings autostart on"|"settings autostart off")
+                local _old_autostart="${AI_AUTOSTART:-false}"
+                if [ "$user_input" = "settings autostart on" ]; then
+                    AI_AUTOSTART=true
+                else
+                    AI_AUTOSTART=false
+                fi
+                if _ai_save_settings; then
+                    _ai_emit_settings_snapshot
+                    if [ "$AI_AUTOSTART" = true ]; then
+                        ok "AI Autostart ON — igor.sh will launch AI directly on next start"
+                    else
+                        ok "AI Autostart OFF"
+                    fi
+                else
+                    AI_AUTOSTART="$_old_autostart"
+                    warn "Could not save AI Autostart."
+                    _ai_frontend_event warning "Could not save AI Autostart."
+                    _ai_emit_settings_snapshot
+                fi
                 echo ""; continue ;;
-            "settings autostart off")
-                AI_AUTOSTART=false; _ai_save_settings
-                ok "AI Autostart OFF"
-                echo ""; continue ;;
-            "settings hybrid on")
-                AI_HYBRID_MODE=true; _ai_save_settings
-                ok "AI Hybrid menu ON — main menu will accept questions on next launch"
-                echo ""; continue ;;
-            "settings hybrid off")
-                AI_HYBRID_MODE=false; _ai_save_settings
-                ok "AI Hybrid menu OFF"
+            "settings hybrid on"|"settings hybrid off")
+                local _old_hybrid="${AI_HYBRID_MODE:-false}"
+                if [ "$user_input" = "settings hybrid on" ]; then
+                    AI_HYBRID_MODE=true
+                else
+                    AI_HYBRID_MODE=false
+                fi
+                if _ai_save_settings; then
+                    _ai_emit_settings_snapshot
+                    if [ "$AI_HYBRID_MODE" = true ]; then
+                        ok "AI Hybrid menu ON — main menu will accept questions on next launch"
+                    else
+                        ok "AI Hybrid menu OFF"
+                    fi
+                else
+                    AI_HYBRID_MODE="$_old_hybrid"
+                    warn "Could not save AI Hybrid menu."
+                    _ai_frontend_event warning "Could not save AI Hybrid menu."
+                    _ai_emit_settings_snapshot
+                fi
                 echo ""; continue ;;
             "settings snapshot")
                 _ai_emit_settings_snapshot
@@ -3822,6 +3866,7 @@ except: print('unknown')
                 else
                     warn "Could not update setting '${_setting_key}'."
                     _ai_frontend_event warning "Could not update setting '${_setting_key}'."
+                    _ai_emit_settings_snapshot
                 fi
                 echo ""; continue ;;
             # ── Undo stack ────────────────────────────────────────────────────
@@ -4040,13 +4085,21 @@ PYEOF
                 _igor_loop_quiet=false; export IGOR_LOOP_QUIET=false
                 echo -e "  ${YEL}✔ Quiet loop OFF — all steps shown.${NC}"; echo ""; continue ;;
             "verbose on")
-                _ai_configuration_verbose_set true || { echo ""; continue; }
-                _ai_save_settings
-                echo -e "  ${GRN}✔ Verbose mode ON.${NC}"; echo ""; continue ;;
+                if _ai_configuration_verbose_set true; then
+                    _ai_emit_settings_snapshot
+                    echo -e "  ${GRN}✔ Verbose mode ON.${NC}"
+                else
+                    _ai_emit_settings_snapshot
+                fi
+                echo ""; continue ;;
             "verbose off")
-                _ai_configuration_verbose_set false || { echo ""; continue; }
-                _ai_save_settings
-                echo -e "  ${GRN}✔ Verbose mode off.${NC}"; echo ""; continue ;;
+                if _ai_configuration_verbose_set false; then
+                    _ai_emit_settings_snapshot
+                    echo -e "  ${GRN}✔ Verbose mode off.${NC}"
+                else
+                    _ai_emit_settings_snapshot
+                fi
+                echo ""; continue ;;
             memory-warning\ *)
                 if _ai_configuration_memory_warning_set "${user_input#memory-warning }"; then
                     ok "System memory warning threshold verified for this Igor process."
