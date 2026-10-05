@@ -100,6 +100,7 @@ class EventState:
     command_state: str = "ready"
     backend_ready: bool = False
     settings_snapshot: dict[str, Any] | None = None
+    settings_sources: dict[str, str] = field(default_factory=dict)
     operator_snapshot: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
@@ -165,11 +166,18 @@ class EventState:
             self.finished = True
         if kind == "settings_snapshot":
             snapshot = event.get("settings")
+            sources = event.get("sources")
             if isinstance(snapshot, dict):
                 self.settings_snapshot = copy.deepcopy(snapshot)
                 self.mode = str(snapshot.get("mode") or self.mode)
                 self.provider = str(snapshot.get("provider") or self.provider)
                 self.model = str(snapshot.get("model") or self.model)
+            if isinstance(sources, dict):
+                self.settings_sources = {
+                    str(key): str(value)
+                    for key, value in sources.items()
+                    if isinstance(key, str) and isinstance(value, str)
+                }
             return True
         if kind == "approval_waiting":
             self.pending_action = dict(event)
@@ -623,12 +631,19 @@ def settings_change_command(key: str, value: str) -> str:
     raise ValueError("unknown setting")
 
 
-def settings_properties(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    """Adapt the existing backend snapshot; never supply missing values/defaults."""
+def settings_properties(
+    snapshot: dict[str, Any],
+    sources: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Adapt backend settings without inventing authority or missing values."""
     schemas = []
     for key, label, kind, options in SETTINGS_FIELDS:
-        schema: dict[str, Any] = {"id": key, "label": label, "editable": True,
-                                  "source": "AI session settings_snapshot"}
+        schema: dict[str, Any] = {
+            "id": key,
+            "label": label,
+            "editable": True,
+            "source": (sources or {}).get(key, "AI backend settings snapshot"),
+        }
         schema["type"] = {"choice": "enum", "toggle": "boolean"}.get(kind, "text")
         if options:
             schema["options"] = list(options)
@@ -945,8 +960,9 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
                   "model": state.model or "unavailable",
                   "routing_authority": "backend"}},
         {"id": "properties", "label": "Settings", "source": "backend settings_snapshot",
-         "properties": settings_properties(state.settings_snapshot or {}),
-         "hint": "Enter opens existing backend settings"},
+         "properties": settings_properties(
+             state.settings_snapshot or {}, state.settings_sources),
+         "hint": "Enter opens existing backend settings; ownership is shown per field"},
         {"id": "history", "label": "Operational History", "source": "--history recent 20",
          "data": inspection.data, "hint": inspection.status},
     ]
@@ -1751,7 +1767,7 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
             except (BlockingIOError, OSError):
                 pass
             snapshot = state.settings_snapshot
-            schemas = settings_properties(snapshot or {})
+            schemas = settings_properties(snapshot or {}, state.settings_sources)
             if snapshot is not None and notice == "Loading settings…":
                 notice = ""
             height, width = screen.getmaxyx()
@@ -1770,7 +1786,13 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
                         line = f"{marker} {text}"
                         screen.addnstr(row, 0, line, max(1, width - 1),
                                        curses.A_REVERSE if index == selected else 0)
-                footer = notice or "↑↓ move  Enter edit/toggle  Esc back"
+                selected_source = ""
+                if snapshot is not None and schemas:
+                    selected_source = str(schemas[selected].get("source") or "")
+                footer = notice or (
+                    f"{selected_source} · ↑↓ move  Enter edit/toggle  Esc back"
+                    if selected_source else "↑↓ move  Enter edit/toggle  Esc back"
+                )
                 screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1),
                                curses.A_DIM)
             except curses.error:
@@ -1802,8 +1824,11 @@ def _settings_overlay(screen: Any, master: int, reader: EventReader,
                 requested = (field_key, value, current)
                 request_failed = False
                 notice = "Saving…"
+                # The backend emits the authoritative post-change snapshot only
+                # after the mutation has completed. Never queue a refresh behind
+                # a command: Configuration Service-backed settings may stop for
+                # approval and queued text must not become approval input.
                 _send(master, command)
-                _send(master, "settings snapshot")
     finally:
         screen.timeout(100)
 
