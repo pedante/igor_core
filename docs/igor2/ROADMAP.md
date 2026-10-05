@@ -500,6 +500,13 @@ meaning and stable finding identity without automatic causal inference,
 acceptance or runbook generation. See [INVESTIGATIONS.md](INVESTIGATIONS.md)
 and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
 
+Step 16D adds deterministic **cross-incident symptom/cause pattern
+candidates** over already accepted typed incident learning. At least three
+distinct Investigations must contribute an exact matching reviewed symptom/cause
+pair with matching object scope and compatibility. The pattern remains
+reference-only and requires its own explicit review. Similar prose is not merged
+automatically; reference procedures/runbooks remain deferred.
+
 Local experience may later be crystallized into a candidate Agent Skill/runbook
 or module contribution through the same import/promotion pipeline used for
 external knowledge. Promotion creates a reviewable candidate first; it does not

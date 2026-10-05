@@ -12,11 +12,13 @@ from unittest.mock import patch
 
 import pytest
 from test_local_learning import (
+    accept_typed_pair,
     choose,
     operation,
     repeated,
     resolved,
     resolved_typed,
+    resolved_typed_pair,
     review,
     source_snapshot,
 )
@@ -193,6 +195,32 @@ def test_reviewed_typed_cause_enters_context_as_reference_only(environment):
     assert item["authority_class"] == "reference"
     assert "incident-specific cause" in json.dumps(item["content"])
     assert "typed_investigation_finding" in json.dumps(item["content"])
+    assert model.dump() == model_before
+
+
+def test_reviewed_cross_incident_pattern_enters_context_as_reference_only(environment):
+    service = LocalLearningService(environment)
+    for _ in range(3):
+        investigation, _ = resolved_typed_pair(environment, operation(environment))
+        accept_typed_pair(service, investigation["investigation_id"])
+    candidate = choose(service, "cross_incident_pattern")
+    row = review(service, candidate)
+
+    model, registry = SystemModel(), CapabilityRegistry()
+    model_before = model.dump()
+    with pytest.raises(CapabilityError):
+        registry.resolve(row["learning_id"])
+
+    selected, _view = request_context.assemble(
+        {}, selection(row), active_owners=["system"], data_dir=environment)
+    item = selected["context_items"][0]
+    content = json.dumps(item["content"])
+    assert item["kind"] == "local_learning"
+    assert item["authority_class"] == "reference"
+    assert "cross_incident_pattern" in content
+    assert "symptom_cause" in content
+    assert "Storage exhaustion caused the service failure" in content
+    assert "Service became unavailable" in content
     assert model.dump() == model_before
 
 

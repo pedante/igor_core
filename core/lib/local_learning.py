@@ -34,10 +34,13 @@ from privacy import scrub_text
 VERSION = 1
 DERIVATION_VERSION = 1
 TYPED_DERIVATION_VERSION = 2
+PATTERN_DERIVATION_VERSION = 3
 MIN_SAMPLES = 3
+MIN_PATTERN_INVESTIGATIONS = 3
 MAX_LIMIT = 100
 INVESTIGATION_LIMIT = 20
 MAX_SOURCE_OPERATIONS = 256
+MAX_EVIDENCE_REFS = MAX_SOURCE_OPERATIONS + 2 * INVESTIGATION_LIMIT + 2
 MAX_RECORDS = 256
 MAX_RECORD_BYTES = 262144
 MAX_STORE_BYTES = 8388608
@@ -183,6 +186,15 @@ def _query(value: Any) -> None:
         _check("." in value["capability_id"])
 
 
+def _pattern(value: Any) -> dict:
+    value = _closed(value, {"kind", "symptom", "cause", "distinct_investigations"})
+    _check(value["kind"] == "symptom_cause", "invalid cross-incident pattern kind")
+    _text(value["symptom"], 2048)
+    _text(value["cause"], 2048)
+    _integer(value["distinct_investigations"], MIN_PATTERN_INVESTIGATIONS, INVESTIGATION_LIMIT)
+    return value
+
+
 def _evidence(value: Any, scope_id: str) -> None:
     _check(type(value) is dict and type(value.get("kind")) is str)
     kind = value["kind"]
@@ -203,6 +215,17 @@ def _evidence(value: Any, scope_id: str) -> None:
         _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
                "invalid typed finding evidence kind")
         _timestamp(value["recorded_at"])
+    elif kind == "reviewed_learning":
+        _closed(value, common | {"learning_id", "candidate_id", "candidate_revision",
+                                 "investigation_id", "finding_id", "finding_kind", "reviewed_at"})
+        _identifier(value["learning_id"], _LEARNING)
+        _identifier(value["candidate_id"], _CANDIDATE)
+        _identifier(value["candidate_revision"], _DIGEST)
+        _identifier(value["investigation_id"], _INVESTIGATION)
+        _identifier(value["finding_id"], _TYPED_FINDING)
+        _check(value["finding_kind"] in {"symptom", "cause"},
+               "cross-incident patterns require symptom/cause learning")
+        _timestamp(value["reviewed_at"])
     elif kind == "baseline":
         _closed(value, common | {"operation_ids"})
         ids = _array(value["operation_ids"])
@@ -218,6 +241,8 @@ def _evidence(value: Any, scope_id: str) -> None:
         _check(source_version == HISTORY_VERSION, "unsupported History evidence version")
     elif kind == "baseline":
         _check(source_version == BASELINE_VERSION, "unsupported baseline evidence version")
+    elif kind == "reviewed_learning":
+        _check(source_version == VERSION, "unsupported reviewed learning evidence version")
     else:
         _check(source_version in INVESTIGATION_VERSIONS,
                "unsupported Investigation evidence version")
@@ -234,26 +259,38 @@ def _candidate_identity(candidate: dict) -> str:
         investigation = next(ref for ref in candidate["evidence"] if ref["kind"] == "investigation")
         identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
                     "investigation_id": investigation["investigation_id"], "finding_index": investigation["finding_index"]}
-    else:
+    elif candidate["learning_type"] == "typed_investigation_finding":
         investigation = next(ref for ref in candidate["evidence"]
                              if ref["kind"] == "investigation_typed_finding")
         identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
                     "investigation_id": investigation["investigation_id"],
                     "finding_id": investigation["finding_id"]}
+    else:
+        pattern = candidate["pattern"]
+        identity = {
+            "scope_id": candidate["scope_id"],
+            "learning_type": candidate["learning_type"],
+            "kind": pattern["kind"],
+            "symptom": pattern["symptom"],
+            "cause": pattern["cause"],
+            "related_objects": candidate["related_objects"],
+            "compatibility": candidate["compatibility"],
+        }
     return "lc-" + _digest(identity)
 
 
 def validate_candidate(value: Any) -> dict:
     """Validate the closed frozen reference contract, including its revision."""
     value = _copy(value)
-    _closed(value, _CANDIDATE_FIELDS)
+    _closed(value, _CANDIDATE_FIELDS, {"pattern"})
     _check(value["contract"] == CANDIDATE_CONTRACT and type(value["version"]) is int and value["version"] == VERSION)
     _check(value["authority"] == "reference_only" and value["owner"] == "core")
     _identifier(value["candidate_id"], _CANDIDATE)
     _identifier(value["candidate_revision"], _DIGEST)
     scope_id = _scope(value["scope_id"])
     _check(type(value["learning_type"]) is str and value["learning_type"] in {
-        "recurring_outcome", "investigation_finding", "typed_investigation_finding"})
+        "recurring_outcome", "investigation_finding", "typed_investigation_finding",
+        "cross_incident_pattern"})
     owners = _array(value["applicability_owners"], 128)
     for owner in owners:
         _identifier(owner)
@@ -267,29 +304,36 @@ def validate_candidate(value: Any) -> dict:
         _compatibility(item)
     _check(bool(compatibility) and [_compact(item) for item in compatibility] == sorted({_compact(item) for item in compatibility}))
     _check(owners == sorted({item["provider"]["owner"] for item in compatibility}))
-    evidence = _array(value["evidence"], MAX_SOURCE_OPERATIONS + 2)
+    evidence = _array(value["evidence"], MAX_EVIDENCE_REFS)
     for ref in evidence:
         _evidence(ref, scope_id)
     _check([_compact(ref) for ref in evidence] == sorted({_compact(ref) for ref in evidence}))
     operations = [ref["operation_id"] for ref in evidence if ref["kind"] == "operational_history"]
+    investigation_ids = {
+        ref["investigation_id"] for ref in evidence
+        if ref["kind"] in {"investigation", "investigation_typed_finding", "reviewed_learning"}
+    }
     investigations = [ref for ref in evidence
                       if ref["kind"] in {"investigation", "investigation_typed_finding"}]
+    reviewed_learning = [ref for ref in evidence if ref["kind"] == "reviewed_learning"]
     baselines = [ref for ref in evidence if ref["kind"] == "baseline"]
     _check(len(operations) == len(set(operations)) and bool(operations))
     counts = _closed(value["counts"], {"operations", "investigations", "baselines", "minimum_samples"})
-    for key, actual in (("operations", len(operations)), ("investigations", len(investigations)), ("baselines", len(baselines))):
+    for key, actual in (("operations", len(operations)),
+                        ("investigations", len(investigation_ids)),
+                        ("baselines", len(baselines))):
         _check(type(counts[key]) is int and counts[key] == actual)
     provenance = _closed(value["provenance"], {"derivation_version", "rule", "query"})
-    expected_derivation = (
-        TYPED_DERIVATION_VERSION
-        if value["learning_type"] == "typed_investigation_finding"
-        else DERIVATION_VERSION
-    )
+    expected_derivation = {
+        "typed_investigation_finding": TYPED_DERIVATION_VERSION,
+        "cross_incident_pattern": PATTERN_DERIVATION_VERSION,
+    }.get(value["learning_type"], DERIVATION_VERSION)
     _check(type(provenance["derivation_version"]) is int
            and provenance["derivation_version"] == expected_derivation)
     _check(provenance["rule"] == value["learning_type"])
     _query(provenance["query"])
     if value["learning_type"] == "recurring_outcome":
+        _check("pattern" not in value)
         _compatibility({"capability": value["capability"], "provider": value["provider"]})
         _check(compatibility == [{"capability": value["capability"], "provider": value["provider"]}])
         outcome = _closed(value["outcome"], {"outcome", "execution_status", "verification_status"})
@@ -298,11 +342,28 @@ def validate_candidate(value: Any) -> dict:
         _check(type(outcome["verification_status"]) is str and outcome["verification_status"] in {"not_applicable", "passed", "failed", "unknown", "unavailable"})
         _check(not outcome["outcome"].startswith("interrupted_"))
         _check(type(counts["minimum_samples"]) is int and counts["minimum_samples"] == MIN_SAMPLES and len(operations) >= MIN_SAMPLES)
-        _check(not investigations and len(baselines) == 1 and baselines[0]["operation_ids"] == sorted(operations))
+        _check(not investigations and not reviewed_learning and len(baselines) == 1
+               and baselines[0]["operation_ids"] == sorted(operations))
+    elif value["learning_type"] == "cross_incident_pattern":
+        _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
+        pattern = _pattern(value.get("pattern"))
+        _check(type(counts["minimum_samples"]) is int
+               and counts["minimum_samples"] == MIN_PATTERN_INVESTIGATIONS)
+        _check(counts["investigations"] == pattern["distinct_investigations"]
+               and counts["investigations"] >= MIN_PATTERN_INVESTIGATIONS)
+        _check(not investigations and not baselines)
+        by_investigation = {}
+        for ref in reviewed_learning:
+            by_investigation.setdefault(ref["investigation_id"], set()).add(ref["finding_kind"])
+        _check(len(by_investigation) == counts["investigations"])
+        _check(all(kinds == {"symptom", "cause"} for kinds in by_investigation.values()),
+               "pattern requires one reviewed symptom/cause pair per investigation")
+        _check(len(reviewed_learning) == 2 * counts["investigations"])
     else:
+        _check("pattern" not in value)
         _check(value["capability"] is None and value["provider"] is None and value["outcome"] is None)
         _check(type(counts["minimum_samples"]) is int and counts["minimum_samples"] == 1)
-        _check(len(investigations) == 1 and not baselines)
+        _check(len(investigations) == 1 and not reviewed_learning and not baselines)
     _check(value["candidate_id"] == _candidate_identity(value), "candidate identity mismatch")
     _check(value["candidate_revision"] == _digest({key: child for key, child in value.items() if key != "candidate_revision"}),
            "candidate revision mismatch")
@@ -413,8 +474,26 @@ def _typed_history_ids(source: dict) -> list[str]:
     return sorted(ids)
 
 
+def _reviewed_learning_ref(artifact: dict, typed_ref: dict) -> dict:
+    return {
+        "kind": "reviewed_learning",
+        "scope_id": artifact["scope_id"],
+        "source_version": artifact["version"],
+        "digest": _digest(artifact),
+        "learning_id": artifact["learning_id"],
+        "candidate_id": artifact["candidate"]["candidate_id"],
+        "candidate_revision": artifact["candidate"]["candidate_revision"],
+        "investigation_id": typed_ref["investigation_id"],
+        "finding_id": typed_ref["finding_id"],
+        "finding_kind": typed_ref["finding_kind"],
+        "reviewed_at": artifact["review"]["at"],
+    }
+
+
 def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncertainty: list,
-                    rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None) -> dict:
+                    rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None,
+                    pattern: dict | None = None, investigation_count: int | None = None,
+                    minimum_samples: int | None = None) -> dict:
     compatibility = {_compact(_canonical_compatibility(row)): _canonical_compatibility(row) for row in rows}
     ordered = [compatibility[key] for key in sorted(compatibility)]
     value = {"contract": CANDIDATE_CONTRACT, "version": VERSION, "authority": "reference_only",
@@ -425,19 +504,28 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
              "provider": ordered[0]["provider"] if learning_type == "recurring_outcome" else None,
              "compatibility": ordered, "outcome": outcome, "evidence": sorted(evidence, key=_compact),
              "counts": {"operations": len(rows),
-                        "investigations": int(learning_type in {
-                            "investigation_finding", "typed_investigation_finding"}),
+                        "investigations": (
+                            investigation_count
+                            if investigation_count is not None
+                            else int(learning_type in {
+                                "investigation_finding", "typed_investigation_finding"})
+                        ),
                         "baselines": int(learning_type == "recurring_outcome"),
-                        "minimum_samples": MIN_SAMPLES if learning_type == "recurring_outcome" else 1},
+                        "minimum_samples": (
+                            minimum_samples
+                            if minimum_samples is not None
+                            else MIN_SAMPLES if learning_type == "recurring_outcome" else 1
+                        )},
              "provenance": {
-                 "derivation_version": (
-                     TYPED_DERIVATION_VERSION
-                     if learning_type == "typed_investigation_finding"
-                     else DERIVATION_VERSION
-                 ),
+                 "derivation_version": {
+                     "typed_investigation_finding": TYPED_DERIVATION_VERSION,
+                     "cross_incident_pattern": PATTERN_DERIVATION_VERSION,
+                 }.get(learning_type, DERIVATION_VERSION),
                  "rule": learning_type,
                  "query": query,
              }}
+    if pattern is not None:
+        value["pattern"] = copy.deepcopy(pattern)
     value["candidate_id"] = _candidate_identity(value)
     value["candidate_revision"] = _digest({key: child for key, child in value.items() if key != "candidate_revision"})
     return validate_candidate(value)
@@ -733,10 +821,129 @@ class LocalLearningService:
                     ))
                 except LearningError:
                     omitted.append({"source": finding_id, "reason": "unsafe_or_invalid_typed_finding"})
-        candidates.sort(key=lambda row: row["candidate_id"])
         with self._store() as (document, _):
             reviewed = {(row["candidate"]["candidate_id"], row["candidate"]["candidate_revision"]): row
                         for row in document["records"]} if document else {}
+
+        # Step 16D: derive cross-incident symptom/cause patterns only from
+        # already-accepted, still-current typed incident learning. Exact text,
+        # object scope and compatibility must match; semantic similarity is not
+        # inferred by this deterministic layer.
+        investigation_by_id = {row["investigation_id"]: row for row in investigations}
+        typed_sources = []
+        for candidate in candidates:
+            if candidate["learning_type"] != "typed_investigation_finding":
+                continue
+            artifact = reviewed.get((candidate["candidate_id"], candidate["candidate_revision"]))
+            if artifact is None or artifact["status"] != "accepted":
+                continue
+            typed_ref = next(ref for ref in candidate["evidence"]
+                             if ref["kind"] == "investigation_typed_finding")
+            if typed_ref["finding_kind"] not in {"symptom", "cause"}:
+                continue
+            investigation = investigation_by_id.get(typed_ref["investigation_id"])
+            if investigation is None:
+                continue
+            finding = next((item for item in investigation.get("typed_findings", [])
+                            if item["finding_id"] == typed_ref["finding_id"]), None)
+            if finding is None or finding["status"] != "supported":
+                continue
+            typed_sources.append({
+                "artifact": artifact,
+                "candidate": candidate,
+                "finding": finding,
+                "typed_ref": typed_ref,
+            })
+
+        per_investigation = {}
+        for source_item in typed_sources:
+            ident = source_item["typed_ref"]["investigation_id"]
+            kind = source_item["typed_ref"]["finding_kind"]
+            per_investigation.setdefault(ident, {}).setdefault(kind, []).append(source_item)
+
+        pattern_groups = {}
+        for ident, kinds in sorted(per_investigation.items()):
+            for symptom in sorted(kinds.get("symptom", []),
+                                  key=lambda item: item["artifact"]["learning_id"]):
+                for cause in sorted(kinds.get("cause", []),
+                                    key=lambda item: item["artifact"]["learning_id"]):
+                    if (symptom["candidate"]["related_objects"] != cause["candidate"]["related_objects"]
+                            or symptom["candidate"]["compatibility"] != cause["candidate"]["compatibility"]
+                            or symptom["candidate"]["applicability_owners"]
+                            != cause["candidate"]["applicability_owners"]):
+                        continue
+                    key = _compact({
+                        "symptom": symptom["finding"]["statement"],
+                        "cause": cause["finding"]["statement"],
+                        "related_objects": symptom["candidate"]["related_objects"],
+                        "compatibility": symptom["candidate"]["compatibility"],
+                    })
+                    current_pair = pattern_groups.setdefault(key, {}).get(ident)
+                    pair = (symptom, cause)
+                    if current_pair is None or (
+                        symptom["artifact"]["learning_id"], cause["artifact"]["learning_id"]
+                    ) < (
+                        current_pair[0]["artifact"]["learning_id"],
+                        current_pair[1]["artifact"]["learning_id"],
+                    ):
+                        pattern_groups[key][ident] = pair
+
+        for grouped in pattern_groups.values():
+            if len(grouped) < MIN_PATTERN_INVESTIGATIONS:
+                continue
+            pairs = [grouped[ident] for ident in sorted(grouped)]
+            symptom_statement = pairs[0][0]["finding"]["statement"]
+            cause_statement = pairs[0][1]["finding"]["statement"]
+            operation_ids = sorted({
+                ref["operation_id"]
+                for pair in pairs
+                for item in pair
+                for ref in item["candidate"]["evidence"]
+                if ref["kind"] == "operational_history"
+            })
+            rows = [cache.get(operation_id) for operation_id in operation_ids]
+            if not rows or any(row is None or not _usable(row) for row in rows):
+                omitted.append({"source": "cross_incident_pattern",
+                                "reason": "pattern_history_unavailable"})
+                continue
+            evidence = [_history_ref(row) for row in rows]
+            for pair in pairs:
+                for item in pair:
+                    evidence.append(_reviewed_learning_ref(
+                        item["artifact"], item["typed_ref"]))
+            related_objects = copy.deepcopy(pairs[0][0]["candidate"]["related_objects"])
+            pattern = {
+                "kind": "symptom_cause",
+                "symptom": symptom_statement,
+                "cause": cause_statement,
+                "distinct_investigations": len(pairs),
+            }
+            try:
+                candidates.append(_make_candidate(
+                    scope_id=scope_id,
+                    learning_type="cross_incident_pattern",
+                    statement=(
+                        f"Across {len(pairs)} reviewed investigations with matching compatibility, "
+                        "the same supported symptom/cause pair recurred."
+                    ),
+                    uncertainty=[
+                        "Repeated reviewed incident evidence does not prove this symptom always has this cause.",
+                        "This pattern is reference-only and does not authorize diagnosis, remediation or execution.",
+                        "Only exact typed statements, object scope and compatibility are grouped; semantic similarity is not inferred.",
+                    ],
+                    rows=rows,
+                    related_objects=related_objects,
+                    evidence=evidence,
+                    query=query,
+                    pattern=pattern,
+                    investigation_count=len(pairs),
+                    minimum_samples=MIN_PATTERN_INVESTIGATIONS,
+                ))
+            except LearningError:
+                omitted.append({"source": "cross_incident_pattern",
+                                "reason": "unsafe_or_invalid_pattern"})
+
+        candidates.sort(key=lambda row: row["candidate_id"])
         current = []
         for candidate in candidates:
             row = reviewed.get((candidate["candidate_id"], candidate["candidate_revision"]))
@@ -795,6 +1002,8 @@ class LocalLearningService:
                     if finding is None:
                         raise InvestigationError("typed finding unavailable")
                     source = _typed_finding_source(investigation, finding)
+                elif ref["kind"] == "reviewed_learning":
+                    source = self.inspect(ref["learning_id"])
                 else:
                     # Evidence lists are canonically ordered, not traversal-ordered;
                     # resolve exact baseline references independently if necessary.
