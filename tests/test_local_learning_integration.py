@@ -16,6 +16,7 @@ from test_local_learning import (
     operation,
     repeated,
     resolved,
+    resolved_typed,
     review,
     source_snapshot,
 )
@@ -161,6 +162,38 @@ def test_hostile_finding_is_reference_only_and_never_changes_authorities(environ
     assert model.dump() == model_before
     with pytest.raises(LearningError):
         service.handle("execute", {"learning_id": row["learning_id"]})
+
+
+def test_reviewed_typed_cause_enters_context_as_reference_only(environment):
+    operation_id = operation(environment)
+    investigation, finding_id = resolved_typed(
+        environment, operation_id,
+        kind="cause",
+        statement="Retained evidence supports this incident-specific cause",
+    )
+    service = LocalLearningService(environment)
+    candidate = choose(service, "typed_investigation_finding")
+    row = review(service, candidate)
+
+    typed_ref = next(ref for ref in candidate["evidence"]
+                     if ref["kind"] == "investigation_typed_finding")
+    assert typed_ref["finding_id"] == finding_id
+    assert typed_ref["investigation_id"] == investigation["investigation_id"]
+
+    model, registry = SystemModel(), CapabilityRegistry()
+    model_before = model.dump()
+    with pytest.raises(CapabilityError):
+        registry.resolve(row["learning_id"])
+    assert model.dump() == model_before
+
+    selected, _view = request_context.assemble(
+        {}, selection(row), active_owners=["system"], data_dir=environment)
+    item = selected["context_items"][0]
+    assert item["kind"] == "local_learning"
+    assert item["authority_class"] == "reference"
+    assert "incident-specific cause" in json.dumps(item["content"])
+    assert "typed_investigation_finding" in json.dumps(item["content"])
+    assert model.dump() == model_before
 
 
 def test_real_memory_read_to_investigation_review_context_and_provider_payload(environment):
