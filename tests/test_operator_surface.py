@@ -251,5 +251,57 @@ class OperatorSurfaceTests(unittest.TestCase):
             build_surface({"modules": "not-a-list"})
 
 
+    def test_capability_selector_projects_as_bounded_input_metadata(self):
+        payload = self.payload()
+        selected = json.loads(json.dumps(CAP))
+        selected["id"] = "system.service.status"
+        selected["descriptor"]["inputs"] = {
+            "properties": {
+                "unit": {
+                    "type": "string",
+                    "validator": "systemd_unit",
+                    "selector": {
+                        "schema_version": 1,
+                        "kind": "resource",
+                        "resource_kind": "service",
+                    },
+                }
+            },
+            "required": ["unit"],
+            "additionalProperties": False,
+        }
+        payload["capabilities"] = [selected]
+        surface = build_surface(payload)
+        row = next(item for item in surface["entries"]
+                   if item["target_id"] == "system.service.status")
+        self.assertEqual(
+            row["inputs"]["selectors"]["unit"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        )
+        self.assertEqual(row["inputs"]["required"], ["unit"])
+
+    def test_malformed_capability_selector_fails_operator_projection(self):
+        payload = self.payload()
+        selected = json.loads(json.dumps(CAP))
+        selected["descriptor"]["inputs"] = {
+            "properties": {
+                "unit": {
+                    "type": "string",
+                    "selector": {
+                        "schema_version": 1,
+                        "kind": "resource",
+                        "resource_kind": "service",
+                        "approval": True,
+                    },
+                }
+            },
+            "required": ["unit"],
+            "additionalProperties": False,
+        }
+        payload["capabilities"] = [selected]
+        with self.assertRaisesRegex(SurfaceError, "invalid capability selector"):
+            build_surface(payload)
+
+
 if __name__ == "__main__":
     unittest.main()

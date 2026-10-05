@@ -20,6 +20,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from input_candidates import CandidateError, validate_selector
+
 SURFACE_VERSION = 1
 CACHE_VERSION = 1
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
@@ -67,6 +69,20 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
     inputs = descriptor.get("inputs") if isinstance(descriptor.get("inputs"), dict) else {}
     required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
     properties = inputs.get("properties") if isinstance(inputs.get("properties"), dict) else {}
+    projected_inputs = {
+        "required": [name for name in required if isinstance(name, str)],
+        "properties": copy.deepcopy(properties),
+    }
+    selectors: dict[str, dict[str, Any]] = {}
+    for name, spec in properties.items():
+        if not isinstance(name, str) or not isinstance(spec, dict) or "selector" not in spec:
+            continue
+        try:
+            selectors[name] = validate_selector(spec["selector"], input_type=spec.get("type"))
+        except CandidateError as exc:
+            raise SurfaceError(f"invalid capability selector for {ident}.{name}: {exc}") from exc
+    if selectors:
+        projected_inputs["selectors"] = selectors
     safety = descriptor.get("safety") if isinstance(descriptor.get("safety"), dict) else {}
     return {
         "path": ident,
@@ -81,10 +97,7 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
         "description": str(descriptor.get("description") or "Capability"),
         "safety": safety.get("tier") if safety.get("tier") in {"READ", "CHANGE", "DESTROY"} else None,
         "privilege": descriptor.get("privilege") if isinstance(descriptor.get("privilege"), str) else None,
-        "inputs": {
-            "required": [name for name in required if isinstance(name, str)],
-            "properties": copy.deepcopy(properties),
-        },
+        "inputs": projected_inputs,
         "verification": copy.deepcopy(descriptor.get("verification")) if isinstance(descriptor.get("verification"), dict) else None,
         "recovery": copy.deepcopy(descriptor.get("recovery")) if isinstance(descriptor.get("recovery"), dict) else None,
     }

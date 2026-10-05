@@ -294,11 +294,18 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
         if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
             raise _error(f"{where}.inputs has invalid property name")
         spec = _closed_object(raw, {"type", "validator", "enum", "minimum", "maximum",
-                                    "minLength", "maxLength", "root", "namespace", "purpose"},
+                                    "minLength", "maxLength", "root", "namespace", "purpose",
+                                    "selector"},
                               f"{where}.inputs.{name}")
         kind = spec.get("type")
         if kind not in input_types:
             raise _error(f"{where}.inputs.{name} has invalid type")
+        if "selector" in spec:
+            from input_candidates import CandidateError, validate_selector
+            try:
+                spec["selector"] = validate_selector(spec["selector"], input_type=kind)
+            except CandidateError as exc:
+                raise _error(f"{where}.inputs.{name}.selector is invalid: {exc}") from exc
         if "validator" in spec:
             valid_validators = {
                 "string": {"systemd_unit", "package_name"},

@@ -325,4 +325,4 @@ authoritative decision log:
 - Q014 — bounded semantic selector metadata on capability inputs;
 - Q015 — dynamic candidate source, freshness and authority.
 
-Implementation must not silently settle those questions in code.
+D070 resolves these questions. S1 implements only the generic selector/candidate foundation; S2 remains the first real System consumer.

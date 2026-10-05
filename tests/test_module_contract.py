@@ -336,5 +336,67 @@ class ModuleContractTests(unittest.TestCase):
             module_contract.validate_module(root)
 
 
+    def test_capability_resource_selector_is_strict_reference_metadata(self):
+        capability = {
+            "kind": "capability", "id": "fixture.service.status",
+            "handler": "fixture__service_status", "capability_version": 1,
+            "description": "Read one selected service.",
+            "inputs": {
+                "properties": {
+                    "unit": {
+                        "type": "string",
+                        "validator": "systemd_unit",
+                        "selector": {
+                            "schema_version": 1,
+                            "kind": "resource",
+                            "resource_kind": "service",
+                        },
+                    }
+                },
+                "required": ["unit"],
+                "additionalProperties": False,
+            },
+            "safety": {"tier": "READ"}, "privilege": "none",
+            "preconditions": [{"kind": "owner_active"}],
+            "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "not_applicable"}, "affects": [],
+        }
+        root = self.package(
+            self.valid_manifest(),
+            {"contract_version": 1, "contributions": [capability]},
+        )
+        (root / "module.sh").write_text(
+            "fixture__service_status() { printf '%s\\n' '{\"status\":\"ok\",\"result\":{}}'; }\n",
+            encoding="utf-8",
+        )
+        result = module_contract.validate_module(root)
+        spec = result["contributions"][0]["inputs"]["properties"]["unit"]
+        self.assertEqual(
+            spec["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        )
+
+        malformed = json.loads(json.dumps(capability))
+        malformed["inputs"]["properties"]["unit"]["selector"]["authority"] = "execute"
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [malformed]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "selector is invalid"):
+            module_contract.validate_module(root)
+
+        incompatible = json.loads(json.dumps(capability))
+        incompatible["inputs"]["properties"]["unit"] = {
+            "type": "integer",
+            "selector": {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        }
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [incompatible]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "string or object_id"):
+            module_contract.validate_module(root)
+
+
 if __name__ == "__main__":
     unittest.main()
