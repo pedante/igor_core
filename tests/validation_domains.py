@@ -34,6 +34,8 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "capability": (
         "tests/test_module_contract.py",
+        "tests/test_input_candidates.py",
+        "tests/test_operator_surface.py",
         "tests/test_capability_runtime.py",
         "tests/core/test_safety.bats",
         "tests/core/test_safety_dispatch.bats",
@@ -80,6 +82,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     "tui": (
         "tests/test_ai_tui.py",
         "tests/test_ai_tui_colors.py",
+        "tests/test_operator_surface.py",
         "tests/test_ai_tui_operator.py",
         "tests/test_ai_tui_pty.py",
         "tests/test_ai_tui_privilege.py",
@@ -130,11 +133,11 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
 
 _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("local_learning", "knowledge_artifact"), "learning"),
-    (("capability", "capabilities", "approval", "safety", "privilege", "package", "core/lib/pkg.sh", "service_admission", "modules/docker/", "modules/system/"), "capability"),
+    (("capability", "capabilities", "approval", "safety", "privilege", "package", "core/lib/pkg.sh", "service_admission", "input_candidates", "operator_surface", "modules/docker/", "modules/system/"), "capability"),
     (("operational_history", "history"), "history"),
     (("module_contract", "module_loader", "module_contracts", "module_v2", "modules/"), "module"),
     (("config", "secret", "variables"), "configuration"),
-    (("tui", "frontend", "operator_backend", "ai_render", "ai_settings"), "tui"),
+    (("tui", "frontend", "operator_backend", "operator_surface", "input_candidates", "ai_render", "ai_settings"), "tui"),
     (("deployment", "deployments", "nextcloud_docker/lib/attachment"), "deployment"),
     (("domain_event", "event_bus", "ai_events"), "events"),
     (("automation", "healing", "judgment"), "automation"),
