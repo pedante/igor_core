@@ -825,6 +825,39 @@ capability or executable runbook/playbook authority. Multi-step sequencing,
 separate verification-operation relationships, semantic/fuzzy equivalence,
 automatic acceptance and executable promotion remain later explicit contracts.
 
+### D068 — OKF is a stateless reference-knowledge interchange boundary (Step 16F)
+
+The Project Owner selected Step 16F after the reviewed Local Learning,
+cross-incident pattern and reference-procedure semantics were established.
+
+Igor owns Knowledge Artifact semantics. Open Knowledge Format is an interchange
+encoding only; it is not Igor's memory runtime, trust authority, module format,
+execution protocol or source of machine truth.
+
+The initial portable profile targets **OKF v0.2** and exports one accepted Local
+Learning artifact per bundle. The root `index.md` declares
+`okf_version: "0.2"`; the concept is UTF-8 Markdown with YAML frontmatter and
+uses standard OKF provenance/trust/lifecycle fields plus a producer-defined
+`igor_artifact` extension for Igor's typed reference semantics.
+
+Core remains dependency-free. The initial importer accepts one-concept bundles
+using deterministic one-line JSON-compatible YAML values and simple scalar
+frontmatter. Unsupported multiline/advanced YAML fails closed rather than
+adding a general YAML runtime. Multi-concept/recursive bundle ingestion is
+deferred.
+
+Export is allowed only for **accepted** Local Learning. Import is validate and
+normalize only: every imported concept becomes `reference_only`,
+`untrusted_import`, and `persistence: none`. External `verified` metadata
+is retained as provenance/trust evidence but never becomes Igor acceptance,
+permission or authority.
+
+Import does not write Local Learning, enter Context, alter System Model or
+Configuration, create deployment/responsibility state, activate modules, grant
+approval/privilege, create a capability/runbook, or execute anything. A later
+explicit review/persistence contract is required before imported knowledge can
+become active Igor reference knowledge.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
