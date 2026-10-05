@@ -33,6 +33,7 @@ from privacy import scrub_text
 
 VERSION = 1
 DERIVATION_VERSION = 1
+TYPED_DERIVATION_VERSION = 2
 MIN_SAMPLES = 3
 MAX_LIMIT = 100
 INVESTIGATION_LIMIT = 20
@@ -48,6 +49,7 @@ _CANDIDATE = re.compile(r"lc-[0-9a-f]{64}")
 _LEARNING = re.compile(r"learn-[0-9a-f]{32}")
 _OPERATION = re.compile(r"op-[0-9a-f]{32}")
 _INVESTIGATION = re.compile(r"inv-[0-9a-f]{32}")
+_TYPED_FINDING = re.compile(r"tf-[0-9a-f]{32}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _IDENT = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*")
 _STATES = {"accepted", "rejected", "superseded"}
@@ -194,6 +196,13 @@ def _evidence(value: Any, scope_id: str) -> None:
         _identifier(value["investigation_id"], _INVESTIGATION)
         _timestamp(value["recorded_at"])
         _integer(value["finding_index"], 0, 31)
+    elif kind == "investigation_typed_finding":
+        _closed(value, common | {"investigation_id", "recorded_at", "finding_id", "finding_kind"})
+        _identifier(value["investigation_id"], _INVESTIGATION)
+        _identifier(value["finding_id"], _TYPED_FINDING)
+        _check(value["finding_kind"] in {"symptom", "cause", "action", "verification"},
+               "invalid typed finding evidence kind")
+        _timestamp(value["recorded_at"])
     elif kind == "baseline":
         _closed(value, common | {"operation_ids"})
         ids = _array(value["operation_ids"])
@@ -212,6 +221,8 @@ def _evidence(value: Any, scope_id: str) -> None:
     else:
         _check(source_version in INVESTIGATION_VERSIONS,
                "unsupported Investigation evidence version")
+        if kind == "investigation_typed_finding":
+            _check(source_version >= 2, "typed finding evidence requires Investigation v2")
     _identifier(value["digest"], _DIGEST)
 
 
@@ -219,10 +230,16 @@ def _candidate_identity(candidate: dict) -> str:
     if candidate["learning_type"] == "recurring_outcome":
         identity = {key: candidate[key] for key in (
             "scope_id", "learning_type", "capability", "provider", "related_objects", "outcome")}
-    else:
+    elif candidate["learning_type"] == "investigation_finding":
         investigation = next(ref for ref in candidate["evidence"] if ref["kind"] == "investigation")
         identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
                     "investigation_id": investigation["investigation_id"], "finding_index": investigation["finding_index"]}
+    else:
+        investigation = next(ref for ref in candidate["evidence"]
+                             if ref["kind"] == "investigation_typed_finding")
+        identity = {"scope_id": candidate["scope_id"], "learning_type": candidate["learning_type"],
+                    "investigation_id": investigation["investigation_id"],
+                    "finding_id": investigation["finding_id"]}
     return "lc-" + _digest(identity)
 
 
@@ -235,7 +252,8 @@ def validate_candidate(value: Any) -> dict:
     _identifier(value["candidate_id"], _CANDIDATE)
     _identifier(value["candidate_revision"], _DIGEST)
     scope_id = _scope(value["scope_id"])
-    _check(type(value["learning_type"]) is str and value["learning_type"] in {"recurring_outcome", "investigation_finding"})
+    _check(type(value["learning_type"]) is str and value["learning_type"] in {
+        "recurring_outcome", "investigation_finding", "typed_investigation_finding"})
     owners = _array(value["applicability_owners"], 128)
     for owner in owners:
         _identifier(owner)
@@ -254,14 +272,21 @@ def validate_candidate(value: Any) -> dict:
         _evidence(ref, scope_id)
     _check([_compact(ref) for ref in evidence] == sorted({_compact(ref) for ref in evidence}))
     operations = [ref["operation_id"] for ref in evidence if ref["kind"] == "operational_history"]
-    investigations = [ref for ref in evidence if ref["kind"] == "investigation"]
+    investigations = [ref for ref in evidence
+                      if ref["kind"] in {"investigation", "investigation_typed_finding"}]
     baselines = [ref for ref in evidence if ref["kind"] == "baseline"]
     _check(len(operations) == len(set(operations)) and bool(operations))
     counts = _closed(value["counts"], {"operations", "investigations", "baselines", "minimum_samples"})
     for key, actual in (("operations", len(operations)), ("investigations", len(investigations)), ("baselines", len(baselines))):
         _check(type(counts[key]) is int and counts[key] == actual)
     provenance = _closed(value["provenance"], {"derivation_version", "rule", "query"})
-    _check(type(provenance["derivation_version"]) is int and provenance["derivation_version"] == DERIVATION_VERSION)
+    expected_derivation = (
+        TYPED_DERIVATION_VERSION
+        if value["learning_type"] == "typed_investigation_finding"
+        else DERIVATION_VERSION
+    )
+    _check(type(provenance["derivation_version"]) is int
+           and provenance["derivation_version"] == expected_derivation)
     _check(provenance["rule"] == value["learning_type"])
     _query(provenance["query"])
     if value["learning_type"] == "recurring_outcome":
@@ -359,6 +384,35 @@ def _history_ref(row: dict) -> dict:
             "source_version": row["schema_version"], "digest": _digest(row), "recorded_at": row["timestamps"]["terminal_at"]}
 
 
+def _typed_finding_source(investigation: dict, finding: dict) -> dict:
+    """Freeze only semantic source material used by one typed learning candidate."""
+    supporting = set(finding["supporting_evidence"])
+    evidence = sorted(
+        (copy.deepcopy(item) for item in investigation["evidence"] if item["id"] in supporting),
+        key=_compact,
+    )
+    _check(len(evidence) == len(supporting), "typed finding supporting evidence unavailable")
+    return {
+        "investigation_id": investigation["investigation_id"],
+        "scope_id": investigation["scope_id"],
+        "status": investigation["status"],
+        "related_objects": copy.deepcopy(investigation["related_objects"]),
+        "unresolved_questions": copy.deepcopy(investigation["unresolved_questions"]),
+        "finding": copy.deepcopy(finding),
+        "supporting_evidence": evidence,
+    }
+
+
+def _typed_history_ids(source: dict) -> list[str]:
+    ids = {
+        item["target"]
+        for item in source["supporting_evidence"]
+        if item["kind"] in {"operation", "verification", "capability_result"}
+        and item["availability"] == "available"
+    }
+    return sorted(ids)
+
+
 def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncertainty: list,
                     rows: list, related_objects: list, evidence: list, query: dict, outcome: dict | None = None) -> dict:
     compatibility = {_compact(_canonical_compatibility(row)): _canonical_compatibility(row) for row in rows}
@@ -370,10 +424,20 @@ def _make_candidate(*, scope_id: str, learning_type: str, statement: str, uncert
              "capability": ordered[0]["capability"] if learning_type == "recurring_outcome" else None,
              "provider": ordered[0]["provider"] if learning_type == "recurring_outcome" else None,
              "compatibility": ordered, "outcome": outcome, "evidence": sorted(evidence, key=_compact),
-             "counts": {"operations": len(rows), "investigations": int(learning_type == "investigation_finding"),
+             "counts": {"operations": len(rows),
+                        "investigations": int(learning_type in {
+                            "investigation_finding", "typed_investigation_finding"}),
                         "baselines": int(learning_type == "recurring_outcome"),
                         "minimum_samples": MIN_SAMPLES if learning_type == "recurring_outcome" else 1},
-             "provenance": {"derivation_version": DERIVATION_VERSION, "rule": learning_type, "query": query}}
+             "provenance": {
+                 "derivation_version": (
+                     TYPED_DERIVATION_VERSION
+                     if learning_type == "typed_investigation_finding"
+                     else DERIVATION_VERSION
+                 ),
+                 "rule": learning_type,
+                 "query": query,
+             }}
     value["candidate_id"] = _candidate_identity(value)
     value["candidate_revision"] = _digest({key: child for key, child in value.items() if key != "candidate_revision"})
     return validate_candidate(value)
@@ -550,20 +614,13 @@ class LocalLearningService:
         except InvestigationError:
             investigations = []
             omitted.append({"source": "investigations", "reason": "source_unavailable"})
-        for investigation in investigations:
-            ident = investigation["investigation_id"]
-            if investigation["scope_id"] != scope_id:
-                omitted.append({"source": ident, "reason": "source_scope_mismatch"})
-                continue
-            ids = sorted({ref["operation_id"] for ref in investigation["related_history"]})
-            if not ids or not investigation["findings"]:
-                omitted.append({"source": ident, "reason": "insufficient_investigation_evidence"})
-                continue
+        def source_rows(operation_ids, source_ident):
             rows, unavailable = [], False
-            for operation_id in ids:
+            for operation_id in operation_ids:
                 if operation_id not in cache:
                     if len(cache) >= MAX_SOURCE_OPERATIONS:
-                        omitted.append({"source": ident, "operation_id": operation_id, "reason": "source_operation_bound"})
+                        omitted.append({"source": source_ident, "operation_id": operation_id,
+                                        "reason": "source_operation_bound"})
                         unavailable = True
                         continue
                     try:
@@ -572,29 +629,110 @@ class LocalLearningService:
                         cache[operation_id] = None
                 row = cache[operation_id]
                 if row is None or row["scope_id"] != scope_id or not _usable(row):
-                    omitted.append({"source": ident, "operation_id": operation_id, "reason": "missing_or_unusable_history"})
+                    omitted.append({"source": source_ident, "operation_id": operation_id,
+                                    "reason": "missing_or_unusable_history"})
                     unavailable = True
                 else:
                     rows.append(row)
             if unavailable or not rows:
-                continue
+                return None
             if capability_id is not None and any(row["capability"]["id"] != capability_id for row in rows):
+                return None
+            return rows
+
+        typed_uncertainty = {
+            "symptom": "A supported symptom is an Investigation assessment, not current machine truth.",
+            "cause": "A supported cause does not establish a reusable causal rule across incidents.",
+            "action": "A supported action records assessed occurrence; it does not authorize repetition.",
+            "verification": "Canonical capability verification remains owned by Operational History.",
+        }
+
+        for investigation in investigations:
+            ident = investigation["investigation_id"]
+            if investigation["scope_id"] != scope_id:
+                omitted.append({"source": ident, "reason": "source_scope_mismatch"})
                 continue
-            objects = {ref["object_id"] for ref in investigation["related_objects"]}
-            objects.update(ref["object_id"] for row in rows for ref in row["affected_objects"])
-            for index, finding in enumerate(investigation["findings"]):
-                evidence = [_history_ref(row) for row in rows]
-                evidence.append({"kind": "investigation", "scope_id": scope_id, "source_version": investigation["version"],
-                                 "investigation_id": ident, "digest": _digest(investigation),
-                                 "recorded_at": investigation["timestamps"]["updated_at"], "finding_index": index})
+
+            # Preserve the Step 16B free-form compatibility path unchanged.
+            legacy_ids = sorted({ref["operation_id"] for ref in investigation["related_history"]})
+            if investigation["findings"] and legacy_ids:
+                rows = source_rows(legacy_ids, ident)
+                if rows is not None:
+                    objects = {ref["object_id"] for ref in investigation["related_objects"]}
+                    objects.update(ref["object_id"] for row in rows for ref in row["affected_objects"])
+                    for index, finding in enumerate(investigation["findings"]):
+                        evidence = [_history_ref(row) for row in rows]
+                        evidence.append({"kind": "investigation", "scope_id": scope_id,
+                                         "source_version": investigation["version"],
+                                         "investigation_id": ident, "digest": _digest(investigation),
+                                         "recorded_at": investigation["timestamps"]["updated_at"],
+                                         "finding_index": index})
+                        try:
+                            candidates.append(_make_candidate(
+                                scope_id=scope_id, learning_type="investigation_finding",
+                                statement=f"Investigation {ident} reports: {finding}",
+                                uncertainty=[
+                                    "This is an attributed investigation finding, not a verified cause or resolution.",
+                                    *investigation["unresolved_questions"],
+                                ],
+                                rows=rows,
+                                related_objects=[object_ref(scope_id, obj) for obj in sorted(objects)],
+                                evidence=evidence, query=query))
+                        except LearningError:
+                            omitted.append({"source": ident, "reason": "unsafe_or_invalid_finding"})
+            elif investigation["findings"]:
+                omitted.append({"source": ident, "reason": "insufficient_investigation_evidence"})
+
+            # Step 16C integration: only explicit supported typed findings with
+            # retained canonical History support become reviewable candidates.
+            for finding in investigation.get("typed_findings", []):
+                finding_id = finding["finding_id"]
+                if finding["status"] != "supported":
+                    omitted.append({"source": finding_id, "reason": "typed_finding_not_supported"})
+                    continue
                 try:
-                    candidates.append(_make_candidate(scope_id=scope_id, learning_type="investigation_finding",
-                        statement=f"Investigation {ident} reports: {finding}",
-                        uncertainty=["This is an attributed investigation finding, not a verified cause or resolution.",
-                                     *investigation["unresolved_questions"]], rows=rows,
-                        related_objects=[object_ref(scope_id, obj) for obj in sorted(objects)], evidence=evidence, query=query))
+                    source_projection = _typed_finding_source(investigation, finding)
                 except LearningError:
-                    omitted.append({"source": ident, "reason": "unsafe_or_invalid_finding"})
+                    omitted.append({"source": finding_id, "reason": "typed_finding_evidence_unavailable"})
+                    continue
+                operation_ids = _typed_history_ids(source_projection)
+                if not operation_ids:
+                    omitted.append({"source": finding_id, "reason": "typed_finding_without_retained_history"})
+                    continue
+                rows = source_rows(operation_ids, finding_id)
+                if rows is None:
+                    continue
+                objects = {ref["object_id"] for ref in source_projection["related_objects"]}
+                objects.update(ref["object_id"] for row in rows for ref in row["affected_objects"])
+                evidence = [_history_ref(row) for row in rows]
+                evidence.append({
+                    "kind": "investigation_typed_finding",
+                    "scope_id": scope_id,
+                    "source_version": investigation["version"],
+                    "investigation_id": ident,
+                    "finding_id": finding_id,
+                    "finding_kind": finding["kind"],
+                    "digest": _digest(source_projection),
+                    "recorded_at": finding["updated_at"],
+                })
+                try:
+                    candidates.append(_make_candidate(
+                        scope_id=scope_id,
+                        learning_type="typed_investigation_finding",
+                        statement=(f"Investigation {ident} supports {finding['kind']} finding: "
+                                   f"{finding['statement']}"),
+                        uncertainty=[
+                            "This reviewed candidate remains reference-only and does not create machine truth, desired state, responsibility or permission.",
+                            typed_uncertainty[finding["kind"]],
+                            *source_projection["unresolved_questions"],
+                        ],
+                        rows=rows,
+                        related_objects=[object_ref(scope_id, obj) for obj in sorted(objects)],
+                        evidence=evidence,
+                        query=query,
+                    ))
+                except LearningError:
+                    omitted.append({"source": finding_id, "reason": "unsafe_or_invalid_typed_finding"})
         candidates.sort(key=lambda row: row["candidate_id"])
         with self._store() as (document, _):
             reviewed = {(row["candidate"]["candidate_id"], row["candidate"]["candidate_revision"]): row
@@ -647,6 +785,16 @@ class LocalLearningService:
                     resolved[ref["operation_id"]] = source
                 elif ref["kind"] == "investigation":
                     source = self._investigations.inspect(ref["investigation_id"])
+                elif ref["kind"] == "investigation_typed_finding":
+                    investigation = self._investigations.inspect(ref["investigation_id"])
+                    finding = next(
+                        (item for item in investigation.get("typed_findings", [])
+                         if item["finding_id"] == ref["finding_id"]),
+                        None,
+                    )
+                    if finding is None:
+                        raise InvestigationError("typed finding unavailable")
+                    source = _typed_finding_source(investigation, finding)
                 else:
                     # Evidence lists are canonically ordered, not traversal-ordered;
                     # resolve exact baseline references independently if necessary.

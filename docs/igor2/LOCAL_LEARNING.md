@@ -82,7 +82,7 @@ including the recent window. Candidate output is limited by the requested
 limit; unavailable sources, insufficient samples, overflow and already-reviewed
 revisions have explicit omission reasons. Discovery is not an exhaustive scan.
 
-The first learning types are:
+The learning types are:
 
 ### `recurring_outcome`
 
@@ -104,10 +104,39 @@ prove a typed cause, action, successful resolution procedure, or verification;
 the candidate states only what the available finding supports. Missing,
 unavailable, or ineligible references do not become fabricated evidence.
 
+### `typed_investigation_finding`
+
+A resolved version-2 Investigation may yield a distinct candidate for an
+explicit **supported** typed `symptom`, `cause`, `action` or
+`verification` finding. Local Learning does not infer the type or support
+state. It consumes the typed Investigation assessment exactly as attributed.
+
+Eligibility is conservative: the finding must have retained, available
+supporting evidence that resolves to usable canonical Operational History.
+System-fact/file/judgment-only support can remain valid Investigation knowledge
+but does not become this Local Learning candidate type. The candidate freezes
+only the semantic source projection used for review: the stable `finding_id`,
+typed finding record, its referenced supporting evidence metadata, related
+objects, unresolved questions and Investigation resolution status. Unrelated
+Investigation edits therefore do not become accidental learning evidence.
+
+Candidate identity is based on scope + Investigation ID + stable typed
+`finding_id`, not list position. Typed derivation uses derivation version 2;
+existing recurring/free-form derivation remains version 1 so already-reviewed
+artifacts retain their exact validation and identity. Reopening the Investigation
+or changing the typed finding/support changes or removes the current candidate
+and stale review is refused.
+
+A typed `cause` candidate preserves an explicit Investigation causal
+assessment; it does **not** infer a cross-incident causal rule. A typed
+`action` does not authorize repeating that action. A typed `verification`
+does not replace canonical verifier/History truth. All still require explicit
+Local Learning review before entering Context.
+
 Baselines may provide an explicit summary/source alongside these records, but
-do not independently qualify as causal evidence. Causal patterns and verified
-runbook derivation are deferred until Investigation contracts carry the needed
-typed relationships.
+do not independently qualify as causal evidence. Cross-incident causal pattern synthesis and verified runbook derivation remain
+deferred. Typed relationships now make explicit incident-scoped claims
+reviewable; they do not themselves justify reusable procedures.
 
 ## Review and persistence
 

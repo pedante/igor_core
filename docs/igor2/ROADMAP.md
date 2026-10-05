@@ -491,13 +491,14 @@ installed module packages. Causal patterns and verified runbook derivation are
 deferred until source contracts support those claims. See
 [BASELINES.md](BASELINES.md) and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
 
-Step 16C is also implemented: durable Investigations now carry typed
+Step 16C is also implemented: durable Investigations carry typed
 `symptom`, `cause`, `action` and `verification` findings with explicit evidence
-bindings and v1→v2 migration. These typed findings remain Investigation-scoped
-reference knowledge. Local Learning still consumes its original bounded Step
-16B sources until a separately reviewed integration teaches it to consume typed
-findings without inferring causality automatically. See
-[INVESTIGATIONS.md](INVESTIGATIONS.md).
+bindings and v1→v2 migration. Local Learning now consumes **supported** typed
+findings through a distinct reviewable candidate path when their supporting
+evidence resolves to retained canonical History. This preserves incident-scoped
+meaning and stable finding identity without automatic causal inference,
+acceptance or runbook generation. See [INVESTIGATIONS.md](INVESTIGATIONS.md)
+and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
 
 Local experience may later be crystallized into a candidate Agent Skill/runbook
 or module contribution through the same import/promotion pipeline used for

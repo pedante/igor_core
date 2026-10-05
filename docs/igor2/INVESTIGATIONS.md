@@ -103,6 +103,13 @@ fact. A supported action is not execution permission. A supported verification
 finding is not the canonical capability verifier result; Operational History
 continues to own that result.
 
+Supported typed findings may now be consumed by Local Learning as a **separate
+reviewable candidate type** when their available supporting evidence resolves
+to retained canonical Operational History. That integration preserves the
+stable typed `finding_id` and explicit kind/status; it does not infer support,
+promote the finding automatically, or change Investigation authority. Local
+Learning acceptance remains a second explicit reference-knowledge review.
+
 ## Evidence and subsystem ownership
 
 Evidence has a local ID, kind, scope, target identity, source, recorded timestamp,
@@ -255,7 +262,7 @@ selection provenance is not automatically retained as investigation knowledge.
 Deferred: autonomous/recursive investigation, agents, background monitoring,
 self-healing/remediation, plans/workflows, scheduling/automation integration,
 remote scopes, relationships/deployments, automatic causal inference, runbook
-generation/promotion, Local Learning consumption of typed findings, typed-finding
-projection into the existing AI Context adapter and Jet/Laya. Step 15C added
+generation/promotion, automatic acceptance, direct typed-finding projection
+that bypasses Local Learning review, and Jet/Laya. Step 15C added
 no model routing/selection; the subsequent Step 15D contract owns that explicit
 integration. Step 20 owns the separate default interface transition.

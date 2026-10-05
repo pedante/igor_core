@@ -67,6 +67,30 @@ def resolved(data, operation_id=None, *, finding="Provider failure recurred; cau
     return service.transition(ident, "resolved", "Finding assessed; cause still uncertain")
 
 
+def resolved_typed(data, operation_id, *, kind="cause", status="supported",
+                   statement="Storage exhaustion caused the retained failure"):
+    service = InvestigationService(data)
+    row = service.create(title="Typed provider investigation", summary="Typed evidence retained",
+                         source="operator", owner="operator",
+                         provenance={"source": "operator.cli", "recorded_at": "2026-10-01T12:00:00Z"})
+    ident = row["investigation_id"]
+    evidence_kind = "verification" if kind == "verification" else "operation"
+    service.add_evidence(ident, {"id": "typed-support", "kind": evidence_kind,
+        "scope_id": row["scope_id"], "target": operation_id, "source": "operational_history",
+        "recorded_at": "2026-10-01T12:00:00Z", "availability": "available"})
+    fields = {"investigation_id": ident, "kind": kind, "statement": statement, "status": status}
+    if status == "supported":
+        fields["supporting_evidence"] = ["typed-support"]
+    elif status == "contradicted":
+        fields["contradicting_evidence"] = ["typed-support"]
+    typed = service.add_typed_finding(**fields)
+    finding_id = typed["typed_findings"][0]["finding_id"]
+    service.set_questions(ident, ["Does this recur outside this incident?"])
+    service.transition(ident, "evaluating", "Typed evidence considered")
+    resolved_row = service.transition(ident, "resolved", "Typed finding retained as reference")
+    return resolved_row, finding_id
+
+
 def choose(service, kind="recurring_outcome", **kwargs):
     return next(row for row in service.candidates(**kwargs)["candidates"] if row["learning_type"] == kind)
 
@@ -200,6 +224,96 @@ def test_investigation_finding_is_attributed_not_verified_repair(tmp_path):
     assert candidate["compatibility"][0]["capability"]["version"] == 1
     assert "cause" not in candidate and "procedure" not in candidate
     assert source_snapshot(tmp_path) == before
+
+
+def test_supported_typed_finding_becomes_distinct_reviewable_reference(tmp_path):
+    operation_id = operation(tmp_path)
+    investigation, finding_id = resolved_typed(tmp_path, operation_id)
+    service = LocalLearningService(tmp_path)
+    before = source_snapshot(tmp_path)
+    candidate = choose(service, "typed_investigation_finding")
+
+    assert candidate["provenance"]["derivation_version"] == 2
+    assert candidate["counts"] == {
+        "operations": 1, "investigations": 1, "baselines": 0, "minimum_samples": 1}
+    typed_ref = next(ref for ref in candidate["evidence"]
+                     if ref["kind"] == "investigation_typed_finding")
+    assert typed_ref["investigation_id"] == investigation["investigation_id"]
+    assert typed_ref["finding_id"] == finding_id
+    assert typed_ref["finding_kind"] == "cause"
+    assert any(ref.get("operation_id") == operation_id for ref in candidate["evidence"])
+    assert "supports cause finding" in candidate["statement"]
+    assert "reusable causal rule" in " ".join(candidate["uncertainty"])
+    assert candidate["authority"] == "reference_only"
+    assert candidate["capability"] is None and candidate["provider"] is None
+    assert "procedure" not in candidate
+    assert source_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("status", ["inconclusive", "contradicted"])
+def test_non_supported_typed_findings_are_not_learning_candidates(tmp_path, status):
+    operation_id = operation(tmp_path)
+    _investigation, finding_id = resolved_typed(
+        tmp_path, operation_id, status=status, statement="Typed claim remains unresolved")
+    result = LocalLearningService(tmp_path).candidates()
+    assert not any(row["learning_type"] == "typed_investigation_finding"
+                   for row in result["candidates"])
+    assert any(item["source"] == finding_id and item["reason"] == "typed_finding_not_supported"
+               for item in result["omitted"])
+
+
+def test_typed_finding_identity_uses_stable_finding_id_and_stale_review_is_refused(tmp_path):
+    operation_id = operation(tmp_path)
+    investigation, finding_id = resolved_typed(tmp_path, operation_id)
+    service = LocalLearningService(tmp_path)
+    candidate = choose(service, "typed_investigation_finding")
+    typed_ref = next(ref for ref in candidate["evidence"]
+                     if ref["kind"] == "investigation_typed_finding")
+    assert typed_ref["finding_id"] == finding_id
+
+    InvestigationService(tmp_path).reopen(investigation["investigation_id"], "Reassess typed evidence")
+    with pytest.raises(LearningError):
+        review(service, candidate)
+    assert service.list() == []
+
+
+def test_typed_learning_evidence_status_detects_reopen_without_rewriting_snapshot(tmp_path):
+    operation_id = operation(tmp_path)
+    investigation, _finding_id = resolved_typed(tmp_path, operation_id)
+    service = LocalLearningService(tmp_path)
+    accepted = review(service, choose(service, "typed_investigation_finding"))
+    frozen = copy.deepcopy(accepted)
+    InvestigationService(tmp_path).reopen(investigation["investigation_id"], "New evidence expected")
+
+    before = snapshot(tmp_path)
+    status = service.evidence_status(accepted["learning_id"])
+    typed = next(item for item in status["evidence"]
+                 if item["reference"]["kind"] == "investigation_typed_finding")
+    assert typed["status"] == "changed"
+    assert service.inspect(accepted["learning_id"]) == frozen
+    assert snapshot(tmp_path) == before
+
+
+def test_legacy_and_typed_investigation_candidates_coexist_without_rewriting_identity(tmp_path):
+    operation_id = operation(tmp_path)
+    legacy = resolved(tmp_path, operation_id)
+    service = LocalLearningService(tmp_path)
+    legacy_candidate = choose(service, "investigation_finding")
+    assert legacy_candidate["provenance"]["derivation_version"] == 1
+
+    typed_investigation, _ = resolved_typed(tmp_path, operation_id)
+    candidates = service.candidates()["candidates"]
+    refreshed_legacy = next(row for row in candidates
+                            if row["learning_type"] == "investigation_finding"
+                            and any(ref.get("investigation_id") == legacy["investigation_id"]
+                                    for ref in row["evidence"]))
+    typed_candidate = next(row for row in candidates
+                           if row["learning_type"] == "typed_investigation_finding"
+                           and any(ref.get("investigation_id") == typed_investigation["investigation_id"]
+                                   for ref in row["evidence"]))
+    assert refreshed_legacy["candidate_id"] == legacy_candidate["candidate_id"]
+    assert refreshed_legacy["provenance"]["derivation_version"] == 1
+    assert typed_candidate["candidate_id"] != refreshed_legacy["candidate_id"]
 
 
 @pytest.mark.parametrize("source", ["missing", "unfinished", "no_history", "reopened"])
