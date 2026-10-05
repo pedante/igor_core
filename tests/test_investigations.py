@@ -512,7 +512,7 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(recovered.export(), exported)
 
     def test_v1_export_restore_preserves_version_until_typed_mutation(self):
-        row = create(self.service)
+        create(self.service)
         downgrade_store_to_v1(self.store)
         exported = self.service.export()
         self.assertEqual(exported["version"], LEGACY_VERSION)
