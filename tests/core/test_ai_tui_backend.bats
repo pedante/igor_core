@@ -95,6 +95,98 @@ teardown() {
     [ "$(<"$WIP_FILE")" = "$before" ]
 }
 
+@test "settings snapshot exposes mixed backend ownership instead of one fake settings authority" {
+    provider=openrouter
+    model=fixture/model
+    ai_mode=assist
+    executive_mode=false
+    NEXUS_TEMPERATURE=0.4
+    max_tokens=2048
+    IGOR_VERBOSE=false
+    AI_AUTOSTART=true
+    AI_HYBRID_MODE=false
+
+    _ai_emit_settings_snapshot
+
+    python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
+snapshot = next(event for event in reversed(events)
+                if event["event_type"] == "settings_snapshot")
+assert snapshot["settings"]["provider"] == "openrouter"
+assert snapshot["settings"]["max_tokens"] == "2048"
+assert snapshot["settings"]["ai_autostart"] == "true"
+sources = snapshot["sources"]
+assert sources["verbose"] == "Configuration Service resolver"
+assert sources["mode"] == "AI mode control + legacy persistence"
+assert sources["provider"] == "AI settings (legacy persistence)"
+assert sources["ai_autostart"] == "Launcher preference (legacy persistence)"
+PY
+}
+
+@test "mode persistence failure rolls session state back and publishes the actual value" {
+    provider=openrouter
+    model=fixture/model
+    ai_mode=assist
+    executive_mode=false
+    IGOR_VERBOSE=false
+    max_tokens=2048
+    NEXUS_TEMPERATURE=0.4
+    AI_AUTOSTART=false
+    AI_HYBRID_MODE=false
+    _ai_save_settings() { return 1; }
+
+    if _ai_set_mode executive >/dev/null 2>&1; then
+        false
+    fi
+
+    [ "$ai_mode" = assist ]
+    [ "$executive_mode" = false ]
+    python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
+assert any(event["event_type"] == "warning" for event in events)
+snapshot = next(event for event in reversed(events)
+                if event["event_type"] == "settings_snapshot")
+assert snapshot["settings"]["mode"] == "assist"
+PY
+}
+
+@test "successful legacy AI setting mutation publishes its completed backend snapshot" {
+    provider=openrouter
+    model=fixture/model
+    ai_mode=assist
+    executive_mode=false
+    IGOR_VERBOSE=false
+    max_tokens=2048
+    NEXUS_TEMPERATURE=0.4
+    AI_AUTOSTART=false
+    AI_HYBRID_MODE=false
+    _ai_save_settings() { return 0; }
+    ai_set_cost_rates() { :; }
+    ai_scrub_build_table() { :; }
+
+    _ai_apply_session_setting temperature 1.2
+
+    [ "$NEXUS_TEMPERATURE" = 1.2 ]
+    python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
+snapshot = next(event for event in reversed(events)
+                if event["event_type"] == "settings_snapshot")
+assert snapshot["settings"]["temperature"] == "1.2"
+PY
+}
+
 @test "TUI backend keeps CHANGE approval semantics in the dispatcher" {
     export IGOR_QUIET_LOOP=true IGOR_VERBOSE=false ai_mode=assist executive_mode=false
     ai_unscrub_inbound() { printf '%s' "$1"; }
