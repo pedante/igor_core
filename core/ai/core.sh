@@ -3821,9 +3821,11 @@ except: print('unknown')
                 fi
                 if _ai_save_settings; then
                     _ai_emit_settings_snapshot
-                    [ "$AI_AUTOSTART" = true ] &&
-                        ok "AI Autostart ON — igor.sh will launch AI directly on next start" ||
+                    if [ "$AI_AUTOSTART" = true ]; then
+                        ok "AI Autostart ON — igor.sh will launch AI directly on next start"
+                    else
                         ok "AI Autostart OFF"
+                    fi
                 else
                     AI_AUTOSTART="$_old_autostart"
                     warn "Could not save AI Autostart."
@@ -3840,9 +3842,11 @@ except: print('unknown')
                 fi
                 if _ai_save_settings; then
                     _ai_emit_settings_snapshot
-                    [ "$AI_HYBRID_MODE" = true ] &&
-                        ok "AI Hybrid menu ON — main menu will accept questions on next launch" ||
+                    if [ "$AI_HYBRID_MODE" = true ]; then
+                        ok "AI Hybrid menu ON — main menu will accept questions on next launch"
+                    else
                         ok "AI Hybrid menu OFF"
+                    fi
                 else
                     AI_HYBRID_MODE="$_old_hybrid"
                     warn "Could not save AI Hybrid menu."
