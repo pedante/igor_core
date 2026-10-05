@@ -179,6 +179,11 @@ Selection records are operational provenance only, never automatic knowledge or
 authorization. See [context and routing](docs/igor2/CONTEXT_ROUTING.md).
 
 Canonical capability invocations also create durable Operational History.
+`bash igor.sh --learning candidates` derives bounded local learning candidates
+from retained History and resolved Investigations. Explicit review freezes an
+accepted/rejected snapshot as reference knowledge; it grants no execution
+authority. `--learning list`, `inspect ID` and `evidence_status ID` expose reviewed
+content and current source availability. See [Local Learning](docs/igor2/LOCAL_LEARNING.md).
 Use `bash igor.sh --history recent`, `--history inspect <operation-id>`,
 `--history correlation <id>` or `--history status` for read-only JSON inspection
 without the TUI. CHANGE attempts receive durable identity before execution;
