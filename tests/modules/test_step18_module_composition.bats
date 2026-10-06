@@ -120,7 +120,11 @@ for key,expected in [("module","2.5.0"),("lifecycle","active"),
     assert expected in " ".join(rows),(key,rows)
 PY
     [ "$(cat "$IGOR_MODEL_RUNTIME_FILE")" = "$before_model" ]
-    [ "$(_composition_files)" = "$before_files" ]
+    after_files="$(_composition_files)"
+    if [ "$after_files" != "$before_files" ]; then
+        printf '# composition before: %s\n# composition after:  %s\n' "$before_files" "$after_files" >&3
+    fi
+    [ "$after_files" = "$before_files" ]
     [ ! -e "$IGOR_DATA_DIR/config/config.db" ]
 }
 
@@ -187,7 +191,11 @@ assert view["configuration"]["service"]
 assert all(row["availability"]=="owner_inactive" for row in view["configuration"]["service"])
 PY
     [ "$(cat "$IGOR_MODEL_RUNTIME_FILE")" = "$before_model" ]
-    [ "$(_composition_files)" = "$before_files" ]
+    after_files="$(_composition_files)"
+    if [ "$after_files" != "$before_files" ]; then
+        printf '# disabled composition before: %s\n# disabled composition after:  %s\n' "$before_files" "$after_files" >&3
+    fi
+    [ "$after_files" = "$before_files" ]
 }
 
 @test "typed System capability output crosses canonical dispatch verification and History" {
