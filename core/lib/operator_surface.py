@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only projection of Igor-owned contracts into a browsable operator surface.
 
 This module never executes a capability, mutates configuration, probes the host,

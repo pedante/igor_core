@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Focused S1 tests for semantic input candidates."""
 
 import os
@@ -7,9 +6,8 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "core", "lib"))
-
-from capability_runtime import CapabilityError, validate_inputs  # noqa: E402
-from input_candidates import (  # noqa: E402
+from capability_runtime import CapabilityError, validate_inputs
+from input_candidates import (
     CandidateError,
     CandidateResolverRegistry,
     validate_selector,

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bounded semantic input-candidate contracts for Igor operator interfaces.
 
 This module owns no machine truth and performs no host discovery by itself.
@@ -12,8 +11,9 @@ from __future__ import annotations
 
 import copy
 import re
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 CANDIDATE_API_VERSION = 1
 SELECTOR_SCHEMA_VERSION = 1
@@ -104,9 +104,9 @@ def _candidate_rows(value: Any, limit: int, *, input_type: str | None = None) ->
         label = _bounded_text(raw.get("label", candidate_value), f"candidates[{index}].label", 160)
         detail = _bounded_text(raw.get("detail"), f"candidates[{index}].detail", 512, required=False)
         object_id = raw.get("object_id")
-        if object_id is not None:
-            if not isinstance(object_id, str) or not _OBJECT_ID.fullmatch(object_id):
-                raise _error(f"candidates[{index}].object_id is invalid")
+        if (object_id is not None and
+                (not isinstance(object_id, str) or not _OBJECT_ID.fullmatch(object_id))):
+            raise _error(f"candidates[{index}].object_id is invalid")
         row = {"value": candidate_value, "label": label}
         if detail is not None:
             row["detail"] = detail

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Contract projection coverage for the generated operator surface."""
 
 import json
@@ -9,10 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
-from operator_surface import (  # noqa: E402
+from operator_surface import (
     SurfaceError,
     build_surface,
     cached_build_surface,

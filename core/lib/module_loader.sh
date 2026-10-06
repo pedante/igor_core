@@ -1778,15 +1778,15 @@ igor_load_all_modules() {
     local _sorted_list
     _sorted_list="$(igor_sort_modules "${_names[@]}")"
 
-    local _name _seen=" " _edges
+    local _name _seen_names=" " _edges
     while IFS= read -r _name; do
         [ -n "$_name" ] || continue
-        _seen+="$_name "
+        _seen_names+="$_name "
         igor_load_module "$_name" || true
     done <<< "$_sorted_list"
 
     for _name in "${_names[@]}"; do
-        if [[ "$_seen" != *" $_name "* ]] && [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
+        if [[ "$_seen_names" != *" $_name "* ]] && [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
             _IGOR_MODULE_STATUS["$_name"]="unavailable"
             if [ "${_IGOR_MODULE_API[$_name]:-1}" = 2 ]; then
                 _edges="$(_ml_v2_query "$_name" manifest.requirements.required_modules 2>/dev/null)"
