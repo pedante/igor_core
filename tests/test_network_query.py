@@ -189,7 +189,10 @@ class NetworkQueryTests(unittest.TestCase):
             "addr_info": [
                 {
                     "family": "inet6",
-                    "local": "2001:db8::1%" + ("scope" + str(index)).ljust(32, "x"),
+                    "local": (
+                        f"ffff:ffff:ffff:ffff:ffff:ffff:ffff:f{index:03x}%"
+                        + ("scope" + str(index)).ljust(32, "x")
+                    ),
                     "prefixlen": 64,
                 }
                 for index in range(64)
