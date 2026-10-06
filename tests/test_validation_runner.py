@@ -193,6 +193,34 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertEqual(summary["counts"]["FAIL_BASELINE"], 1)
         self.assertEqual(summary["groups"][-1]["status"], "FAIL")
 
+    def test_fail_fast_preflight_stops_before_behavior_groups(self):
+        self.init_git()
+        self.write("bad.py", "if:")
+        self.write("tests/test_bad.py", "def test_never_runs(): pass\n")
+        code, summary = self.run_main("focused", "--fail-fast-preflight")
+        self.assertEqual(code, 1)
+        self.assertEqual([group["id"] for group in summary["groups"]], ["structure"])
+
+    def test_interactive_pytest_uses_shorter_timeout_budget(self):
+        args = type("Args", (), {"bats": "bats", "python": sys.executable, "ruff": "ruff",
+                                 "shellcheck": "shellcheck", "bats_timeout": 0,
+                                 "group_timeout": 600, "interactive_timeout": 45,
+                                 "slow_timeout": 1200})()
+
+        def fake_execute(command, root, log, seconds, env):
+            self.assertEqual(seconds, 45)
+            log.write_text("fixture\n")
+            return {"status": "PASS", "returncode": 0, "elapsed_seconds": 0, "log": str(log)}
+
+        with patch.object(runner, "execute", side_effect=fake_execute):
+            runner.run_group(
+                {"id": "fixture", "kind": "pytest", "files": ["tests/test_ai_tui.py"]},
+                self.root,
+                self.root,
+                0,
+                args,
+            )
+
     def test_paths_outside_repository_fail_closed(self):
         with self.assertRaises(ValueError):
             runner.local_path(self.root, "../outside.py")
