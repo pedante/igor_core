@@ -352,7 +352,6 @@ def parse_resolv_conf(
         "nameservers": nameservers,
         "search_domains": search_domains,
         "local_stub": local_stub,
-        "upstream_resolvers_known": not local_stub and bool(nameservers),
     }
 
 
