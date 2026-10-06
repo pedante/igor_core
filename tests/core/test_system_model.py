@@ -219,6 +219,47 @@ class SystemModelTests(unittest.TestCase):
             self.model.observe(descriptor, "system", "storage.mounts", incomplete)
         self.assertEqual(self.model.facts, {})
 
+    def test_interface_collection_uses_canonical_local_identity(self) -> None:
+        descriptor = {
+            "object_kind": "interface",
+            "freshness_seconds": 30,
+            "properties": [
+                {"name": "interface.name", "value_type": "string"},
+                {"name": "interface.ifindex", "value_type": "integer", "minimum": 1},
+                {"name": "interface.wireless", "value_type": "boolean"},
+            ],
+        }
+        envelope = {"status": "ok", "result": {"objects": [{
+            "object_id": "interface:veth0@if5",
+            "facts": [
+                {"property": "interface.name", "value": "veth0@if5", "evidence": []},
+                {"property": "interface.ifindex", "value": 9, "evidence": []},
+                {"property": "interface.wireless", "value": False, "evidence": []},
+            ],
+            "unavailable": [],
+        }]}}
+        self.model.observe(
+            descriptor, "system", "network.interfaces", envelope, at=self.time
+        )
+        fact = self.model.read(
+            "interface:veth0@if5", "interface.name", "observed", at=self.time
+        )
+        self.assertEqual((fact["availability"], fact["value"]), ("known", "veth0@if5"))
+
+        malformed = {"status": "ok", "result": {"objects": [{
+            "object_id": "interface:bad/name",
+            "facts": [
+                {"property": "interface.name", "value": "bad/name", "evidence": []},
+                {"property": "interface.ifindex", "value": 10, "evidence": []},
+                {"property": "interface.wireless", "value": False, "evidence": []},
+            ],
+            "unavailable": [],
+        }]}}
+        with self.assertRaises(ModelError):
+            self.model.observe(
+                descriptor, "system", "network.interfaces", malformed, at=self.time
+            )
+
     def test_invalid_source_snapshot_is_atomic(self) -> None:
         snapshot = {"facts": [{"object_id": "host:local", "property": "memory.available_bytes",
                               "state_class": "desired", "value": "wrong", "value_type": "integer",
