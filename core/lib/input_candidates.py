@@ -10,7 +10,9 @@ execution and verification remain authoritative in their existing services.
 from __future__ import annotations
 
 import copy
+import json
 import re
+import sys
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
@@ -275,3 +277,59 @@ class CandidateResolverRegistry:
             "reason": "no candidate source registered",
             "resolved_at": _now(),
         }
+
+def resolve_registered_source(
+    selector: Any,
+    *,
+    input_type: str | None,
+    source_kind: str,
+    source_id: str,
+    raw: Any,
+) -> dict[str, Any]:
+    """Resolve one explicitly registered source through the generic registry."""
+    normalized = validate_selector(selector, input_type=input_type)
+    registry = CandidateResolverRegistry()
+    registry.register(
+        normalized["resource_kind"],
+        source_kind,
+        source_id,
+        lambda _selector: copy.deepcopy(raw),
+    )
+    return registry.resolve(normalized, input_type=input_type)
+
+
+def main(argv: list[str]) -> int:
+    try:
+        if len(argv) >= 2 and argv[1] == "resolve-source":
+            if len(argv) != 6:
+                raise _error(
+                    "resolve-source requires selector JSON, input type, source kind and source id"
+                )
+            selector = json.loads(argv[2])
+            raw = json.load(sys.stdin)
+            result = resolve_registered_source(
+                selector,
+                input_type=argv[3],
+                source_kind=argv[4],
+                source_id=argv[5],
+                raw=raw,
+            )
+        elif len(argv) >= 2 and argv[1] == "resolve-none":
+            if len(argv) != 4:
+                raise _error("resolve-none requires selector JSON and input type")
+            selector = json.loads(argv[2])
+            result = CandidateResolverRegistry().resolve(selector, input_type=argv[3])
+        else:
+            raise _error(
+                "usage: input_candidates.py "
+                "{resolve-source SELECTOR TYPE SOURCE_KIND SOURCE_ID|resolve-none SELECTOR TYPE}"
+            )
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return 0
+    except (CandidateError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(f"input candidates: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
