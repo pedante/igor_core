@@ -384,7 +384,7 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
         raise _error(f"{where}.affects must be a bounded array")
     for index, raw in enumerate(affects):
         affect = _closed_object(raw, {"object", "id", "input"}, f"{where}.affects[{index}]")
-        if affect.get("object") not in {"host", "service", "package"} or ("id" in affect) == ("input" in affect):
+        if affect.get("object") not in {"host", "service", "package", "mount", "filesystem"} or ("id" in affect) == ("input" in affect):
             raise _error(f"{where}.affects[{index}] has invalid object selector")
         if "input" in affect and affect["input"] not in props:
             raise _error(f"{where}.affects[{index}] references unknown input")
