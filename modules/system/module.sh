@@ -143,32 +143,6 @@ PY
 system__observe_mounts() { _mod_sys_storage_observe storage.mounts mounts; }
 system__observe_filesystems() { _mod_sys_storage_observe storage.filesystems filesystems; }
 
-_mod_sys_storage_refresh() {
-    local expected="$1" observer="$2" input
-    input="$(_mod_sys_admin_request "$expected")" || {
-        _mod_sys_admin_error invalid_request "expected $expected v2 request"
-        return 0
-    }
-    [ "$input" = '{}' ] || {
-        _mod_sys_admin_error invalid_request "$expected takes no inputs"
-        return 0
-    }
-    STORAGE_OBSERVER="$observer" "${IGOR_PYTHON:-python3}" - <<'PY'
-import json
-import os
-print(json.dumps({"status": "ok", "result": {"observer_id": os.environ["STORAGE_OBSERVER"]}},
-                 separators=(",", ":")))
-PY
-}
-
-system__refresh_mounts() {
-    _mod_sys_storage_refresh system.storage.mounts.refresh storage.mounts
-}
-
-system__refresh_filesystems() {
-    _mod_sys_storage_refresh system.storage.filesystems.refresh storage.filesystems
-}
-
 system__storage_mounts_list() {
     local input rows
     input="$(_mod_sys_admin_request system.storage.mounts.list)" || {
