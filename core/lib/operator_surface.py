@@ -30,6 +30,7 @@ _KINDS = {
 }
 _SOURCE_NAMES = ("modules", "contributions", "capabilities", "configurations")
 _SOURCE_STATES = {"ok", "missing", "error"}
+_PRESENTATION_ALIASES = {"sys": "system"}
 
 
 class SurfaceError(ValueError):
@@ -57,6 +58,41 @@ def _path(owner: str, ident: str) -> str:
 
 def _availability(value: Any) -> str:
     return value if value in {"active", "inactive", "unavailable", "disabled"} else "unavailable"
+
+
+def _presentation_aliases(entries: list[dict[str, Any]]) -> dict[str, str]:
+    """Return collision-safe presentation aliases for visible root namespaces."""
+    roots = {
+        path.split(".", 1)[0]
+        for entry in entries
+        if isinstance((path := entry.get("path")), str) and path
+    }
+    return {
+        alias: target
+        for alias, target in sorted(_PRESENTATION_ALIASES.items())
+        if target in roots and alias not in roots
+    }
+
+
+def _canonical_prefix(surface: dict[str, Any], prefix: str) -> str:
+    """Resolve only declared root presentation aliases to canonical paths."""
+    prefix = prefix.strip(".")
+    if not prefix:
+        return ""
+    aliases = surface.get("aliases", {})
+    if aliases is None:
+        aliases = {}
+    if not isinstance(aliases, dict):
+        raise SurfaceError("invalid operator surface aliases")
+    root, dot, remainder = prefix.partition(".")
+    target = aliases.get(root)
+    if target is None:
+        return prefix
+    if (not isinstance(target, str) or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", root) is None or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", target) is None):
+        raise SurfaceError("invalid operator surface alias")
+    return target + (("." + remainder) if dot else "")
 
 
 def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
@@ -238,6 +274,7 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
         "entry_count": len(entries),
         "sources": sources,
         "entries": entries,
+        "aliases": _presentation_aliases(entries),
         "availability_model": str(payload.get("availability_model") or "runtime_snapshot"),
     }
     source_digest = payload.get("compiled_source_digest")
@@ -622,7 +659,7 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
     This is a pure projection helper.  Selecting a leaf never executes it.
     """
     entries = _bounded_list(surface.get("entries", []), "surface entries")
-    prefix = prefix.strip(".")
+    prefix = _canonical_prefix(surface, prefix)
     result: dict[str, dict[str, Any]] = {}
     base = prefix + "." if prefix else ""
     for entry in entries:
