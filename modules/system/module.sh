@@ -294,6 +294,214 @@ system__storage_filesystem_status() {
 }
 
 
+# S6 local accounts, permissions and bounded path inspection. Core owns
+# deterministic Linux reads and reviewed privileged mechanics; System owns
+# host-domain object meaning and presentation.
+_mod_sys_account_rows() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/access.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+    case "$kind" in
+        users) account_users_query ;;
+        groups) account_groups_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_account_observe() {
+    local contribution="$1" kind="$2" rows input
+    input="$(_mod_sys_admin_request "$contribution")" || {
+        _mod_sys_admin_error invalid_request "expected $contribution v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$contribution takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_KIND="$kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["ACCOUNT_KIND"]
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+maps = {
+    "users": {
+        "user.name": "name",
+        "user.uid": "uid",
+        "user.primary_gid": "primary_gid",
+        "user.home": "home",
+        "user.shell": "shell",
+    },
+    "groups": {
+        "group.name": "name",
+        "group.gid": "gid",
+        "group.member_count": "member_count",
+        "group.members": "members",
+    },
+}
+objects = []
+for row in rows:
+    object_id = row["object_id"]
+    evidence = [f"core.accounts.{kind}:{object_id}"]
+    objects.append({
+        "object_id": object_id,
+        "facts": [
+            {"property": prop, "value": row[field], "evidence": evidence}
+            for prop, field in maps[kind].items()
+        ],
+        "unavailable": [],
+    })
+print(json.dumps({"status": "ok", "result": {"objects": objects}},
+                 separators=(",", ":")))
+PY
+}
+
+system__observe_users() { _mod_sys_account_observe accounts.users users; }
+system__observe_groups() { _mod_sys_account_observe accounts.groups groups; }
+
+_mod_sys_account_list() {
+    local expected="$1" kind="$2" output_key="$3" input rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$expected takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_KIND="$kind" ACCOUNT_OUTPUT="$output_key"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+kind = os.environ["ACCOUNT_KIND"]
+key = os.environ["ACCOUNT_OUTPUT"]
+if kind == "users":
+    lines = [
+        f'{row["object_id"]}\t{row["name"]}\tuid={row["uid"]}\t'
+        f'gid={row["primary_gid"]}\t{row["home"]}'
+        for row in rows
+    ]
+else:
+    lines = [
+        f'{row["object_id"]}\t{row["name"]}\tgid={row["gid"]}\t'
+        f'members={row["member_count"]}'
+        for row in rows
+    ]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    key: "\n".join(lines)[:8192],
+    "source": "core.accounts." + kind,
+}}, separators=(",", ":")))
+PY
+}
+
+system__users_list() {
+    _mod_sys_account_list system.users.list users users
+}
+
+system__groups_list() {
+    _mod_sys_account_list system.groups.list groups groups
+}
+
+_mod_sys_account_status() {
+    local expected="$1" kind="$2" input_name="$3" input object_id rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    object_id="$(ACCOUNT_INPUT="$input" ACCOUNT_INPUT_NAME="$input_name"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["ACCOUNT_INPUT"]).get(os.environ["ACCOUNT_INPUT_NAME"])
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$kind:$object_id" in
+        users:user:uid:*) ;;
+        groups:group:gid:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "account identity does not match selector kind"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_OBJECT_ID="$object_id" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+ident = os.environ["ACCOUNT_OBJECT_ID"]
+row = next((item for item in rows if item.get("object_id") == ident), None)
+if row is None:
+    raise SystemExit(3)
+print(json.dumps({"status": "ok", "result": row}, separators=(",", ":")))
+PY
+    case "$?" in
+        0) ;;
+        3) _mod_sys_admin_error unavailable "account object is not currently present" ;;
+        *) _mod_sys_admin_error unavailable "account status normalization failed" ;;
+    esac
+}
+
+system__user_status() {
+    _mod_sys_account_status system.users.status users user
+}
+
+system__group_status() {
+    _mod_sys_account_status system.groups.status groups group
+}
+
+system__path_status() {
+    local input path row
+    input="$(_mod_sys_admin_request system.permissions.path.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.permissions.path.status v2 request"
+        return 0
+    }
+    path="$(ACCESS_INPUT="$input" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["ACCESS_INPUT"]).get("path")
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || path=""
+    [ -n "$path" ] || {
+        _mod_sys_admin_error invalid_request "path is required"
+        return 0
+    }
+    # shellcheck source=core/lib/access.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+    row="$(path_status_query "$path")" || {
+        _mod_sys_admin_error unavailable "path metadata is unavailable or outside bounded inspection roots"
+        return 0
+    }
+    ACCESS_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+row = json.loads(os.environ["ACCESS_ROW"])
+result = {key: row[key] for key in (
+    "object_id", "path", "kind", "uid", "gid", "owner", "group", "mode", "size_bytes"
+)}
+print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
+PY
+}
+
+
 # Experimental generic administration capabilities. Platform-specific package
 # and service mechanics stay in Core; this module gives them host-domain meaning.
 _mod_sys_admin_platform() {
