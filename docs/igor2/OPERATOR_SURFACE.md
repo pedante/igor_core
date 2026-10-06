@@ -96,6 +96,27 @@ System Model storage observations are preferred; otherwise the candidate
 boundary may use the bounded Core storage read. Selecting a candidate still
 only supplies explicit input to the canonical `system.*` capability.
 
+
+S5 adds two CHANGE leaves to that same generated namespace:
+
+```text
+:sys.storage.mount
+:sys.storage.unmount
+```
+
+`system.storage.mount` has exactly one required selector-backed input,
+`filesystem`, with the operation-specific `mountable_filesystem` view.
+Choosing it can therefore use the normal one-step chooser; Core derives a
+deterministic runtime target below `/mnt` unless advanced manual JSON supplies
+a confined target below `/mnt`, `/media` or `/srv`.
+`system.storage.unmount` likewise selects an `unmountable_mount` view. These
+resource kinds filter S4 objects; they do not create new durable identities.
+
+Selection still does not execute. The resulting canonical capability enters the
+existing CHANGE approval, privilege and verification path. The reviewed S5
+adapter accepts only exact runtime `mkdir`/`mount`/`umount` argv. Neither
+leaf performs fstab persistence, force unmount or lazy unmount.
+
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that
 ID remains the target. Generic module contributions that are not owner-prefixed
