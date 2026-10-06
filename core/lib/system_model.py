@@ -57,7 +57,13 @@ def _object_matches_kind(object_id: Any, object_kind: Any) -> bool:
         return object_id == "host:local"
     if object_kind in {"deployment", "resource"}:
         return re.fullmatch(object_kind + r":[0-9a-f]{32}", object_id) is not None
-    return object_kind in {"mount", "filesystem"} and object_id.startswith(object_kind + ":/")
+    if object_kind in {"mount", "filesystem"}:
+        return object_id.startswith(object_kind + ":/")
+    if object_kind == "user":
+        return re.fullmatch(r"user:uid:[0-9]+", object_id) is not None
+    if object_kind == "group":
+        return re.fullmatch(r"group:gid:[0-9]+", object_id) is not None
+    return False
 
 
 class ModelError(ValueError):
