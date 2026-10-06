@@ -11,7 +11,6 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 MAX_FILE_BYTES = 1024 * 1024
 MAX_ROWS = 512
