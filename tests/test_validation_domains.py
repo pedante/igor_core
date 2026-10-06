@@ -114,7 +114,10 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertNotIn("tests/modules/test_loader_regressions.bats", tests)
 
     def test_docs_only_change_selects_no_test_files(self):
-        self.assertEqual(\n            affected_tests(["docs/igor2/STATUS.md"], ROOT),\n            (["documentation"], ["tests/test_documentation_health.py"]),\n        )
+        self.assertEqual(
+            affected_tests(["docs/igor2/STATUS.md"], ROOT),
+            (["documentation"], ["tests/test_documentation_health.py"]),
+        )
 
     def test_changed_test_selects_itself_and_validation_tests_select_harness(self):
         domains, tests = affected_tests(["tests/test_context_engine.py"], ROOT)
