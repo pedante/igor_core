@@ -80,6 +80,52 @@ If a recognizer kind is later accepted, it must use the existing owner-aware
 registration/handler envelope, active-owner filtering, bounded timeout,
 provenance and strict validation rather than introduce a second plugin runtime.
 
+
+## Semantic capability input selectors (D070, System operator S1)
+
+Capability inputs may optionally declare one bounded version-1 semantic resource
+selector. The first accepted shape is:
+
+```json
+{
+  "type": "string",
+  "validator": "systemd_unit",
+  "selector": {
+    "schema_version": 1,
+    "kind": "resource",
+    "resource_kind": "service"
+  }
+}
+```
+
+The selector is valid only on `string` or `object_id` inputs in this first
+slice. `resource_kind` is a canonical lowercase identifier. Unknown selector
+fields, versions or kinds fail Module API validation before activation.
+
+A selector is not a validator, precondition, provider binding or authority
+record. The capability's existing input schema remains authoritative when the
+operator chooses or types a value. Safety, approval, privilege, affected
+objects, verification and recovery are unchanged.
+
+Core's candidate-resolution service is separate from Module API registration.
+It has an ordered source model:
+
+1. an explicitly registered fresh System Model projection, when available;
+2. an explicitly registered bounded Platform read as fallback.
+
+Candidate-source registration is Core code/configuration, not a module
+contribution. Candidate results are versioned ephemeral reference data with a
+bounded candidate list, source identity and freshness semantics. A stale System
+Model result is not presented as current. A malformed source result fails
+closed rather than being hidden by fallback.
+
+S1 provides the generic contract and read-only inspection/resolution API only.
+No bundled capability declares a selector yet; the existing System service
+capabilities are the S2 proof slice. `:sys` is likewise deferred: D070 permits
+it only as a future presentation alias while `:system` and all `system.*`
+identities remain canonical.
+
+
 ## Capability output and compatibility contract (Boundary 1)
 
 Package version, Module API version, contribution-envelope version, capability

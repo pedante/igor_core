@@ -894,6 +894,60 @@ re-entry and recovery proof; no generic distributed transaction or workflow
 engine is introduced. Approval accepts the contract, not implementation closure.
 The broader Ownership Foundation and real application-binding gates remain open.
 
+### D070 — System operator semantic selectors and candidate-resolution boundary
+
+Accepted by the Project Owner on 2026-10-06 after the System / `:sys`
+discovery proposal. Q013–Q015 are resolved together.
+
+The existing `system` Module API v2 package remains the canonical host-domain
+owner. Capability IDs remain `system.*` and the existing `:system.*` operator
+paths remain valid. S3 adds `:sys` only as a presentation alias over those
+same target IDs; it is not another module, provider, capability namespace or
+durable identity.
+
+S1 adds one deliberately small optional capability-input selector shape:
+
+```json
+{
+  "selector": {
+    "schema_version": 1,
+    "kind": "resource",
+    "resource_kind": "service"
+  }
+}
+```
+
+`resource_kind` is a canonical lowercase identifier and the selector is
+initially valid only for `string` or `object_id` inputs. This metadata is
+presentation/discovery reference data. It cannot change the input's validator,
+requiredness, capability provider, preconditions, safety, approval, privilege,
+affected objects, verification or recovery.
+
+Core owns the candidate-resolution interface. Candidate source registration is
+not a Module API contribution. For a declared resource kind, resolution prefers
+an eligible fresh System Model source and may fall back to an explicitly
+registered bounded Platform read. Results use a version-1 ephemeral envelope,
+are bounded/non-secret reference data and are never persisted merely because
+they were displayed. Malformed source results fail closed rather than falling
+through to another source. Stale System Model candidates are not presented as
+current.
+
+Candidate selection only produces an explicit input value. Canonical capability
+preparation and execution revalidate that value and all existing authority
+checks still apply. Candidate resolution performs no AI call, unbounded
+filesystem/network scan, adoption, desired-state write, responsibility grant,
+approval or execution.
+
+S1 establishes only the generic contract, resolver registry, projection and
+inspection API. The existing service capabilities are the approved S2 vertical
+slice.
+
+S3 implements Q013 without changing this authority decision: the shared
+Operator Surface may advertise `sys -> system` as collision-safe presentation
+metadata. The alias is absent when its canonical target is absent and is
+suppressed if a real `sys` root exists. Navigation through the alias still
+targets the same `system.*` identities.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
@@ -939,3 +993,24 @@ D062 settles the first warning threshold: Core-owned
 without importing the ineffective legacy `SYSTEM_RAM_WARN_MB=80`. The 80 MiB
 critical boundary stays separate. Other host threshold configuration and legacy
 names remain outside this bounded proof; no general threshold migration is claimed.
+
+### Q013 — `:sys` operator alias and canonical System identity — resolved by D070
+
+D070 keeps `system` and `system.*` canonical. S3 implements `:sys` as
+presentation-only spelling that resolves to the same backend target IDs while
+`:system` continues to work.
+
+### Q014 — Bounded semantic selector metadata for capability inputs — resolved by D070
+
+D070 selects one optional closed version-1 `resource` selector on existing
+capability input properties. It is reference/presentation metadata only and
+does not create a contribution kind or alter capability authority.
+
+### Q015 — Dynamic candidate source, freshness and authority — resolved by D070
+
+D070 selects one Core-owned ephemeral resolver boundary: prefer eligible fresh
+System Model candidates, otherwise allow a registered bounded Platform read.
+Malformed results fail closed; candidates create no fact, adoption,
+responsibility or execution authority.
+
+

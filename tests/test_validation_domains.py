@@ -78,6 +78,34 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertEqual(pkg_domains, ["capability"])
         self.assertFalse(any("tui" in path for path in pkg_tests))
 
+    def test_operator_candidate_foundation_uses_capability_and_operator_domains(self):
+        domains, tests = affected_tests(
+            ["core/lib/input_candidates.py", "core/lib/operator_surface.py"],
+            ROOT,
+        )
+        self.assertEqual(domains, ["capability", "operator"])
+        self.assertIn("tests/test_input_candidates.py", tests)
+        self.assertIn("tests/test_operator_surface.py", tests)
+        self.assertIn("tests/test_module_contract.py", tests)
+        self.assertIn("tests/test_ai_tui_operator.py", tests)
+        self.assertIn("tests/test_ai_operator_backend.py", tests)
+        self.assertNotIn("tests/test_ai_tui.py", tests)
+        self.assertNotIn("tests/test_local_learning.py", tests)
+
+    def test_shared_ai_and_module_boundaries_are_explicitly_mapped(self):
+        domains, tests = affected_tests(["core/ai/core.sh"], ROOT)
+        self.assertEqual(domains, ["capability", "operator", "tui"])
+        self.assertIn("tests/test_ai_tui.py", tests)
+        self.assertIn("tests/test_ai_operator_backend.py", tests)
+
+        domains, tests = affected_tests(["core/ai/events.sh"], ROOT)
+        self.assertEqual(domains, ["events"])
+        self.assertIn("tests/core/test_ai_events.bats", tests)
+
+        domains, tests = affected_tests(["core/lib/module_registry.py"], ROOT)
+        self.assertEqual(domains, ["module"])
+        self.assertIn("tests/modules/test_module_contracts.bats", tests)
+
     def test_unknown_implementation_change_falls_back_to_all_tests(self):
         domains, tests = affected_tests(["core/unmapped/new_boundary.py"], ROOT)
         self.assertEqual(domains, ["all"])
@@ -100,7 +128,10 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertNotIn("tests/modules/test_loader_regressions.bats", tests)
 
     def test_docs_only_change_selects_no_test_files(self):
-        self.assertEqual(affected_tests(["docs/igor2/STATUS.md"], ROOT), (["documentation"], []))
+        self.assertEqual(
+            affected_tests(["docs/igor2/STATUS.md"], ROOT),
+            (["documentation"], ["tests/test_documentation_health.py"]),
+        )
 
     def test_changed_test_selects_itself_and_validation_tests_select_harness(self):
         domains, tests = affected_tests(["tests/test_context_engine.py"], ROOT)

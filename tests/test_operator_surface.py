@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Contract projection coverage for the generated operator surface."""
 
 import json
@@ -9,17 +8,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
-from operator_surface import (  # noqa: E402
+
+from operator_surface import (
     SurfaceError,
     build_surface,
     cached_build_surface,
     cached_read_surface,
     children,
 )
-
 
 CAP = {
     "id": "system.host.memory.refresh",
@@ -69,6 +67,11 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(surface["state"], "ready")
         self.assertEqual(surface["entry_count"], len(surface["entries"]))
         self.assertEqual(surface["sources"]["modules"], {"status": "ok", "count": 1})
+        self.assertEqual(surface["aliases"], {"sys": "system"})
+        self.assertFalse(any(
+            row["path"] == "sys" or row["path"].startswith("sys.")
+            for row in surface["entries"]
+        ))
         self.assertEqual(by_path["system.host.memory.refresh"]["kind"], "capability")
         self.assertEqual(by_path["system.host.memory.refresh"]["safety"], "READ")
         self.assertEqual(by_path["system.host.memory"]["kind"], "observer")
@@ -85,11 +88,44 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual([row["name"] for row in children(surface)], ["system"])
         system = children(surface, "system")
         self.assertEqual([row["name"] for row in system], ["host", "memory"])
+        self.assertEqual(children(surface, "sys"), system)
         host = children(surface, "system.host")
         memory = next(row for row in host if row["name"] == "memory")
         self.assertTrue(memory["leaf"])
         self.assertTrue(memory["has_children"])
         self.assertEqual(memory["kind"], "observer")
+
+    def test_namespace_alias_is_suppressed_by_real_root_collision(self):
+        payload = self.payload()
+        real_sys = json.loads(json.dumps(CAP))
+        real_sys["id"] = "sys.status"
+        real_sys["owner"] = real_sys["provider"] = "sys"
+        payload["modules"].append({
+            "name": "sys",
+            "display_name": "Sys",
+            "status": "active",
+            "enabled": True,
+            "module_api": 2,
+        })
+        payload["capabilities"].append(real_sys)
+
+        surface = build_surface(payload)
+
+        self.assertNotIn("sys", surface["aliases"])
+        self.assertEqual(
+            [row["name"] for row in children(surface, "sys")],
+            ["status"],
+        )
+        self.assertNotEqual(children(surface, "sys"), children(surface, "system"))
+
+    def test_namespace_alias_is_absent_without_target_namespace(self):
+        surface = build_surface({
+            "modules": [],
+            "contributions": [],
+            "capabilities": [],
+            "configurations": [],
+        })
+        self.assertEqual(surface["aliases"], {})
 
     def test_module_configuration_contribution_projects_schema_fields(self):
         payload = self.payload()
@@ -249,6 +285,58 @@ class OperatorSurfaceTests(unittest.TestCase):
     def test_malformed_payload_fails_closed(self):
         with self.assertRaises(SurfaceError):
             build_surface({"modules": "not-a-list"})
+
+
+    def test_capability_selector_projects_as_bounded_input_metadata(self):
+        payload = self.payload()
+        selected = json.loads(json.dumps(CAP))
+        selected["id"] = "system.service.status"
+        selected["descriptor"]["inputs"] = {
+            "properties": {
+                "unit": {
+                    "type": "string",
+                    "validator": "systemd_unit",
+                    "selector": {
+                        "schema_version": 1,
+                        "kind": "resource",
+                        "resource_kind": "service",
+                    },
+                }
+            },
+            "required": ["unit"],
+            "additionalProperties": False,
+        }
+        payload["capabilities"] = [selected]
+        surface = build_surface(payload)
+        row = next(item for item in surface["entries"]
+                   if item["target_id"] == "system.service.status")
+        self.assertEqual(
+            row["inputs"]["selectors"]["unit"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        )
+        self.assertEqual(row["inputs"]["required"], ["unit"])
+
+    def test_malformed_capability_selector_fails_operator_projection(self):
+        payload = self.payload()
+        selected = json.loads(json.dumps(CAP))
+        selected["descriptor"]["inputs"] = {
+            "properties": {
+                "unit": {
+                    "type": "string",
+                    "selector": {
+                        "schema_version": 1,
+                        "kind": "resource",
+                        "resource_kind": "service",
+                        "approval": True,
+                    },
+                }
+            },
+            "required": ["unit"],
+            "additionalProperties": False,
+        }
+        payload["capabilities"] = [selected]
+        with self.assertRaisesRegex(SurfaceError, "invalid capability selector"):
+            build_surface(payload)
 
 
 if __name__ == "__main__":

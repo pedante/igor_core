@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Focused daily-use coverage for the lightweight Step 7 frontend."""
 
 import os
@@ -7,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
-import tui  # noqa: E402
+import tui
 
 
 def event(kind, sequence, **fields):
@@ -115,8 +114,12 @@ class Step7PaletteTests(unittest.TestCase):
 
         entries = [{"name": "stats", "syntax": "stats",
                     "description": "show token statistics"}]
+        state = tui.EventState()
+        state.backend_ready = True
         with patch.object(tui, "_send") as send:
-            tui._palette_overlay(Screen(), 31, tui.InputBuffer(), commands=entries)
+            tui._palette_overlay(
+                Screen(), 31, tui.InputBuffer(), state=state, commands=entries
+            )
         send.assert_called_once_with(31, "stats")
 
     def test_palette_query_filters_before_invocation(self):
@@ -146,9 +149,12 @@ class Step7PaletteTests(unittest.TestCase):
             {"name": "help", "syntax": "help", "description": "list commands"},
             {"name": "stats", "syntax": "stats", "description": "show statistics"},
         ]
+        state = tui.EventState()
+        state.backend_ready = True
         with patch.object(tui, "_send") as send:
-            selected = tui._palette_overlay(Screen(), 31, tui.InputBuffer(),
-                                            commands=commands)
+            selected = tui._palette_overlay(
+                Screen(), 31, tui.InputBuffer(), state=state, commands=commands
+            )
         self.assertEqual(selected, "stats")
         send.assert_called_once_with(31, "stats")
 

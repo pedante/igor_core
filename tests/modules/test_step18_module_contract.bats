@@ -29,7 +29,7 @@ teardown() { teardown_igor_tmpdir; }
 import json,sys
 row=json.loads(sys.argv[1])[0]
 assert row["capability"]["version"] == 2
-assert row["provider"]["source"]["module_version"] == "2.3.0"
+assert row["provider"]["source"]["module_version"] == "2.4.0"
 assert row["outcome"] == "success" and row["verification"]["status"] == "passed"
 PY
 }
@@ -64,7 +64,7 @@ PY
 @test "static CLI never initializes runtime or migrates omitted system policy" {
     mkdir -p "$IGOR_DIR/core/lib"
     cp "$REPO_DIR/igor.sh" "$IGOR_DIR/igor.sh"
-    for script in module_inspection.py module_contract.py capability_runtime.py configuration_schema.py; do
+    for script in module_inspection.py module_contract.py capability_runtime.py configuration_schema.py input_candidates.py; do
         cp "$REPO_DIR/core/lib/$script" "$IGOR_DIR/core/lib/$script"
     done
     printf 'touch "$IGOR_DIR/source-marker"\n' >> "$IGOR_DIR/modules/system/module.sh"

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Focused coverage for the contract-driven ':' operator explorer."""
 
 import os
@@ -6,9 +5,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
-import tui  # noqa: E402
+import tui
 
 
 class Screen:
@@ -44,7 +42,7 @@ class Reader:
         return [self.events.pop(0)] if self.events else []
 
 
-def snapshot_event(sequence, entries, *, state_name=None, sources=None):
+def snapshot_event(sequence, entries, *, state_name=None, sources=None, aliases=None):
     if state_name is None:
         state_name = "empty" if not entries else "ready"
     if sources is None:
@@ -55,29 +53,198 @@ def snapshot_event(sequence, entries, *, state_name=None, sources=None):
     return {"event_type": "operator_snapshot", "sequence": sequence,
             "surface": {"surface_version": 1, "digest": "0" * 64,
                         "state": state_name, "entry_count": len(entries),
-                        "sources": sources, "entries": entries}}
+                        "sources": sources, "entries": entries,
+                        "aliases": aliases or {}}}
 
 
 def ready_event(sequence):
     return {"event_type": "model_status", "sequence": sequence, "status": "input_ready"}
 
 
-def capability(path="system.host.memory.refresh", required=(), provider_required=False):
+def candidate_event(sequence, capability_id="system.service.status", input_name="unit"):
+    return {
+        "event_type": "operator_candidates",
+        "sequence": sequence,
+        "capability_id": capability_id,
+        "provider": "system",
+        "input_name": input_name,
+        "result": {
+            "candidate_api_version": 1,
+            "selector": {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+            "state": "ready",
+            "source": {"kind": "platform", "id": "systemd.services",
+                       "freshness": "not_applicable"},
+            "candidates": [
+                {"value": "cron.service", "label": "cron.service",
+                 "detail": "active / running"},
+                {"value": "ssh.service", "label": "ssh.service",
+                 "detail": "inactive / dead"},
+            ],
+            "reason": None,
+            "resolved_at": "2026-10-06T08:00:00Z",
+        },
+    }
+
+
+def capability(path="system.host.memory.refresh", required=(), provider_required=False,
+               selector=False):
+    inputs = {"required": list(required), "properties": {}}
+    if selector and required:
+        name = required[0]
+        inputs["properties"][name] = {"type": "string", "validator": "systemd_unit"}
+        inputs["selectors"] = {
+            name: {"schema_version": 1, "kind": "resource", "resource_kind": "service"}
+        }
     return {
         "path": path,
         "kind": "capability",
         "owner": "system",
-        "target_id": "system.host.memory.refresh",
+        "target_id": path,
         "provider": "system",
         "provider_required": provider_required,
         "availability": "active",
         "unavailable_reason": None,
         "description": "Refresh memory",
-        "inputs": {"required": list(required), "properties": {}},
+        "inputs": inputs,
     }
 
 
 class OperatorExplorerTests(unittest.TestCase):
+    def test_sys_alias_keeps_canonical_invoke_target(self):
+        entry = capability()
+        keys = [ord(c) for c in "sys"] + [ord(".")] + \
+               [ord(c) for c in "host"] + [ord(".")] + \
+               [ord(c) for c in "memory"] + [ord(".")] + \
+               [ord(c) for c in "refresh"] + [10]
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(
+            state,
+            snapshot_event(1, [entry], aliases={"sys": "system"}),
+        ))
+        state.backend_ready = True
+        screen = Screen(keys)
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            selected = tui._operator_overlay(
+                screen, 17, Reader([]), state, tui.InputBuffer()
+            )
+
+        self.assertEqual(selected, "invoke system.host.memory.refresh")
+        self.assertEqual(sent, [(17, "invoke system.host.memory.refresh")])
+        self.assertTrue(any(
+            ":sys.host.memory.refresh" in str(args[2])
+            for args in screen.drawn if len(args) > 2
+        ))
+
+    def test_sys_alias_is_visible_as_root_navigation_hint(self):
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(
+            state,
+            snapshot_event(1, [capability()], aliases={"sys": "system"}),
+        ))
+        state.backend_ready = True
+        screen = Screen([27])
+        with patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(screen, 17, Reader([]), state, tui.InputBuffer())
+        self.assertTrue(any(
+            "Aliases :sys → :system" in str(args[2])
+            for args in screen.drawn if len(args) > 2
+        ))
+
+    def test_alias_helpers_reject_malformed_or_missing_projection(self):
+        self.assertIsNone(tui._operator_alias_target(None, "sys"))
+        self.assertIsNone(tui._operator_alias_target({"aliases": {"sys": "../system"}}, "sys"))
+        self.assertIsNone(tui._operator_alias_target({"aliases": {"sys.bad": "system"}}, "sys.bad"))
+        self.assertEqual(
+            tui._operator_display_prefix("system.service", ("sys", "system")),
+            "sys.service",
+        )
+
+    def test_operator_candidate_event_is_metadata_not_activity(self):
+        state = tui.EventState()
+        event = candidate_event(1)
+        self.assertTrue(tui.apply_event(state, event))
+        self.assertEqual(state.operator_candidates["input_name"], "unit")
+        self.assertEqual(state.activity, [])
+
+    def test_service_selector_chooses_candidate_and_invokes_canonical_backend(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        state = tui.EventState()
+        state.backend_ready = True
+        reader = Reader([])
+        sent = []
+
+        def send(master, text):
+            sent.append((master, text))
+            if text.startswith("candidates "):
+                reader.events.extend([candidate_event(1), ready_event(2)])
+
+        with patch.object(tui, "_send", side_effect=send), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            outcome, command = tui._operator_candidate_overlay(
+                Screen([-1, -1, 10]), 17, reader, state, tui.InputBuffer(),
+                entry, "unit",
+            )
+
+        self.assertEqual(outcome, "invoke")
+        self.assertEqual(
+            command,
+            'invoke system.service.status {"unit":"cron.service"}',
+        )
+        self.assertEqual(
+            sent,
+            [
+                (17, "candidates system.service.status unit"),
+                (17, 'invoke system.service.status {"unit":"cron.service"}'),
+            ],
+        )
+
+    def test_service_selector_tab_preserves_manual_input_path(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        state = tui.EventState()
+        state.backend_ready = True
+        buffer = tui.InputBuffer()
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))):
+            outcome, command = tui._operator_candidate_overlay(
+                Screen([9]), 17, Reader([]), state, buffer, entry, "unit"
+            )
+        self.assertEqual(outcome, "draft")
+        self.assertIsNone(command)
+        self.assertEqual(buffer.text(), "invoke system.service.status ")
+        self.assertEqual(sent, [(17, "candidates system.service.status unit")])
+
+    def test_selector_capability_uses_candidate_chooser_before_raw_draft(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        keys = [ord(c) for c in "system"] + [ord(".")] + \
+               [ord(c) for c in "service"] + [ord(".")] + \
+               [ord(c) for c in "status"] + [10]
+        state = tui.EventState()
+        state.backend_ready = True
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        buffer = tui.InputBuffer()
+        with patch.object(tui, "_operator_candidate_overlay",
+                          return_value=("draft", None)) as chooser, \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(Screen(keys), 17, Reader([]), state, buffer)
+        chooser.assert_called_once()
+        self.assertEqual(buffer.text(), "")
+
     def test_operator_snapshot_is_metadata_not_activity(self):
         state = tui.EventState()
         event = snapshot_event(1, [capability()])

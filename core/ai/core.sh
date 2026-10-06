@@ -29,6 +29,8 @@ source "${_AI_DIR}/context.sh"
 source "${_AI_DIR}/events.sh"
 # shellcheck source=core/lib/configuration.sh
 source "${IGOR_DIR}/core/lib/configuration.sh"
+# shellcheck source=core/lib/input_candidates.sh
+source "${IGOR_DIR}/core/lib/input_candidates.sh"
 
 # Session events are observations of existing state and transaction records.
 # Event failures must never change a provider turn or an authorization result.
@@ -290,6 +292,39 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
 }
 
 
+# Resolve ephemeral candidates for one validated capability input.
+# This is a presentation/reference read only; selected values still enter invoke.
+_ai_operator_candidates() {
+    local _candidate_rest="${1:-}" _candidate_target _candidate_input _extra
+    local _candidate_result _candidate_payload _candidate_rc
+    read -r _candidate_target _candidate_input _extra <<< "$_candidate_rest"
+    if [ -z "$_candidate_target" ] || [ -z "$_candidate_input" ] || [ -n "$_extra" ]; then
+        return 2
+    fi
+    _candidate_result="$(
+        igor_input_candidates_resolve "$_candidate_target" "$_candidate_input"
+    )"
+    _candidate_rc=$?
+    case "$_candidate_rc" in
+        0) ;;
+        2) return 2 ;;
+        *) return 1 ;;
+    esac
+    _candidate_payload="$(
+        "${IGOR_PYTHON:-python3}" - "$_candidate_result" "${IGOR_AI_EVENT_SESSION_ID:-}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+payload["session_id"] = sys.argv[2]
+print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+PY
+    )" || return 2
+    _ai_event_emit operator_candidates "$_candidate_payload" >/dev/null 2>&1 || true
+    return 0
+}
+
+
 # Adapt a human operator selection into the existing structured capability tool.
 # This function owns no approval, privilege, execution, or verification logic.
 _ai_operator_invoke() {
@@ -332,6 +367,18 @@ _ai_frontend_control() {
     case "$_input" in
         "surface snapshot")
             _ai_emit_operator_snapshot
+            return 0
+            ;;
+        candidates\ *)
+            _ai_operator_candidates "${_input#candidates }"
+            _invoke_rc=$?
+            if [ "$_invoke_rc" -eq 2 ]; then
+                warn "Usage: candidates <capability-id[@provider]> <input-name>"
+                _ai_frontend_event warning "Candidate selection is unavailable for this input."
+            elif [ "$_invoke_rc" -ne 0 ]; then
+                warn "Candidate resolution failed."
+                _ai_frontend_event warning "Candidate resolution failed safely."
+            fi
             return 0
             ;;
         invoke\ *)
@@ -843,7 +890,7 @@ _ai_runtime_private_dir() {
             fi
         done
         if [ "$phase" = before ]; then
-            mkdir -p -m 700 -- "$rt" 2>/dev/null || {
+            (umask 077; mkdir -p -- "$rt") 2>/dev/null || {
                 _AI_RUNTIME_DETAIL="Could not create private runtime directory; parent is unavailable or not writable."
                 return 1
             }
@@ -1262,10 +1309,20 @@ _ai_replay() {
     local _id="$1"
     local _sess_dir="${IGOR_DIR}/data/sessions"
     # Look for matching .log file
-    local _f
-    _f=$(ls "${_sess_dir}/${_id}".log "${_sess_dir}/session_"*".log" 2>/dev/null | grep "${_id}" | head -1)
-    if [ -z "$_f" ] || [ ! -f "$_f" ]; then
-        _f=$(ls "${_sess_dir}"/*.log 2>/dev/null | xargs grep -l "$_id" 2>/dev/null | head -1)
+    local _f="" _candidate
+    for _candidate in "${_sess_dir}"/*"${_id}"*.log; do
+        [ -f "$_candidate" ] || continue
+        _f="$_candidate"
+        break
+    done
+    if [ -z "$_f" ]; then
+        for _candidate in "${_sess_dir}"/*.log; do
+            [ -f "$_candidate" ] || continue
+            if grep -Fq -- "$_id" "$_candidate" 2>/dev/null; then
+                _f="$_candidate"
+                break
+            fi
+        done
     fi
     if [ -z "$_f" ] || [ ! -f "$_f" ]; then
         echo -e "  ${YEL}Session log for '${_id}' not found.${NC}"; return

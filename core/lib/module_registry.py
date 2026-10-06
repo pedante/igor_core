@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Compile validated Module API v2 registration metadata for fast startup.
 
 The cache contains structural package metadata only. It never records host
@@ -56,7 +55,7 @@ def _cache_file_safe(path: Path) -> bool:
     )
 
 
-def _hash_package(hasher: "hashlib._Hash", package: Path) -> None:
+def _hash_package(hasher: hashlib._Hash, package: Path) -> None:
     root = package.resolve()
     hasher.update(b"package\0")
     hasher.update(package.name.encode())
@@ -115,6 +114,7 @@ def source_digest(module_dirs: list[Path]) -> str:
         "module_registry.py",
         "module_loader_fast.sh",
         "module_contract.py",
+        "input_candidates.py",
         "capability_runtime.py",
         "configuration_schema.py",
     ):
@@ -302,7 +302,7 @@ def compile_registry(module_dirs: list[Path]) -> list[dict[str, Any]]:
         except ValidationError as exc:
             result.append({"name": name, "status": "error", "error": f"module contract: {exc}"})
             continue
-        except Exception as exc:  # isolate one broken package like the legacy subprocess path
+        except Exception as exc:  # noqa: BLE001 - isolate one broken package like the legacy subprocess path
             result.append(
                 {
                     "name": name,

@@ -47,6 +47,30 @@ class ModuleContractTests(unittest.TestCase):
         self.assertEqual(capability["capability_version"], 2)
         self.assertEqual(capability["outputs"]["required"], ["observer_id"])
 
+    def test_system_service_inputs_declare_the_shared_service_selector(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        expected = {
+            "schema_version": 1,
+            "kind": "resource",
+            "resource_kind": "service",
+        }
+        selected = {
+            "system.service.status",
+            "system.service.restart",
+            "system.service.enable",
+            "system.service.start",
+        }
+        found = set()
+        for row in result["contributions"]:
+            if row.get("id") not in selected:
+                continue
+            found.add(row["id"])
+            self.assertEqual(
+                row["inputs"]["properties"]["unit"]["selector"],
+                expected,
+            )
+        self.assertEqual(found, selected)
+
     def test_system_package_reproduces_from_tracked_content_and_declared_asset(self):
         tracked = subprocess.run(["git", "ls-files", "modules/system"], cwd=ROOT, check=True, text=True, capture_output=True).stdout.splitlines()
         asset = "modules/system/knowledge/host.md"
@@ -333,6 +357,68 @@ class ModuleContractTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(module_contract.ValidationError, "both handler and composite"):
+            module_contract.validate_module(root)
+
+
+    def test_capability_resource_selector_is_strict_reference_metadata(self):
+        capability = {
+            "kind": "capability", "id": "fixture.service.status",
+            "handler": "fixture__service_status", "capability_version": 1,
+            "description": "Read one selected service.",
+            "inputs": {
+                "properties": {
+                    "unit": {
+                        "type": "string",
+                        "validator": "systemd_unit",
+                        "selector": {
+                            "schema_version": 1,
+                            "kind": "resource",
+                            "resource_kind": "service",
+                        },
+                    }
+                },
+                "required": ["unit"],
+                "additionalProperties": False,
+            },
+            "safety": {"tier": "READ"}, "privilege": "none",
+            "preconditions": [{"kind": "owner_active"}],
+            "verification": {"kind": "none", "required": False},
+            "recovery": {"class": "not_applicable"}, "affects": [],
+        }
+        root = self.package(
+            self.valid_manifest(),
+            {"contract_version": 1, "contributions": [capability]},
+        )
+        (root / "module.sh").write_text(
+            "fixture__service_status() { printf '%s\\n' '{\"status\":\"ok\",\"result\":{}}'; }\n",
+            encoding="utf-8",
+        )
+        result = module_contract.validate_module(root)
+        spec = result["contributions"][0]["inputs"]["properties"]["unit"]
+        self.assertEqual(
+            spec["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        )
+
+        malformed = json.loads(json.dumps(capability))
+        malformed["inputs"]["properties"]["unit"]["selector"]["authority"] = "execute"
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [malformed]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "selector is invalid"):
+            module_contract.validate_module(root)
+
+        incompatible = json.loads(json.dumps(capability))
+        incompatible["inputs"]["properties"]["unit"] = {
+            "type": "integer",
+            "selector": {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+        }
+        (root / "contracts/host.json").write_text(
+            json.dumps({"contract_version": 1, "contributions": [incompatible]}),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(module_contract.ValidationError, "string or object_id"):
             module_contract.validate_module(root)
 
 

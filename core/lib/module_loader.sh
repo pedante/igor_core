@@ -833,12 +833,13 @@ igor_operator_surface_seed() {
 igor_operator_surface_generation() {
     command -v sha256sum >/dev/null 2>&1 || return 1
     local _surface="${_IGOR_LOADER_DIR}/core/lib/operator_surface.py"
+    local _candidates="${_IGOR_LOADER_DIR}/core/lib/input_candidates.py"
     local _configuration="${_IGOR_LOADER_DIR}/core/lib/configuration.py"
     local _deployment="${_IGOR_LOADER_DIR}/core/lib/deployment_attachment.py"
     local _loader="${_IGOR_LOADER_DIR}/core/lib/module_loader.sh"
     local _fast="${_IGOR_LOADER_DIR}/core/lib/module_loader_fast.sh"
     local _digest _rest
-    [ -f "$_surface" ] && [ -f "$_configuration" ] &&
+    [ -f "$_surface" ] && [ -f "$_candidates" ] && [ -f "$_configuration" ] &&
         [ -f "$_deployment" ] && [ -f "$_loader" ] || return 1
 
     {
@@ -846,9 +847,9 @@ igor_operator_surface_generation() {
         _igor_operator_surface_seed_frames
         printf 'implementation\0'
         if [ -f "$_fast" ]; then
-            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader" "$_fast"
+            sha256sum "$_surface" "$_candidates" "$_configuration" "$_deployment" "$_loader" "$_fast"
         else
-            sha256sum "$_surface" "$_configuration" "$_deployment" "$_loader"
+            sha256sum "$_surface" "$_candidates" "$_configuration" "$_deployment" "$_loader"
         fi
     } | sha256sum | {
         read -r _digest _rest
@@ -1777,15 +1778,15 @@ igor_load_all_modules() {
     local _sorted_list
     _sorted_list="$(igor_sort_modules "${_names[@]}")"
 
-    local _name _seen=" " _edges
+    local _name _seen_names=" " _edges
     while IFS= read -r _name; do
         [ -n "$_name" ] || continue
-        _seen+="$_name "
+        _seen_names+="$_name "
         igor_load_module "$_name" || true
     done <<< "$_sorted_list"
 
     for _name in "${_names[@]}"; do
-        if [[ "$_seen" != *" $_name "* ]] && [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
+        if [[ "$_seen_names" != *" $_name "* ]] && [ "${_IGOR_MODULE_STATUS[$_name]:-}" != disabled ]; then
             _IGOR_MODULE_STATUS["$_name"]="unavailable"
             if [ "${_IGOR_MODULE_API[$_name]:-1}" = 2 ]; then
                 _edges="$(_ml_v2_query "$_name" manifest.requirements.required_modules 2>/dev/null)"

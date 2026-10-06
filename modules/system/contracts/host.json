@@ -607,7 +607,12 @@
           "unit": {
             "type": "string",
             "validator": "systemd_unit",
-            "maxLength": 256
+            "maxLength": 256,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "service"
+            }
           }
         },
         "required": [
@@ -760,7 +765,12 @@
           "unit": {
             "type": "string",
             "validator": "systemd_unit",
-            "maxLength": 256
+            "maxLength": 256,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "service"
+            }
           }
         },
         "required": [
@@ -948,7 +958,12 @@
         "properties": {
           "unit": {
             "type": "string",
-            "validator": "systemd_unit"
+            "validator": "systemd_unit",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "service"
+            }
           }
         },
         "required": [
@@ -1003,7 +1018,12 @@
         "properties": {
           "unit": {
             "type": "string",
-            "validator": "systemd_unit"
+            "validator": "systemd_unit",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "service"
+            }
           }
         },
         "required": [

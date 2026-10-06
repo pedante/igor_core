@@ -3117,3 +3117,19 @@ resolved by D038). System Model, observer scheduling,
 domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
+
+### System operator S1/S2/S3 branch work
+
+On `feature/sys-module-foundation`, D070 is implemented through namespace UX.
+S1 adds strict semantic selector metadata and the Core-owned ephemeral candidate
+boundary. S2 annotates the existing
+`system.service.status/start/enable/restart` unit inputs and adds a TUI chooser
+backed by bounded `svc_list_query` discovery. Candidate selection remains
+reference-only until the chosen value is submitted through canonical capability
+invocation.
+
+S3 adds `:sys` only as collision-safe Operator Surface presentation metadata
+for the canonical `:system` tree. The TUI preserves the short breadcrumb while
+leaf identity and invocation remain `system.*`; a real `sys` root suppresses
+the alias. Storage remains a later phase. This branch work is not part of the
+`igor2` baseline until merged and its validation gate is green.

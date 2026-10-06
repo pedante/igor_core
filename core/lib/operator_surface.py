@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read-only projection of Igor-owned contracts into a browsable operator surface.
 
 This module never executes a capability, mutates configuration, probes the host,
@@ -20,6 +19,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from input_candidates import CandidateError, validate_selector
+
 SURFACE_VERSION = 1
 CACHE_VERSION = 1
 _ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
@@ -29,6 +30,7 @@ _KINDS = {
 }
 _SOURCE_NAMES = ("modules", "contributions", "capabilities", "configurations")
 _SOURCE_STATES = {"ok", "missing", "error"}
+_PRESENTATION_ALIASES = {"sys": "system"}
 
 
 class SurfaceError(ValueError):
@@ -58,6 +60,41 @@ def _availability(value: Any) -> str:
     return value if value in {"active", "inactive", "unavailable", "disabled"} else "unavailable"
 
 
+def _presentation_aliases(entries: list[dict[str, Any]]) -> dict[str, str]:
+    """Return collision-safe presentation aliases for visible root namespaces."""
+    roots = {
+        path.split(".", 1)[0]
+        for entry in entries
+        if isinstance((path := entry.get("path")), str) and path
+    }
+    return {
+        alias: target
+        for alias, target in sorted(_PRESENTATION_ALIASES.items())
+        if target in roots and alias not in roots
+    }
+
+
+def _canonical_prefix(surface: dict[str, Any], prefix: str) -> str:
+    """Resolve only declared root presentation aliases to canonical paths."""
+    prefix = prefix.strip(".")
+    if not prefix:
+        return ""
+    aliases = surface.get("aliases", {})
+    if aliases is None:
+        aliases = {}
+    if not isinstance(aliases, dict):
+        raise SurfaceError("invalid operator surface aliases")
+    root, dot, remainder = prefix.partition(".")
+    target = aliases.get(root)
+    if target is None:
+        return prefix
+    if (not isinstance(target, str) or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", root) is None or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", target) is None):
+        raise SurfaceError("invalid operator surface alias")
+    return target + (("." + remainder) if dot else "")
+
+
 def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
     ident = _safe_id(row.get("id"), "capability id")
     owner = _safe_id(row.get("owner") or row.get("provider"), "capability owner")
@@ -67,6 +104,20 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
     inputs = descriptor.get("inputs") if isinstance(descriptor.get("inputs"), dict) else {}
     required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
     properties = inputs.get("properties") if isinstance(inputs.get("properties"), dict) else {}
+    projected_inputs = {
+        "required": [name for name in required if isinstance(name, str)],
+        "properties": copy.deepcopy(properties),
+    }
+    selectors: dict[str, dict[str, Any]] = {}
+    for name, spec in properties.items():
+        if not isinstance(name, str) or not isinstance(spec, dict) or "selector" not in spec:
+            continue
+        try:
+            selectors[name] = validate_selector(spec["selector"], input_type=spec.get("type"))
+        except CandidateError as exc:
+            raise SurfaceError(f"invalid capability selector for {ident}.{name}: {exc}") from exc
+    if selectors:
+        projected_inputs["selectors"] = selectors
     safety = descriptor.get("safety") if isinstance(descriptor.get("safety"), dict) else {}
     return {
         "path": ident,
@@ -81,10 +132,7 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
         "description": str(descriptor.get("description") or "Capability"),
         "safety": safety.get("tier") if safety.get("tier") in {"READ", "CHANGE", "DESTROY"} else None,
         "privilege": descriptor.get("privilege") if isinstance(descriptor.get("privilege"), str) else None,
-        "inputs": {
-            "required": [name for name in required if isinstance(name, str)],
-            "properties": copy.deepcopy(properties),
-        },
+        "inputs": projected_inputs,
         "verification": copy.deepcopy(descriptor.get("verification")) if isinstance(descriptor.get("verification"), dict) else None,
         "recovery": copy.deepcopy(descriptor.get("recovery")) if isinstance(descriptor.get("recovery"), dict) else None,
     }
@@ -226,6 +274,7 @@ def build_surface(payload: dict[str, Any]) -> dict[str, Any]:
         "entry_count": len(entries),
         "sources": sources,
         "entries": entries,
+        "aliases": _presentation_aliases(entries),
         "availability_model": str(payload.get("availability_model") or "runtime_snapshot"),
     }
     source_digest = payload.get("compiled_source_digest")
@@ -562,7 +611,10 @@ def cached_build_surface(
     if not isinstance(payload, dict) or payload.get("seed_version") != 1:
         raise SurfaceError("invalid operator surface seed")
     if source_digest is None:
-        implementation_digest = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        implementation = hashlib.sha256()
+        for path in (Path(__file__), Path(__file__).with_name("input_candidates.py")):
+            implementation.update(path.read_bytes())
+        implementation_digest = implementation.hexdigest()
         source_raw = json.dumps(
             {"implementation": implementation_digest, "seed": payload},
             sort_keys=True, separators=(",", ":"),
@@ -607,7 +659,7 @@ def children(surface: dict[str, Any], prefix: str = "") -> list[dict[str, Any]]:
     This is a pure projection helper.  Selecting a leaf never executes it.
     """
     entries = _bounded_list(surface.get("entries", []), "surface entries")
-    prefix = prefix.strip(".")
+    prefix = _canonical_prefix(surface, prefix)
     result: dict[str, dict[str, Any]] = {}
     base = prefix + "." if prefix else ""
     for entry in entries:
