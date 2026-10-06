@@ -305,7 +305,7 @@ _ai_operator_candidates() {
         igor_input_candidates_resolve "$_candidate_target" "$_candidate_input"
     )" || return 2
     _candidate_payload="$(
-        "${IGOR_PYTHON:-python3}" -             "$_candidate_result" "${IGOR_AI_EVENT_SESSION_ID:-}" <<'PY'
+        "${IGOR_PYTHON:-python3}" - "$_candidate_result" "${IGOR_AI_EVENT_SESSION_ID:-}" <<'PY'
 import json
 import sys
 
