@@ -221,21 +221,10 @@ PY
 
     [ "$(igor_module_status system)" = active ]
 
-    PATH="$empty_path" run igor_contribution_state capability:system.network.summary
-    [ "$status" -eq 0 ]
-    [ "$output" = unavailable ]
-
-    PATH="$empty_path" run igor_contribution_reason capability:system.network.summary
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"required binary ip is missing"* ]]
-
-    PATH="$empty_path" run igor_contribution_state observer:network.interfaces
-    [ "$status" -eq 0 ]
-    [ "$output" = unavailable ]
-
-    PATH="$empty_path" run igor_contribution_state capability:system.network.dns.status
-    [ "$status" -eq 0 ]
-    [ "$output" = active ]
+    [ "$(PATH="$empty_path" igor_contribution_state capability:system.network.summary)" = unavailable ]
+    [[ "$(PATH="$empty_path" igor_contribution_reason capability:system.network.summary)" == *"required binary ip is missing"* ]]
+    [ "$(PATH="$empty_path" igor_contribution_state observer:network.interfaces)" = unavailable ]
+    [ "$(PATH="$empty_path" igor_contribution_state capability:system.network.dns.status)" = active ]
 
     [ "$(igor_module_status system)" = active ]
 }
