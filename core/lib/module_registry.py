@@ -249,11 +249,40 @@ def _permission_admin_supported(record: dict[str, Any]) -> bool:
     )
 
 
+
+
+def _wifi_connect_known_supported(record: dict[str, Any]) -> bool:
+    return (
+        record.get("owner") == "system"
+        and record.get("id") == "system.network.wifi.connect_known"
+        and record.get("handler") == "system__privileged_marker"
+        and record.get("capability_version") == 1
+        and record.get("privilege") == "required"
+        and isinstance(record.get("safety"), dict)
+        and record["safety"].get("tier") == "CHANGE"
+        and record.get("preconditions")
+        == [
+            {"kind": "owner_active"},
+            {
+                "kind": "trusted_validator",
+                "validator": "system.network.wifi.connect_known.ready",
+            },
+        ]
+        and record.get("verification")
+        == {
+            "kind": "trusted_query",
+            "check_id": "system.network.wifi.profile.active",
+            "required": True,
+        }
+    )
+
+
 def _trusted_query_supported(record: dict[str, Any]) -> bool:
     if (
         _memory_query_supported(record)
         or _storage_admin_supported(record)
         or _permission_admin_supported(record)
+        or _wifi_connect_known_supported(record)
     ):
         return True
     verification = record.get("verification")
@@ -325,6 +354,7 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
                     "system.permissions.owner.set",
                     "system.permissions.group.set",
                     "system.permissions.mode.set",
+                    "system.network.wifi.connect_known",
                 }
             )
             if not reviewed:
@@ -339,7 +369,9 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
             if isinstance(item, dict) and item.get("kind") == "trusted_validator"
         ]
         if trusted_validators and not (
-            _storage_admin_supported(record) or _permission_admin_supported(record)
+            _storage_admin_supported(record)
+            or _permission_admin_supported(record)
+            or _wifi_connect_known_supported(record)
         ):
             unsupported = True
         verification = record.get("verification", {})
