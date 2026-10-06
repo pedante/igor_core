@@ -13,10 +13,24 @@ setup() {
 teardown() { rm -rf "$TEST_ROOT"; }
 
 @test "events have stable envelope fields and preserve order" {
-    [ "$AI_EVENT_TYPES" = 'session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot session_finished' ]
+    [ "$AI_EVENT_TYPES" = 'session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot operator_snapshot operator_candidates session_finished' ]
     _ai_event_emit session_started '{"session_id":"s1","mode":"guide"}'
     _ai_event_emit action_proposed '{"session_id":"s1","action_id":"a1","classification":"READ"}'
     run python3 -c 'import json,sys; e=[json.loads(x) for x in open(sys.argv[1])]; assert [x["event_type"] for x in e] == ["session_started","action_proposed"]; assert [x["sequence"] for x in e] == [1,2]; assert e[1]["classification"] == "READ"' "$IGOR_AI_EVENT_STREAM"
+    [ "$status" -eq 0 ]
+}
+
+@test "operator candidates are admitted as presentation metadata" {
+    _ai_event_emit operator_candidates '{"capability_id":"system.service.status","provider":"system","input_name":"unit","result":{"state":"ready","candidates":[{"value":"cron.service"}]}}'
+    run python3 - "$IGOR_AI_EVENT_STREAM" <<'PY'
+import json
+import sys
+event = json.load(open(sys.argv[1], encoding="utf-8"))
+assert event["event_type"] == "operator_candidates"
+assert event["capability_id"] == "system.service.status"
+assert event["input_name"] == "unit"
+assert event["result"]["candidates"][0]["value"] == "cron.service"
+PY
     [ "$status" -eq 0 ]
 }
 
