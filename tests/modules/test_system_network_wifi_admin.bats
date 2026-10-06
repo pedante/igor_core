@@ -75,6 +75,9 @@ _approve_and_execute() {
 }
 
 @test "S7.4 declares only reviewed known-profile activation as CHANGE" {
+    printf '# state=%s reason=%s\n' \
+        "$(igor_contribution_state capability:system.network.wifi.connect_known)" \
+        "$(igor_contribution_reason capability:system.network.wifi.connect_known)" >&3
     cap="$(igor_capability_inspect system.network.wifi.connect_known system)"
     python3 - "$cap" <<'PY'
 import json,sys
