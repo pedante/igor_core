@@ -1,6 +1,5 @@
 """Focused S6 tests for bounded paths and permission planning."""
 
-import os
 import stat
 import sys
 import tempfile
