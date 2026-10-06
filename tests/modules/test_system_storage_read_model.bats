@@ -61,7 +61,7 @@ PY
 
 @test "disabled System owner cannot refresh or present prior storage facts as current" {
     igor_observer_refresh storage.mounts >/dev/null
-    _IGOR_MODULE_STATUS[system]=disabled
+    _IGOR_MODULE_STATUS["system"]=disabled
 
     run igor_observer_refresh storage.mounts
     [ "$status" -ne 0 ]
