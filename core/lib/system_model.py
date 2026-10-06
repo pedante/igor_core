@@ -38,7 +38,7 @@ def _typed(value: Any, value_type: str) -> bool:
 
 
 def _identifier(value: Any) -> bool:
-    return isinstance(value, str) and len(value) <= 160 and bool(re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+-]+", value))
+    return isinstance(value, str) and len(value) <= 160 and bool(re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value))
 
 
 def _observer_target(descriptor: dict[str, Any]) -> str:
