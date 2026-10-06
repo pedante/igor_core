@@ -456,7 +456,7 @@
             "selector": {
               "schema_version": 1,
               "kind": "resource",
-              "resource_kind": "path"
+              "resource_kind": "mutable_path"
             }
           },
           "user": {
@@ -525,7 +525,7 @@
             "selector": {
               "schema_version": 1,
               "kind": "resource",
-              "resource_kind": "path"
+              "resource_kind": "mutable_path"
             }
           },
           "group": {
@@ -594,7 +594,7 @@
             "selector": {
               "schema_version": 1,
               "kind": "resource",
-              "resource_kind": "path"
+              "resource_kind": "mutable_path"
             }
           },
           "mode": {
