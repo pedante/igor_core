@@ -948,6 +948,50 @@ metadata. The alias is absent when its canonical target is absent and is
 suppressed if a real `sys` root exists. Navigation through the alias still
 targets the same `system.*` identities.
 
+### D071 — S5 storage administration is runtime-only and Core-executed
+
+Accepted by the Project Owner on 2026-10-06 as the S5 Storage Administration
+slice, building on the green S4 storage read model.
+
+The first generic storage mutations are exactly
+`system.storage.mount` and `system.storage.unmount`. Their durable identities
+remain the S4 `filesystem:...` and `mount:...` objects. Operation-specific
+selector resource kinds such as `mountable_filesystem` and
+`unmountable_mount` are ephemeral filtered views over those objects, not new
+System Model identities or authorization state.
+
+System owns the host-domain capability declarations. Core owns the privileged
+mechanism. The System provider uses the existing privileged marker and cannot
+construct or replace argv after approval. Core independently resolves current
+storage state, performs the reviewed preflight, freezes the exact privileged
+argv into the proposal, re-prepares the proposal at the execution fence, and
+performs deterministic post-state verification. The existing Igor
+approval/authentication/History contracts remain authoritative.
+
+`system.storage.mount` accepts one discovered unmounted local filesystem as
+its required semantic input. If no target is supplied, Core derives a
+deterministic `/mnt/<label-or-device>` target. A manually supplied target is
+relative input confined to a reviewed mount root and resolves below `/mnt`,
+`/media` or `/srv`; existing ancestry must be real, root-owned and not
+group/other writable. The reviewed effect is only creation of the target
+directory followed by a normal local mount of the selected `/dev/...` device.
+
+`system.storage.unmount` accepts only an eligible current local-device mount
+under the reviewed roots. Its reviewed effect is normal `umount`. It does not
+fall back to force or lazy unmount when the normal operation fails.
+
+Both capabilities are **runtime-only**. Neither reads, writes, creates, removes
+or reconciles `/etc/fstab`, and neither claims desired persistent mount state.
+Persistent boot mounts require a separate explicit capability and decision with
+their own configuration ownership, preflight, verification, rollback and
+migration semantics. Formatting, filesystem repair, encryption/container
+activation and arbitrary network mounts are also outside S5.
+
+A successful mutation may trigger best-effort refresh of the S4 storage
+observers so current-state facts converge promptly. Those observations remain
+machine evidence, not authorization, and refresh failure cannot rewrite an
+already verified operation result.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
