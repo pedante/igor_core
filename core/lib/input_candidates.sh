@@ -157,6 +157,14 @@ facts = [
     and str(fact.get("object_id", "")).startswith(kind + ":")
 ]
 attempt = snapshot.get("observers", {}).get(observer)
+if isinstance(attempt, dict) and attempt.get("status") not in {"ok", None}:
+    print(json.dumps({
+        "state": "unavailable",
+        "candidates": [],
+        "reason": "storage observation is incomplete",
+        "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
 if not facts:
     if isinstance(attempt, dict) and attempt.get("status") == "ok":
         print(json.dumps({
