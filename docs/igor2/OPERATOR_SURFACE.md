@@ -1,8 +1,6 @@
 # Contract-Driven Operator Surface and Namespace Explorer
 
-Status: **initial bounded implementation**. This extends the existing 15UI
-frontend foundation and Module API v2 inspection contracts; it does not make
-the TUI authoritative or replace Step 18 composition work.
+Status: **bounded implementation with the D070/S2 semantic-selector vertical slice**. This extends the existing 15UI frontend foundation and Module API v2 inspection contracts; it does not make the TUI authoritative or replace Step 18 composition work.
 
 ## Purpose
 
@@ -100,8 +98,31 @@ policy, approval, sudo authentication, provider invocation, verification and
 Operational History remain authoritative.
 
 A capability with required inputs is not invoked and no values are guessed.
-The TUI prepares an `invoke <id> ` draft so the operator can supply an explicit
-JSON input object through the same backend route.
+For an ordinary required input, the TUI prepares an `invoke <id> ` draft so
+the operator can supply an explicit JSON input object through the same backend
+route.
+
+D070 allows one required input to carry bounded semantic `selector` metadata.
+The first S2 consumer is the System service `unit` input. Selecting one of
+those capabilities sends a non-conversational candidate request containing only
+the already-registered capability/provider target and input name. The backend
+re-resolves that capability and its validated selector before any candidate
+source is consulted.
+
+For `resource_kind=service`, Core performs the existing bounded read-only
+systemd inventory query and emits an ephemeral `operator_candidates` event.
+The TUI can filter and select those rows. Choosing a row constructs the same
+canonical explicit JSON invocation that could have been typed manually, for
+example:
+
+```text
+invoke system.service.status {"unit":"cron.service"}
+```
+
+The normal capability dispatcher then revalidates the value and owns every
+precondition, safety, approval, privilege and verification decision. Tab from
+the chooser retains the explicit manual-JSON path. Merely opening or filtering
+the chooser never invokes a capability.
 
 Checks, observers, configuration, knowledge, lifecycle, relationships,
 automations and domain events are browsable metadata in this first slice.
@@ -144,10 +165,18 @@ future external interfaces can then refer to the same backend objects.
 
 ## Resource and refresh model
 
-Browsing and completion are deterministic local operations. They require no
-model call and no host probe. The backend publishes an `operator_snapshot`
-from its already-loaded registries, and the TUI performs prefix/child lookups in
-memory.
+Namespace browsing and structural completion are deterministic local
+operations. They require no model call and no host probe. The backend publishes
+an `operator_snapshot` from its already-loaded registries, and the TUI
+performs prefix/child lookups in memory.
+
+Semantic input candidates are a separate explicit read path. A selector-backed
+input may request an ephemeral candidate list. Resolution first checks the
+currently active capability/provider contract; it may then use an eligible
+fresh System Model projection or an explicitly registered bounded Platform read
+under D070. S2's service selector uses the existing bounded systemd list query.
+Candidate rows are not added to System Model, History, Configuration,
+responsibility or desired state merely because they were displayed.
 
 The snapshot is refreshed explicitly when the explorer opens. `Ctrl+R`
 requests another snapshot from the currently loaded backend registries without
@@ -187,6 +216,7 @@ Specifically, browsing or selecting an item cannot by itself:
 - grant privilege;
 - select an ambiguous capability provider;
 - satisfy a precondition;
+- treat a displayed candidate as machine truth or authority;
 - change verification;
 - enable an automation;
 - create a new capability.
