@@ -5,6 +5,10 @@ on:
   push:
     branches: ["feature/sys-network-wifi"]
 
+concurrency:
+  group: system-s7-validation
+  cancel-in-progress: true
+
 jobs:
   affected:
     runs-on: ubuntu-latest
