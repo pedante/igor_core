@@ -211,6 +211,35 @@ The implemented extension of the Wave C `host.memory` descriptor is:
 }
 ```
 
+### S4 bounded collection observations
+
+The original Wave D observer slice was intentionally single-object and
+`host.memory` remains unchanged. S4 extends that same validation boundary only
+for `object_kind=mount` and `object_kind=filesystem`. Those observers return a
+bounded snapshot of at most 128 objects. Each object carries one canonical
+`object_id`, the complete declared property set split between typed facts and
+explicit unavailable properties, and bounded evidence.
+
+Collection results are validated completely before any model change. A
+successful refresh replaces that observer's current object set, so a mount or
+filesystem omitted from the new snapshot is no longer presented as observed.
+An unavailable property may retain its last fact as stale. A failed collection
+refresh stales prior facts but creates no object merely to represent failure.
+The observer attempt record carries failure even when no objects were previously
+known.
+
+S4 uses `mount:/`, `mount:/srv/data` and
+`filesystem:/dev/sdb1`-style locally scoped identities; unsafe path characters
+are percent-encoded at the discovery boundary. These remain current-state object
+identities, not persistence paths or provisioning ownership.
+
+Core's read-only storage mechanism reads `/proc/self/mountinfo` plus bounded
+`statvfs` usage and, for filesystem inventory, bounded `lsblk` JSON. It never
+mounts, unmounts, repairs, formats or edits fstab. System owns the observer and
+operator meaning above those mechanisms. Storage health cutover remains
+separate: the legacy root-filesystem health lines are not replaced merely by
+adding the S4 read model.
+
 The handler still returns the Wave C outer `status=ok|error` envelope. Its
 Step 9 `result` contains `object_id`, `facts` (property/value pairs), and
 optionally `unavailable` (declared properties with a bounded reason). A
