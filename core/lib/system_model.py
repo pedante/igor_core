@@ -63,6 +63,11 @@ def _object_matches_kind(object_id: Any, object_kind: Any) -> bool:
         return re.fullmatch(r"user:uid:[0-9]+", object_id) is not None
     if object_kind == "group":
         return re.fullmatch(r"group:gid:[0-9]+", object_id) is not None
+    if object_kind == "interface":
+        return re.fullmatch(
+            r"interface:[A-Za-z0-9_.+@-]+(?:%[0-9A-F]{2}[A-Za-z0-9_.+@%-]*)*",
+            object_id,
+        ) is not None
     return False
 
 
@@ -196,7 +201,7 @@ class SystemModel:
         time = stamp(at or now())
         object_kind = descriptor.get("object_kind")
         failure = {"reason": reason, "at": time, "owner": owner, "observer": observer_id}
-        if object_kind in {"mount", "filesystem", "user", "group"}:
+        if object_kind in {"mount", "filesystem", "user", "group", "interface"}:
             # A failed collection read must never invent objects. Existing
             # observations become stale while retaining their last evidence.
             for slot, fact in self.facts.items():
