@@ -65,12 +65,6 @@ def _integer(value: Any, field: str, *, minimum: int = 0) -> int:
     return value
 
 
-def _optional_integer(value: Any, field: str) -> int | None:
-    if value is None:
-        return None
-    return _integer(value, field)
-
-
 def _ip_endpoint(value: Any, family: str | None = None) -> str:
     text = _bounded(value, "IP address", 128)
     address_text, separator, scope_id = text.partition("%")
@@ -368,7 +362,7 @@ def parse_resolv_conf(
 
 def query_dns(path: Path = Path("/etc/resolv.conf")) -> dict[str, Any]:
     try:
-        info = path.lstat()
+        path.lstat()
     except OSError as exc:
         raise NetworkQueryError("resolver configuration is unavailable") from exc
     symlink_target = ""
@@ -388,9 +382,8 @@ def query_dns(path: Path = Path("/etc/resolv.conf")) -> dict[str, Any]:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise NetworkQueryError("resolver configuration is not UTF-8") from exc
-    # lstat is deliberately performed even for a regular file so a broken path
+    # lstat above deliberately runs even for a regular file so a broken path
     # never becomes an accidental successful empty resolver result.
-    _ = info
     return parse_resolv_conf(
         text,
         path=path.as_posix(),
