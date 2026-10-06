@@ -263,15 +263,20 @@ class OperatorExplorerTests(unittest.TestCase):
             sent.append((master, text))
             if text.startswith("candidates "):
                 sequence += 1
+                candidate_sequence = sequence
+                sequence += 1
+                ready_sequence = sequence
                 if text.endswith(" path \"\""):
                     reader.events.extend([
-                        candidates(sequence, "path", "mutable_path", "srv/data", "/srv/data"),
-                        ready_event(sequence + 10),
+                        candidates(candidate_sequence, "path", "mutable_path",
+                                   "srv/data", "/srv/data"),
+                        ready_event(ready_sequence),
                     ])
                 elif text.endswith(" user"):
                     reader.events.extend([
-                        candidates(sequence, "user", "user", "user:uid:1001", "alice"),
-                        ready_event(sequence + 10),
+                        candidates(candidate_sequence, "user", "user",
+                                   "user:uid:1001", "alice"),
+                        ready_event(ready_sequence),
                     ])
 
         with patch.object(tui, "_send", side_effect=send), \
