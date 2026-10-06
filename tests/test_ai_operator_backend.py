@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -18,7 +17,7 @@ class OperatorBackendTests(unittest.TestCase):
             if event_stream:
                 env["IGOR_AI_EVENT_STREAM"] = event_stream
             return subprocess.run(["bash", "-c", body], env=env, text=True,
-                                  capture_output=True, timeout=20)
+                                  capture_output=True, timeout=20, check=False)
 
     def test_registry_snapshots_decode_nul_framing(self):
         script = r'''
