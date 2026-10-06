@@ -1412,6 +1412,44 @@ def _palette_overlay(screen: Any, master: int, buffer: InputBuffer,
         screen.timeout(100)
 
 
+def _operator_alias_target(snapshot: dict[str, Any] | None, alias: str) -> str | None:
+    """Resolve one backend-projected root alias without inventing identities."""
+    if not isinstance(snapshot, dict):
+        return None
+    aliases = snapshot.get("aliases")
+    if not isinstance(aliases, dict):
+        return None
+    target = aliases.get(alias)
+    if (not isinstance(target, str) or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", alias) is None or
+            re.fullmatch(r"[a-z][a-z0-9_-]*", target) is None):
+        return None
+    return target
+
+
+def _operator_display_prefix(prefix: str, active_alias: tuple[str, str] | None) -> str:
+    """Render a chosen presentation alias while retaining the canonical prefix."""
+    if active_alias is None:
+        return prefix
+    alias, target = active_alias
+    if prefix == target:
+        return alias
+    if prefix.startswith(target + "."):
+        return alias + prefix[len(target):]
+    return prefix
+
+
+def _operator_alias_hint(snapshot: dict[str, Any] | None) -> str:
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("aliases"), dict):
+        return ""
+    pairs = []
+    for alias, target in sorted(snapshot["aliases"].items()):
+        if (_operator_alias_target(snapshot, alias) == target and
+                isinstance(target, str)):
+            pairs.append(f":{alias} → :{target}")
+    return "Aliases " + ", ".join(pairs) if pairs else ""
+
+
 def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
     """Return canonical invoke command and whether operator input is required."""
     target = str(entry.get("target_id") or "")
@@ -1624,6 +1662,7 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
     if state.pending_action or state.privilege_waiting or state.finished:
         return None
     prefix, query, selected = "", "", 0
+    active_alias: tuple[str, str] | None = None
     snapshot = state.operator_snapshot
     refreshing = False
     requested_at = None
@@ -1669,10 +1708,18 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                 pass
 
             snapshot = state.operator_snapshot
+            if (active_alias is not None and
+                    _operator_alias_target(snapshot, active_alias[0]) != active_alias[1]):
+                active_alias = None
             nodes = operator_children(snapshot, prefix) if isinstance(snapshot, dict) else []
+            alias_target = _operator_alias_target(snapshot, query) if not prefix else None
             needle = query.casefold()
             if needle:
-                nodes = [node for node in nodes if needle in str(node.get("name", "")).casefold()]
+                nodes = [
+                    node for node in nodes
+                    if needle in str(node.get("name", "")).casefold()
+                    or (alias_target is not None and node.get("path") == alias_target)
+                ]
             summary, surface_notice = _operator_surface_summary(snapshot)
             if snapshot is not None and not refreshing and not notice:
                 notice = surface_notice
@@ -1685,7 +1732,8 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
 
             height, width = screen.getmaxyx()
             screen.erase()
-            location = ":" + (prefix + "." if prefix else "") + query
+            display_prefix = _operator_display_prefix(prefix, active_alias)
+            location = ":" + (display_prefix + "." if display_prefix else "") + query
             try:
                 screen.addnstr(0, 0, f"Explore  {location}", max(1, width - 1), curses.A_BOLD)
                 screen.addnstr(1, 0, summary, max(1, width - 1), curses.A_DIM)
@@ -1705,6 +1753,10 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     style = curses.A_REVERSE if index == selected else curses.A_DIM if not available else 0
                     screen.addnstr(row, 0, line, max(1, width - 1), style)
                 footer = notice or "Type filter · . / Enter descend · Ctrl+R refresh · Backspace parent · Esc back"
+                if not prefix and not query and not notice:
+                    alias_hint = _operator_alias_hint(snapshot)
+                    if alias_hint:
+                        footer += " · " + alias_hint
                 screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
             except curses.error:
                 pass
@@ -1739,6 +1791,8 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     continue
                 if prefix:
                     prefix = prefix.rpartition(".")[0]
+                    if not prefix:
+                        active_alias = None
                     selected = 0
                     continue
                 return None
@@ -1753,12 +1807,23 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     query = query[:-1]
                 elif prefix:
                     prefix = prefix.rpartition(".")[0]
+                    if not prefix:
+                        active_alias = None
                 selected = 0
                 notice = ""
                 continue
 
             exact = next((node for node in nodes
                           if str(node.get("name", "")).casefold() == query.casefold()), None)
+            alias_node = next(
+                (node for node in nodes if alias_target is not None
+                 and node.get("path") == alias_target),
+                None,
+            )
+            if key == ord(".") and alias_node and alias_node.get("has_children"):
+                active_alias = (query, alias_target)
+                prefix, query, selected, notice = str(alias_node["path"]), "", 0, ""
+                continue
             if key == ord(".") and exact and exact.get("has_children"):
                 prefix, query, selected, notice = str(exact["path"]), "", 0, ""
                 continue
@@ -1766,6 +1831,9 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
             if key in (10, 13, curses.KEY_ENTER) and nodes:
                 node = nodes[selected]
                 if node.get("has_children"):
+                    if (not prefix and alias_target is not None and
+                            node.get("path") == alias_target):
+                        active_alias = (query, alias_target)
                     prefix, query, selected, notice = str(node["path"]), "", 0, ""
                     continue
                 if not node.get("leaf"):
