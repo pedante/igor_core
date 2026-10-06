@@ -183,7 +183,7 @@
           },
           "interfaces": {
             "type": "string",
-            "maxLength": 16384
+            "maxLength": 4096
           },
           "source": {
             "type": "string",
@@ -368,7 +368,7 @@
           },
           "routes": {
             "type": "string",
-            "maxLength": 32768
+            "maxLength": 4096
           },
           "source": {
             "type": "string",
@@ -434,7 +434,7 @@
           },
           "search_domains": {
             "type": "string",
-            "maxLength": 8192
+            "maxLength": 4096
           },
           "local_stub": {
             "type": "boolean"
