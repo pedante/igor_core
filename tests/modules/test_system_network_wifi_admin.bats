@@ -80,7 +80,9 @@ _approve_and_execute() {
 import json,sys
 cap=json.loads(sys.argv[1])
 assert cap["resolution"]=="resolved"
-d=cap["descriptor"]
+assert cap["selected_provider"]=="system"
+assert len(cap["providers"])==1
+d=cap["providers"][0]["descriptor"]
 assert d["handler"]=="system__privileged_marker"
 assert d["safety"]=={"tier":"CHANGE"}
 assert d["privilege"]=="required"
