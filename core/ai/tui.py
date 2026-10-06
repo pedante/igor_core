@@ -1473,25 +1473,34 @@ def _operator_selector_input(entry: dict[str, Any]) -> str | None:
     return required[0] if isinstance(selectors.get(required[0]), dict) else None
 
 
-def _operator_candidate_request(entry: dict[str, Any], input_name: str) -> str:
+def _operator_candidate_request(
+    entry: dict[str, Any], input_name: str, query: str | None = None
+) -> str:
     target = str(entry.get("target_id") or "")
     if not target:
         raise ValueError("operator entry has no target")
     provider = str(entry.get("provider") or "")
     if entry.get("provider_required") and provider:
         target += "@" + provider
-    return f"candidates {target} {input_name}"
+    request = f"candidates {target} {input_name}"
+    if query is not None:
+        request += " " + json.dumps(query)
+    return request
 
 
-def _operator_candidate_matches(record: dict[str, Any] | None,
-                                entry: dict[str, Any], input_name: str) -> bool:
+def _operator_candidate_matches(
+    record: dict[str, Any] | None,
+    entry: dict[str, Any],
+    input_name: str,
+    query: str | None = None,
+) -> bool:
     if not isinstance(record, dict):
         return False
     if record.get("capability_id") != entry.get("target_id") or record.get("input_name") != input_name:
         return False
-    if entry.get("provider_required"):
-        return record.get("provider") == entry.get("provider")
-    return True
+    if entry.get("provider_required") and record.get("provider") != entry.get("provider"):
+        return False
+    return query is None or record.get("query", "") == query
 
 
 def _operator_candidate_overlay(
@@ -1504,14 +1513,23 @@ def _operator_candidate_overlay(
     input_name: str,
 ) -> tuple[str, str | None]:
     """Choose one ephemeral candidate without acquiring execution authority."""
+    selectors = entry.get("inputs", {}).get("selectors", {})
+    selector = selectors.get(input_name) if isinstance(selectors, dict) else None
+    path_selector = (
+        isinstance(selector, dict) and selector.get("resource_kind") == "path"
+    )
+    query, selected = "", 0
+    requested_query: str | None = None
     try:
-        request = _operator_candidate_request(entry, input_name)
+        request = _operator_candidate_request(
+            entry, input_name, query if path_selector else None
+        )
     except ValueError:
         return "back", None
     state.operator_candidates = None
     _send(master, request)
     state.backend_ready = False
-    query, selected = "", 0
+    requested_query = query if path_selector else None
     notice = "Loading candidates…"
     screen.timeout(100)
     try:
@@ -1520,9 +1538,15 @@ def _operator_candidate_overlay(
                 apply_event(state, event)
                 if event.get("event_type") in {"warning", "error"}:
                     notice = str(event.get("display") or "Candidate selection unavailable")
+            if path_selector and state.backend_ready and requested_query != query:
+                state.operator_candidates = None
+                _send(master, _operator_candidate_request(entry, input_name, query))
+                state.backend_ready = False
+                requested_query = query
+                notice = "Loading path candidates…"
             record = state.operator_candidates
             result = record.get("result") if _operator_candidate_matches(
-                record, entry, input_name
+                record, entry, input_name, query if path_selector else None
             ) else None
             rows = result.get("candidates") if isinstance(result, dict) else []
             rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("value"), str)]
@@ -1574,7 +1598,10 @@ def _operator_candidate_overlay(
                         row_number, 0, line, max(1, width - 1),
                         curses.A_REVERSE if index == selected else 0,
                     )
-                footer = notice or "Type filter · ↑↓ choose · Enter select · Tab manual · Esc back"
+                if path_selector:
+                    footer = notice or "Type path · ↑↓ choose · Tab/→ descend · Enter select · Esc back"
+                else:
+                    footer = notice or "Type filter · ↑↓ choose · Enter select · Tab manual · Esc back"
                 screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
             except curses.error:
                 pass
@@ -1586,9 +1613,33 @@ def _operator_candidate_overlay(
                     _send(master, "/stop")
                 return "back", None
             if key == 9:
+                if path_selector and rows:
+                    candidate = rows[selected]
+                    label = str(candidate.get("label") or "")
+                    if label.endswith("/"):
+                        query = label
+                        selected = 0
+                        continue
+                    if state.backend_ready:
+                        value = candidate["value"]
+                        command, _ = _operator_invoke_command(entry)
+                        command += " " + json.dumps(
+                            {input_name: value}, sort_keys=True, separators=(",", ":")
+                        )
+                        _send(master, command)
+                        state.backend_ready = False
+                        return "invoke", command
+                    notice = "Backend busy — path selection must wait for READY"
+                    continue
                 command, _ = _operator_invoke_command(entry)
                 buffer.replace(command + " ")
                 return "draft", None
+            if key == curses.KEY_RIGHT and path_selector and rows:
+                label = str(rows[selected].get("label") or "")
+                if label.endswith("/"):
+                    query = label
+                    selected = 0
+                continue
             if key == curses.KEY_UP:
                 selected = max(0, selected - 1)
                 continue
