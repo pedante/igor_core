@@ -555,7 +555,7 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
             return f"service:systemd:{value}"
         if kind == "package" and value:
             return f"package:{value}"
-        if kind in {"mount", "filesystem", "user", "group"} and isinstance(value, str):
+        if kind in {"mount", "filesystem", "user", "group", "interface"} and isinstance(value, str):
             if (value.startswith(kind + ":") and
                     re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value)):
                 return value
