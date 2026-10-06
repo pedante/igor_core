@@ -396,12 +396,17 @@ PY
 }
 
 _igor_path_platform_candidate_raw() {
-    local _prefix="${1:-}" _rows
+    local _kind="${1:-}" _prefix="${2:-}" _rows
     if ! declare -f path_candidates_query >/dev/null 2>&1; then
         # shellcheck source=core/lib/access.sh
         source "$(_igor_input_candidate_root)/core/lib/access.sh"
     fi
-    if ! _rows="$(path_candidates_query "$_prefix")"; then
+    case "$_kind" in
+        path) _rows="$(path_candidates_query "$_prefix")" ;;
+        mutable_path) _rows="$(mutable_path_candidates_query "$_prefix")" ;;
+        *) return 2 ;;
+    esac
+    if [ "$?" -ne 0 ]; then
         printf '%s' '{"state":"unavailable","candidates":[],"reason":"bounded path discovery unavailable"}'
         return 0
     fi
@@ -462,10 +467,10 @@ igor_input_candidates_resolve() {
                 )" || return 1
             fi
             ;;
-        path)
-            _raw="$(_igor_path_platform_candidate_raw "$_query")" || return 1
+        path|mutable_path)
+            _raw="$(_igor_path_platform_candidate_raw "$_resource_kind" "$_query")" || return 1
             _result="$(
-                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform linux.paths
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}"
             )" || return 1
             ;;
         mount|filesystem|mountable_filesystem|unmountable_mount)
