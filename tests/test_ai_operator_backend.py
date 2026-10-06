@@ -296,6 +296,47 @@ _ai_emit_operator_snapshot
         self.assertEqual(surface["sources"]["capabilities"],
                          {"status": "error", "count": 0})
 
+    def test_service_candidate_control_emits_bounded_reference_event(self):
+        with tempfile.TemporaryDirectory() as runtime:
+            stream = Path(runtime) / "events.jsonl"
+            script = r'''
+source "$IGOR_DIR/core/lib/module_loader.sh"
+source "$IGOR_DIR/core/ai/core.sh"
+igor_capability_inspect() {
+  printf '%s' '{"capability_id":"system.service.status","resolution":"resolved","selected_provider":"system","providers":[{"id":"system.service.status","provider":"system","availability":"active","descriptor":{"inputs":{"properties":{"unit":{"type":"string","validator":"systemd_unit","selector":{"schema_version":1,"kind":"resource","resource_kind":"service"}},"required":["unit"],"additionalProperties":false}}}]}'
+}
+svc_list_query() {
+  printf 'ssh.service\tactive\trunning\ncron.service\tinactive\tdead\n'
+}
+_ai_frontend_control 'candidates system.service.status unit'
+'''
+            result = subprocess.run(
+                ["bash", "-c", script],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "IGOR_DIR": str(ROOT),
+                    "IGOR_RUNTIME_DIR": runtime,
+                    "IGOR_AI_EVENT_STREAM": str(stream),
+                },
+                text=True,
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            events = [json.loads(line) for line in stream.read_text().splitlines()]
+        event = next(row for row in events if row["event_type"] == "operator_candidates")
+        self.assertEqual(event["capability_id"], "system.service.status")
+        self.assertEqual(event["provider"], "system")
+        self.assertEqual(event["input_name"], "unit")
+        self.assertEqual(event["result"]["state"], "ready")
+        self.assertEqual(
+            [row["value"] for row in event["result"]["candidates"]],
+            ["cron.service", "ssh.service"],
+        )
+        self.assertEqual(event["result"]["source"]["id"], "systemd.services")
+
     def test_frontend_invoke_control_never_becomes_conversation_input(self):
         script = r'''
 source "$IGOR_DIR/core/ai/core.sh"
