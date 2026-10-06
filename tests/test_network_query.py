@@ -154,6 +154,29 @@ class NetworkQueryTests(unittest.TestCase):
         with self.assertRaisesRegex(NetworkQueryError, "address count"):
             normalize_interfaces([too_many], wireless_checker=lambda _name: False)
 
+    def test_interface_normalization_rejects_malformed_route_and_flag_rows(self) -> None:
+        base = {
+            "ifindex": 2,
+            "ifname": "eth0",
+            "flags": ["UP"],
+            "mtu": 1500,
+            "operstate": "UP",
+            "link_type": "ether",
+            "address": "02:00:00:00:00:01",
+            "addr_info": [],
+        }
+        with self.assertRaisesRegex(NetworkQueryError, "route rows"):
+            normalize_interfaces(
+                [base],
+                ["not-a-route"],
+                wireless_checker=lambda _name: False,
+            )
+        with self.assertRaisesRegex(NetworkQueryError, "flags"):
+            normalize_interfaces(
+                [{**base, "flags": ["UP\nBAD"]}],
+                wireless_checker=lambda _name: False,
+            )
+
     def test_route_normalization_preserves_default_and_family(self) -> None:
         ipv4 = normalize_routes(
             [
