@@ -1029,20 +1029,34 @@ S6 does not add account creation/deletion, password management, ACL mutation,
 recursive permission changes, remote directory administration, arbitrary-root
 mutation or a second account/path database.
 
+### D073 — S7.1 network read substrate and interface identity
+
+Accepted by the Project Owner on 2026-10-06 by selecting S7.1 after the S7
+discovery proposal.
+
+The first durable S7 network object is the already-documented
+`interface:<encoded-interface-name>`. Interface rename/move may create a new
+locally scoped identity as defined by Host Intelligence. S7.1 does not create
+durable route or DNS objects.
+
+Core owns reusable Linux network mechanics. The initial read boundary uses
+bounded iproute2 JSON for link/address and IPv4/IPv6 route state, plus a bounded
+read of `/etc/resolv.conf` that preserves symlink/source context. The resolver
+read reports configured resolver endpoints and whether a local loopback stub is
+present; it does not infer or claim the true upstream recursive resolver.
+
+The read path is deterministic and read-only: no ping/internet-health probe,
+NetworkManager dependency, AI call, sudo, interface/route/DNS mutation or
+application-specific network interpretation is introduced. Malformed,
+duplicate, oversized, wrong-family or unavailable Platform data fails closed.
+
+Routes remain bounded current read results and may support derived interface or
+host facts in S7.2. Their identity/persistence contract is deliberately
+deferred until routing administration or reconciliation demonstrates a real
+need. Wi-Fi provider selection and Wi-Fi mutation remain Q017; new profile and
+credential authority remains Q018.
+
 ## Open decisions
-
-### Q016 — S7 network object/read boundary
-
-Should the first S7 durable network object be exactly the already-documented
-interface:<name>, while the route table and resolver configuration remain
-bounded READ results/derived interface or host facts instead of introducing
-durable route:* or DNS objects?
-
-Recommendation: **yes**. This implements the Host Intelligence vocabulary
-already chosen, keeps identity understandable, and avoids inventing route
-identity before routing mutation/reconciliation exists.
-
-Decision target: before S7.1/S7.2 implementation.
 
 ### Q017 — First Wi-Fi provider and initial mutation
 
@@ -1132,5 +1146,13 @@ D070 selects one Core-owned ephemeral resolver boundary: prefer eligible fresh
 System Model candidates, otherwise allow a registered bounded Platform read.
 Malformed results fail closed; candidates create no fact, adoption,
 responsibility or execution authority.
+
+
+### Q016 — S7 network object/read boundary — resolved by D073
+
+D073 implements the existing `interface:<name>` Host Intelligence vocabulary
+as the first S7 durable network identity. Routes and resolver configuration
+remain bounded current reads/derived evidence rather than new durable object
+kinds.
 
 
