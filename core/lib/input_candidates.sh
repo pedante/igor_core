@@ -395,6 +395,154 @@ print(json.dumps({
 PY
 }
 
+_igor_interface_platform_candidate_raw() {
+    local _rows
+    if ! declare -f network_interfaces_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/network.sh
+        source "$(_igor_input_candidate_root)/core/lib/network.sh"
+    fi
+    _rows="$(network_interfaces_query)" || _rows=""
+    [ -n "$_rows" ] || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"network interface discovery unavailable"}'
+        return 0
+    }
+    NETWORK_ROWS="$_rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["NETWORK_ROWS"])
+candidates = []
+for row in rows[:128]:
+    addresses = ",".join(
+        value for value in (row.get("ipv4_addresses"), row.get("ipv6_addresses"))
+        if isinstance(value, str) and value
+    ) or "no address"
+    flags = []
+    if row.get("wireless") is True:
+        flags.append("wireless")
+    if row.get("default_route_v4") is True:
+        flags.append("default IPv4")
+    if row.get("default_route_v6") is True:
+        flags.append("default IPv6")
+    detail = "{} · {}{}".format(
+        row.get("operstate", "unknown"),
+        addresses,
+        (" · " + ", ".join(flags)) if flags else "",
+    )
+    candidates.append({
+        "value": row["object_id"],
+        "label": row["name"],
+        "detail": detail,
+        "object_id": row["object_id"],
+    })
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates,
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+_igor_interface_model_candidate_raw() {
+    local _snapshot
+    declare -f igor_model_list >/dev/null 2>&1 || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model unavailable","freshness":"stale"}'
+        return 0
+    }
+    _snapshot="$(igor_model_list 2>/dev/null)" || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model read failed","freshness":"stale"}'
+        return 0
+    }
+    NETWORK_MODEL="$_snapshot" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+observer = "network.interfaces"
+snapshot = json.loads(os.environ["NETWORK_MODEL"])
+facts = [
+    fact for fact in snapshot.get("facts", [])
+    if fact.get("observer") == observer
+    and str(fact.get("object_id", "")).startswith("interface:")
+]
+attempt = snapshot.get("observers", {}).get(observer)
+if isinstance(attempt, dict) and attempt.get("status") not in {"ok", None}:
+    print(json.dumps({
+        "state": "unavailable", "candidates": [],
+        "reason": "network interface observation is incomplete",
+        "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+if not facts:
+    if isinstance(attempt, dict) and attempt.get("status") == "ok":
+        print(json.dumps({
+            "state": "empty", "candidates": [], "freshness": "fresh",
+            "recorded_at": attempt.get("at"),
+        }, sort_keys=True, separators=(",", ":")))
+    else:
+        print(json.dumps({
+            "state": "unavailable", "candidates": [],
+            "reason": "fresh interface observation unavailable",
+            "freshness": "stale",
+        }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+if any(fact.get("availability") != "known" for fact in facts):
+    print(json.dumps({
+        "state": "unavailable", "candidates": [],
+        "reason": "network interface observation is stale",
+        "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+
+grouped = {}
+for fact in facts:
+    grouped.setdefault(fact["object_id"], {})[fact["property"]] = fact
+candidates = []
+for object_id, props in sorted(grouped.items()):
+    name = props.get("interface.name", {}).get("value")
+    operstate = props.get("interface.operstate", {}).get("value")
+    ipv4 = props.get("interface.ipv4_addresses", {}).get("value")
+    ipv6 = props.get("interface.ipv6_addresses", {}).get("value")
+    wireless = props.get("interface.wireless", {}).get("value")
+    default_v4 = props.get("interface.default_route_v4", {}).get("value")
+    default_v6 = props.get("interface.default_route_v6", {}).get("value")
+    if (
+        not isinstance(name, str)
+        or not isinstance(operstate, str)
+        or not isinstance(ipv4, str)
+        or not isinstance(ipv6, str)
+        or type(wireless) is not bool
+        or type(default_v4) is not bool
+        or type(default_v6) is not bool
+    ):
+        continue
+    addresses = ",".join(value for value in (ipv4, ipv6) if value) or "no address"
+    flags = []
+    if wireless:
+        flags.append("wireless")
+    if default_v4:
+        flags.append("default IPv4")
+    if default_v6:
+        flags.append("default IPv6")
+    detail = f"{operstate} · {addresses}" + (
+        " · " + ", ".join(flags) if flags else ""
+    )
+    candidates.append({
+        "value": object_id,
+        "label": name,
+        "detail": detail,
+        "object_id": object_id,
+    })
+times = [fact.get("recorded_at") for fact in facts if isinstance(fact.get("recorded_at"), str)]
+expires = [fact.get("expires_at") for fact in facts if isinstance(fact.get("expires_at"), str)]
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates[:128],
+    "freshness": "fresh",
+    **({"recorded_at": max(times)} if times else {}),
+    **({"expires_at": min(expires)} if expires else {}),
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
 _igor_path_platform_candidate_raw() {
     local _kind="${1:-}" _prefix="${2:-}" _rows
     if ! declare -f path_candidates_query >/dev/null 2>&1; then
@@ -449,6 +597,22 @@ igor_input_candidates_resolve() {
             _result="$(
                 printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
             )" || return 1
+            ;;
+        interface)
+            local _model_result _state
+            _raw="$(_igor_interface_model_candidate_raw)" || return 1
+            _model_result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model system_model.network.interfaces
+            )" || return 1
+            _state="$(printf '%s' "$_model_result" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || return 1
+            if [ "$_state" = ready ] || [ "$_state" = empty ]; then
+                _result="$_model_result"
+            else
+                _raw="$(_igor_interface_platform_candidate_raw)" || return 1
+                _result="$(
+                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform linux.interfaces
+                )" || return 1
+            fi
             ;;
         user|group)
             local _model_result _state _source_id
