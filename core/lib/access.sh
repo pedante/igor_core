@@ -33,6 +33,7 @@ account_users_query() { _access_run account_query.py users; }
 account_groups_query() { _access_run account_query.py groups; }
 
 path_candidates_query() { _access_run access.py candidates "${1:-}"; }
+mutable_path_candidates_query() { _access_run access.py candidates-mutable "${1:-}"; }
 path_status_query() { _access_run access.py inspect "$1"; }
 
 permission_owner_plan() { _access_run access.py plan-owner "$1"; }
