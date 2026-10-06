@@ -1,7 +1,7 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **DISCOVERY proposal; no runtime contract or implementation is authorized
-by this document.**
+Status: **D070 accepted; S1–S3 implemented on the feature branch pending
+validation.** The discovery rationale is retained here as the design record.
 
 Branch: `feature/sys-module-foundation`
 
@@ -29,7 +29,7 @@ IDs or input schemas.
 ### 1. Do not create a second module
 
 The repository already contains `modules/system/` as Module API v2 package
-`system`, currently version 2.3.0. It already owns host-domain semantics and
+`system`, currently version 2.4.0. It already owns host-domain semantics and
 declares host, package, service, log, memory, configuration and administration
 capabilities.
 
@@ -52,9 +52,10 @@ Capabilities with required inputs currently create an explicit invocation draft;
 the frontend does not guess values. This is the correct authority boundary to
 extend.
 
-**Proposal:** if the Project Owner accepts Q013, `:sys` becomes only a
-presentation alias for the existing `:system` tree. `:system` remains valid
-and all backend IDs remain `system.*`.
+**Accepted/implemented in S3:** `:sys` is only a presentation alias for the
+existing `:system` tree. `:system` remains valid and all backend IDs remain
+`system.*`. The Operator Surface projects the alias only while the canonical
+`system` root exists and no real `sys` root collides with it.
 
 ### 3. Do not invent a second entity/inventory model
 
@@ -174,7 +175,7 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
-## S1/S2 implementation status
+## S1/S2/S3 implementation status
 
 S1 provides the strict selector contract, Core candidate envelope/registry,
 Operator Surface projection and cache invalidation boundaries.
@@ -187,8 +188,12 @@ emits ephemeral candidates. The TUI can filter and select those candidates.
 Candidate browsing does not run a capability; the chosen unit is submitted
 through the unchanged canonical `invoke` path.
 
-Manual JSON input remains available from the chooser via Tab. `:sys` remains
-deferred to S3.
+Manual JSON input remains available from the chooser via Tab.
+
+S3 adds the collision-safe `:sys` presentation alias in the shared Operator
+Surface projection. The TUI can keep `:sys...` in its breadcrumb while
+navigation and invocation continue to use canonical `system...` paths. A real
+top-level `sys` namespace suppresses the alias rather than being shadowed.
 
 ## Proposed architecture
 
@@ -303,7 +308,7 @@ phases can overlap with existing Igor 2 completion work.
 | S0 — Discovery & decisions | This proposal, Q013–Q015, scope/proof gate | current |
 | S1 — Semantic input contract | Strict optional selector metadata, generic projection, candidate envelope/API, tests | 1–3 days |
 | S2 — Service vertical slice | Existing service inputs gain dynamic selection; TUI chooser/typeahead; canonical execution unchanged | 2–4 days |
-| S3 — Namespace UX | Optional `:sys` alias, if accepted; category/navigation polish without duplicate IDs | 0.5–1.5 days |
+| S3 — Namespace UX | **Implemented on feature branch:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete pending validation |
 | S4 — Storage read model | Storage/filesystem/mount observations and read-only `system.storage.*` inspection using existing System Model identities | 3–6 days |
 | S5 — Storage changes | Mount/unmount capabilities with frozen targets, Core privilege mechanics, verification and explicit persistence semantics | 4–8 days |
 | S6 — Users, groups, permissions & paths | Bounded user/group/path selectors plus safe inspection/change capabilities | 3–6 days |
@@ -341,4 +346,6 @@ authoritative decision log:
 - Q014 — bounded semantic selector metadata on capability inputs;
 - Q015 — dynamic candidate source, freshness and authority.
 
-D070 resolves these questions. S1 implements only the generic selector/candidate foundation; S2 remains the first real System consumer.
+D070 resolves these questions. S1 implements the generic selector/candidate
+foundation, S2 is the first real System consumer, and S3 adds only the accepted
+presentation alias/navigation layer.
