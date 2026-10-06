@@ -174,6 +174,22 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
+## S1/S2 implementation status
+
+S1 provides the strict selector contract, Core candidate envelope/registry,
+Operator Surface projection and cache invalidation boundaries.
+
+S2 uses the existing System service capabilities as the first real consumer.
+The `unit` inputs on status/start/enable/restart declare the shared
+`resource_kind=service` selector. The backend re-resolves the active
+capability/provider, uses Core's bounded `svc_list_query` Platform read, and
+emits ephemeral candidates. The TUI can filter and select those candidates.
+Candidate browsing does not run a capability; the chosen unit is submitted
+through the unchanged canonical `invoke` path.
+
+Manual JSON input remains available from the chooser via Tab. `:sys` remains
+deferred to S3.
+
 ## Proposed architecture
 
 ```text
