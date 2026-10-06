@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "core/lib/module_contract.py"
 sys.path.insert(0, str(ROOT / "core/lib"))
 import module_contract
+import module_registry
 
 
 class ModuleContractTests(unittest.TestCase):
@@ -60,6 +61,48 @@ class ModuleContractTests(unittest.TestCase):
             by_id["system.storage.filesystem.status"]["inputs"]["properties"]["filesystem"]["selector"],
             {"schema_version": 1, "kind": "resource", "resource_kind": "filesystem"},
         )
+
+    def test_system_storage_admin_contract_is_runtime_only_and_compiler_reviewed(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        cases = {
+            "system.storage.mount": (
+                "filesystem",
+                "mountable_filesystem",
+                "system.storage.mount.ready",
+                "system.storage.mount.present",
+            ),
+            "system.storage.unmount": (
+                "mount",
+                "unmountable_mount",
+                "system.storage.unmount.ready",
+                "system.storage.mount.absent",
+            ),
+        }
+        for ident, (input_name, resource_kind, validator, check_id) in cases.items():
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 1)
+            self.assertEqual(row["handler"], "system__privileged_marker")
+            self.assertEqual(row["safety"], {"tier": "CHANGE"})
+            self.assertEqual(row["privilege"], "required")
+            self.assertEqual(row["inputs"]["required"], [input_name])
+            self.assertEqual(
+                row["inputs"]["properties"][input_name]["selector"],
+                {"schema_version": 1, "kind": "resource", "resource_kind": resource_kind},
+            )
+            self.assertEqual(
+                row["preconditions"],
+                [
+                    {"kind": "owner_active"},
+                    {"kind": "trusted_validator", "validator": validator},
+                ],
+            )
+            self.assertEqual(
+                row["verification"],
+                {"kind": "trusted_query", "check_id": check_id, "required": True},
+            )
+            self.assertIn("fstab", row["description"])
+            self.assertEqual(module_registry.static_unavailable_reason(row, "system"), "")
 
     def test_system_service_inputs_declare_the_shared_service_selector(self):
         result = module_contract.validate_module(ROOT / "modules/system")
