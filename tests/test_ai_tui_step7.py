@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Focused daily-use coverage for the lightweight Step 7 frontend."""
 
 import os
@@ -7,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "core", "ai"))
-import tui  # noqa: E402
+import tui
 
 
 def event(kind, sequence, **fields):
