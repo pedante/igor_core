@@ -268,12 +268,162 @@ print(json.dumps({
 PY
 }
 
+_igor_account_platform_candidate_raw() {
+    local _kind="${1:-}" _rows
+    if ! declare -f account_users_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/access.sh
+        source "$(_igor_input_candidate_root)/core/lib/access.sh"
+    fi
+    case "$_kind" in
+        user) _rows="$(account_users_query)" || _rows="" ;;
+        group) _rows="$(account_groups_query)" || _rows="" ;;
+        *) return 2 ;;
+    esac
+    [ -n "$_rows" ] || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"local account discovery unavailable"}'
+        return 0
+    }
+    ACCOUNT_ROWS="$_rows" ACCOUNT_KIND="$_kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["ACCOUNT_KIND"]
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+candidates = []
+for row in rows[:128]:
+    if kind == "user":
+        detail = "uid {} · gid {} · {}".format(
+            row["uid"], row["primary_gid"], row["home"]
+        )
+    else:
+        detail = "gid {} · {} explicit member{}".format(
+            row["gid"], row["member_count"], "" if row["member_count"] == 1 else "s"
+        )
+    candidates.append({
+        "value": row["object_id"],
+        "label": row["name"],
+        "detail": detail,
+        "object_id": row["object_id"],
+    })
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates,
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+_igor_account_model_candidate_raw() {
+    local _kind="${1:-}" _snapshot
+    declare -f igor_model_list >/dev/null 2>&1 || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model unavailable","freshness":"stale"}'
+        return 0
+    }
+    _snapshot="$(igor_model_list 2>/dev/null)" || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model read failed","freshness":"stale"}'
+        return 0
+    }
+    ACCOUNT_MODEL="$_snapshot" ACCOUNT_KIND="$_kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["ACCOUNT_KIND"]
+snapshot = json.loads(os.environ["ACCOUNT_MODEL"])
+observer = {"user": "accounts.users", "group": "accounts.groups"}[kind]
+facts = [
+    fact for fact in snapshot.get("facts", [])
+    if fact.get("observer") == observer
+    and str(fact.get("object_id", "")).startswith(kind + ":")
+]
+attempt = snapshot.get("observers", {}).get(observer)
+if isinstance(attempt, dict) and attempt.get("status") not in {"ok", None}:
+    print(json.dumps({
+        "state": "unavailable", "candidates": [],
+        "reason": "account observation is incomplete", "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+if not facts:
+    if isinstance(attempt, dict) and attempt.get("status") == "ok":
+        print(json.dumps({
+            "state": "empty", "candidates": [], "freshness": "fresh",
+            "recorded_at": attempt.get("at"),
+        }, sort_keys=True, separators=(",", ":")))
+    else:
+        print(json.dumps({
+            "state": "unavailable", "candidates": [],
+            "reason": "fresh account observation unavailable", "freshness": "stale",
+        }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+if any(fact.get("availability") != "known" for fact in facts):
+    print(json.dumps({
+        "state": "unavailable", "candidates": [],
+        "reason": "account observation is stale", "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+
+grouped = {}
+for fact in facts:
+    grouped.setdefault(fact["object_id"], {})[fact["property"]] = fact
+candidates = []
+for object_id, props in sorted(grouped.items()):
+    name = props.get(kind + ".name", {}).get("value")
+    numeric = props.get(kind + (".uid" if kind == "user" else ".gid"), {}).get("value")
+    if not isinstance(name, str) or type(numeric) is not int:
+        continue
+    if kind == "user":
+        gid = props.get("user.primary_gid", {}).get("value")
+        home = props.get("user.home", {}).get("value")
+        if type(gid) is not int or not isinstance(home, str):
+            continue
+        detail = f"uid {numeric} · gid {gid} · {home}"
+    else:
+        count = props.get("group.member_count", {}).get("value")
+        if type(count) is not int:
+            continue
+        detail = f"gid {numeric} · {count} explicit member" + ("" if count == 1 else "s")
+    candidates.append({
+        "value": object_id, "label": name, "detail": detail, "object_id": object_id,
+    })
+times = [fact.get("recorded_at") for fact in facts if isinstance(fact.get("recorded_at"), str)]
+expires = [fact.get("expires_at") for fact in facts if isinstance(fact.get("expires_at"), str)]
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates[:128],
+    "freshness": "fresh",
+    **({"recorded_at": max(times)} if times else {}),
+    **({"expires_at": min(expires)} if expires else {}),
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+_igor_path_platform_candidate_raw() {
+    local _prefix="${1:-}" _rows
+    if ! declare -f path_candidates_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/access.sh
+        source "$(_igor_input_candidate_root)/core/lib/access.sh"
+    fi
+    if ! _rows="$(path_candidates_query "$_prefix")"; then
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"bounded path discovery unavailable"}'
+        return 0
+    fi
+    PATH_ROWS="$_rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["PATH_ROWS"])
+print(json.dumps({
+    "state": "ready" if rows else "empty",
+    "candidates": rows[:128],
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
 igor_input_candidates_resolve() {
-    local _target="${1:-}" _input="${2:-}" _id _provider="" _spec_text _raw _result
+    local _target="${1:-}" _input="${2:-}" _query="${3:-}" _id _provider="" _spec_text _raw _result
     local _selected_provider _input_type _selector _resource_kind
     local -a _fields=()
 
-    [ "$#" -eq 2 ] && [ -n "$_target" ] && [[ "$_input" =~ ^[a-z][a-z0-9_]*$ ]] || return 2
+    [ "$#" -ge 2 ] && [ "$#" -le 3 ] && [ -n "$_target" ] &&
+        [[ "$_input" =~ ^[a-z][a-z0-9_]*$ ]] || return 2
     _id="${_target%%@*}"
     if [ "$_target" != "$_id" ]; then
         _provider="${_target#*@}"
@@ -293,6 +443,29 @@ igor_input_candidates_resolve() {
             _raw="$(_igor_service_candidate_raw)" || return 1
             _result="$(
                 printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
+            )" || return 1
+            ;;
+        user|group)
+            local _model_result _state _source_id
+            _raw="$(_igor_account_model_candidate_raw "$_resource_kind")" || return 1
+            _source_id="system_model.accounts.${_resource_kind}"
+            _model_result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model "$_source_id"
+            )" || return 1
+            _state="$(printf '%s' "$_model_result" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || return 1
+            if [ "$_state" = ready ] || [ "$_state" = empty ]; then
+                _result="$_model_result"
+            else
+                _raw="$(_igor_account_platform_candidate_raw "$_resource_kind")" || return 1
+                _result="$(
+                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.local_${_resource_kind}s"
+                )" || return 1
+            fi
+            ;;
+        path)
+            _raw="$(_igor_path_platform_candidate_raw "$_query")" || return 1
+            _result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform linux.paths
             )" || return 1
             ;;
         mount|filesystem|mountable_filesystem|unmountable_mount)
@@ -319,15 +492,16 @@ igor_input_candidates_resolve() {
             ;;
     esac
 
-    "${IGOR_PYTHON:-python3}" - "$_result" "$_id" "$_selected_provider" "$_input" <<'PY'
+    "${IGOR_PYTHON:-python3}" - "$_result" "$_id" "$_selected_provider" "$_input" "$_query" <<'PY'
 import json
 import sys
 
-result, capability_id, provider, input_name = sys.argv[1:]
+result, capability_id, provider, input_name, query = sys.argv[1:]
 print(json.dumps({
     "capability_id": capability_id,
     "provider": provider,
     "input_name": input_name,
+    "query": query,
     "result": json.loads(result),
 }, sort_keys=True, separators=(",", ":")))
 PY
