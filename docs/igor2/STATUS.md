@@ -3140,3 +3140,12 @@ trusted preflight, numeric identity resolution, frozen non-recursive
 recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
+
+S7 discovery has started on feature/sys-network-wifi. The proposal keeps
+generic link/address/route/DNS mechanics in Core, uses the existing
+interface:<name> Host Intelligence identity, and keeps Wi-Fi scans/profiles as
+ephemeral selector data. Q016–Q018 are intentionally open before S7 runtime
+implementation: network object scope, NetworkManager as the first Wi-Fi
+provider with saved-profile activation only, and deferral of new
+password/open-profile creation until configuration/secret-consumer authority
+exists.
