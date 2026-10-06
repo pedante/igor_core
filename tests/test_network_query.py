@@ -209,7 +209,8 @@ class NetworkQueryTests(unittest.TestCase):
             """
             # managed by systemd-resolved
             nameserver 127.0.0.53
-            nameserver 2001:db8::53
+            nameserver 2001:db8::53 ; configured IPv6 resolver
+            domain obsolete.example
             search lan.example example.org
             options edns0 trust-ad
             """,
