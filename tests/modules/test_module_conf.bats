@@ -148,11 +148,11 @@ teardown() {
     [ "$name" = "system" ]
 }
 
-@test "system module.conf: required_bins includes systemctl" {
+@test "system module.conf: systemctl is not a module-wide requirement" {
     local conf="${MODULES_DIR}/system/module.conf"
     [ -f "$conf" ] || skip "system module not found"
     local bins; bins=$(_conf_get "$conf" "required_bins")
-    [[ "$bins" == *"systemctl"* ]] || fail "systemctl not in required_bins: $bins"
+    [[ "$bins" != *"systemctl"* ]]
 }
 
 @test "nextcloud_docker module.conf: name is 'nextcloud_docker'" {
