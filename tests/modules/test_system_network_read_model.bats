@@ -203,7 +203,8 @@ PY
     [[ "$output" == *'"wireless_count":1'* ]]
     [[ "$output" == *'"default_route_v4":"eth0"'* ]]
     [[ "$output" == *'"object_id":"interface:eth0"'* ]]
-    [[ "$output" == *'ipv4	default via 192.0.2.1 dev eth0'* ]]
+    [[ "$output" == *'192.0.2.1'* ]]
+    [[ "$output" == *'"source":"core.network.routes"'* ]]
     [[ "$output" == *'"local_stub":true'* ]]
     [[ "$output" == *'"property":"interface.name","value":"eth0"'* ]]
 }
@@ -391,18 +392,29 @@ PY
     [ "$status" -ne 0 ]
 }
 
-@test "S7.3 exposes no Wi-Fi mutation capability" {
+@test "S7.3 Wi-Fi reads stay READ while S7.4 is the sole reviewed Wi-Fi mutation" {
     records="$(igor_contribution_records)"
     python3 - "$records" <<'PY'
 import json
 import sys
 rows = json.loads(sys.argv[1])
-ids = {row["id"] for row in rows}
-assert "system.network.wifi.connect_known" not in ids
-assert all(
-    row["descriptor"].get("safety") == {"tier": "READ"}
+by_id = {row["id"]: row for row in rows}
+for ident in (
+    "system.network.wifi.status",
+    "system.network.wifi.scan",
+    "system.network.wifi.profiles.list",
+):
+    assert by_id[ident]["descriptor"]["safety"] == {"tier": "READ"}
+    assert by_id[ident]["descriptor"]["privilege"] == "none"
+mutation = by_id["system.network.wifi.connect_known"]["descriptor"]
+assert mutation["safety"] == {"tier": "CHANGE"}
+assert mutation["privilege"] == "required"
+assert mutation["handler"] == "system__privileged_marker"
+assert not any(
+    row["id"].startswith("system.network.wifi.")
+    and row["descriptor"].get("safety", {}).get("tier") != "READ"
+    and row["id"] != "system.network.wifi.connect_known"
     for row in rows
-    if row["id"].startswith("system.network.wifi.")
 )
 PY
 }

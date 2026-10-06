@@ -571,7 +571,9 @@ class ModuleContractTests(unittest.TestCase):
             json.dumps({"contract_version": 1, "contributions": [incompatible]}),
             encoding="utf-8",
         )
-        with self.assertRaisesRegex(module_contract.ValidationError, "string or object_id"):
+        with self.assertRaisesRegex(
+            module_contract.ValidationError, "string, object_id or path"
+        ):
             module_contract.validate_module(root)
 
 

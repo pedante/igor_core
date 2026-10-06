@@ -1476,7 +1476,7 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                         [ "$_name" = system ] &&
                         [ "$(_ml_json_field "$_record" handler)" = system__privileged_marker ] &&
                         case "${_key#capability:}" in
-                            system.package.install|system.package.upgrade|system.package.cache.clean|system.service.start|system.service.enable|system.storage.mount|system.storage.unmount|system.permissions.owner.set|system.permissions.group.set|system.permissions.mode.set) true ;;
+                            system.package.install|system.package.upgrade|system.package.cache.clean|system.service.start|system.service.enable|system.storage.mount|system.storage.unmount|system.permissions.owner.set|system.permissions.group.set|system.permissions.mode.set|system.network.wifi.connect_known) true ;;
                             *) false ;;
                         esac
                     }
@@ -1561,8 +1561,25 @@ if record.get("id") in permission_specs:
         verification=={"kind":"trusted_query","check_id":check_id,"required":True} and
         record.get("safety",{}).get("tier")=="CHANGE"
     )
+wifi_connect_known=(
+    record.get("owner")=="system" and
+    record.get("id")=="system.network.wifi.connect_known" and
+    record.get("handler")=="system__privileged_marker" and
+    record.get("capability_version")==1 and
+    record.get("privilege")=="required" and
+    preconditions==[
+        {"kind":"owner_active"},
+        {"kind":"trusted_validator","validator":"system.network.wifi.connect_known.ready"},
+    ] and
+    verification=={
+        "kind":"trusted_query",
+        "check_id":"system.network.wifi.profile.active",
+        "required":True,
+    } and
+    record.get("safety",{}).get("tier")=="CHANGE"
+)
 trusted_validators=[p for p in preconditions if p.get("kind")=="trusted_validator"]
-reviewed_admin=storage_admin or permission_admin
+reviewed_admin=storage_admin or permission_admin or wifi_connect_known
 unsupported=unsupported or (bool(trusted_validators) and not reviewed_admin)
 trusted_query=(memory_query or package_upgrade_query or package_install_query or
                service_enable_query or reviewed_admin)
