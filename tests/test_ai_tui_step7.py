@@ -115,8 +115,12 @@ class Step7PaletteTests(unittest.TestCase):
 
         entries = [{"name": "stats", "syntax": "stats",
                     "description": "show token statistics"}]
+        state = tui.EventState()
+        state.backend_ready = True
         with patch.object(tui, "_send") as send:
-            tui._palette_overlay(Screen(), 31, tui.InputBuffer(), commands=entries)
+            tui._palette_overlay(
+                Screen(), 31, tui.InputBuffer(), state=state, commands=entries
+            )
         send.assert_called_once_with(31, "stats")
 
     def test_palette_query_filters_before_invocation(self):
@@ -146,9 +150,12 @@ class Step7PaletteTests(unittest.TestCase):
             {"name": "help", "syntax": "help", "description": "list commands"},
             {"name": "stats", "syntax": "stats", "description": "show statistics"},
         ]
+        state = tui.EventState()
+        state.backend_ready = True
         with patch.object(tui, "_send") as send:
-            selected = tui._palette_overlay(Screen(), 31, tui.InputBuffer(),
-                                            commands=commands)
+            selected = tui._palette_overlay(
+                Screen(), 31, tui.InputBuffer(), state=state, commands=commands
+            )
         self.assertEqual(selected, "stats")
         send.assert_called_once_with(31, "stats")
 
