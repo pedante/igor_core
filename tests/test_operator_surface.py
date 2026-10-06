@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
+
 from operator_surface import (
     SurfaceError,
     build_surface,
@@ -17,7 +18,6 @@ from operator_surface import (
     cached_read_surface,
     children,
 )
-
 
 CAP = {
     "id": "system.host.memory.refresh",
