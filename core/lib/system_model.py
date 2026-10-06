@@ -57,7 +57,7 @@ def _object_matches_kind(object_id: Any, object_kind: Any) -> bool:
         return object_id == "host:local"
     if object_kind in {"deployment", "resource"}:
         return re.fullmatch(object_kind + r":[0-9a-f]{32}", object_id) is not None
-    return object_kind in {"mount", "filesystem"} and object_id.startswith(object_kind + ":")
+    return object_kind in {"mount", "filesystem"} and object_id.startswith(object_kind + ":/")
 
 
 class ModelError(ValueError):
