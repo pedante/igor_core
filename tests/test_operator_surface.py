@@ -68,6 +68,10 @@ class OperatorSurfaceTests(unittest.TestCase):
         self.assertEqual(surface["entry_count"], len(surface["entries"]))
         self.assertEqual(surface["sources"]["modules"], {"status": "ok", "count": 1})
         self.assertEqual(surface["aliases"], {"sys": "system"})
+        self.assertFalse(any(
+            row["path"] == "sys" or row["path"].startswith("sys.")
+            for row in surface["entries"]
+        ))
         self.assertEqual(by_path["system.host.memory.refresh"]["kind"], "capability")
         self.assertEqual(by_path["system.host.memory.refresh"]["safety"], "READ")
         self.assertEqual(by_path["system.host.memory"]["kind"], "observer")
