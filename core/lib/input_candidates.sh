@@ -112,25 +112,26 @@ igor_input_candidates_resolve() {
             _raw="$(_igor_service_candidate_raw)" || return 1
             _result="$(
                 printf '%s' "$_raw" |
-                    "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py"                         resolve-source "$_selector" "$_input_type" platform systemd.services
+                    "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source                         "$_selector" "$_input_type" platform systemd.services
             )" || return 1
             ;;
         *)
             _result="$(
-                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py"                     resolve-none "$_selector" "$_input_type"
+                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-none                     "$_selector" "$_input_type"
             )" || return 1
             ;;
     esac
 
-    CANDIDATE_RESULT="$_result" CANDIDATE_ID="$_id"     CANDIDATE_PROVIDER="$_selected_provider" CANDIDATE_INPUT="$_input"         "${IGOR_PYTHON:-python3}" - <<'PY'
+    "${IGOR_PYTHON:-python3}" -         "$_result" "$_id" "$_selected_provider" "$_input" <<'PY'
 import json
-import os
+import sys
 
+result, capability_id, provider, input_name = sys.argv[1:]
 print(json.dumps({
-    "capability_id": os.environ["CANDIDATE_ID"],
-    "provider": os.environ["CANDIDATE_PROVIDER"],
-    "input_name": os.environ["CANDIDATE_INPUT"],
-    "result": json.loads(os.environ["CANDIDATE_RESULT"]),
+    "capability_id": capability_id,
+    "provider": provider,
+    "input_name": input_name,
+    "result": json.loads(result),
 }, sort_keys=True, separators=(",", ":")))
 PY
 }
