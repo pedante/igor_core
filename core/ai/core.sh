@@ -296,14 +296,20 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
 # This is a presentation/reference read only; selected values still enter invoke.
 _ai_operator_candidates() {
     local _candidate_rest="${1:-}" _candidate_target _candidate_input _extra
-    local _candidate_result _candidate_payload
+    local _candidate_result _candidate_payload _candidate_rc
     read -r _candidate_target _candidate_input _extra <<< "$_candidate_rest"
     if [ -z "$_candidate_target" ] || [ -z "$_candidate_input" ] || [ -n "$_extra" ]; then
         return 2
     fi
     _candidate_result="$(
         igor_input_candidates_resolve "$_candidate_target" "$_candidate_input"
-    )" || return 2
+    )"
+    _candidate_rc=$?
+    case "$_candidate_rc" in
+        0) ;;
+        2) return 2 ;;
+        *) return 1 ;;
+    esac
     _candidate_payload="$(
         "${IGOR_PYTHON:-python3}" - "$_candidate_result" "${IGOR_AI_EVENT_SESSION_ID:-}" <<'PY'
 import json
@@ -369,6 +375,9 @@ _ai_frontend_control() {
             if [ "$_invoke_rc" -eq 2 ]; then
                 warn "Usage: candidates <capability-id[@provider]> <input-name>"
                 _ai_frontend_event warning "Candidate selection is unavailable for this input."
+            elif [ "$_invoke_rc" -ne 0 ]; then
+                warn "Candidate resolution failed."
+                _ai_frontend_event warning "Candidate resolution failed safely."
             fi
             return 0
             ;;
