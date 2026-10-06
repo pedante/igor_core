@@ -357,7 +357,7 @@ PY
     [ "${_IGOR_HANDLER_TIMEOUT[capability:system.service.list]:-}" = 30 ]
     [ "${_IGOR_MODULE_ENTRYPOINT[system]:-}" = module.sh ]
     [ "${_IGOR_OWNER_HAS_DOMAIN_EVENTS[system]:-0}" = 0 ]
-    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.3.0 ]
+    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.4.0 ]
 }
 
 @test "targeted preparation evaluates only the selected capability requirement path" {
