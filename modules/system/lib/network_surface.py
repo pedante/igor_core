@@ -227,7 +227,7 @@ def main(argv: list[str]) -> int:
             raise NetworkSurfaceError("unsupported network surface action")
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0
-    except NetworkSurfaceError as exc:
+    except (NetworkSurfaceError, KeyError, TypeError, ValueError) as exc:
         print(f"system network surface: {exc}", file=sys.stderr)
         return 1
 
