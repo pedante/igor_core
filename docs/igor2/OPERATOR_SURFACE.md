@@ -1,6 +1,10 @@
 # Contract-Driven Operator Surface and Namespace Explorer
 
-Status: **bounded implementation with the D070/S2 semantic-selector vertical slice**. This extends the existing 15UI frontend foundation and Module API v2 inspection contracts; it does not make the TUI authoritative or replace Step 18 composition work.
+Status: **bounded implementation through D070/S3**: semantic selectors, the
+service candidate vertical slice, and the collision-safe `:sys` presentation
+alias. This extends the existing 15UI frontend foundation and Module API v2
+inspection contracts; it does not make the TUI authoritative or replace Step 18
+composition work.
 
 ## Purpose
 
@@ -69,6 +73,11 @@ For example, the current v2 System slice can be discovered as:
 :system.host.
 :system.host.memory.
 :system.host.memory.refresh
+
+# S3 presentation spelling of the same tree
+:sys.
+:sys.host.
+:sys.host.memory.refresh
 ```
 
 The dotted path is a **presentation/navigation path**, not a second durable
@@ -76,6 +85,16 @@ identity scheme. Where a contribution already has a canonical dotted ID, that
 ID remains the target. Generic module contributions that are not owner-prefixed
 may be displayed beneath their owner so they are discoverable without changing
 their contract identity.
+
+S3 projects a small root-alias map as presentation metadata. Today that is
+`sys -> system`. Resolving `:sys` therefore walks the existing canonical
+`system` tree; leaf targets and emitted invocations remain `system.*`. The
+TUI may preserve the short spelling in its breadcrumb, but it never rewrites a
+capability ID.
+
+Aliases fail safe on collision. If a real top-level `sys` namespace exists,
+the projection suppresses the alias instead of shadowing the real namespace.
+If the canonical `system` root is absent, no `:sys` alias is advertised.
 
 If multiple active providers expose the same capability ID, the projection
 keeps that ambiguity visible and qualifies the navigation leaf by provider. It
