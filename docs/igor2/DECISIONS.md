@@ -939,9 +939,14 @@ filesystem/network scan, adoption, desired-state write, responsibility grant,
 approval or execution.
 
 S1 establishes only the generic contract, resolver registry, projection and
-inspection API. It does not annotate a real System input, add the `:sys` alias,
-or perform a host candidate read. The existing service capabilities are the
-approved S2 vertical slice.
+inspection API. The existing service capabilities are the approved S2 vertical
+slice.
+
+S3 implements Q013 without changing this authority decision: the shared
+Operator Surface may advertise `sys -> system` as collision-safe presentation
+metadata. The alias is absent when its canonical target is absent and is
+suppressed if a real `sys` root exists. Navigation through the alias still
+targets the same `system.*` identities.
 
 ## Open decisions
 
