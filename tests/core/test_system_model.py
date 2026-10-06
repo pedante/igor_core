@@ -194,6 +194,20 @@ class SystemModelTests(unittest.TestCase):
             self.model.observe(descriptor, "system", "storage.mounts", wrong_kind)
         self.assertEqual(self.model.facts, {})
 
+        malformed_identity = {"status": "ok", "result": {"objects": [{
+            "object_id": "mount:arbitrary",
+            "facts": [
+                {"property": "mount.target", "value": "/", "evidence": []},
+                {"property": "mount.read_only", "value": False, "evidence": []},
+            ],
+            "unavailable": [],
+        }]}}
+        with self.assertRaises(ModelError):
+            self.model.observe(
+                descriptor, "system", "storage.mounts", malformed_identity
+            )
+        self.assertEqual(self.model.facts, {})
+
         incomplete = {"status": "ok", "result": {"objects": [{
             "object_id": "mount:/",
             "facts": [
