@@ -690,6 +690,75 @@
           "nmcli"
         ]
       }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.connect_known",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Activate one existing saved NetworkManager Wi-Fi profile on one selected wireless interface without creating, editing or retrieving credentials.",
+      "inputs": {
+        "properties": {
+          "interface": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "interface"
+            }
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "pattern": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "wifi_profile"
+            }
+          }
+        },
+        "required": [
+          "interface",
+          "profile"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.network.wifi.connect_known.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.network.wifi.profile.active",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Activating a saved profile may replace another Wi-Fi connection. Igor does not disconnect, delete profiles or attempt automatic rollback; recovery is explicit activation of an appropriate saved profile."
+      },
+      "affects": [
+        {
+          "object": "interface",
+          "input": "interface"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
     }
   ]
 }

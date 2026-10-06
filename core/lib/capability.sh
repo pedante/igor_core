@@ -304,6 +304,14 @@ PY
                 esac
                 _spec="$(_igor_capability_field "$_plan" commands)" || return 1
                 ;;
+            system.network.wifi.connect_known)
+                if ! declare -f networkmanager_wifi_plan_connect_known >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/networkmanager_wifi.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/networkmanager_wifi.sh"
+                fi
+                _plan="$(networkmanager_wifi_plan_connect_known "$_base_inputs")" || return 1
+                _spec="$(_igor_capability_field "$_plan" commands)" || return 1
+                ;;
             system.package.install)
                 _package="$(_igor_capability_field "$_base_inputs" package)" || return 1
                 if ! declare -f pkg_install_argv >/dev/null 2>&1; then
@@ -497,6 +505,13 @@ PY
                             system.permissions.mode.ready) permission_mode_plan "$_inputs" >/dev/null || return 1 ;;
                         esac
                         ;;
+                    system.network.wifi.connect_known.ready)
+                        if ! declare -f networkmanager_wifi_ready_connect_known >/dev/null 2>&1; then
+                            # shellcheck source=core/lib/networkmanager_wifi.sh
+                            source "${_IGOR_LOADER_DIR}/core/lib/networkmanager_wifi.sh"
+                        fi
+                        networkmanager_wifi_ready_connect_known "$_inputs" >/dev/null || return 1
+                        ;;
                     *) return 1 ;;
                 esac
                 ;;
@@ -683,6 +698,17 @@ PY
                             permission_mode_verify "$_permission_inputs" ;;
                         *) return 1 ;;
                     esac
+                    ;;
+                system.network.wifi.profile.active)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.network.wifi.connect_known ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    local _wifi_inputs
+                    _wifi_inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                    if ! declare -f networkmanager_wifi_verify_connect_known >/dev/null 2>&1; then
+                        # shellcheck source=core/lib/networkmanager_wifi.sh
+                        source "${_IGOR_LOADER_DIR}/core/lib/networkmanager_wifi.sh"
+                    fi
+                    networkmanager_wifi_verify_connect_known "$_wifi_inputs"
                     ;;
                 system.package.installed)
                     [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.install ] || return 1
@@ -908,6 +934,20 @@ elif ident in {"system.permissions.owner.set","system.permissions.group.set","sy
     elif not isinstance(value,str) or __import__("re").fullmatch(r"0[0-7]{3}",value) is None:
         raise SystemExit(1)
     commands=spec
+elif ident=="system.network.wifi.connect_known":
+    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+        raise SystemExit(1)
+    argv=spec[0]
+    expected=["sudo","-n","--","nmcli","--wait","30","connection","up","uuid"]
+    if len(argv)!=12 or argv[:9]!=expected or argv[10]!="ifname":
+        raise SystemExit(1)
+    profile,interface=argv[9],argv[11]
+    uuid_re=r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    if __import__("re").fullmatch(uuid_re,profile) is None:
+        raise SystemExit(1)
+    if __import__("re").fullmatch(r"[^\\s/:]{1,32}",interface) is None:
+        raise SystemExit(1)
+    commands=spec
 elif ident=="system.package.install":
     if (not isinstance(spec,list) or len(spec)!=7 or
             not isinstance(spec[-1],str) or
@@ -942,7 +982,7 @@ else:
 command_timeout = 120 if ident in {
     "system.storage.mount", "system.storage.unmount",
     "system.permissions.owner.set", "system.permissions.group.set",
-    "system.permissions.mode.set",
+    "system.permissions.mode.set", "system.network.wifi.connect_known",
 } else 1800
 for argv in commands:
     try:

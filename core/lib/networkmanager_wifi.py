@@ -1,11 +1,12 @@
-"""Bounded read-only NetworkManager Wi-Fi discovery for Igor Core.
+"""Bounded NetworkManager Wi-Fi discovery and reviewed known-profile activation.
 
 This optional adapter normalizes NetworkManager/nmcli state for the System
 network domain. Generic interface, route and resolver discovery remains in
 network_query.py and has no NetworkManager dependency.
 
-The adapter never asks NetworkManager for connection secrets and exposes no
-mutation operation.
+S7.4 adds one mutation plan only: activate an already-saved Wi-Fi profile on a
+selected wireless interface. The adapter never requests NetworkManager secrets,
+never creates/edits profiles and never executes the mutation itself.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 import uuid
 from typing import Any
 
@@ -287,19 +289,199 @@ def query_profiles(*, timeout_seconds: int | None = None) -> list[dict[str, Any]
     return normalize_profiles(profiles)
 
 
+
+def _interface_from_object_id(value: Any) -> str:
+    text = _bounded(value, "interface object identity", 160)
+    prefix = "interface:"
+    if not text.startswith(prefix):
+        raise NetworkManagerWifiError("interface object identity is invalid")
+    encoded = text[len(prefix):]
+    name = _ifname(urllib.parse.unquote(encoded))
+    if urllib.parse.quote(name, safe="._+-@") != encoded:
+        raise NetworkManagerWifiError("interface object identity is not canonical")
+    return name
+
+
+def _profile_uuid(value: Any) -> str:
+    text = _bounded(value, "Wi-Fi profile UUID", 36)
+    try:
+        normalized = str(uuid.UUID(text))
+    except (ValueError, AttributeError) as exc:
+        raise NetworkManagerWifiError("Wi-Fi profile UUID is invalid") from exc
+    if text != normalized:
+        raise NetworkManagerWifiError("Wi-Fi profile UUID is not canonical")
+    return normalized
+
+
+def _connect_known_context(
+    raw_inputs: Any,
+    *,
+    status: dict[str, Any] | None = None,
+    profiles: list[dict[str, Any]] | None = None,
+) -> tuple[str, str, dict[str, Any]]:
+    if not isinstance(raw_inputs, dict) or set(raw_inputs) != {"interface", "profile"}:
+        raise NetworkManagerWifiError(
+            "connect_known requires interface and profile inputs"
+        )
+    interface_object = _bounded(
+        raw_inputs.get("interface"), "interface object identity", 160
+    )
+    interface = _interface_from_object_id(interface_object)
+    profile_uuid = _profile_uuid(raw_inputs.get("profile"))
+
+    current_status = query_status() if status is None else status
+    if (
+        not isinstance(current_status, dict)
+        or current_status.get("provider") != "NetworkManager"
+        or current_status.get("wifi_hardware") != "enabled"
+        or current_status.get("wifi_radio") != "enabled"
+    ):
+        raise NetworkManagerWifiError(
+            "NetworkManager Wi-Fi radio is not ready for activation"
+        )
+    devices = current_status.get("devices")
+    if not isinstance(devices, list) or any(not isinstance(row, dict) for row in devices):
+        raise NetworkManagerWifiError("NetworkManager Wi-Fi device state is invalid")
+    matches = [row for row in devices if row.get("interface") == interface]
+    if len(matches) != 1:
+        raise NetworkManagerWifiError(
+            "selected interface is not a current NetworkManager Wi-Fi device"
+        )
+
+    current_profiles = query_profiles() if profiles is None else profiles
+    if not isinstance(current_profiles, list) or any(
+        not isinstance(row, dict) for row in current_profiles
+    ):
+        raise NetworkManagerWifiError("NetworkManager Wi-Fi profile state is invalid")
+    profile_matches = [
+        row for row in current_profiles
+        if row.get("uuid") == profile_uuid and row.get("type") == "wifi"
+    ]
+    if len(profile_matches) != 1:
+        raise NetworkManagerWifiError(
+            "selected saved Wi-Fi profile is not currently available"
+        )
+    profile = profile_matches[0]
+    active_device = profile.get("device", "")
+    if (
+        profile.get("active") is True
+        and isinstance(active_device, str)
+        and active_device
+        and active_device != interface
+    ):
+        raise NetworkManagerWifiError(
+            "selected saved Wi-Fi profile is active on another interface"
+        )
+    return interface_object, interface, profile
+
+
+def freeze_connect_known(
+    raw_inputs: Any,
+    *,
+    status: dict[str, Any] | None = None,
+    profiles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    interface_object, interface, profile = _connect_known_context(
+        raw_inputs, status=status, profiles=profiles
+    )
+    profile_uuid = _profile_uuid(profile.get("uuid"))
+    return {
+        "action": "connect_known",
+        "interface": interface_object,
+        "interface_name": interface,
+        "profile_uuid": profile_uuid,
+        "commands": [[
+            "sudo", "-n", "--", "nmcli", "--wait", "30",
+            "connection", "up", "uuid", profile_uuid, "ifname", interface,
+        ]],
+    }
+
+
+def connect_known_ready(raw_inputs: Any) -> dict[str, Any]:
+    plan = freeze_connect_known(raw_inputs)
+    return {
+        "ready": True,
+        "interface": plan["interface"],
+        "profile_uuid": plan["profile_uuid"],
+    }
+
+
+def verify_connect_known(
+    raw_inputs: Any,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(raw_inputs, dict) or set(raw_inputs) != {"interface", "profile"}:
+        raise NetworkManagerWifiError(
+            "connect_known verification requires interface and profile inputs"
+        )
+    interface_object = _bounded(
+        raw_inputs.get("interface"), "interface object identity", 160
+    )
+    interface = _interface_from_object_id(interface_object)
+    profile_uuid = _profile_uuid(raw_inputs.get("profile"))
+    current_profiles = query_profiles() if profiles is None else profiles
+    if not isinstance(current_profiles, list) or any(
+        not isinstance(row, dict) for row in current_profiles
+    ):
+        raise NetworkManagerWifiError("NetworkManager Wi-Fi profile state is invalid")
+    matches = [row for row in current_profiles if row.get("uuid") == profile_uuid]
+    if len(matches) != 1:
+        raise NetworkManagerWifiError("selected saved Wi-Fi profile is unavailable")
+    profile = matches[0]
+    if (
+        profile.get("type") != "wifi"
+        or profile.get("active") is not True
+        or profile.get("device") != interface
+    ):
+        raise NetworkManagerWifiError(
+            "selected saved Wi-Fi profile is not active on the selected interface"
+        )
+    return {
+        "source": "networkmanager.wifi.profiles",
+        "check_id": "system.network.wifi.profile.active",
+        "interface": interface_object,
+        "profile_uuid": profile_uuid,
+        "observed": "active",
+        "provider": "NetworkManager",
+    }
+
+
 def main(argv: list[str]) -> int:
     try:
-        if len(argv) != 2:
+        if len(argv) < 2:
             raise NetworkManagerWifiError("invalid NetworkManager Wi-Fi invocation")
         action = argv[1]
-        if action == "status":
-            result: Any = query_status()
-        elif action == "scan":
-            result = query_scan()
-        elif action == "profiles":
-            result = query_profiles()
+        if action in {"status", "scan", "profiles"}:
+            if len(argv) != 2:
+                raise NetworkManagerWifiError("invalid NetworkManager Wi-Fi read invocation")
+            if action == "status":
+                result: Any = query_status()
+            elif action == "scan":
+                result = query_scan()
+            else:
+                result = query_profiles()
+        elif action in {
+            "plan-connect-known", "ready-connect-known", "verify-connect-known"
+        }:
+            if len(argv) != 3:
+                raise NetworkManagerWifiError(
+                    "invalid NetworkManager Wi-Fi activation invocation"
+                )
+            try:
+                raw_inputs = json.loads(argv[2])
+            except json.JSONDecodeError as exc:
+                raise NetworkManagerWifiError(
+                    "NetworkManager Wi-Fi activation input is invalid JSON"
+                ) from exc
+            if action == "plan-connect-known":
+                result = freeze_connect_known(raw_inputs)
+            elif action == "ready-connect-known":
+                result = connect_known_ready(raw_inputs)
+            else:
+                result = verify_connect_known(raw_inputs)
         else:
-            raise NetworkManagerWifiError("unsupported NetworkManager Wi-Fi query")
+            raise NetworkManagerWifiError("unsupported NetworkManager Wi-Fi operation")
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0
     except NetworkManagerWifiError as exc:
