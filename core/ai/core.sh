@@ -305,16 +305,14 @@ _ai_operator_candidates() {
         igor_input_candidates_resolve "$_candidate_target" "$_candidate_input"
     )" || return 2
     _candidate_payload="$(
-        printf '%s' "$_candidate_result" |
-            AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}"             "${IGOR_PYTHON:-python3}" -c '
+        "${IGOR_PYTHON:-python3}" -             "$_candidate_result" "${IGOR_AI_EVENT_SESSION_ID:-}" <<'PY'
 import json
-import os
 import sys
 
-payload = json.load(sys.stdin)
-payload["session_id"] = os.environ.get("AI_EVENT_SESSION_ID", "")
+payload = json.loads(sys.argv[1])
+payload["session_id"] = sys.argv[2]
 print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
-'
+PY
     )" || return 2
     _ai_event_emit operator_candidates "$_candidate_payload" >/dev/null 2>&1 || true
     return 0
