@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import quote
 
 CAPABILITY_ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 SECRET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
@@ -564,7 +565,6 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
                     r"path:/[A-Za-z0-9_./:%+@-]+", value):
                 return value
             if not value.startswith("/") and ".." not in value.split("/"):
-                from urllib.parse import quote
                 return "path:/" + quote(value, safe="/._-+%")
             return None
         if kind == "host":
