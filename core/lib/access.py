@@ -70,11 +70,7 @@ def _under(path: Path, roots: tuple[Path, ...], *, allow_root: bool = True) -> b
     return False
 
 
-def _safe_existing_path(path: Path, *, mutation: bool = False) -> os.stat_result:
-    if mutation and not _under(path, _MUTATION_ROOTS, allow_root=False):
-        raise AccessError("path is outside reviewed permission-change roots")
-    if not mutation and not _under(path, _INSPECT_ROOTS):
-        raise AccessError("path is outside bounded inspection roots")
+def _real_existing_path(path: Path) -> os.stat_result:
     current = Path("/")
     for part in path.parts[1:]:
         current /= part
@@ -85,6 +81,26 @@ def _safe_existing_path(path: Path, *, mutation: bool = False) -> os.stat_result
         if stat.S_ISLNK(info.st_mode):
             raise AccessError("symbolic-link paths are not supported")
     return os.lstat(path)
+
+
+def _safe_existing_path(path: Path, *, mutation: bool = False) -> os.stat_result:
+    if mutation and not _under(path, _MUTATION_ROOTS, allow_root=False):
+        raise AccessError("path is outside reviewed permission-change roots")
+    if not mutation and not _under(path, _INSPECT_ROOTS):
+        raise AccessError("path is outside bounded inspection roots")
+    return _real_existing_path(path)
+
+
+def _candidate_visible(path: Path, roots: tuple[Path, ...]) -> bool:
+    if _under(path, roots):
+        return True
+    for root in roots:
+        try:
+            root.relative_to(path)
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def _kind(mode: int) -> str:
@@ -155,7 +171,9 @@ def path_candidates(prefix: Any, *, mutation: bool = False) -> list[dict[str, An
     if parent == Path("/"):
         entries = list(roots)
     else:
-        _safe_existing_path(parent, mutation=mutation)
+        if not _candidate_visible(parent, roots):
+            raise AccessError("path prefix is outside bounded roots")
+        _real_existing_path(parent)
         if not parent.is_dir():
             raise AccessError("path prefix parent is not a directory")
         try:
@@ -171,7 +189,7 @@ def path_candidates(prefix: Any, *, mutation: bool = False) -> list[dict[str, An
                     continue
             elif not path.name.casefold().startswith(needle.casefold()):
                 continue
-        if not _under(path, roots):
+        if not _candidate_visible(path, roots):
             continue
         try:
             info = os.lstat(path)
