@@ -428,7 +428,7 @@ for row in rows[:128]:
         row.get("operstate", "unknown"),
         addresses,
         (" · " + ", ".join(flags)) if flags else "",
-    )
+    )[:512]
     candidates.append({
         "value": row["object_id"],
         "label": row["name"],
@@ -522,9 +522,11 @@ for object_id, props in sorted(grouped.items()):
         flags.append("default IPv4")
     if default_v6:
         flags.append("default IPv6")
-    detail = f"{operstate} · {addresses}" + (
-        " · " + ", ".join(flags) if flags else ""
-    )
+    detail = (
+        f"{operstate} · {addresses}" + (
+            " · " + ", ".join(flags) if flags else ""
+        )
+    )[:512]
     candidates.append({
         "value": object_id,
         "label": name,
