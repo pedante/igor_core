@@ -38,6 +38,9 @@ igor_model_read() {
         "$(_igor_model_state)" "$_object" "$_property" "$_class" "$_owners"
 }
 
+# Optional filters are part of the public model-list API even though current
+# in-tree callers normally request the full projection.
+# shellcheck disable=SC2120
 igor_model_list() {
     local _owners
     _owners="$(_igor_model_active_owners)" || return 1
