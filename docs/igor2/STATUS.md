@@ -3141,7 +3141,7 @@ recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
 
-S7.1–S7.3 are implemented on `feature/sys-network-wifi` under D073–D074
+S7.1–S7.4 are implemented on `feature/sys-network-wifi` under D073–D075
 pending the stacked validation gate. Core owns bounded read-only iproute2
 link/address/route normalization and bounded resolver inspection through
 `core/lib/network_query.py` plus `core/lib/network.sh`.
@@ -3165,5 +3165,12 @@ configuration.
 Both `ip` and `nmcli` requirements are contribution-local. Missing `nmcli`
 does not deactivate System or block generic interface/route/DNS reads. S7.3
 adds no Wi-Fi mutation, secret consumer, credential retrieval or connectivity
-probe. Q017 now remains open only for the S7.4 `connect_known` CHANGE
-boundary; Q018 still defers new/open/password-bearing profile creation.
+probe.
+
+S7.4 adds only `system.network.wifi.connect_known` as a reviewed CHANGE
+capability. Core validates the selected current wireless interface and saved
+Wi-Fi UUID, freezes exactly one non-secret `nmcli connection up` argv behind
+Igor's privilege gate, re-prepares at the execution fence and verifies that the
+same UUID is active on the same interface. It does not create/edit profiles,
+retrieve credentials, disconnect, toggle radio or change routes/DNS. D075
+resolves Q017; Q018 still defers new/open/password-bearing profile creation.

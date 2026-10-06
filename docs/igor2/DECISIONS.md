@@ -1069,25 +1069,30 @@ absent `nmcli` makes only these Wi-Fi contributions unavailable.
 Scan results and saved-profile references are not System Model objects,
 Configuration values, desired state or Igor-owned profiles. The adapter never
 requests Wi-Fi secrets. This decision resolves only the provider/read portion
-of Q017. The S7.4 `system.network.wifi.connect_known` CHANGE boundary remains
-a separate open decision, and Q018 remains deferred.
+of Q017. D075 separately authorizes the later S7.4 mutation; Q018 remains
+deferred.
 
+### D075 — S7.4 known saved-profile activation
+
+Accepted by the Project Owner on 2026-10-07 by explicitly asking to start S7.4
+after completing S7.3.
+
+S7.4 adds exactly one Wi-Fi mutation:
+`system.network.wifi.connect_known`. It activates one existing saved
+NetworkManager Wi-Fi profile UUID on one selected current wireless interface.
+Core owns the trusted preflight, exact frozen argv, execution-fence re-prepare
+and post-state verification.
+
+The capability is CHANGE and uses Igor's existing per-operation privilege gate.
+It cannot create/edit/delete profiles, retrieve credentials, toggle Wi-Fi
+radio, disconnect an interface, change routes/DNS or infer success from internet
+reachability. A profile active on another interface is rejected so the approved
+affected-object set does not silently expand. Verification succeeds only when
+the selected UUID is active on the selected interface.
+
+This resolves Q017. Q018 remains deferred.
 
 ## Open decisions
-
-### Q017 — Initial Wi-Fi mutation after D074 provider decision
-
-D074 resolves NetworkManager/nmcli as the first optional reviewed Wi-Fi READ
-provider. The remaining question is whether S7.4 should add only
-`system.network.wifi.connect_known`: activate one existing saved profile on
-one selected wireless interface.
-
-Recommendation: **yes**. Core should own preflight, exact argv and post-state
-verification. No disconnect, interface down, route/DNS mutation, radio toggle
-or profile deletion is implied. S7.3 does not authorize or implement this
-mutation.
-
-Decision target: before S7.4 implementation.
 
 ### Q018 — New Wi-Fi profile and credential authority
 

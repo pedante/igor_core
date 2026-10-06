@@ -154,8 +154,21 @@ a System Model object, Configuration value, desired state or execution
 authority merely because it is displayed.
 
 Missing NetworkManager makes only the Wi-Fi leaves/candidates unavailable.
-S7.3 does not expose credential material, internet probing or any network/Wi-Fi
-mutation; `connect_known` remains the separate S7.4 decision.
+S7.3 does not expose credential material, internet probing or mutation.
+
+S7.4 adds one selector-backed CHANGE leaf:
+
+```text
+:sys.network.wifi.connect_known
+```
+
+It requires a canonical `interface` selection and an ephemeral
+`wifi_profile` UUID reference. Selection remains non-authoritative: Core
+revalidates the wireless interface/profile pair, freezes exact non-secret
+NetworkManager argv, passes through normal approval/privilege, re-prepares at
+the execution fence and verifies that the same UUID is active on the same
+interface. No profile creation/edit/delete, secret access, disconnect, radio
+toggle or route/DNS mutation is added.
 
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that

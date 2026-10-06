@@ -1,6 +1,6 @@
 # System S7 — Network & Wi-Fi Discovery Proposal
 
-Status: **D073–D074 accepted; S7.1–S7.3 implemented on the feature branch pending the stacked validation gate. Q017's S7.4 mutation and Q018 remain open.**
+Status: **D073–D075 accepted; S7.1–S7.4 implemented on the feature branch pending the stacked validation gate. Q017 is resolved; Q018 remains open.**
 
 Branch: feature/sys-network-wifi
 
@@ -309,11 +309,11 @@ No frontend, module prose or AI call gains network authority.
 
 | Phase | Outcome | Rough focused effort |
 |---|---|---:|
-| S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; Q017–Q018 open |
+| S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; provider READ by D074; Q017 resolved by D075; Q018 open |
 | S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete pending stacked validation |
 | S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete pending stacked validation |
 | S7.3 | **Implemented:** optional NetworkManager Wi-Fi READ provider + bounded scan/profile candidates | complete pending stacked validation |
-| S7.4 | Reviewed connect_known CHANGE adapter + verification | 1–2 days |
+| S7.4 | **Implemented:** reviewed connect_known CHANGE adapter + execution-fence preflight + verification | complete pending stacked validation |
 | S7.5 | Docs, Debian/Arch/provider fixtures, affected PR gate | 1 day |
 | later | New/open Wi-Fi profiles after secret/config ownership consumer | separate decision |
 
@@ -360,8 +360,9 @@ The authoritative questions live in docs/igor2/DECISIONS.md:
 
 - Q016 — **resolved by D073:** interface:<name> is the first durable S7 network
   object; routes and DNS remain bounded reads/derived evidence.
-- Q017 — **partially resolved by D074:** NetworkManager/nmcli is the first optional Wi-Fi READ provider; S7.4 connect_known remains the open mutation decision.
+- Q017 — **resolved by D074 + D075:** NetworkManager/nmcli is the first optional Wi-Fi provider and S7.4 permits only known saved-profile activation.
 - Q018 — defer new/open/password-bearing profile creation until an explicit
   configuration/secret-consumer authority exists.
 
-Recommendation remains **yes** for the remaining Q017 S7.4 mutation and Q018 deferral. D074 already accepts the provider/read half without weakening the ownership foundation.
+Q018 remains deliberately deferred. S7.4 does not weaken the configuration or
+secret-consumer boundary to make new-network setup appear convenient.
