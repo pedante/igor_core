@@ -1,10 +1,10 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070 accepted; S1–S3 merged and S4 implemented on the storage feature
-branch pending validation.** The discovery rationale is retained here as the
-design record.
+Status: **D070 accepted; S1–S3 merged, S4 green on its feature branch, and S5
+implemented on the stacked storage-administration branch pending validation.**
+The discovery rationale is retained here as the design record.
 
-Current S4 branch: `feature/sys-storage-read-model`
+Current S5 branch: `feature/sys-storage-admin`
 
 ## Purpose
 
@@ -30,7 +30,7 @@ IDs or input schemas.
 ### 1. Do not create a second module
 
 The repository already contains `modules/system/` as Module API v2 package
-`system`, currently version 2.5.0. It already owns host-domain semantics and
+`system`, currently version 2.6.0. It already owns host-domain semantics and
 declares host, package, service, log, memory, configuration and administration
 capabilities.
 
@@ -176,7 +176,7 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
-## S1/S2/S3/S4 implementation status
+## S1/S2/S3/S4/S5 implementation status
 
 S1 provides the strict selector contract, Core candidate envelope/registry,
 Operator Surface projection and cache invalidation boundaries.
@@ -212,6 +212,27 @@ resolution prefers fresh System Model facts and falls back to the same bounded
 Core read when those observations are absent or stale. No mount, unmount,
 filesystem change, fstab edit, sudo path or persistence mutation is introduced
 by S4.
+
+S5 adds only the first reviewed storage-administration slice:
+`system.storage.mount` and `system.storage.unmount`. Both are runtime-only
+CHANGE capabilities and preserve the existing Igor approval/privilege boundary.
+System declares the operation through its privileged marker; Core freezes exact
+`mkdir`/`mount`/`umount` argv, reruns a trusted storage preflight at the
+execution fence, and verifies the resulting mount state using the bounded S4
+read path. The selected filesystem or mount remains the canonical affected
+object and Operational History records the normal capability result.
+
+The mount fast path requires only a `mountable_filesystem` selector. When no
+target is supplied, Core derives a deterministic `/mnt/<label-or-device>`
+target; advanced manual input may choose a confined target below `/mnt`,
+`/media` or `/srv`. Existing target ancestry must be real, root-owned and
+not group/other writable. Unmount candidates are limited to local-device mounts
+under those reviewed roots and use normal `umount` only: no force or lazy
+fallback.
+
+S5 does **not** edit `/etc/fstab`, format/repair filesystems, mount network
+shares, or introduce another persistence authority. Persistent boot mounts are
+a separate future capability/decision rather than an implicit side effect.
 
 ## Proposed architecture
 
@@ -327,8 +348,8 @@ phases can overlap with existing Igor 2 completion work.
 | S1 — Semantic input contract | Strict optional selector metadata, generic projection, candidate envelope/API, tests | 1–3 days |
 | S2 — Service vertical slice | Existing service inputs gain dynamic selection; TUI chooser/typeahead; canonical execution unchanged | 2–4 days |
 | S3 — Namespace UX | **Merged:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete |
-| S4 — Storage read model | **Implemented on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete pending validation |
-| S5 — Storage changes | Mount/unmount capabilities with frozen targets, Core privilege mechanics, verification and explicit persistence semantics | 4–8 days |
+| S4 — Storage read model | **Green on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete |
+| S5 — Storage administration | **Implemented on stacked feature branch:** runtime-only mount/unmount, frozen Core argv, trusted preflight, verification and explicit no-fstab semantics | complete pending validation |
 | S6 — Users, groups, permissions & paths | Bounded user/group/path selectors plus safe inspection/change capabilities | 3–6 days |
 | S7 — Network & Wi-Fi | Interface/route/DNS inspection; Wi-Fi only through a reviewed provider/secret-reference/verification contract | 5–10 days |
 | S8 — Broader System catalogue | Hardware, boot, time, security, richer logs/packages/health; read-first and selectively verified mutations | 5–15+ days iterative |
