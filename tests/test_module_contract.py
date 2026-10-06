@@ -47,6 +47,30 @@ class ModuleContractTests(unittest.TestCase):
         self.assertEqual(capability["capability_version"], 2)
         self.assertEqual(capability["outputs"]["required"], ["observer_id"])
 
+    def test_system_service_inputs_declare_the_shared_service_selector(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        expected = {
+            "schema_version": 1,
+            "kind": "resource",
+            "resource_kind": "service",
+        }
+        selected = {
+            "system.service.status",
+            "system.service.restart",
+            "system.service.enable",
+            "system.service.start",
+        }
+        found = set()
+        for row in result["contributions"]:
+            if row.get("id") not in selected:
+                continue
+            found.add(row["id"])
+            self.assertEqual(
+                row["inputs"]["properties"]["unit"]["selector"],
+                expected,
+            )
+        self.assertEqual(found, selected)
+
     def test_system_package_reproduces_from_tracked_content_and_declared_asset(self):
         tracked = subprocess.run(["git", "ls-files", "modules/system"], cwd=ROOT, check=True, text=True, capture_output=True).stdout.splitlines()
         asset = "modules/system/knowledge/host.md"
