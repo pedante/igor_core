@@ -10,8 +10,8 @@ import json
 import sys
 from typing import Any
 
-MAX_INTERFACES_TEXT = 16384
-MAX_ROUTES_TEXT = 32768
+MAX_INTERFACES_TEXT = 4096
+MAX_ROUTES_TEXT = 4096
 
 
 class NetworkSurfaceError(ValueError):
@@ -195,7 +195,7 @@ def dns_status(value: Any) -> dict[str, Any]:
         "result": {
             "nameserver_count": len(row["nameservers"]),
             "nameservers": ",".join(row["nameservers"])[:4096],
-            "search_domains": ",".join(row["search_domains"])[:8192],
+            "search_domains": ",".join(row["search_domains"])[:4096],
             "local_stub": row["local_stub"],
             "symlink": row["symlink"],
             "symlink_target": row["symlink_target"],
