@@ -104,6 +104,69 @@ class ModuleContractTests(unittest.TestCase):
             self.assertIn("fstab", row["description"])
             self.assertEqual(module_registry.static_unavailable_reason(row, "system"), "")
 
+    def test_system_access_contracts_use_stable_identity_and_path_selectors(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+
+        self.assertEqual(by_id["accounts.users"]["object_kind"], "user")
+        self.assertEqual(by_id["accounts.groups"]["object_kind"], "group")
+        self.assertEqual(
+            by_id["system.users.status"]["inputs"]["properties"]["user"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "user"},
+        )
+        self.assertEqual(
+            by_id["system.groups.status"]["inputs"]["properties"]["group"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "group"},
+        )
+        self.assertEqual(
+            by_id["system.permissions.path.status"]["inputs"]["properties"]["path"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "path"},
+        )
+
+    def test_system_permission_changes_are_exact_compiler_reviewed_single_path_caps(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        cases = {
+            "system.permissions.owner.set": (
+                "system.permissions.owner.ready",
+                "system.permissions.owner.matches",
+            ),
+            "system.permissions.group.set": (
+                "system.permissions.group.ready",
+                "system.permissions.group.matches",
+            ),
+            "system.permissions.mode.set": (
+                "system.permissions.mode.ready",
+                "system.permissions.mode.matches",
+            ),
+        }
+        for ident, (validator, check_id) in cases.items():
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 1)
+            self.assertEqual(row["handler"], "system__privileged_marker")
+            self.assertEqual(row["safety"], {"tier": "CHANGE"})
+            self.assertEqual(row["privilege"], "required")
+            self.assertEqual(
+                row["inputs"]["properties"]["path"]["selector"],
+                {"schema_version": 1, "kind": "resource", "resource_kind": "mutable_path"},
+            )
+            self.assertEqual(
+                row["preconditions"],
+                [
+                    {"kind": "owner_active"},
+                    {"kind": "trusted_validator", "validator": validator},
+                ],
+            )
+            self.assertEqual(
+                row["verification"],
+                {"kind": "trusted_query", "check_id": check_id, "required": True},
+            )
+            self.assertEqual(module_registry.static_unavailable_reason(row, "system"), "")
+
+        mode = by_id["system.permissions.mode.set"]["inputs"]["properties"]["mode"]
+        self.assertEqual(mode["validator"], "unix_mode")
+        self.assertEqual((mode["minLength"], mode["maxLength"]), (4, 4))
+
     def test_system_service_inputs_declare_the_shared_service_selector(self):
         result = module_contract.validate_module(ROOT / "modules/system")
         expected = {
