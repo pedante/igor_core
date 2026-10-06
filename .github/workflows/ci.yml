@@ -123,8 +123,11 @@ jobs:
           VALIDATION_MODE: ${{ inputs.mode || 'affected' }}
           VALIDATION_BASE: ${{ github.event.pull_request.base.sha || inputs.base || github.event.before }}
         run: |
-          tests/validate.sh "$VALIDATION_MODE" --base "$VALIDATION_BASE" --output-dir validation-results \
-            --fail-fast-preflight --interactive-timeout 60
+          extra=(--fail-fast-preflight --interactive-timeout 60)
+          if [ "$VALIDATION_MODE" != "full" ]; then
+            extra+=(--group-timeout 240 --slow-timeout 300)
+          fi
+          tests/validate.sh "$VALIDATION_MODE" --base "$VALIDATION_BASE" --output-dir validation-results "${extra[@]}"
 
       - name: Preserve validation evidence
         if: always()
