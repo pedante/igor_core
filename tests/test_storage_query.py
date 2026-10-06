@@ -10,7 +10,12 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
 
-from storage_query import StorageQueryError, normalize_lsblk, parse_mountinfo, storage_object_id
+from storage_query import (
+    StorageQueryError,
+    normalize_lsblk,
+    parse_mountinfo,
+    storage_object_id,
+)
 
 
 class StorageQueryTests(unittest.TestCase):
