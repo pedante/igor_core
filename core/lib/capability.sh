@@ -286,6 +286,24 @@ PY
                 esac
                 _spec="$(_igor_capability_field "$_plan" commands)" || return 1
                 ;;
+            system.permissions.owner.set|system.permissions.group.set|system.permissions.mode.set)
+                if ! declare -f permission_owner_plan >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/access.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+                fi
+                case "$_id" in
+                    system.permissions.owner.set)
+                        _plan="$(permission_owner_plan "$_base_inputs")" || return 1
+                        ;;
+                    system.permissions.group.set)
+                        _plan="$(permission_group_plan "$_base_inputs")" || return 1
+                        ;;
+                    system.permissions.mode.set)
+                        _plan="$(permission_mode_plan "$_base_inputs")" || return 1
+                        ;;
+                esac
+                _spec="$(_igor_capability_field "$_plan" commands)" || return 1
+                ;;
             system.package.install)
                 _package="$(_igor_capability_field "$_base_inputs" package)" || return 1
                 if ! declare -f pkg_install_argv >/dev/null 2>&1; then
@@ -468,6 +486,17 @@ PY
                     system.storage.unmount.ready)
                         storage_admin_ready_unmount "$_inputs" >/dev/null || return 1
                         ;;
+                    system.permissions.owner.ready|system.permissions.group.ready|system.permissions.mode.ready)
+                        if ! declare -f permission_owner_plan >/dev/null 2>&1; then
+                            # shellcheck source=core/lib/access.sh
+                            source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+                        fi
+                        case "$_arg" in
+                            system.permissions.owner.ready) permission_owner_plan "$_inputs" >/dev/null || return 1 ;;
+                            system.permissions.group.ready) permission_group_plan "$_inputs" >/dev/null || return 1 ;;
+                            system.permissions.mode.ready) permission_mode_plan "$_inputs" >/dev/null || return 1 ;;
+                        esac
+                        ;;
                     *) return 1 ;;
                 esac
                 ;;
@@ -635,6 +664,25 @@ PY
                         source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
                     fi
                     storage_admin_verify_unmount "$_storage_inputs"
+                    ;;
+                system.permissions.owner.matches|system.permissions.group.matches|system.permissions.mode.matches)
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    local _permission_inputs _permission_id
+                    _permission_inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                    _permission_id="$(_igor_capability_field "$_proposal" capability_id)" || return 1
+                    if ! declare -f permission_owner_verify >/dev/null 2>&1; then
+                        # shellcheck source=core/lib/access.sh
+                        source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+                    fi
+                    case "$_permission_id:$(_igor_capability_field "$_proposal" verification.check_id)" in
+                        system.permissions.owner.set:system.permissions.owner.matches)
+                            permission_owner_verify "$_permission_inputs" ;;
+                        system.permissions.group.set:system.permissions.group.matches)
+                            permission_group_verify "$_permission_inputs" ;;
+                        system.permissions.mode.set:system.permissions.mode.matches)
+                            permission_mode_verify "$_permission_inputs" ;;
+                        *) return 1 ;;
+                    esac
                     ;;
                 system.package.installed)
                     [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.install ] || return 1
@@ -836,6 +884,30 @@ elif ident=="system.storage.unmount":
             ".." in target.split("/") or any(ord(ch)<32 for ch in target)):
         raise SystemExit(1)
     commands=spec
+elif ident in {"system.permissions.owner.set","system.permissions.group.set","system.permissions.mode.set"}:
+    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+        raise SystemExit(1)
+    argv=spec[0]
+    command={
+        "system.permissions.owner.set":"chown",
+        "system.permissions.group.set":"chgrp",
+        "system.permissions.mode.set":"chmod",
+    }[ident]
+    if len(argv)!=7 or argv[:5]!=["sudo","-n","--",command,"--"]:
+        raise SystemExit(1)
+    value,path=argv[5:7]
+    if (not isinstance(path,str) or not path.startswith("/") or
+            any(ord(ch)<32 for ch in path) or ".." in path.split("/")):
+        raise SystemExit(1)
+    roots=("/home/","/srv/","/opt/","/mnt/","/media/","/usr/local/","/var/lib/","/var/www/")
+    if not path.startswith(roots):
+        raise SystemExit(1)
+    if ident in {"system.permissions.owner.set","system.permissions.group.set"}:
+        if not isinstance(value,str) or not value.isdigit():
+            raise SystemExit(1)
+    elif not isinstance(value,str) or __import__("re").fullmatch(r"0[0-7]{3}",value) is None:
+        raise SystemExit(1)
+    commands=spec
 elif ident=="system.package.install":
     if (not isinstance(spec,list) or len(spec)!=7 or
             not isinstance(spec[-1],str) or
@@ -867,7 +939,11 @@ elif ident=="system.package.cache.clean":
     commands=spec
 else:
     raise SystemExit(1)
-command_timeout = 120 if ident in {"system.storage.mount","system.storage.unmount"} else 1800
+command_timeout = 120 if ident in {
+    "system.storage.mount", "system.storage.unmount",
+    "system.permissions.owner.set", "system.permissions.group.set",
+    "system.permissions.mode.set",
+} else 1800
 for argv in commands:
     try:
         result=subprocess.run(argv,check=False,stdin=subprocess.DEVNULL,
