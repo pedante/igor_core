@@ -62,6 +62,39 @@ class ModuleContractTests(unittest.TestCase):
             {"schema_version": 1, "kind": "resource", "resource_kind": "filesystem"},
         )
 
+    def test_system_network_contracts_use_interface_collection_and_selector(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+
+        observer = by_id["network.interfaces"]
+        self.assertEqual(observer["object_kind"], "interface")
+        self.assertEqual(observer["freshness_seconds"], 30)
+        self.assertEqual(observer["requires"], {"bins": ["ip"]})
+
+        selector = by_id["system.network.interface.status"]["inputs"]["properties"][
+            "interface"
+        ]["selector"]
+        self.assertEqual(
+            selector,
+            {"schema_version": 1, "kind": "resource", "resource_kind": "interface"},
+        )
+
+        ip_caps = {
+            "system.network.summary",
+            "system.network.interfaces.list",
+            "system.network.interface.status",
+            "system.network.routes.list",
+        }
+        for ident in ip_caps | {"system.network.dns.status"}:
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 2)
+            self.assertEqual(row["safety"], {"tier": "READ"})
+            self.assertEqual(row["privilege"], "none")
+            self.assertEqual(row["verification"], {"kind": "none", "required": False})
+        for ident in ip_caps:
+            self.assertEqual(by_id[ident]["requires"], {"bins": ["ip"]})
+        self.assertNotIn("requires", by_id["system.network.dns.status"])
+
     def test_system_storage_admin_contract_is_runtime_only_and_compiler_reviewed(self):
         result = module_contract.validate_module(ROOT / "modules/system")
         by_id = {row["id"]: row for row in result["contributions"]}
