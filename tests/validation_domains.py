@@ -134,6 +134,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
         "tests/modules/test_system_storage.bats",
         "tests/modules/test_system_admin_surface.bats",
         "tests/modules/test_system_network_read_model.bats",
+        "tests/modules/test_system_network_wifi_admin.bats",
         "tests/modules/test_step18_module_composition.bats",
         "tests/test_network_query.py",
         "tests/test_networkmanager_wifi.py",

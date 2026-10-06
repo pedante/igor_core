@@ -1,4 +1,4 @@
-"""Focused S7.3 tests for the bounded NetworkManager Wi-Fi provider."""
+"""Focused S7.3-S7.4 tests for the bounded NetworkManager Wi-Fi provider."""
 
 from __future__ import annotations
 
@@ -213,6 +213,101 @@ class NetworkManagerWifiTests(unittest.TestCase):
         ):
             networkmanager_wifi._run_nmcli(
                 ["device", "status"], timeout_seconds=1
+            )
+
+
+    def test_connect_known_plan_freezes_exact_non_secret_argv(self):
+        status = {
+            "provider": "NetworkManager",
+            "wifi_hardware": "enabled",
+            "wifi_radio": "enabled",
+            "devices": [
+                {"interface": "wlan0", "state": "disconnected", "connection": ""}
+            ],
+        }
+        profiles = [{
+            "name": "Home",
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "type": "wifi",
+            "device": "",
+            "active": False,
+        }]
+        plan = networkmanager_wifi.freeze_connect_known(
+            {
+                "interface": "interface:wlan0",
+                "profile": "123e4567-e89b-12d3-a456-426614174000",
+            },
+            status=status,
+            profiles=profiles,
+        )
+        self.assertEqual(plan["commands"], [[
+            "sudo", "-n", "--", "nmcli", "--wait", "30",
+            "connection", "up", "uuid",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "ifname", "wlan0",
+        ]])
+        self.assertNotIn("password", str(plan).lower())
+        self.assertNotIn("psk", str(plan).lower())
+
+    def test_connect_known_preflight_rejects_wrong_or_unready_pair(self):
+        base = {
+            "provider": "NetworkManager",
+            "wifi_hardware": "enabled",
+            "wifi_radio": "enabled",
+            "devices": [
+                {"interface": "wlan0", "state": "disconnected", "connection": ""}
+            ],
+        }
+        profiles = [{
+            "name": "Home",
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "type": "wifi",
+            "device": "wlan1",
+            "active": True,
+        }]
+        inputs = {
+            "interface": "interface:wlan0",
+            "profile": "123e4567-e89b-12d3-a456-426614174000",
+        }
+        with self.assertRaisesRegex(NetworkManagerWifiError, "another interface"):
+            networkmanager_wifi.freeze_connect_known(
+                inputs, status=base, profiles=profiles
+            )
+        with self.assertRaisesRegex(NetworkManagerWifiError, "radio"):
+            networkmanager_wifi.freeze_connect_known(
+                inputs,
+                status={**base, "wifi_radio": "disabled"},
+                profiles=[{**profiles[0], "device": "", "active": False}],
+            )
+        with self.assertRaisesRegex(NetworkManagerWifiError, "interface"):
+            networkmanager_wifi.freeze_connect_known(
+                {**inputs, "interface": "interface:bad%20name"},
+                status=base,
+                profiles=[{**profiles[0], "device": "", "active": False}],
+            )
+
+    def test_connect_known_verification_requires_same_profile_and_interface(self):
+        inputs = {
+            "interface": "interface:wlan0",
+            "profile": "123e4567-e89b-12d3-a456-426614174000",
+        }
+        active = [{
+            "name": "Home",
+            "uuid": "123e4567-e89b-12d3-a456-426614174000",
+            "type": "wifi",
+            "device": "wlan0",
+            "active": True,
+        }]
+        evidence = networkmanager_wifi.verify_connect_known(
+            inputs, profiles=active
+        )
+        self.assertEqual(
+            evidence["check_id"], "system.network.wifi.profile.active"
+        )
+        self.assertEqual(evidence["observed"], "active")
+        with self.assertRaisesRegex(NetworkManagerWifiError, "not active"):
+            networkmanager_wifi.verify_connect_known(
+                inputs, profiles=[{**active[0], "device": "", "active": False}]
             )
 
 
