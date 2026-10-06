@@ -29,6 +29,8 @@ source "${_AI_DIR}/context.sh"
 source "${_AI_DIR}/events.sh"
 # shellcheck source=core/lib/configuration.sh
 source "${IGOR_DIR}/core/lib/configuration.sh"
+# shellcheck source=core/lib/input_candidates.sh
+source "${IGOR_DIR}/core/lib/input_candidates.sh"
 
 # Session events are observations of existing state and transaction records.
 # Event failures must never change a provider turn or an authorization result.
@@ -290,6 +292,30 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
 }
 
 
+# Resolve ephemeral candidates for one validated capability input.
+# This is a presentation/reference read only; selected values still enter invoke.
+_ai_operator_candidates() {
+    local _candidate_rest="${1:-}" _candidate_target _candidate_input _extra
+    local _candidate_result _candidate_payload
+    read -r _candidate_target _candidate_input _extra <<< "$_candidate_rest"
+    if [ -z "$_candidate_target" ] || [ -z "$_candidate_input" ] || [ -n "$_extra" ]; then
+        return 2
+    fi
+    _candidate_result="$(igor_input_candidates_resolve         "$_candidate_target" "$_candidate_input")" || return 2
+    _candidate_payload="$(printf '%s' "$_candidate_result" |         AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}"         "${IGOR_PYTHON:-python3}" -c '
+import json
+import os
+import sys
+
+payload = json.load(sys.stdin)
+payload["session_id"] = os.environ.get("AI_EVENT_SESSION_ID", "")
+print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+')" || return 2
+    _ai_event_emit operator_candidates "$_candidate_payload" >/dev/null 2>&1 || true
+    return 0
+}
+
+
 # Adapt a human operator selection into the existing structured capability tool.
 # This function owns no approval, privilege, execution, or verification logic.
 _ai_operator_invoke() {
@@ -332,6 +358,15 @@ _ai_frontend_control() {
     case "$_input" in
         "surface snapshot")
             _ai_emit_operator_snapshot
+            return 0
+            ;;
+        candidates\ *)
+            _ai_operator_candidates "${_input#candidates }"
+            _invoke_rc=$?
+            if [ "$_invoke_rc" -eq 2 ]; then
+                warn "Usage: candidates <capability-id[@provider]> <input-name>"
+                _ai_frontend_event warning "Candidate selection is unavailable for this input."
+            fi
             return 0
             ;;
         invoke\ *)
