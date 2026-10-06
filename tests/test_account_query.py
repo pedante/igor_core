@@ -1,10 +1,14 @@
 """Focused S6 tests for bounded local account discovery."""
 
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from core.lib.account_query import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "core/lib"))
+
+from account_query import (
     AccountQueryError,
     query_groups,
     query_users,
