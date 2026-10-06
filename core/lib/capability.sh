@@ -636,6 +636,7 @@ PY
         service_state)
             _unit="$(_igor_capability_field "$_proposal" "inputs.$(_igor_capability_field "$_proposal" verification.input)")" || return 1
             _expected="$(_igor_capability_field "$_proposal" verification.equals)" || return 1
+            declare -f svc_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
             _state="$(svc_query "$_unit")" || return 1
             "$(_ml_python)" - "$_unit" "$_state" "$_expected" <<'PY'
 import json, sys
