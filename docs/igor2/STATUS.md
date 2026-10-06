@@ -3118,23 +3118,22 @@ domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
 
-### System operator S1–S4
+### System operator S1–S5
 
-S1–S3 are merged into `igor2` under D070. They provide strict semantic selector
-metadata, the Core-owned ephemeral candidate boundary, the service chooser and
-the collision-safe `:sys -> :system` presentation alias while keeping
-`system.*` canonical.
+S1–S3 are merged into `igor2` under D070. S4's storage read model is green on
+`feature/sys-storage-read-model` (affected run #209) and provides bounded
+mount/filesystem discovery, canonical collection observations, read-only
+storage inspection and semantic candidates.
 
-S4 is implemented on `feature/sys-storage-read-model` pending validation. It
-adds bounded Core mount/filesystem discovery and a narrow multi-object observer
-extension for canonical `mount:...` and `filesystem:...` System Model
-identities. The System 2.5.0 package declares `storage.mounts` and
-`storage.filesystems` observers plus read-only summary/list/status
-capabilities. Status inputs reuse semantic selectors; candidate resolution
-prefers fresh System Model facts and falls back to bounded Core discovery.
+S5 is implemented on stacked branch `feature/sys-storage-admin` pending its
+combined validation gate. System 2.6.0 adds runtime-only
+`system.storage.mount` and `system.storage.unmount`. Core owns the trusted
+preflight, exact privileged argv and post-state verification; System retains
+host-domain declaration and meaning. Mount selection is restricted to
+discoverable unmounted local filesystems and eligible unmount selection to
+local-device mounts under reviewed storage roots.
 
-S4 does not add mount/unmount, filesystem mutation, fstab writes, sudo,
-persistence changes or a parallel inventory. Those authority and persistence
-semantics remain S5. The merged S3 baseline retains separately recorded
-validation debt; S4 is assessed against that baseline rather than silently
-reclassifying it.
+S5 never implicitly changes persistence: neither capability reads or writes
+`/etc/fstab`, and normal unmount never escalates to force/lazy behavior.
+Persistent boot configuration, formatting/repair and network mounts remain
+outside this slice. D071 records this authority and persistence boundary.
