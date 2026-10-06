@@ -712,7 +712,6 @@
             "type": "string",
             "minLength": 36,
             "maxLength": 36,
-            "pattern": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             "selector": {
               "schema_version": 1,
               "kind": "resource",
