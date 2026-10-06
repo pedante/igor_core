@@ -1031,6 +1031,45 @@ mutation or a second account/path database.
 
 ## Open decisions
 
+### Q016 — S7 network object/read boundary
+
+Should the first S7 durable network object be exactly the already-documented
+interface:<name>, while the route table and resolver configuration remain
+bounded READ results/derived interface or host facts instead of introducing
+durable route:* or DNS objects?
+
+Recommendation: **yes**. This implements the Host Intelligence vocabulary
+already chosen, keeps identity understandable, and avoids inventing route
+identity before routing mutation/reconciliation exists.
+
+Decision target: before S7.1/S7.2 implementation.
+
+### Q017 — First Wi-Fi provider and initial mutation
+
+Should NetworkManager/nmcli be the first optional reviewed Wi-Fi provider,
+with system.network.wifi.connect_known (activate one existing saved profile
+on one selected wireless interface) as the only initial Wi-Fi mutation?
+
+Recommendation: **yes**. Generic interface/address/route/DNS reads remain
+provider-neutral; NetworkManager is only an optional Wi-Fi adapter. Core must
+own preflight, exact argv and post-state verification. No disconnect, interface
+down, route/DNS mutation, radio toggle or profile deletion is implied.
+
+Decision target: before S7.3/S7.4 implementation.
+
+### Q018 — New Wi-Fi profile and credential authority
+
+Should S7 defer creation/editing of open or password-bearing Wi-Fi profiles
+until Igor has an explicitly reviewed configuration/secret-consumer authority
+for that operation?
+
+Recommendation: **yes**. Generic secret_ref consumers are currently
+unavailable by policy. A password must not be downgraded into an ordinary
+string/argv/History value, and even an open network creates persistent external
+NetworkManager configuration whose ownership must be explicit.
+
+Decision target: before any new-profile Wi-Fi capability.
+
 ### Q004 — Later third-party module trust policy
 
 D022 settles the initial v2 boundary: explicitly enabled, reviewed local
