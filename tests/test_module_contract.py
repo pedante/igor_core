@@ -47,6 +47,20 @@ class ModuleContractTests(unittest.TestCase):
         self.assertEqual(capability["capability_version"], 2)
         self.assertEqual(capability["outputs"]["required"], ["observer_id"])
 
+    def test_system_storage_contracts_use_collection_observers_and_shared_selectors(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        self.assertEqual(by_id["storage.mounts"]["object_kind"], "mount")
+        self.assertEqual(by_id["storage.filesystems"]["object_kind"], "filesystem")
+        self.assertEqual(
+            by_id["system.storage.mount.status"]["inputs"]["properties"]["mount"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "mount"},
+        )
+        self.assertEqual(
+            by_id["system.storage.filesystem.status"]["inputs"]["properties"]["filesystem"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "filesystem"},
+        )
+
     def test_system_service_inputs_declare_the_shared_service_selector(self):
         result = module_contract.validate_module(ROOT / "modules/system")
         expected = {
