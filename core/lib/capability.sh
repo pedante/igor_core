@@ -807,22 +807,20 @@ elif ident=="system.storage.mount":
     if not isinstance(spec,list) or len(spec)!=2 or any(not isinstance(row,list) for row in spec):
         raise SystemExit(1)
     mkdir_cmd,mount_cmd=spec
-    if (len(mkdir_cmd)!=8 or mkdir_cmd[:7]!=["sudo","-n","--","mkdir","-p","--",mkdir_cmd[6]]):
-        # Shape is checked explicitly below; keep the target bound once.
-        pass
-    if not (len(mkdir_cmd)==8 and mkdir_cmd[:6]==["sudo","-n","--","mkdir","-p","--"]):
+    if not (len(mkdir_cmd)==7 and
+            mkdir_cmd[:6]==["sudo","-n","--","mkdir","-p","--"]):
         raise SystemExit(1)
     target=mkdir_cmd[6]
-    if mkdir_cmd[7:] or not isinstance(target,str):
+    if not isinstance(target,str):
         raise SystemExit(1)
     if not (target.startswith(("/mnt/","/media/","/srv/")) and
             ".." not in target.split("/") and
             all(ord(ch)>=32 for ch in target)):
         raise SystemExit(1)
-    if (len(mount_cmd)!=8 or mount_cmd[:6]!=["sudo","-n","--","mount","--"] or
-            mount_cmd[7]!=target):
+    if (len(mount_cmd)!=7 or mount_cmd[:5]!=["sudo","-n","--","mount","--"] or
+            mount_cmd[6]!=target):
         raise SystemExit(1)
-    device=mount_cmd[6]
+    device=mount_cmd[5]
     if not isinstance(device,str) or not __import__("re").fullmatch(r"/dev/[A-Za-z0-9_./+@:-]+",device):
         raise SystemExit(1)
     commands=spec
@@ -830,9 +828,9 @@ elif ident=="system.storage.unmount":
     if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
         raise SystemExit(1)
     argv=spec[0]
-    if len(argv)!=7 or argv[:6]!=["sudo","-n","--","umount","--"]:
+    if len(argv)!=6 or argv[:5]!=["sudo","-n","--","umount","--"]:
         raise SystemExit(1)
-    target=argv[6]
+    target=argv[5]
     if (not isinstance(target,str) or
             not target.startswith(("/mnt/","/media/","/srv/")) or
             ".." in target.split("/") or any(ord(ch)<32 for ch in target)):
