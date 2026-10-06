@@ -901,9 +901,9 @@ discovery proposal. Q013–Q015 are resolved together.
 
 The existing `system` Module API v2 package remains the canonical host-domain
 owner. Capability IDs remain `system.*` and the existing `:system.*` operator
-paths remain valid. A future `:sys` spelling may be added only as a
-presentation alias over those same target IDs; it is not another module,
-provider, capability namespace or durable identity.
+paths remain valid. S3 adds `:sys` only as a presentation alias over those
+same target IDs; it is not another module, provider, capability namespace or
+durable identity.
 
 S1 adds one deliberately small optional capability-input selector shape:
 
@@ -996,8 +996,8 @@ names remain outside this bounded proof; no general threshold migration is claim
 
 ### Q013 — `:sys` operator alias and canonical System identity — resolved by D070
 
-D070 keeps `system` and `system.*` canonical. A future `:sys` spelling is
-presentation-only and must resolve to the same backend target IDs while
+D070 keeps `system` and `system.*` canonical. S3 implements `:sys` as
+presentation-only spelling that resolves to the same backend target IDs while
 `:system` continues to work.
 
 ### Q014 — Bounded semantic selector metadata for capability inputs — resolved by D070
