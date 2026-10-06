@@ -402,14 +402,14 @@ _igor_path_platform_candidate_raw() {
         source "$(_igor_input_candidate_root)/core/lib/access.sh"
     fi
     case "$_kind" in
-        path) _rows="$(path_candidates_query "$_prefix")" ;;
-        mutable_path) _rows="$(mutable_path_candidates_query "$_prefix")" ;;
+        path) _rows="$(path_candidates_query "$_prefix")" || _rows="" ;;
+        mutable_path) _rows="$(mutable_path_candidates_query "$_prefix")" || _rows="" ;;
         *) return 2 ;;
     esac
-    if [ "$?" -ne 0 ]; then
+    [ -n "$_rows" ] || {
         printf '%s' '{"state":"unavailable","candidates":[],"reason":"bounded path discovery unavailable"}'
         return 0
-    fi
+    }
     PATH_ROWS="$_rows" "${IGOR_PYTHON:-python3}" - <<'PY'
 import json
 import os
