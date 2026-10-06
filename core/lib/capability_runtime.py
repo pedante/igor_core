@@ -553,7 +553,7 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
         if kind == "package" and value:
             return f"package:{value}"
         if kind in {"mount", "filesystem"} and isinstance(value, str):
-            if value.startswith(kind + ":") and OBJECT_ID.fullmatch(value):
+            if (value.startswith(kind + ":") and\n                    re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value)):
                 return value
             return None
         if kind == "host":
