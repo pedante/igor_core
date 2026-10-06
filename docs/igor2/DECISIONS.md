@@ -992,6 +992,43 @@ observers so current-state facts converge promptly. Those observations remain
 machine evidence, not authorization, and refresh failure cannot rewrite an
 already verified operation result.
 
+### D072 — S6 local identities, bounded paths and single-path permissions
+
+Accepted by the Project Owner on 2026-10-06 by selecting S6 after the S5
+storage slice.
+
+System may model bounded local Unix users and groups as observed collection
+objects using stable numeric identities `user:uid:<uid>` and
+`group:gid:<gid>`. The initial source is local `/etc/passwd` and
+`/etc/group` only. It does not read shadow/password material or claim
+enumeration of remote NSS/LDAP/SSSD identity providers.
+
+D070's selector schema remains the authority boundary. S6 does not add a Module
+API contribution kind. It extends selector use to existing `path` inputs and
+allows the candidate request to carry one bounded printable prefix. Core owns
+prefix resolution and may list one directory level under explicitly reviewed
+roots. The prefix and candidates are ephemeral reference data: no recursive
+scan, durable path inventory, approval, privilege or execution authority is
+created by browsing.
+
+Read-only path inspection observes metadata only and rejects symbolic-link
+components. Permission-changing capabilities are exactly owner, group and mode
+for one existing real path. Mutation candidates are restricted to reviewed
+application/data roots and deliberately exclude `/etc`. The mode capability
+accepts only explicit `0000..0777`; setuid, setgid and sticky bits are outside
+this slice.
+
+System owns host-domain declarations. Core owns the privileged mechanism:
+current path/account state is resolved during preflight, exact non-recursive
+`chown`, `chgrp` or `chmod` argv is frozen into the proposal, the
+operation is re-prepared at the execution fence, and post-state metadata is
+verified. Existing approval, authentication and Operational History contracts
+remain authoritative.
+
+S6 does not add account creation/deletion, password management, ACL mutation,
+recursive permission changes, remote directory administration, arbitrary-root
+mutation or a second account/path database.
+
 ## Open decisions
 
 ### Q004 — Later third-party module trust policy
