@@ -3141,11 +3141,13 @@ recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
 
-S7 discovery has started on feature/sys-network-wifi. The proposal keeps
-generic link/address/route/DNS mechanics in Core, uses the existing
-interface:<name> Host Intelligence identity, and keeps Wi-Fi scans/profiles as
-ephemeral selector data. Q016–Q018 are intentionally open before S7 runtime
-implementation: network object scope, NetworkManager as the first Wi-Fi
-provider with saved-profile activation only, and deferral of new
-password/open-profile creation until configuration/secret-consumer authority
-exists.
+S7.1 is implemented on `feature/sys-network-wifi` under D073 pending
+the stacked validation gate. Core now owns bounded read-only iproute2
+link/address/route normalization and bounded resolver inspection through
+`core/lib/network_query.py` plus `core/lib/network.sh`. The existing
+`interface:<name>` Host Intelligence identity is accepted for S7.2; routes
+and DNS remain current reads/derived evidence rather than durable objects.
+
+S7.1 adds no System module contribution, package-version bump, Wi-Fi provider,
+secret consumer or mutation authority. Q017–Q018 remain open for the
+NetworkManager saved-profile and new-profile/credential boundaries.
