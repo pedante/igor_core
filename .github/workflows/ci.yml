@@ -18,6 +18,11 @@ on:
         default: igor2
         type: string
 
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # Job 1: shellcheck — lint all shell scripts and BATS files
