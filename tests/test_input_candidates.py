@@ -6,6 +6,7 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(ROOT, "core", "lib"))
+
 from capability_runtime import CapabilityError, validate_inputs
 from input_candidates import (
     CandidateError,
@@ -13,7 +14,6 @@ from input_candidates import (
     resolve_registered_source,
     validate_selector,
 )
-
 
 SELECTOR = {"schema_version": 1, "kind": "resource", "resource_kind": "service"}
 
