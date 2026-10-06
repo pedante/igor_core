@@ -210,8 +210,51 @@ def _storage_admin_supported(record: dict[str, Any]) -> bool:
     return spec is not None and record.get("preconditions") == spec[0] and record.get("verification") == spec[1]
 
 
+def _permission_admin_supported(record: dict[str, Any]) -> bool:
+    if (
+        record.get("owner") != "system"
+        or record.get("handler") != "system__privileged_marker"
+        or record.get("capability_version") != 1
+        or record.get("privilege") != "required"
+        or not isinstance(record.get("safety"), dict)
+        or record["safety"].get("tier") != "CHANGE"
+    ):
+        return False
+    expected = {
+        "system.permissions.owner.set": (
+            "system.permissions.owner.ready",
+            "system.permissions.owner.matches",
+        ),
+        "system.permissions.group.set": (
+            "system.permissions.group.ready",
+            "system.permissions.group.matches",
+        ),
+        "system.permissions.mode.set": (
+            "system.permissions.mode.ready",
+            "system.permissions.mode.matches",
+        ),
+    }
+    spec = expected.get(record.get("id"))
+    if spec is None:
+        return False
+    validator, check_id = spec
+    return (
+        record.get("preconditions")
+        == [
+            {"kind": "owner_active"},
+            {"kind": "trusted_validator", "validator": validator},
+        ]
+        and record.get("verification")
+        == {"kind": "trusted_query", "check_id": check_id, "required": True}
+    )
+
+
 def _trusted_query_supported(record: dict[str, Any]) -> bool:
-    if _memory_query_supported(record) or _storage_admin_supported(record):
+    if (
+        _memory_query_supported(record)
+        or _storage_admin_supported(record)
+        or _permission_admin_supported(record)
+    ):
         return True
     verification = record.get("verification")
     if record.get("owner") != "system" or record.get("handler") != "system__privileged_marker":
@@ -279,6 +322,9 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
                     "system.service.enable",
                     "system.storage.mount",
                     "system.storage.unmount",
+                    "system.permissions.owner.set",
+                    "system.permissions.group.set",
+                    "system.permissions.mode.set",
                 }
             )
             if not reviewed:
@@ -292,7 +338,9 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
             item for item in preconditions
             if isinstance(item, dict) and item.get("kind") == "trusted_validator"
         ]
-        if trusted_validators and not _storage_admin_supported(record):
+        if trusted_validators and not (
+            _storage_admin_supported(record) or _permission_admin_supported(record)
+        ):
             unsupported = True
         verification = record.get("verification", {})
         if isinstance(verification, dict) and verification.get("kind") == "trusted_query":
