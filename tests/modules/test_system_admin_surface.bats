@@ -291,6 +291,11 @@ expected={
  "system.service.status",
  "system.service.restart",
  "system.logs.summary",
+ "system.storage.summary",
+ "system.storage.mounts.list",
+ "system.storage.filesystems.list",
+ "system.storage.mount.status",
+ "system.storage.filesystem.status",
 }
 assert expected <= paths,(expected-paths)
 PY
