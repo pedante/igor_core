@@ -302,10 +302,10 @@ _ai_emit_operator_snapshot
 source "$IGOR_DIR/core/lib/module_loader.sh"
 source "$IGOR_DIR/core/ai/core.sh"
 igor_capability_inspect() {
-  printf '%s' '{"capability_id":"system.service.status","resolution":"resolved","selected_provider":"system","providers":[{"id":"system.service.status","provider":"system","availability":"active","descriptor":{"inputs":{"properties":{"unit":{"type":"string","validator":"systemd_unit","selector":{"schema_version":1,"kind":"resource","resource_kind":"service"}},"required":["unit"],"additionalProperties":false}}}]}'
+  printf '%s' '{"capability_id":"system.service.status","resolution":"resolved","selected_provider":"system","providers":[{"id":"system.service.status","provider":"system","availability":"active","descriptor":{"inputs":{"properties":{"unit":{"type":"string","validator":"systemd_unit","selector":{"schema_version":1,"kind":"resource","resource_kind":"service"}}},"required":["unit"],"additionalProperties":false}}}]}'
 }
 svc_list_query() {
-  printf 'ssh.service\tactive\trunning\ncron.service\tinactive\tdead\n'
+  printf 'ssh.service\tactive\trunning\nbad unit.service\tactive\trunning\ncron.service\tinactive\tdead\n'
 }
 _ai_frontend_control 'candidates system.service.status unit'
 '''
