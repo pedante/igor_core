@@ -149,12 +149,13 @@ def _prefix_parts(prefix: Any) -> tuple[Path, str]:
     return Path(pure.parent.as_posix()), pure.name
 
 
-def path_candidates(prefix: Any) -> list[dict[str, Any]]:
+def path_candidates(prefix: Any, *, mutation: bool = False) -> list[dict[str, Any]]:
     parent, needle = _prefix_parts(prefix)
+    roots = _MUTATION_ROOTS if mutation else _INSPECT_ROOTS
     if parent == Path("/"):
-        entries = list(_INSPECT_ROOTS)
+        entries = list(roots)
     else:
-        _safe_existing_path(parent, mutation=False)
+        _safe_existing_path(parent, mutation=mutation)
         if not parent.is_dir():
             raise AccessError("path prefix parent is not a directory")
         try:
@@ -170,7 +171,7 @@ def path_candidates(prefix: Any) -> list[dict[str, Any]]:
                     continue
             elif not path.name.casefold().startswith(needle.casefold()):
                 continue
-        if not _under(path, _INSPECT_ROOTS):
+        if not _under(path, roots):
             continue
         try:
             info = os.lstat(path)
@@ -305,9 +306,9 @@ def main(argv: list[str]) -> int:
         if len(argv) < 2:
             raise AccessError("missing access action")
         action = argv[1]
-        if action == "candidates":
+        if action in {"candidates", "candidates-mutable"}:
             prefix = argv[2] if len(argv) == 3 else ""
-            result = path_candidates(prefix)
+            result = path_candidates(prefix, mutation=action == "candidates-mutable")
         elif action == "inspect" and len(argv) == 3:
             result = inspect_path(argv[2])
         elif action.startswith("plan-") and len(argv) == 3:
