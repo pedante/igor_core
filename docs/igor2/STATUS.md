@@ -3118,18 +3118,23 @@ domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
 
-### System operator S1/S2/S3 branch work
+### System operator S1–S4
 
-On `feature/sys-module-foundation`, D070 is implemented through namespace UX.
-S1 adds strict semantic selector metadata and the Core-owned ephemeral candidate
-boundary. S2 annotates the existing
-`system.service.status/start/enable/restart` unit inputs and adds a TUI chooser
-backed by bounded `svc_list_query` discovery. Candidate selection remains
-reference-only until the chosen value is submitted through canonical capability
-invocation.
+S1–S3 are merged into `igor2` under D070. They provide strict semantic selector
+metadata, the Core-owned ephemeral candidate boundary, the service chooser and
+the collision-safe `:sys -> :system` presentation alias while keeping
+`system.*` canonical.
 
-S3 adds `:sys` only as collision-safe Operator Surface presentation metadata
-for the canonical `:system` tree. The TUI preserves the short breadcrumb while
-leaf identity and invocation remain `system.*`; a real `sys` root suppresses
-the alias. Storage remains a later phase. This branch work is not part of the
-`igor2` baseline until merged and its validation gate is green.
+S4 is implemented on `feature/sys-storage-read-model` pending validation. It
+adds bounded Core mount/filesystem discovery and a narrow multi-object observer
+extension for canonical `mount:...` and `filesystem:...` System Model
+identities. The System 2.5.0 package declares `storage.mounts` and
+`storage.filesystems` observers plus read-only summary/list/status
+capabilities. Status inputs reuse semantic selectors; candidate resolution
+prefers fresh System Model facts and falls back to bounded Core discovery.
+
+S4 does not add mount/unmount, filesystem mutation, fstab writes, sudo,
+persistence changes or a parallel inventory. Those authority and persistence
+semantics remain S5. The merged S3 baseline retains separately recorded
+validation debt; S4 is assessed against that baseline rather than silently
+reclassifying it.
