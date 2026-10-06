@@ -177,6 +177,30 @@ class NetworkQueryTests(unittest.TestCase):
                 wireless_checker=lambda _name: False,
             )
 
+    def test_interface_address_text_is_bounded_for_typed_consumers(self) -> None:
+        base = {
+            "ifindex": 2,
+            "ifname": "eth0",
+            "flags": ["UP"],
+            "mtu": 1500,
+            "operstate": "UP",
+            "link_type": "ether",
+            "address": "02:00:00:00:00:01",
+            "addr_info": [
+                {
+                    "family": "inet6",
+                    "local": "2001:db8::1%" + ("scope" + str(index)).ljust(32, "x"),
+                    "prefixlen": 64,
+                }
+                for index in range(64)
+            ],
+        }
+        with self.assertRaisesRegex(NetworkQueryError, "address text"):
+            normalize_interfaces(
+                [base],
+                wireless_checker=lambda _name: False,
+            )
+
     def test_route_normalization_preserves_default_and_family(self) -> None:
         ipv4 = normalize_routes(
             [
