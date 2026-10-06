@@ -10,6 +10,7 @@ from capability_runtime import CapabilityError, validate_inputs
 from input_candidates import (
     CandidateError,
     CandidateResolverRegistry,
+    resolve_registered_source,
     validate_selector,
 )
 
@@ -141,6 +142,25 @@ class InputCandidateTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(CandidateError, "object identity"):
             registry.resolve(selector, input_type="object_id")
+
+    def test_registered_platform_source_uses_same_normalized_envelope(self):
+        result = resolve_registered_source(
+            SELECTOR,
+            input_type="string",
+            source_kind="platform",
+            source_id="systemd.services",
+            raw={
+                "state": "ready",
+                "candidates": [{
+                    "value": "cron.service",
+                    "label": "cron.service",
+                    "detail": "active / running",
+                    "object_id": "service:systemd:cron.service",
+                }],
+            },
+        )
+        self.assertEqual(result["source"]["id"], "systemd.services")
+        self.assertEqual(result["candidates"][0]["value"], "cron.service")
 
     def test_selector_metadata_never_relaxes_capability_validation(self):
         schema = {
