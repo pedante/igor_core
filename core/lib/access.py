@@ -152,7 +152,7 @@ def _prefix_parts(prefix: Any) -> tuple[Path, str]:
 def path_candidates(prefix: Any) -> list[dict[str, Any]]:
     parent, needle = _prefix_parts(prefix)
     if parent == Path("/"):
-        entries = [root for root in _INSPECT_ROOTS if len(root.parts) == 2]
+        entries = list(_INSPECT_ROOTS)
     else:
         _safe_existing_path(parent, mutation=False)
         if not parent.is_dir():
@@ -163,8 +163,13 @@ def path_candidates(prefix: Any) -> list[dict[str, Any]]:
             raise AccessError("path prefix directory is unavailable") from exc
     rows: list[dict[str, Any]] = []
     for path in entries:
-        if needle and not path.name.casefold().startswith(needle.casefold()):
-            continue
+        if needle:
+            if parent == Path("/"):
+                requested = "/" + needle
+                if not path.as_posix().casefold().startswith(requested.casefold()):
+                    continue
+            elif not path.name.casefold().startswith(needle.casefold()):
+                continue
         if not _under(path, _INSPECT_ROOTS):
             continue
         try:
