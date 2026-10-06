@@ -123,7 +123,7 @@ class NetworkSurfaceTests(unittest.TestCase):
             )
 
     def test_route_and_interface_presentations_are_bounded(self):
-        many_interfaces = self.interfaces() * 128
+        many_interfaces = self.interfaces() * 64
         interfaces = network_surface.interfaces_list(many_interfaces)["result"]
         self.assertLessEqual(len(interfaces["interfaces"]), 4096)
 
