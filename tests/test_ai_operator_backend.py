@@ -307,6 +307,7 @@ igor_capability_inspect() {
 svc_list_query() {
   printf 'ssh.service\tactive\trunning\nbad unit.service\tactive\trunning\ncron.service\tinactive\tdead\n'
 }
+ai_execute_tool() { printf 'UNEXPECTED_EXECUTION\n'; return 99; }
 _ai_frontend_control 'candidates system.service.status unit'
 '''
             result = subprocess.run(
@@ -324,6 +325,7 @@ _ai_frontend_control 'candidates system.service.status unit'
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("UNEXPECTED_EXECUTION", result.stdout)
             events = [json.loads(line) for line in stream.read_text().splitlines()]
         event = next(row for row in events if row["event_type"] == "operator_candidates")
         self.assertEqual(event["capability_id"], "system.service.status")
