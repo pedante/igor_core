@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Bounded read-only Linux storage discovery for Igor Core.
 
 This module normalizes kernel/util-linux storage data.  It owns no health
