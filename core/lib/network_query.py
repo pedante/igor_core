@@ -206,6 +206,10 @@ def normalize_interfaces(
         except OSError as exc:
             raise NetworkQueryError("wireless interface inspection failed") from exc
 
+        ipv4_text = ",".join(sorted(ipv4))
+        ipv6_text = ",".join(sorted(ipv6))
+        if len(ipv4_text) > 4096 or len(ipv6_text) > 4096:
+            raise NetworkQueryError("interface address text exceeds bounded size")
         rows.append({
             "object_id": interface_object_id(name),
             "name": name,
@@ -217,8 +221,8 @@ def normalize_interfaces(
             "mac": _mac(raw.get("address")),
             "kind": _interface_kind(raw, flags),
             "wireless": wireless,
-            "ipv4_addresses": ",".join(sorted(ipv4)),
-            "ipv6_addresses": ",".join(sorted(ipv6)),
+            "ipv4_addresses": ipv4_text,
+            "ipv6_addresses": ipv6_text,
             "default_route_v4": name in default_v4,
             "default_route_v6": name in default_v6,
         })
