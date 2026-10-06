@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Backend contract tests for the operator surface bridge."""
 
 import json
