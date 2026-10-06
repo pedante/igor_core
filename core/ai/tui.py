@@ -1463,14 +1463,48 @@ def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
     return "invoke " + target, bool(required)
 
 
-def _operator_selector_input(entry: dict[str, Any]) -> str | None:
-    """Return the one required selector-backed input supported by the S2 chooser."""
+def _operator_required_inputs(entry: dict[str, Any]) -> list[str]:
+    """Return required capability inputs in declared order."""
     inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
     required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
+    return [name for name in required if isinstance(name, str)]
+
+
+def _operator_selector_input(entry: dict[str, Any]) -> str | None:
+    """Compatibility helper for the single-input selector case."""
+    required = _operator_required_inputs(entry)
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
     selectors = inputs.get("selectors") if isinstance(inputs.get("selectors"), dict) else {}
-    if len(required) != 1 or not isinstance(required[0], str):
+    if len(required) != 1:
         return None
     return required[0] if isinstance(selectors.get(required[0]), dict) else None
+
+
+def _operator_input_spec(entry: dict[str, Any], input_name: str) -> dict[str, Any]:
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    properties = inputs.get("properties") if isinstance(inputs.get("properties"), dict) else {}
+    spec = properties.get(input_name)
+    return spec if isinstance(spec, dict) else {}
+
+
+def _operator_input_selector(entry: dict[str, Any], input_name: str) -> dict[str, Any] | None:
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    selectors = inputs.get("selectors") if isinstance(inputs.get("selectors"), dict) else {}
+    selector = selectors.get(input_name)
+    return selector if isinstance(selector, dict) else None
+
+
+def _operator_inputs_collectable(entry: dict[str, Any]) -> bool:
+    """Keep the generic form away from secret or non-text typed inputs."""
+    required = _operator_required_inputs(entry)
+    if not required:
+        return False
+    for input_name in required:
+        if _operator_input_selector(entry, input_name):
+            continue
+        if _operator_input_spec(entry, input_name).get("type") not in {"string", "path", "object_id"}:
+            return False
+    return True
 
 
 def _operator_candidate_request(
@@ -1511,10 +1545,11 @@ def _operator_candidate_overlay(
     buffer: InputBuffer,
     entry: dict[str, Any],
     input_name: str,
+    *,
+    invoke_on_select: bool = True,
 ) -> tuple[str, str | None]:
     """Choose one ephemeral candidate without acquiring execution authority."""
-    selectors = entry.get("inputs", {}).get("selectors", {})
-    selector = selectors.get(input_name) if isinstance(selectors, dict) else None
+    selector = _operator_input_selector(entry, input_name)
     path_selector = (
         isinstance(selector, dict)
         and selector.get("resource_kind") in {"path", "mutable_path"}
@@ -1621,17 +1656,21 @@ def _operator_candidate_overlay(
                         query = label
                         selected = 0
                         continue
-                    if state.backend_ready:
-                        value = candidate["value"]
-                        command, _ = _operator_invoke_command(entry)
-                        command += " " + json.dumps(
-                            {input_name: value}, sort_keys=True, separators=(",", ":")
-                        )
-                        _send(master, command)
-                        state.backend_ready = False
-                        return "invoke", command
-                    notice = "Backend busy — path selection must wait for READY"
-                    continue
+                    if not state.backend_ready:
+                        notice = "Backend busy — path selection must wait for READY"
+                        continue
+                    value = candidate["value"]
+                    if not invoke_on_select:
+                        return "selected", value
+                    command, _ = _operator_invoke_command(entry)
+                    command += " " + json.dumps(
+                        {input_name: value}, sort_keys=True, separators=(",", ":")
+                    )
+                    _send(master, command)
+                    state.backend_ready = False
+                    return "invoke", command
+                if not invoke_on_select:
+                    return "manual", None
                 command, _ = _operator_invoke_command(entry)
                 buffer.replace(command + " ")
                 return "draft", None
@@ -1656,6 +1695,8 @@ def _operator_candidate_overlay(
                     notice = "Backend busy — candidate is selected but invocation must wait for READY"
                     continue
                 value = rows[selected]["value"]
+                if not invoke_on_select:
+                    return "selected", value
                 command, _ = _operator_invoke_command(entry)
                 command += " " + json.dumps(
                     {input_name: value}, sort_keys=True, separators=(",", ":")
@@ -1671,6 +1712,94 @@ def _operator_candidate_overlay(
                 selected = 0
     finally:
         screen.timeout(100)
+
+
+def _operator_text_input_overlay(
+    screen: Any,
+    entry: dict[str, Any],
+    input_name: str,
+) -> tuple[str, str | None]:
+    """Collect one bounded textual input; canonical validation still happens in Core."""
+    value = ""
+    screen.timeout(100)
+    try:
+        while True:
+            height, width = screen.getmaxyx()
+            screen.erase()
+            target = str(entry.get("target_id") or "")
+            spec = _operator_input_spec(entry, input_name)
+            try:
+                screen.addnstr(
+                    0, 0, f"Enter {input_name}  {target}", max(1, width - 1), curses.A_BOLD
+                )
+                shown = value or "…"
+                screen.addnstr(2, 0, shown, max(1, width - 1))
+                screen.addnstr(
+                    max(0, height - 1), 0,
+                    "Type value · Enter accept · Esc back",
+                    max(1, width - 1), curses.A_DIM,
+                )
+            except curses.error:
+                pass
+            screen.refresh()
+            key = _next_key(screen)
+            if key in (27, 3):
+                return "back", None
+            if key in (curses.KEY_BACKSPACE, 127, 8):
+                value = value[:-1]
+                continue
+            if key in (10, 13, curses.KEY_ENTER):
+                if not value:
+                    continue
+                if spec.get("type") == "path" and spec.get("root") == "/":
+                    value = value.lstrip("/")
+                return "selected", value
+            if isinstance(key, str) and key not in "\n\r" and ord(key) >= 32:
+                if len(value) < int(spec.get("maxLength", 4096)):
+                    value += key
+            elif isinstance(key, int) and 32 <= key <= 126:
+                if len(value) < int(spec.get("maxLength", 4096)):
+                    value += chr(key)
+    finally:
+        screen.timeout(100)
+
+
+def _operator_required_input_overlay(
+    screen: Any,
+    master: int,
+    reader: EventReader,
+    state: EventState,
+    buffer: InputBuffer,
+    entry: dict[str, Any],
+) -> tuple[str, str | None]:
+    """Collect multiple required inputs without moving domain authority into the TUI."""
+    values: dict[str, str] = {}
+    for input_name in _operator_required_inputs(entry):
+        selector = _operator_input_selector(entry, input_name)
+        if selector is not None:
+            outcome, value = _operator_candidate_overlay(
+                screen, master, reader, state, buffer, entry, input_name,
+                invoke_on_select=False,
+            )
+            if outcome == "back":
+                return "back", None
+            if outcome == "manual":
+                outcome, value = _operator_text_input_overlay(screen, entry, input_name)
+            if outcome != "selected" or value is None:
+                return outcome, value
+        else:
+            outcome, value = _operator_text_input_overlay(screen, entry, input_name)
+            if outcome != "selected" or value is None:
+                return outcome, value
+        values[input_name] = value
+
+    if not state.backend_ready:
+        return "busy", None
+    command, _ = _operator_invoke_command(entry)
+    command += " " + json.dumps(values, sort_keys=True, separators=(",", ":"))
+    _send(master, command)
+    state.backend_ready = False
+    return "invoke", command
 
 
 def _operator_surface_summary(snapshot: dict[str, Any] | None) -> tuple[str, str]:
@@ -1902,18 +2031,20 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                         notice = str(error)
                         continue
                     if needs_input:
-                        selector_input = _operator_selector_input(entry)
-                        if selector_input:
+                        if _operator_inputs_collectable(entry):
                             if not state.backend_ready:
-                                notice = "Backend busy — candidate lookup available when READY"
+                                notice = "Backend busy — input selection available when READY"
                                 continue
-                            outcome, selected_command = _operator_candidate_overlay(
-                                screen, master, reader, state, buffer, entry, selector_input
+                            outcome, selected_command = _operator_required_input_overlay(
+                                screen, master, reader, state, buffer, entry
                             )
                             if outcome == "back":
                                 continue
                             if outcome == "invoke":
                                 return selected_command
+                            if outcome == "busy":
+                                notice = "Backend busy — wait for READY or press Ctrl+C to stop current work"
+                                continue
                             return None
                         buffer.replace(command + " ")
                         return None
