@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_FILE_BYTES = 1024 * 1024
-MAX_ROWS = 512
+MAX_ROWS = 128
 
 
 class AccountQueryError(ValueError):
@@ -104,12 +104,15 @@ def query_groups(path: Path = Path("/etc/group")) -> list[dict[str, Any]]:
             raise AccountQueryError("group membership exceeds bounded count")
         for member in members:
             _name(member, "group member")
+        member_text = ",".join(members)
+        if len(member_text) > 4096:
+            raise AccountQueryError("group member list exceeds bounded text")
         rows.append({
             "object_id": _object_id("group", "gid", gid),
             "name": name,
             "gid": gid,
             "member_count": len(members),
-            "members": ",".join(members),
+            "members": member_text,
         })
         if len(rows) > MAX_ROWS:
             raise AccountQueryError("local group inventory exceeds bounded row count")
