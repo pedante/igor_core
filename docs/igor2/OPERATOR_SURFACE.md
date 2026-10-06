@@ -117,6 +117,27 @@ existing CHANGE approval, privilege and verification path. The reviewed S5
 adapter accepts only exact runtime `mkdir`/`mount`/`umount` argv. Neither
 leaf performs fstab persistence, force unmount or lazy unmount.
 
+S7.2 adds the first provider-neutral network READ surface:
+
+```text
+:sys.network.summary
+:sys.network.interfaces.list
+:sys.network.interface.status
+:sys.network.routes.list
+:sys.network.dns.status
+```
+
+`system.network.interface.status` declares
+`resource_kind=interface`. Candidate resolution prefers fresh
+`network.interfaces` System Model facts and falls back to the bounded Core
+iproute2 read when those observations are absent or stale. Candidate values are
+canonical `interface:...` IDs while labels remain human interface names such
+as `eth0` or `wlan0`.
+
+Routes and DNS remain READ results, not selector-backed durable objects. S7.2
+does not expose Wi-Fi scans/profiles, NetworkManager authority, connectivity
+probing or network mutation.
+
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that
 ID remains the target. Generic module contributions that are not owner-prefixed
