@@ -115,6 +115,8 @@ def _validate_value(name: str, value: Any, spec: dict[str, Any]) -> Any:
             raise CapabilityError(f"input {name} is not a valid service name")
         if validator == "package_name" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", value):
             raise CapabilityError(f"input {name} is not a valid package name")
+        if validator == "unix_mode" and not re.fullmatch(r"0[0-7]{3}", value):
+            raise CapabilityError(f"input {name} is not a supported Unix mode")
         if "pattern" in spec and (not isinstance(spec["pattern"], str) or not re.fullmatch(spec["pattern"], value)):
             raise CapabilityError(f"input {name} does not match its pattern")
         return value
@@ -552,10 +554,18 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
             return f"service:systemd:{value}"
         if kind == "package" and value:
             return f"package:{value}"
-        if kind in {"mount", "filesystem"} and isinstance(value, str):
+        if kind in {"mount", "filesystem", "user", "group"} and isinstance(value, str):
             if (value.startswith(kind + ":") and
                     re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value)):
                 return value
+            return None
+        if kind == "path" and isinstance(value, str):
+            if value.startswith("path:") and re.fullmatch(
+                    r"path:/[A-Za-z0-9_./:%+@-]+", value):
+                return value
+            if not value.startswith("/") and ".." not in value.split("/"):
+                from urllib.parse import quote
+                return "path:/" + quote(value, safe="/._-+%")
             return None
         if kind == "host":
             return "host:local"
