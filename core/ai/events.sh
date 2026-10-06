@@ -9,7 +9,7 @@
 # identifiers or command output. It is owner-only (0600) and must never be
 # reused as provider/export payload without the outbound scrub boundary.
 
-AI_EVENT_TYPES='session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot operator_snapshot session_finished'
+AI_EVENT_TYPES='session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot operator_snapshot operator_candidates session_finished'
 
 _ai_event_stream_path() {
     if [ -n "${IGOR_AI_EVENT_STREAM:-}" ]; then
