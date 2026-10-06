@@ -324,13 +324,15 @@ class NetworkQueryTests(unittest.TestCase):
             ),
         ]
         for result in cases:
-            with self.subTest(result=result.returncode, size=len(result.stdout)):
-                with patch("network_query.subprocess.run", return_value=result):
-                    with self.assertRaises(NetworkQueryError):
-                        network_query._run_ip_json(
-                            ["-4", "route", "show"],
-                            timeout_seconds=5,
-                        )
+            with (
+                self.subTest(result=result.returncode, size=len(result.stdout)),
+                patch("network_query.subprocess.run", return_value=result),
+                self.assertRaises(NetworkQueryError),
+            ):
+                network_query._run_ip_json(
+                    ["-4", "route", "show"],
+                    timeout_seconds=5,
+                )
 
     def test_snapshot_queries_only_kernel_routes_addresses_and_resolver(self) -> None:
         route4 = [{"dst": "default", "dev": "eth0", "gateway": "192.0.2.1"}]

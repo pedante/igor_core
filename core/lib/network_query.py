@@ -14,8 +14,9 @@ import re
 import subprocess
 import sys
 import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 MAX_INTERFACES = 128
 MAX_ADDRESSES_PER_INTERFACE = 64
@@ -113,11 +114,13 @@ def _mac(value: Any) -> str:
     if value in {None, ""}:
         return ""
     text = _bounded(value, "interface address", 128).lower()
-    if not re.fullmatch(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5,19}", text):
+    if (
+        not re.fullmatch(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5,19}", text)
+        and not re.fullmatch(r"[0-9a-f]+(?::[0-9a-f]+)+", text)
+    ):
         # Non-Ethernet link-layer addresses vary. Keep valid bounded hexadecimal
         # colon forms while rejecting arbitrary text.
-        if not re.fullmatch(r"[0-9a-f]+(?::[0-9a-f]+)+", text):
-            raise NetworkQueryError("interface address is invalid")
+        raise NetworkQueryError("interface address is invalid")
     return text
 
 

@@ -101,11 +101,13 @@ class NetworkManagerWifiTests(unittest.TestCase):
             returncode=0,
             stdout=b"x" * (networkmanager_wifi.MAX_NMCLI_OUTPUT_BYTES + 1),
         )
-        with patch("networkmanager_wifi.subprocess.run", return_value=oversized):
-            with self.assertRaisesRegex(NetworkManagerWifiError, "bounded size"):
-                networkmanager_wifi._run_nmcli(
-                    ["general", "status"], timeout_seconds=1
-                )
+        with (
+            patch("networkmanager_wifi.subprocess.run", return_value=oversized),
+            self.assertRaisesRegex(NetworkManagerWifiError, "bounded size"),
+        ):
+            networkmanager_wifi._run_nmcli(
+                ["general", "status"], timeout_seconds=1
+            )
 
     def test_query_status_freezes_exact_read_only_argv(self):
         calls = []
@@ -144,10 +146,10 @@ class NetworkManagerWifiTests(unittest.TestCase):
             rows = networkmanager_wifi.query_scan(timeout_seconds=2)
         self.assertEqual(rows[0]["ssid"], "Home")
         tokens = {token for argv in calls for token in argv}
-        for forbidden in {
+        for forbidden in (
             "connect", "disconnect", "radio", "password", "psk",
             "--show-secrets", "up", "down",
-        }:
+        ):
             self.assertNotIn(forbidden, tokens)
         self.assertIn("--rescan", calls[1])
         self.assertIn("auto", calls[1])
@@ -189,25 +191,29 @@ class NetworkManagerWifiTests(unittest.TestCase):
         self.assertNotIn("psk", tokens)
 
     def test_provider_failure_and_invalid_utf8_fail_closed(self):
-        with patch(
-            "networkmanager_wifi.subprocess.run",
-            return_value=SimpleNamespace(
-                returncode=10, stdout=b"", stderr=b"secret-ish"
+        with (
+            patch(
+                "networkmanager_wifi.subprocess.run",
+                return_value=SimpleNamespace(
+                    returncode=10, stdout=b"", stderr=b"secret-ish"
+                ),
             ),
+            self.assertRaisesRegex(NetworkManagerWifiError, "query failed"),
         ):
-            with self.assertRaisesRegex(NetworkManagerWifiError, "query failed"):
-                networkmanager_wifi._run_nmcli(
-                    ["device", "status"], timeout_seconds=1
-                )
+            networkmanager_wifi._run_nmcli(
+                ["device", "status"], timeout_seconds=1
+            )
 
-        with patch(
-            "networkmanager_wifi.subprocess.run",
-            return_value=SimpleNamespace(returncode=0, stdout=b"\xff"),
+        with (
+            patch(
+                "networkmanager_wifi.subprocess.run",
+                return_value=SimpleNamespace(returncode=0, stdout=b"\xff"),
+            ),
+            self.assertRaisesRegex(NetworkManagerWifiError, "not UTF-8"),
         ):
-            with self.assertRaisesRegex(NetworkManagerWifiError, "not UTF-8"):
-                networkmanager_wifi._run_nmcli(
-                    ["device", "status"], timeout_seconds=1
-                )
+            networkmanager_wifi._run_nmcli(
+                ["device", "status"], timeout_seconds=1
+            )
 
 
 if __name__ == "__main__":
