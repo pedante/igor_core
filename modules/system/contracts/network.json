@@ -293,7 +293,7 @@
           },
           "ipv6_addresses": {
             "type": "string",
-            "maxLength": 8192
+            "maxLength": 4096
           },
           "default_route_v4": {
             "type": "boolean"
