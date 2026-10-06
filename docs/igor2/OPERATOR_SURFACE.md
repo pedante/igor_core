@@ -80,6 +80,22 @@ For example, the current v2 System slice can be discovered as:
 :sys.host.memory.refresh
 ```
 
+S4 extends the same generated tree with read-only storage paths such as:
+
+```text
+:sys.storage.summary
+:sys.storage.mounts.list
+:sys.storage.mount.status
+:sys.storage.filesystems.list
+:sys.storage.filesystem.status
+```
+
+The two status leaves declare semantic selectors. Their chooser values are
+canonical object IDs, while labels remain human-oriented paths/devices. Fresh
+System Model storage observations are preferred; otherwise the candidate
+boundary may use the bounded Core storage read. Selecting a candidate still
+only supplies explicit input to the canonical `system.*` capability.
+
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that
 ID remains the target. Generic module contributions that are not owner-prefixed
