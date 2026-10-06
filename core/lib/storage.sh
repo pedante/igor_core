@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Bounded read-only Linux storage discovery shared by System observers and UI
 # candidate resolution. These helpers do not mount, unmount or edit persistence.
 
@@ -15,10 +14,12 @@ _storage_query_python() {
 }
 
 _storage_query_run() {
-    local _kind="${1:-}" _py
+    local _kind="${1:-}" _py _root
     [ "$#" -eq 1 ] && [[ "$_kind" =~ ^(mounts|filesystems)$ ]] || return 2
     _py="$(_storage_query_python)" || return 2
-    "$_py" "${IGOR_DIR:-${_IGOR_LOADER_DIR:-}}/core/lib/storage_query.py" "$_kind"
+    _root="${_IGOR_LOADER_DIR:-${IGOR_DIR:-}}"
+    [ -n "$_root" ] || return 2
+    "$_py" "$_root/core/lib/storage_query.py" "$_kind"
 }
 
 storage_mounts_query() { _storage_query_run mounts; }
