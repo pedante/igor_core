@@ -241,6 +241,33 @@ separate: the legacy root-filesystem health lines are not replaced merely by
 adding the S4 read model.
 
 
+### S7.2 interface collection observations
+
+D073 extends the same bounded collection contract to
+`object_kind=interface`. The canonical identity is the existing Host
+Intelligence form `interface:<encoded-interface-name>`; ordinary Linux
+interface characters remain readable and unsafe identity characters are
+percent-encoded at the Core discovery boundary.
+
+`network.interfaces` publishes at most 128 current interface objects with a
+30-second freshness window. Its declared facts are name, ifindex, operational
+and administrative state, carrier, MTU, link-layer address, interface kind,
+wireless property, bounded IPv4/IPv6 address strings, and current IPv4/IPv6
+default-route ownership. A successful refresh atomically replaces that
+observer's interface set. Failure stales prior facts without inventing
+interfaces, exactly like the existing storage/account collection semantics.
+
+Routes and resolver configuration are deliberately **not** new durable object
+kinds in S7.2. They remain bounded current Core reads. Route data may derive
+current default-route facts for interface observations; resolver data is exposed
+through a READ capability with its source/symlink context. This does not create
+desired network state, configuration ownership or route/DNS reconciliation.
+
+The `ip` binary is a contribution-local requirement for the interface
+observer and link/route capabilities. Its absence makes those contributions
+unavailable while the System package and provider-independent contributions
+such as resolver inspection remain active.
+
 ### S5 storage administration boundary
 
 S5 consumes the S4 current-state objects but does not make observations
