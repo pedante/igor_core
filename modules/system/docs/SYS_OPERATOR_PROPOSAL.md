@@ -1,9 +1,10 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070 accepted; S1–S3 implemented on the feature branch pending
-validation.** The discovery rationale is retained here as the design record.
+Status: **D070 accepted; S1–S3 merged and S4 implemented on the storage feature
+branch pending validation.** The discovery rationale is retained here as the
+design record.
 
-Branch: `feature/sys-module-foundation`
+Current S4 branch: `feature/sys-storage-read-model`
 
 ## Purpose
 
@@ -29,7 +30,7 @@ IDs or input schemas.
 ### 1. Do not create a second module
 
 The repository already contains `modules/system/` as Module API v2 package
-`system`, currently version 2.4.0. It already owns host-domain semantics and
+`system`, currently version 2.5.0. It already owns host-domain semantics and
 declares host, package, service, log, memory, configuration and administration
 capabilities.
 
@@ -175,7 +176,7 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
-## S1/S2/S3 implementation status
+## S1/S2/S3/S4 implementation status
 
 S1 provides the strict selector contract, Core candidate envelope/registry,
 Operator Surface projection and cache invalidation boundaries.
@@ -194,6 +195,23 @@ S3 adds the collision-safe `:sys` presentation alias in the shared Operator
 Surface projection. The TUI can keep `:sys...` in its breadcrumb while
 navigation and invocation continue to use canonical `system...` paths. A real
 top-level `sys` namespace suppresses the alias rather than being shadowed.
+
+S4 adds the first storage read model without crossing into storage mutation.
+Core normalizes bounded Linux mount and filesystem discovery; the System module
+publishes `storage.mounts` and `storage.filesystems` collection observers into
+the existing System Model using canonical `mount:...` and
+`filesystem:...` identities. Collection refresh is atomic, removes disappeared
+objects, and stales prior facts after a failed refresh without inventing phantom
+objects.
+
+The operator surface adds read-only `system.storage.summary`,
+`system.storage.mounts.list`, `system.storage.filesystems.list`,
+`system.storage.mount.status` and `system.storage.filesystem.status`.
+Mount/filesystem status inputs reuse the S1 selector contract. Candidate
+resolution prefers fresh System Model facts and falls back to the same bounded
+Core read when those observations are absent or stale. No mount, unmount,
+filesystem change, fstab edit, sudo path or persistence mutation is introduced
+by S4.
 
 ## Proposed architecture
 
@@ -308,8 +326,8 @@ phases can overlap with existing Igor 2 completion work.
 | S0 — Discovery & decisions | This proposal, Q013–Q015, scope/proof gate | current |
 | S1 — Semantic input contract | Strict optional selector metadata, generic projection, candidate envelope/API, tests | 1–3 days |
 | S2 — Service vertical slice | Existing service inputs gain dynamic selection; TUI chooser/typeahead; canonical execution unchanged | 2–4 days |
-| S3 — Namespace UX | **Implemented on feature branch:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete pending validation |
-| S4 — Storage read model | Storage/filesystem/mount observations and read-only `system.storage.*` inspection using existing System Model identities | 3–6 days |
+| S3 — Namespace UX | **Merged:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete |
+| S4 — Storage read model | **Implemented on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete pending validation |
 | S5 — Storage changes | Mount/unmount capabilities with frozen targets, Core privilege mechanics, verification and explicit persistence semantics | 4–8 days |
 | S6 — Users, groups, permissions & paths | Bounded user/group/path selectors plus safe inspection/change capabilities | 3–6 days |
 | S7 — Network & Wi-Fi | Interface/route/DNS inspection; Wi-Fi only through a reviewed provider/secret-reference/verification contract | 5–10 days |
