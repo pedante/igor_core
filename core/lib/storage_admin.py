@@ -13,8 +13,9 @@ import re
 import stat
 import sys
 import urllib.parse
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from storage_query import (
     StorageQueryError,
@@ -110,18 +111,39 @@ def _filesystem_row(object_id: str, rows: list[dict[str, Any]]) -> dict[str, Any
     return row
 
 
-def _mount_target_safe(target: str, *, lstat: Callable[[str], os.stat_result] = os.lstat) -> bool:
+def _mount_target_safe(
+    target: str,
+    *,
+    lstat: Callable[[str], os.stat_result] = os.lstat,
+) -> bool:
     try:
-        _target_from_relative(target.lstrip("/"))
+        normalized = _target_from_relative(target.lstrip("/"))
     except StorageAdminError:
         return False
-    try:
-        info = lstat(target)
-    except FileNotFoundError:
-        return True
-    except OSError:
+    if normalized != target:
         return False
-    return stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+
+    parts = PurePosixPath(target).parts
+    current = ""
+    for index, part in enumerate(parts[1:], start=1):
+        current += "/" + part
+        try:
+            info = lstat(current)
+        except FileNotFoundError:
+            # Missing descendants are created by root. Every existing ancestor
+            # has already been proven non-symlink and not writable by others.
+            return True
+        except OSError:
+            return False
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            return False
+        # Existing ancestors and an existing target must not be replaceable by
+        # an unprivileged group/other writer while approval is pending.
+        if info.st_uid != 0 or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return False
+        if index == len(parts) - 1:
+            return True
+    return False
 
 
 def freeze_mount(
