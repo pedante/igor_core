@@ -62,22 +62,98 @@ def ready_event(sequence):
     return {"event_type": "model_status", "sequence": sequence, "status": "input_ready"}
 
 
-def capability(path="system.host.memory.refresh", required=(), provider_required=False):
+def candidate_event(sequence, capability_id="system.service.status", input_name="unit"):
+    return {
+        "event_type": "operator_candidates",
+        "sequence": sequence,
+        "capability_id": capability_id,
+        "provider": "system",
+        "input_name": input_name,
+        "result": {
+            "candidate_api_version": 1,
+            "selector": {"schema_version": 1, "kind": "resource", "resource_kind": "service"},
+            "state": "ready",
+            "source": {"kind": "platform", "id": "systemd.services",
+                       "freshness": "not_applicable"},
+            "candidates": [
+                {"value": "cron.service", "label": "cron.service",
+                 "detail": "active / running"},
+                {"value": "ssh.service", "label": "ssh.service",
+                 "detail": "inactive / dead"},
+            ],
+            "reason": None,
+            "resolved_at": "2026-10-06T08:00:00Z",
+        },
+    }
+
+
+def capability(path="system.host.memory.refresh", required=(), provider_required=False,
+               selector=False):
+    inputs = {"required": list(required), "properties": {}}
+    if selector and required:
+        name = required[0]
+        inputs["properties"][name] = {"type": "string", "validator": "systemd_unit"}
+        inputs["selectors"] = {
+            name: {"schema_version": 1, "kind": "resource", "resource_kind": "service"}
+        }
     return {
         "path": path,
         "kind": "capability",
         "owner": "system",
-        "target_id": "system.host.memory.refresh",
+        "target_id": path,
         "provider": "system",
         "provider_required": provider_required,
         "availability": "active",
         "unavailable_reason": None,
         "description": "Refresh memory",
-        "inputs": {"required": list(required), "properties": {}},
+        "inputs": inputs,
     }
 
 
 class OperatorExplorerTests(unittest.TestCase):
+    def test_operator_candidate_event_is_metadata_not_activity(self):
+        state = tui.EventState()
+        event = candidate_event(1)
+        self.assertTrue(tui.apply_event(state, event))
+        self.assertEqual(state.operator_candidates["input_name"], "unit")
+        self.assertEqual(state.activity, [])
+
+    def test_service_selector_chooses_candidate_and_invokes_canonical_backend(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        state = tui.EventState()
+        state.backend_ready = True
+        reader = Reader([])
+        sent = []
+
+        def send(master, text):
+            sent.append((master, text))
+            if text.startswith("candidates "):
+                reader.events.extend([candidate_event(1), ready_event(2)])
+
+        with patch.object(tui, "_send", side_effect=send), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            outcome, command = tui._operator_candidate_overlay(
+                Screen([-1, -1, 10]), 17, reader, state, tui.InputBuffer(),
+                entry, "unit",
+            )
+
+        self.assertEqual(outcome, "invoke")
+        self.assertEqual(
+            command,
+            'invoke system.service.status {"unit":"cron.service"}',
+        )
+        self.assertEqual(
+            sent,
+            [
+                (17, "candidates system.service.status unit"),
+                (17, 'invoke system.service.status {"unit":"cron.service"}'),
+            ],
+        )
+
     def test_operator_snapshot_is_metadata_not_activity(self):
         state = tui.EventState()
         event = snapshot_event(1, [capability()])
