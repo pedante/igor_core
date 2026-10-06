@@ -3141,12 +3141,12 @@ recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
 
-S7.1–S7.2 are implemented on `feature/sys-network-wifi` under D073
+S7.1–S7.3 are implemented on `feature/sys-network-wifi` under D073–D074
 pending the stacked validation gate. Core owns bounded read-only iproute2
 link/address/route normalization and bounded resolver inspection through
 `core/lib/network_query.py` plus `core/lib/network.sh`.
 
-System 2.8.0 adds the `network.interfaces` collection observer and READ-only
+System 2.9.0 retains the `network.interfaces` collection observer and READ-only
 `system.network.summary`, `interfaces.list`, `interface.status`,
 `routes.list` and `dns.status` capabilities. The existing
 `interface:<name>` Host Intelligence identity is canonical. The interface
@@ -3154,8 +3154,16 @@ selector prefers fresh System Model facts and falls back to the bounded Core
 read. Routes and DNS remain current reads/derived evidence rather than durable
 objects.
 
-The `ip` requirement is contribution-local: its absence does not deactivate
-System and does not block resolver inspection. S7.2 adds no Wi-Fi provider,
-secret consumer, connectivity probe or mutation authority. Q017–Q018 remain
-open for the NetworkManager saved-profile and new-profile/credential
-boundaries.
+S7.3 adds NetworkManager/nmcli only as an optional Wi-Fi READ provider through
+`core/lib/networkmanager_wifi.py`. The canonical System leaves are
+`system.network.wifi.status`, `system.network.wifi.scan` and
+`system.network.wifi.profiles.list`; D070 also exposes bounded ephemeral
+`wifi_network` and `wifi_profile` candidates. Scans and saved profile UUIDs
+remain current external-provider references, not System Model or Igor-owned
+configuration.
+
+Both `ip` and `nmcli` requirements are contribution-local. Missing `nmcli`
+does not deactivate System or block generic interface/route/DNS reads. S7.3
+adds no Wi-Fi mutation, secret consumer, credential retrieval or connectivity
+probe. Q017 now remains open only for the S7.4 `connect_known` CHANGE
+boundary; Q018 still defers new/open/password-bearing profile creation.

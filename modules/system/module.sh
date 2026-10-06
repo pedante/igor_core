@@ -669,6 +669,86 @@ system__network_dns_status() {
 }
 
 
+# S7.3 optional NetworkManager Wi-Fi READ provider. This is deliberately
+# separate from _mod_sys_network_read so generic network reads never acquire an
+# nmcli dependency. No function in this block exposes Wi-Fi mutation.
+_mod_sys_wifi_read() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/networkmanager_wifi.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/networkmanager_wifi.sh"
+    case "$kind" in
+        status) networkmanager_wifi_status_query ;;
+        scan) networkmanager_wifi_scan_query ;;
+        profiles) networkmanager_wifi_profiles_query ;;
+        *) return 2 ;;
+    esac
+}
+
+system__network_wifi_status() {
+    local input row result
+    input="$(_mod_sys_admin_request system.network.wifi.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_wifi_read status)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi status unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$row" | _mod_sys_network_surface wifi-status)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi status normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_wifi_scan() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.wifi.scan)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.scan v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.scan takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_wifi_read scan)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi scan unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface wifi-scan)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi scan normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_wifi_profiles_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.wifi.profiles.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.profiles.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.profiles.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_wifi_read profiles)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi profiles unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface wifi-profiles-list)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi profiles normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+
 # Experimental generic administration capabilities. Platform-specific package
 # and service mechanics stay in Core; this module gives them host-domain meaning.
 _mod_sys_admin_platform() {

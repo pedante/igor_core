@@ -545,6 +545,93 @@ print(json.dumps({
 PY
 }
 
+_igor_wifi_network_candidate_raw() {
+    local _rows
+    if ! declare -f networkmanager_wifi_scan_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/networkmanager_wifi.sh
+        source "$(_igor_input_candidate_root)/core/lib/networkmanager_wifi.sh"
+    fi
+    _rows="$(networkmanager_wifi_scan_query)" || _rows=""
+    [ -n "$_rows" ] || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"NetworkManager Wi-Fi scan unavailable"}'
+        return 0
+    }
+    WIFI_ROWS="$_rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["WIFI_ROWS"])
+candidates = []
+for row in rows[:128]:
+    ssid = row.get("ssid")
+    bssid = row.get("bssid")
+    device = row.get("device")
+    signal = row.get("signal")
+    security = row.get("security")
+    active = row.get("active")
+    if (
+        not isinstance(ssid, str) or not isinstance(bssid, str)
+        or not isinstance(device, str) or type(signal) is not int
+        or not isinstance(security, str) or type(active) is not bool
+    ):
+        raise SystemExit(2)
+    label = ssid if ssid.strip() else "<hidden>"
+    detail = (
+        f"{device} · signal {signal}% · {security} · {bssid}"
+        + (" · active" if active else "")
+    )[:512]
+    candidates.append({
+        "value": bssid,
+        "label": label[:160],
+        "detail": detail,
+    })
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates,
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+_igor_wifi_profile_candidate_raw() {
+    local _rows
+    if ! declare -f networkmanager_wifi_profiles_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/networkmanager_wifi.sh
+        source "$(_igor_input_candidate_root)/core/lib/networkmanager_wifi.sh"
+    fi
+    _rows="$(networkmanager_wifi_profiles_query)" || _rows=""
+    [ -n "$_rows" ] || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"NetworkManager Wi-Fi profiles unavailable"}'
+        return 0
+    }
+    WIFI_ROWS="$_rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["WIFI_ROWS"])
+candidates = []
+for row in rows[:128]:
+    name = row.get("name")
+    profile_uuid = row.get("uuid")
+    device = row.get("device")
+    active = row.get("active")
+    if (
+        not isinstance(name, str) or not isinstance(profile_uuid, str)
+        or not isinstance(device, str) or type(active) is not bool
+    ):
+        raise SystemExit(2)
+    state = f"active on {device}" if active and device else "saved / inactive"
+    candidates.append({
+        "value": profile_uuid,
+        "label": (name or profile_uuid)[:160],
+        "detail": state[:512],
+    })
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates,
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
 _igor_path_platform_candidate_raw() {
     local _kind="${1:-}" _prefix="${2:-}" _rows
     if ! declare -f path_candidates_query >/dev/null 2>&1; then
@@ -615,6 +702,18 @@ igor_input_candidates_resolve() {
                     printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform linux.interfaces
                 )" || return 1
             fi
+            ;;
+        wifi_network)
+            _raw="$(_igor_wifi_network_candidate_raw)" || return 1
+            _result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform networkmanager.wifi.scan
+            )" || return 1
+            ;;
+        wifi_profile)
+            _raw="$(_igor_wifi_profile_candidate_raw)" || return 1
+            _result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform networkmanager.wifi.profiles
+            )" || return 1
             ;;
         user|group)
             local _model_result _state _source_id

@@ -1,6 +1,6 @@
 # System S7 — Network & Wi-Fi Discovery Proposal
 
-Status: **D073 accepted; S7.1–S7.2 implemented on the feature branch pending the stacked validation gate. Q017–Q018 remain open.**
+Status: **D073–D074 accepted; S7.1–S7.3 implemented on the feature branch pending the stacked validation gate. Q017's S7.4 mutation and Q018 remain open.**
 
 Branch: feature/sys-network-wifi
 
@@ -312,7 +312,7 @@ No frontend, module prose or AI call gains network authority.
 | S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; Q017–Q018 open |
 | S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete pending stacked validation |
 | S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete pending stacked validation |
-| S7.3 | NetworkManager Wi-Fi read provider + scan/profile candidates | 1–2 days |
+| S7.3 | **Implemented:** optional NetworkManager Wi-Fi READ provider + bounded scan/profile candidates | complete pending stacked validation |
 | S7.4 | Reviewed connect_known CHANGE adapter + verification | 1–2 days |
 | S7.5 | Docs, Debian/Arch/provider fixtures, affected PR gate | 1 day |
 | later | New/open Wi-Fi profiles after secret/config ownership consumer | separate decision |
@@ -360,11 +360,8 @@ The authoritative questions live in docs/igor2/DECISIONS.md:
 
 - Q016 — **resolved by D073:** interface:<name> is the first durable S7 network
   object; routes and DNS remain bounded reads/derived evidence.
-- Q017 — accept NetworkManager/nmcli as the first optional Wi-Fi provider and
-  connect_known as the only initial Wi-Fi mutation.
+- Q017 — **partially resolved by D074:** NetworkManager/nmcli is the first optional Wi-Fi READ provider; S7.4 connect_known remains the open mutation decision.
 - Q018 — defer new/open/password-bearing profile creation until an explicit
   configuration/secret-consumer authority exists.
 
-Recommendation: **yes to all three**. This gives Igor a strong portable network
-view now without weakening the ownership foundation to make Wi-Fi setup appear
-convenient.
+Recommendation remains **yes** for the remaining Q017 S7.4 mutation and Q018 deferral. D074 already accepts the provider/read half without weakening the ownership foundation.

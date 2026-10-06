@@ -78,6 +78,39 @@ class NetworkSurfaceTests(unittest.TestCase):
             "local_stub": True,
         }
 
+    def wifi_status(self):
+        return {
+            "provider": "NetworkManager",
+            "wifi_hardware": "enabled",
+            "wifi_radio": "enabled",
+            "devices": [
+                {"interface": "wlan0", "state": "connected", "connection": "Home"}
+            ],
+        }
+
+    def wifi_scan(self):
+        return [
+            {
+                "active": True,
+                "ssid": "Home",
+                "bssid": "AA:BB:CC:DD:EE:FF",
+                "signal": 78,
+                "security": "WPA2",
+                "device": "wlan0",
+            }
+        ]
+
+    def wifi_profiles(self):
+        return [
+            {
+                "name": "Home",
+                "uuid": "123e4567-e89b-12d3-a456-426614174000",
+                "type": "wifi",
+                "device": "wlan0",
+                "active": True,
+            }
+        ]
+
     def test_observer_maps_every_declared_interface_fact(self):
         envelope = network_surface.observe_interfaces(self.interfaces())
         objects = envelope["result"]["objects"]
@@ -139,6 +172,39 @@ class NetworkSurfaceTests(unittest.TestCase):
         self.assertTrue(result["local_stub"])
         self.assertTrue(result["symlink"])
         self.assertNotIn("upstream", result)
+
+    def test_wifi_read_presentations_are_bounded_and_non_secret(self):
+        status = network_surface.wifi_status(self.wifi_status())["result"]
+        self.assertEqual(status["provider"], "NetworkManager")
+        self.assertEqual(status["device_count"], 1)
+        self.assertIn("wlan0", status["devices"])
+
+        scan = network_surface.wifi_scan(self.wifi_scan())["result"]
+        self.assertEqual(scan["count"], 1)
+        self.assertIn("AA:BB:CC:DD:EE:FF", scan["networks"])
+        self.assertNotIn("password", scan["networks"].lower())
+
+        profiles = network_surface.wifi_profiles_list(self.wifi_profiles())["result"]
+        self.assertEqual(profiles["count"], 1)
+        self.assertIn(
+            "123e4567-e89b-12d3-a456-426614174000", profiles["profiles"]
+        )
+        self.assertLessEqual(len(profiles["profiles"]), 4096)
+
+    def test_malformed_wifi_shapes_fail_closed(self):
+        broken_scan = self.wifi_scan()
+        broken_scan[0]["signal"] = 101
+        with self.assertRaisesRegex(
+            network_surface.NetworkSurfaceError, "Wi-Fi scan row"
+        ):
+            network_surface.wifi_scan(broken_scan)
+
+        broken_profile = self.wifi_profiles()
+        broken_profile[0]["type"] = "ethernet"
+        with self.assertRaisesRegex(
+            network_surface.NetworkSurfaceError, "Wi-Fi profile row"
+        ):
+            network_surface.wifi_profiles_list(broken_profile)
 
     def test_malformed_normalized_shapes_fail_closed(self):
         with self.assertRaisesRegex(

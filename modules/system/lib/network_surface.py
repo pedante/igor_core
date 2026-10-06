@@ -12,6 +12,7 @@ from typing import Any
 
 MAX_INTERFACES_TEXT = 4096
 MAX_ROUTES_TEXT = 4096
+MAX_WIFI_TEXT = 4096
 
 
 class NetworkSurfaceError(ValueError):
@@ -65,6 +66,76 @@ def _dns(value: Any) -> dict[str, Any]:
         raise NetworkSurfaceError("resolver search domains are invalid")
     return value
 
+
+
+def _wifi_status(value: Any) -> dict[str, Any]:
+    required = {"provider", "wifi_hardware", "wifi_radio", "devices"}
+    if not isinstance(value, dict) or set(value) != required:
+        raise NetworkSurfaceError("Wi-Fi status row shape is invalid")
+    if value["provider"] != "NetworkManager":
+        raise NetworkSurfaceError("Wi-Fi provider is invalid")
+    for field in ("wifi_hardware", "wifi_radio"):
+        if not isinstance(value[field], str) or len(value[field]) > 32:
+            raise NetworkSurfaceError("Wi-Fi radio state is invalid")
+    devices = value["devices"]
+    if not isinstance(devices, list) or len(devices) > 32:
+        raise NetworkSurfaceError("Wi-Fi device rows are invalid")
+    for row in devices:
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"interface", "state", "connection"}
+            or not all(isinstance(row[key], str) for key in row)
+            or len(row["interface"]) > 32
+            or len(row["state"]) > 64
+            or len(row["connection"]) > 160
+        ):
+            raise NetworkSurfaceError("Wi-Fi device row shape is invalid")
+    return value
+
+
+def _wifi_scan(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or len(value) > 256:
+        raise NetworkSurfaceError("Wi-Fi scan rows are invalid")
+    required = {"active", "ssid", "bssid", "signal", "security", "device"}
+    for row in value:
+        if not isinstance(row, dict) or set(row) != required:
+            raise NetworkSurfaceError("Wi-Fi scan row shape is invalid")
+        if (
+            type(row["active"]) is not bool
+            or type(row["signal"]) is not int
+            or not 0 <= row["signal"] <= 100
+            or not isinstance(row["ssid"], str)
+            or len(row["ssid"]) > 128
+            or not isinstance(row["bssid"], str)
+            or len(row["bssid"]) > 17
+            or not isinstance(row["security"], str)
+            or len(row["security"]) > 160
+            or not isinstance(row["device"], str)
+            or len(row["device"]) > 32
+        ):
+            raise NetworkSurfaceError("Wi-Fi scan row is invalid")
+    return value
+
+
+def _wifi_profiles(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or len(value) > 256:
+        raise NetworkSurfaceError("Wi-Fi profile rows are invalid")
+    required = {"name", "uuid", "type", "device", "active"}
+    for row in value:
+        if not isinstance(row, dict) or set(row) != required:
+            raise NetworkSurfaceError("Wi-Fi profile row shape is invalid")
+        if (
+            row["type"] != "wifi"
+            or type(row["active"]) is not bool
+            or not isinstance(row["name"], str)
+            or len(row["name"]) > 160
+            or not isinstance(row["uuid"], str)
+            or len(row["uuid"]) > 36
+            or not isinstance(row["device"], str)
+            or len(row["device"]) > 32
+        ):
+            raise NetworkSurfaceError("Wi-Fi profile row is invalid")
+    return value
 
 def observe_interfaces(value: Any) -> dict[str, Any]:
     rows = _interfaces(value)
@@ -205,6 +276,66 @@ def dns_status(value: Any) -> dict[str, Any]:
     }
 
 
+
+def wifi_status(value: Any) -> dict[str, Any]:
+    row = _wifi_status(value)
+    lines = [
+        f'{device["interface"]}\t{device["state"]}\t'
+        f'{device["connection"] or "no-connection"}'
+        for device in row["devices"]
+    ]
+    return {
+        "status": "ok",
+        "result": {
+            "provider": row["provider"],
+            "wifi_hardware": row["wifi_hardware"],
+            "wifi_radio": row["wifi_radio"],
+            "device_count": len(row["devices"]),
+            "devices": "\n".join(lines)[:MAX_WIFI_TEXT],
+            "source": "core.networkmanager.wifi.status",
+        },
+    }
+
+
+def wifi_scan(value: Any) -> dict[str, Any]:
+    rows = _wifi_scan(value)
+    lines = []
+    for row in rows:
+        label = row["ssid"].strip() or "<hidden>"
+        state = "active" if row["active"] else "seen"
+        lines.append(
+            f'{row["device"]}\t{label}\t{row["bssid"]}\t'
+            f'signal={row["signal"]}\tsecurity={row["security"]}\t{state}'
+        )
+    return {
+        "status": "ok",
+        "result": {
+            "count": len(rows),
+            "networks": "\n".join(lines)[:MAX_WIFI_TEXT],
+            "source": "core.networkmanager.wifi.scan",
+        },
+    }
+
+
+def wifi_profiles_list(value: Any) -> dict[str, Any]:
+    rows = _wifi_profiles(value)
+    lines = []
+    for row in rows:
+        state = (
+            f'active:{row["device"]}'
+            if row["active"] and row["device"]
+            else "inactive"
+        )
+        lines.append(f'{row["uuid"]}\t{row["name"]}\t{state}')
+    return {
+        "status": "ok",
+        "result": {
+            "count": len(rows),
+            "profiles": "\n".join(lines)[:MAX_WIFI_TEXT],
+            "source": "core.networkmanager.wifi.profiles",
+        },
+    }
+
 def main(argv: list[str]) -> int:
     try:
         if len(argv) not in {2, 3}:
@@ -223,6 +354,12 @@ def main(argv: list[str]) -> int:
             result = routes_list(value)
         elif action == "dns-status" and len(argv) == 2:
             result = dns_status(value)
+        elif action == "wifi-status" and len(argv) == 2:
+            result = wifi_status(value)
+        elif action == "wifi-scan" and len(argv) == 2:
+            result = wifi_scan(value)
+        elif action == "wifi-profiles-list" and len(argv) == 2:
+            result = wifi_profiles_list(value)
         else:
             raise NetworkSurfaceError("unsupported network surface action")
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))

@@ -489,6 +489,207 @@
           "id": "local"
         }
       ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.status",
+      "handler": "system__network_wifi_status",
+      "capability_version": 2,
+      "description": "Inspect bounded current NetworkManager Wi-Fi radio and wireless-device state without connectivity probing.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "wifi_hardware": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "wifi_radio": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "device_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "devices": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "provider",
+          "wifi_hardware",
+          "wifi_radio",
+          "device_count",
+          "devices",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.scan",
+      "handler": "system__network_wifi_scan",
+      "capability_version": 2,
+      "description": "List a bounded current NetworkManager Wi-Fi scan without persisting networks or retrieving credentials.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "networks": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "networks",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.profiles.list",
+      "handler": "system__network_wifi_profiles_list",
+      "capability_version": 2,
+      "description": "List bounded non-secret NetworkManager saved Wi-Fi profile references without claiming Igor ownership.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "profiles": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "profiles",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
     }
   ]
 }

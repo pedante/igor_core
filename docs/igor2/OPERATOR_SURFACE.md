@@ -134,9 +134,28 @@ iproute2 read when those observations are absent or stale. Candidate values are
 canonical `interface:...` IDs while labels remain human interface names such
 as `eth0` or `wlan0`.
 
-Routes and DNS remain READ results, not selector-backed durable objects. S7.2
-does not expose Wi-Fi scans/profiles, NetworkManager authority, connectivity
-probing or network mutation.
+Routes and DNS remain READ results, not selector-backed durable objects.
+
+S7.3 adds three optional NetworkManager-backed READ leaves without changing the
+generic network abstraction:
+
+```text
+:sys.network.wifi.status
+:sys.network.wifi.scan
+:sys.network.wifi.profiles.list
+```
+
+When `nmcli` is available, D070 may also project bounded ephemeral
+`wifi_network` scan candidates and `wifi_profile` saved-profile references.
+A network candidate uses its BSSID as the reference value and presents SSID,
+signal, security and interface as non-secret detail. A saved profile uses the
+NetworkManager UUID as its external reference. Neither candidate kind becomes
+a System Model object, Configuration value, desired state or execution
+authority merely because it is displayed.
+
+Missing NetworkManager makes only the Wi-Fi leaves/candidates unavailable.
+S7.3 does not expose credential material, internet probing or any network/Wi-Fi
+mutation; `connect_known` remains the separate S7.4 decision.
 
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that

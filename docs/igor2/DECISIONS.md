@@ -1056,20 +1056,38 @@ deferred until routing administration or reconciliation demonstrates a real
 need. Wi-Fi provider selection and Wi-Fi mutation remain Q017; new profile and
 credential authority remains Q018.
 
+### D074 — S7.3 optional NetworkManager Wi-Fi read provider
+
+Accepted by the Project Owner on 2026-10-06 for the S7.3 boundary.
+
+NetworkManager/nmcli is the first optional reviewed Wi-Fi **READ** provider.
+It may expose bounded current Wi-Fi status, scan results and non-secret saved
+profile references, plus ephemeral D070 `wifi_network` and `wifi_profile`
+candidates. Generic interface/route/DNS reads remain provider-neutral and an
+absent `nmcli` makes only these Wi-Fi contributions unavailable.
+
+Scan results and saved-profile references are not System Model objects,
+Configuration values, desired state or Igor-owned profiles. The adapter never
+requests Wi-Fi secrets. This decision resolves only the provider/read portion
+of Q017. The S7.4 `system.network.wifi.connect_known` CHANGE boundary remains
+a separate open decision, and Q018 remains deferred.
+
+
 ## Open decisions
 
-### Q017 — First Wi-Fi provider and initial mutation
+### Q017 — Initial Wi-Fi mutation after D074 provider decision
 
-Should NetworkManager/nmcli be the first optional reviewed Wi-Fi provider,
-with system.network.wifi.connect_known (activate one existing saved profile
-on one selected wireless interface) as the only initial Wi-Fi mutation?
+D074 resolves NetworkManager/nmcli as the first optional reviewed Wi-Fi READ
+provider. The remaining question is whether S7.4 should add only
+`system.network.wifi.connect_known`: activate one existing saved profile on
+one selected wireless interface.
 
-Recommendation: **yes**. Generic interface/address/route/DNS reads remain
-provider-neutral; NetworkManager is only an optional Wi-Fi adapter. Core must
-own preflight, exact argv and post-state verification. No disconnect, interface
-down, route/DNS mutation, radio toggle or profile deletion is implied.
+Recommendation: **yes**. Core should own preflight, exact argv and post-state
+verification. No disconnect, interface down, route/DNS mutation, radio toggle
+or profile deletion is implied. S7.3 does not authorize or implement this
+mutation.
 
-Decision target: before S7.3/S7.4 implementation.
+Decision target: before S7.4 implementation.
 
 ### Q018 — New Wi-Fi profile and credential authority
 
