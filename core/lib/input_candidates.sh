@@ -110,10 +110,15 @@ igor_input_candidates_resolve() {
     case "$_resource_kind" in
         service)
             _raw="$(_igor_service_candidate_raw)" || return 1
-            _result="$(printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}"                 "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source                 "$_selector" "$_input_type" platform systemd.services)" || return 1
+            _result="$(
+                printf '%s' "$_raw" |
+                    "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py"                         resolve-source "$_selector" "$_input_type" platform systemd.services
+            )" || return 1
             ;;
         *)
-            _result="$("${IGOR_PYTHON:-python3}"                 "${IGOR_DIR}/core/lib/input_candidates.py" resolve-none                 "$_selector" "$_input_type")" || return 1
+            _result="$(
+                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py"                     resolve-none "$_selector" "$_input_type"
+            )" || return 1
             ;;
     esac
 
