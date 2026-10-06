@@ -92,6 +92,20 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertNotIn("tests/test_ai_tui.py", tests)
         self.assertNotIn("tests/test_local_learning.py", tests)
 
+    def test_shared_ai_and_module_boundaries_are_explicitly_mapped(self):
+        domains, tests = affected_tests(["core/ai/core.sh"], ROOT)
+        self.assertEqual(domains, ["capability", "operator", "tui"])
+        self.assertIn("tests/test_ai_tui.py", tests)
+        self.assertIn("tests/test_ai_operator_backend.py", tests)
+
+        domains, tests = affected_tests(["core/ai/events.sh"], ROOT)
+        self.assertEqual(domains, ["events"])
+        self.assertIn("tests/core/test_ai_events.bats", tests)
+
+        domains, tests = affected_tests(["core/lib/module_registry.py"], ROOT)
+        self.assertEqual(domains, ["module"])
+        self.assertIn("tests/modules/test_module_contracts.bats", tests)
+
     def test_unknown_implementation_change_falls_back_to_all_tests(self):
         domains, tests = affected_tests(["core/unmapped/new_boundary.py"], ROOT)
         self.assertEqual(domains, ["all"])
