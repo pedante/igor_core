@@ -489,8 +489,12 @@ class InputAndRenderingTests(unittest.TestCase):
                 return 10
 
         entries = [{"name": "stats", "syntax": "stats", "description": "show stats"}]
+        state = tui.EventState()
+        state.backend_ready = True
         with patch.object(tui, "_send") as send:
-            tui._palette_overlay(Screen(), 17, tui.InputBuffer(), commands=entries)
+            tui._palette_overlay(
+                Screen(), 17, tui.InputBuffer(), state=state, commands=entries
+            )
         send.assert_called_once_with(17, "stats")
 
     def test_approval_hint_includes_the_backend_classification(self):
