@@ -11,8 +11,9 @@ Full mirrors the canonical run_all.sh groups (legacy Bash, rendering, Core,
 module and integration BATS) and additionally discovers every test_*.py under
 tests. Each test file is a bounded subprocess. BATS uses its native per-test
 watchdog and continuation; a Python file timeout moves on to the next file.
-Limits default to 600s/file and 1200s for System configuration/administration
-vertical slices. BATS' native per-test watchdog is disabled by default because
+Limits default to 600s/file, 60s for interactive TUI Python files, and 1200s
+for System configuration/administration vertical slices. BATS' native per-test
+watchdog is disabled by default because
 released BATS 1.13.0 can hold a fast-failing runner open until the watchdog
 deadline; the harness' process-group timeout remains authoritative. A native
 BATS timeout can still be opted into explicitly. These are ceilings, not
@@ -50,6 +51,8 @@ from validation_results import compare_results, load_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELLCHECK_FLAGS = ["--severity=warning", "--exclude=SC2086,SC1090,SC1091,SC2034", "--shell=bash"]
+PREFLIGHT_KINDS = frozenset({"structure", "ruff", "shellcheck", "syntax", "bats-count"})
+INTERACTIVE_PYTEST_FILES = frozenset({"test_ai_tui.py", "test_ai_tui_step7.py"})
 
 
 def execute(command, root, log, seconds, env=None):
@@ -243,6 +246,10 @@ def run_group(group, root, output_dir, index, args):
         env["IGOR_VALIDATION_REPORT"] = str(report_path)
         env["PYTHONPATH"] = str(Path(__file__).parent) + os.pathsep + env.get("PYTHONPATH", "")
     seconds = args.group_timeout
+    if kind == "pytest" and any(
+        Path(name.split("::", 1)[0]).name in INTERACTIVE_PYTEST_FILES for name in files
+    ):
+        seconds = min(seconds, args.interactive_timeout)
     if any(Path(name.split("::", 1)[0]).name in ("test_system_configuration_workflow.py",
                                                    "test_system_admin_surface.bats") for name in files):
         seconds = args.slow_timeout
@@ -294,7 +301,11 @@ def main(argv=None):
                         help="reviewed JSON baseline; never written by this runner")
     parser.add_argument("--dry-run", action="store_true", help="print JSON plan; execute nothing")
     parser.add_argument("--group-timeout", type=positive_seconds, default=600)
+    parser.add_argument("--interactive-timeout", type=positive_seconds, default=60,
+                        help="timeout for interactive TUI Python files (default: 60s)")
     parser.add_argument("--slow-timeout", type=positive_seconds, default=1200)
+    parser.add_argument("--fail-fast-preflight", action="store_true",
+                        help="stop after the first structural/lint/syntax preflight failure")
     parser.add_argument("--bats-timeout", type=nonnegative_int, default=0,
                         help="opt-in BATS native per-test watchdog; 0 disables it (default)")
     parser.add_argument("--python", default=sys.executable)
@@ -326,6 +337,10 @@ def main(argv=None):
             result = run_group(group, ROOT, output_dir, index, args)
             summary["groups"].append(result)
             print(f"  {result['status']} {result['elapsed_seconds']}s", flush=True)
+            if (args.fail_fast_preflight and group["kind"] in PREFLIGHT_KINDS
+                    and result["status"] != "PASS"):
+                print("  stopping after preflight failure", flush=True)
+                break
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         summary["groups"].append({"id": "runner", "status": "ERROR", "detail": str(error),
                                   "elapsed_seconds": 0})
