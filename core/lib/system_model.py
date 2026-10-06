@@ -296,7 +296,7 @@ class SystemModel:
         object_kind = descriptor.get("object_kind")
         time = at or now()
 
-        if object_kind in {"mount", "filesystem", "user", "group"}:
+        if object_kind in {"mount", "filesystem", "user", "group", "interface"}:
             if not isinstance(result, dict) or set(result) != {"objects"}:
                 raise ModelError("invalid collection observer result")
             objects = result["objects"]
