@@ -29,7 +29,7 @@ teardown() { teardown_igor_tmpdir; }
 import json,sys
 row=json.loads(sys.argv[1])[0]
 assert row["capability"]["version"] == 2
-assert row["provider"]["source"]["module_version"] == "2.4.0"
+assert row["provider"]["source"]["module_version"] == "2.5.0"
 assert row["outcome"] == "success" and row["verification"]["status"] == "passed"
 PY
 }
