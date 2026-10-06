@@ -127,6 +127,11 @@ def _mac(value: Any) -> str:
     return text
 
 
+def _wireless_sysfs(name: str) -> bool:
+    root = Path("/sys/class/net", name)
+    return (root / "wireless").is_dir() or (root / "phy80211").is_dir()
+
+
 def normalize_interfaces(
     payload: Any,
     routes: list[dict[str, Any]] | None = None,
@@ -149,7 +154,7 @@ def normalize_interfaces(
         and row.get("device")
     }
     if wireless_checker is None:
-        wireless_checker = lambda name: Path("/sys/class/net", name, "wireless").is_dir()
+        wireless_checker = _wireless_sysfs
 
     rows: list[dict[str, Any]] = []
     seen_names: set[str] = set()
