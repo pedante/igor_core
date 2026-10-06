@@ -1516,7 +1516,8 @@ def _operator_candidate_overlay(
     selectors = entry.get("inputs", {}).get("selectors", {})
     selector = selectors.get(input_name) if isinstance(selectors, dict) else None
     path_selector = (
-        isinstance(selector, dict) and selector.get("resource_kind") == "path"
+        isinstance(selector, dict)
+        and selector.get("resource_kind") in {"path", "mutable_path"}
     )
     query, selected = "", 0
     requested_query: str | None = None
