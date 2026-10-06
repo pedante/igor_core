@@ -1,4 +1,5 @@
 name: S7 Stacked Validation
+# Temporary stacked S7 gate; remove after S7 closes.
 
 on:
   push:
