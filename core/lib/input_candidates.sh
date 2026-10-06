@@ -58,6 +58,7 @@ _igor_service_candidate_raw() {
     fi
     printf '%s\n' "$_rows" | "${IGOR_PYTHON:-python3}" -c '
 import json
+import re
 import sys
 
 rows = []
@@ -67,7 +68,8 @@ for raw in sys.stdin:
     if len(parts) < 3:
         continue
     unit, active, sub = parts[:3]
-    if not unit or unit in seen:
+    if (not unit or unit in seen or
+            re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:+-]*", unit) is None):
         continue
     seen.add(unit)
     rows.append({
