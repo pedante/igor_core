@@ -136,7 +136,9 @@ def normalize_interfaces(
         raise NetworkQueryError("ip address returned an invalid document")
     if len(payload) > MAX_INTERFACES:
         raise NetworkQueryError("interface inventory exceeds bounded row count")
-    routes = routes or []
+    routes = [] if routes is None else routes
+    if not isinstance(routes, list) or any(not isinstance(row, dict) for row in routes):
+        raise NetworkQueryError("normalized route rows are invalid")
     default_v4 = {
         row["device"] for row in routes
         if row.get("family") == "ipv4" and row.get("destination") == "default"
@@ -165,7 +167,10 @@ def normalize_interfaces(
 
         flags_raw = raw.get("flags", [])
         if not isinstance(flags_raw, list) or any(
-            not isinstance(flag, str) or len(flag) > 64 for flag in flags_raw
+            not isinstance(flag, str)
+            or len(flag) > 64
+            or any(ord(char) < 32 for char in flag)
+            for flag in flags_raw
         ):
             raise NetworkQueryError("interface flags are invalid")
         flags = set(flags_raw)
