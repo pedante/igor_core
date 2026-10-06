@@ -629,8 +629,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
     if kind == "observer" and "output_type" not in result:
         raise _error(f"{where} requires output_type")
     if kind == "observer" and "properties" in item:
-        if item.get("object_kind") != "host":
-            raise _error(f"{where}.object_kind must be host")
+        if item.get("object_kind") not in {"host", "mount", "filesystem"}:
+            raise _error(f"{where}.object_kind must be host, mount or filesystem")
         props = item["properties"]
         if not isinstance(props, list) or not props:
             raise _error(f"{where}.properties must be non-empty")
@@ -651,7 +651,7 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
             raise _error(f"{where}.freshness_seconds must be 1..86400")
         if not isinstance(item.get("privilege", "none"), str) or item.get("privilege", "none") not in {"none", "required"}:
             raise _error(f"{where}.privilege must be none or required")
-        result.update(object_kind="host", properties=props, freshness_seconds=ttl,
+        result.update(object_kind=item["object_kind"], properties=props, freshness_seconds=ttl,
                       privilege=item.get("privilege", "none"))
     elif kind == "observer" and set(item) & {"object_kind", "freshness_seconds", "privilege"}:
         raise _error(f"{where}.properties required with observer metadata")
