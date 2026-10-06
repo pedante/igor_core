@@ -899,6 +899,7 @@ _ml_index_contribution() {
     _IGOR_CONTRIBUTION_OWNER["$_key"]="$_owner"
     _IGOR_CONTRIBUTION_SOURCE["$_key"]="$_source"
     _IGOR_CONTRIBUTION_STATE["$_key"]="active"
+    unset '_IGOR_CONTRIBUTION_REASON['"$_key"']'
 }
 
 _ml_owner_active() {
