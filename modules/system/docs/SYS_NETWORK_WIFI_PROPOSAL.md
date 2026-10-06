@@ -1,6 +1,6 @@
 # System S7 — Network & Wi-Fi Discovery Proposal
 
-Status: **discovery/proposal only; no S7 runtime authority is accepted by this document.**
+Status: **D073 accepted; S7.1 Core network read substrate implemented on the feature branch pending the stacked validation gate. Q017–Q018 remain open.**
 
 Branch: feature/sys-network-wifi
 
@@ -144,6 +144,40 @@ Q011.
 an existing saved Wi-Fi profile. Interface up/down, disconnect, route/DNS
 changes, profile create/edit/delete and radio power changes stay deferred.
 
+## S7.1 implementation
+
+Core now provides `core/lib/network_query.py` and the thin
+`core/lib/network.sh` bridge.
+
+The normalized read boundary exposes:
+
+~~~text
+network_interfaces_query
+network_routes_query
+network_dns_query
+network_snapshot_query
+~~~
+
+Interface discovery uses one `ip -j -d address show` snapshot so link and
+address state are coherent within one Platform read. Route discovery reads
+bounded IPv4 and IPv6 tables separately and normalizes family, destination,
+gateway, device, preferred source, metric, table, protocol, scope and route
+type. Interface rows derive only current default-route ownership from those
+normalized route rows.
+
+Wireless detection in S7.1 is only a bounded sysfs property check
+(`/sys/class/net/<name>/wireless` or `phy80211`). It does not scan Wi-Fi,
+select a manager or activate a connection.
+
+Resolver discovery reads at most 64 KiB from the resolved target of
+`/etc/resolv.conf`, retains the visible symlink target/resolved path, parses
+configured nameserver/search directives, recognizes loopback resolver stubs,
+and deliberately makes no upstream-resolver claim.
+
+The iproute2 subprocess boundary has a bounded timeout and 1 MiB stdout limit;
+interface/address/route counts are bounded and malformed data fails closed.
+No S7.1 function contains a privileged or mutating command.
+
 ## Proposed S7 read model
 
 ### Interface collection
@@ -239,8 +273,8 @@ No frontend, module prose or AI call gains network authority.
 
 | Phase | Outcome | Rough focused effort |
 |---|---|---:|
-| S7.0 | Discovery, Q016–Q018, proof gate | current |
-| S7.1 | Core bounded link/address/route/DNS reads + unit tests | 1–2 days |
+| S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; Q017–Q018 open |
+| S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete pending stacked validation |
 | S7.2 | interface System Model collection observer + READ capabilities/selectors | 1–2 days |
 | S7.3 | NetworkManager Wi-Fi read provider + scan/profile candidates | 1–2 days |
 | S7.4 | Reviewed connect_known CHANGE adapter + verification | 1–2 days |
@@ -288,8 +322,8 @@ Failure proof:
 
 The authoritative questions live in docs/igor2/DECISIONS.md:
 
-- Q016 — accept interface:<name> as the first durable S7 network object while
-  routes and DNS remain bounded reads/derived facts rather than durable objects.
+- Q016 — **resolved by D073:** interface:<name> is the first durable S7 network
+  object; routes and DNS remain bounded reads/derived evidence.
 - Q017 — accept NetworkManager/nmcli as the first optional Wi-Fi provider and
   connect_known as the only initial Wi-Fi mutation.
 - Q018 — defer new/open/password-bearing profile creation until an explicit
