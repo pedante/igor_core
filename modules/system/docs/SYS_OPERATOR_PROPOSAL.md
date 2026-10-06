@@ -1,10 +1,10 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070 accepted; S1–S3 merged, S4 green on its feature branch, and S5
-implemented on the stacked storage-administration branch pending validation.**
-The discovery rationale is retained here as the design record.
+Status: **D070/D071 accepted; S1–S5 implemented, and S6 implemented on the
+stacked users/permissions/paths branch pending its PR validation gate.** The
+discovery rationale is retained here as the design record.
 
-Current S5 branch: `feature/sys-storage-admin`
+Current S6 branch: `feature/sys-users-permissions-paths`
 
 ## Purpose
 
@@ -176,7 +176,7 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
-## S1/S2/S3/S4/S5 implementation status
+## S1–S6 implementation status
 
 S1 provides the strict selector contract, Core candidate envelope/registry,
 Operator Surface projection and cache invalidation boundaries.
@@ -233,6 +233,31 @@ fallback.
 S5 does **not** edit `/etc/fstab`, format/repair filesystems, mount network
 shares, or introduce another persistence authority. Persistent boot mounts are
 a separate future capability/decision rather than an implicit side effect.
+
+
+S6 adds bounded local user/group and path semantics without creating another
+identity store. Local users use canonical `user:uid:<uid>` identities and
+local groups use `group:gid:<gid>`; discovery is bounded to local
+`/etc/passwd` and `/etc/group` data and never reads shadow/password material
+or enumerates remote identity providers.
+
+The read surface adds `system.users.list`, `system.users.status`,
+`system.groups.list`, `system.groups.status` and
+`system.permissions.path.status`. Path selection is a bounded one-directory
+Platform read under reviewed roots. The frontend may send the current typed
+prefix to Core so `/e` can resolve to `/etc/` and a later step can expose
+children; this prefix is ephemeral reference input to candidate resolution,
+not capability input or execution authority.
+
+Permission mutation is deliberately limited to
+`system.permissions.owner.set`, `system.permissions.group.set` and
+`system.permissions.mode.set`. Each changes exactly one existing real
+non-symlink path under reviewed application/data roots. Recursive changes,
+account creation/deletion, passwords, ACLs, setuid/setgid/sticky bits and
+arbitrary filesystem roots are outside S6. System declares the operation;
+Core resolves numeric UID/GID or explicit 0000..0777 mode, freezes exact
+`chown`/`chgrp`/`chmod` argv, repeats trusted preflight at the execution
+fence and verifies the resulting metadata.
 
 ## Proposed architecture
 
@@ -350,7 +375,7 @@ phases can overlap with existing Igor 2 completion work.
 | S3 — Namespace UX | **Merged:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete |
 | S4 — Storage read model | **Green on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete |
 | S5 — Storage administration | **Implemented on stacked feature branch:** runtime-only mount/unmount, frozen Core argv, trusted preflight, verification and explicit no-fstab semantics | complete pending validation |
-| S6 — Users, groups, permissions & paths | Bounded user/group/path selectors plus safe inspection/change capabilities | 3–6 days |
+| S6 — Users, groups, permissions & paths | **Implemented on stacked feature branch:** UID/GID identities, bounded path completion/inspection, exact single-path owner/group/mode changes | complete pending validation |
 | S7 — Network & Wi-Fi | Interface/route/DNS inspection; Wi-Fi only through a reviewed provider/secret-reference/verification contract | 5–10 days |
 | S8 — Broader System catalogue | Hardware, boot, time, security, richer logs/packages/health; read-first and selectively verified mutations | 5–15+ days iterative |
 | S9 — Cross-module reuse | Other modules consume canonical System capabilities/objects instead of duplicating host mechanics | 2–5 days |
