@@ -399,7 +399,7 @@ else:
     ]
 print(json.dumps({"status": "ok", "result": {
     "count": len(rows),
-    key: "\n".join(lines)[:8192],
+    key: "\n".join(lines)[:4096],
     "source": "core.accounts." + kind,
 }}, separators=(",", ":")))
 PY

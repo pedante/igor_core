@@ -102,7 +102,7 @@ PY
 }
 
 @test "S7.4 prepare freezes exact NetworkManager activation argv without execution" {
-    run igor_capability_prepare system.network.wifi.connect_known         "{"interface":"interface:wlan0","profile":"$PROFILE_UUID"}" system 1
+    run igor_capability_prepare system.network.wifi.connect_known         "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" system 1
     [ "$status" -eq 0 ]
     [[ "$output" == *'"precondition_status":"satisfied"'* ]]
     [[ "$output" == *'"privileged_argv":[["sudo","-n","--","nmcli","--wait","30","connection","up","uuid","123e4567-e89b-12d3-a456-426614174000","ifname","wlan0"]]'* ]]
@@ -111,7 +111,7 @@ PY
 }
 
 @test "S7.4 executes exact approved argv and verifies the selected profile on the interface" {
-    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "{"interface":"interface:wlan0","profile":"$PROFILE_UUID"}" system 1)"
+    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" system 1)"
     run _approve_and_execute "$proposal"
     [ "$status" -eq 0 ]
     [[ "$output" == *'"execution_status":"succeeded"'* ]]
@@ -123,7 +123,7 @@ PY
 }
 
 @test "execution fence rejects a saved profile that disappears after approval" {
-    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "{"interface":"interface:wlan0","profile":"$PROFILE_UUID"}" system 1)"
+    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" system 1)"
     export WIFI_HIDE_PROFILE=1
     run _approve_and_execute "$proposal"
     [ "$status" -ne 0 ]
@@ -132,7 +132,7 @@ PY
 }
 
 @test "zero-exit activation is unverified when the profile is not active afterward" {
-    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "{"interface":"interface:wlan0","profile":"$PROFILE_UUID"}" system 1)"
+    proposal="$(igor_capability_prepare system.network.wifi.connect_known         "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" system 1)"
     export WIFI_SKIP_ACTIVATION_STATE=1
     run _approve_and_execute "$proposal"
     [ "$status" -eq 0 ]
@@ -144,7 +144,7 @@ PY
 
 @test "preflight refuses a profile already active on another interface" {
     export WIFI_PROFILE_OTHER_INTERFACE=1
-    run igor_capability_prepare system.network.wifi.connect_known         "{"interface":"interface:wlan0","profile":"$PROFILE_UUID"}" system 1
+    run igor_capability_prepare system.network.wifi.connect_known         "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" system 1
     [ "$status" -ne 0 ]
     [ ! -s "$WIFI_SUDO_TRACE" ]
 }
