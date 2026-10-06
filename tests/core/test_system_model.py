@@ -95,6 +95,116 @@ class SystemModelTests(unittest.TestCase):
         self.assertEqual(unknown["availability"], "unknown")
         self.assertEqual(unknown["reason"], "missing")
 
+    def test_collection_observer_commits_and_replaces_storage_snapshot_atomically(self) -> None:
+        descriptor = {
+            "object_kind": "mount",
+            "freshness_seconds": 60,
+            "properties": [
+                {"name": "mount.target", "value_type": "string"},
+                {"name": "mount.total_bytes", "value_type": "integer", "minimum": 0},
+            ],
+        }
+        first = {"status": "ok", "result": {"objects": [
+            {"object_id": "mount:/", "facts": [
+                {"property": "mount.target", "value": "/", "evidence": ["/proc/self/mountinfo"]},
+                {"property": "mount.total_bytes", "value": 100, "evidence": ["statvfs:/"]},
+            ], "unavailable": []},
+            {"object_id": "mount:/srv", "facts": [
+                {"property": "mount.target", "value": "/srv", "evidence": ["/proc/self/mountinfo"]},
+                {"property": "mount.total_bytes", "value": 200, "evidence": ["statvfs:/srv"]},
+            ], "unavailable": []},
+        ]}}
+        self.model.observe(descriptor, "system", "storage.mounts", first, at=self.time)
+        self.assertEqual(
+            self.model.read("mount:/srv", "mount.total_bytes", "observed", at=self.time)["value"],
+            200,
+        )
+
+        second = {"status": "ok", "result": {"objects": [
+            {"object_id": "mount:/", "facts": [
+                {"property": "mount.target", "value": "/", "evidence": ["/proc/self/mountinfo"]},
+                {"property": "mount.total_bytes", "value": 120, "evidence": ["statvfs:/"]},
+            ], "unavailable": []},
+        ]}}
+        self.model.observe(descriptor, "system", "storage.mounts", second, at=self.time)
+
+        self.assertEqual(
+            self.model.read("mount:/", "mount.total_bytes", "observed", at=self.time)["value"],
+            120,
+        )
+        self.assertEqual(
+            self.model.read("mount:/srv", "mount.total_bytes", "observed", at=self.time)["availability"],
+            "not_observed",
+        )
+
+    def test_collection_observer_failure_stales_prior_facts_without_phantom_objects(self) -> None:
+        descriptor = {
+            "object_kind": "filesystem",
+            "freshness_seconds": 60,
+            "properties": [
+                {"name": "filesystem.device", "value_type": "string"},
+                {"name": "filesystem.mounted", "value_type": "boolean"},
+            ],
+        }
+        self.model.observer_failure(
+            descriptor, "system", "storage.filesystems", "unavailable", at=self.time
+        )
+        self.assertEqual(self.model.facts, {})
+        self.assertEqual(self.model.failures, {})
+
+        envelope = {"status": "ok", "result": {"objects": [{
+            "object_id": "filesystem:/dev/sdb1",
+            "facts": [
+                {"property": "filesystem.device", "value": "/dev/sdb1",
+                 "evidence": ["lsblk:/dev/sdb1"]},
+                {"property": "filesystem.mounted", "value": False,
+                 "evidence": ["lsblk:/dev/sdb1"]},
+            ],
+            "unavailable": [],
+        }]}}
+        self.model.observe(
+            descriptor, "system", "storage.filesystems", envelope, at=self.time
+        )
+        self.model.observer_failure(
+            descriptor, "system", "storage.filesystems", "timeout", at=self.time
+        )
+        stale = self.model.read(
+            "filesystem:/dev/sdb1", "filesystem.device", "observed", at=self.time
+        )
+        self.assertEqual((stale["availability"], stale["value"]), ("stale", "/dev/sdb1"))
+
+    def test_collection_observer_rejects_wrong_kind_and_partial_objects_atomically(self) -> None:
+        descriptor = {
+            "object_kind": "mount",
+            "freshness_seconds": 60,
+            "properties": [
+                {"name": "mount.target", "value_type": "string"},
+                {"name": "mount.read_only", "value_type": "boolean"},
+            ],
+        }
+        wrong_kind = {"status": "ok", "result": {"objects": [{
+            "object_id": "filesystem:/dev/sda1",
+            "facts": [
+                {"property": "mount.target", "value": "/", "evidence": []},
+                {"property": "mount.read_only", "value": False, "evidence": []},
+            ],
+            "unavailable": [],
+        }]}}
+        with self.assertRaises(ModelError):
+            self.model.observe(descriptor, "system", "storage.mounts", wrong_kind)
+        self.assertEqual(self.model.facts, {})
+
+        incomplete = {"status": "ok", "result": {"objects": [{
+            "object_id": "mount:/",
+            "facts": [
+                {"property": "mount.target", "value": "/", "evidence": []},
+            ],
+            "unavailable": [],
+        }]}}
+        with self.assertRaises(ModelError):
+            self.model.observe(descriptor, "system", "storage.mounts", incomplete)
+        self.assertEqual(self.model.facts, {})
+
     def test_invalid_source_snapshot_is_atomic(self) -> None:
         snapshot = {"facts": [{"object_id": "host:local", "property": "memory.available_bytes",
                               "state_class": "desired", "value": "wrong", "value_type": "integer",
