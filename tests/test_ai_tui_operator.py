@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Focused coverage for the contract-driven ':' operator explorer."""
 
 import os
