@@ -13,8 +13,9 @@ import re
 import subprocess
 import sys
 import urllib.parse
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 MAX_STORAGE_OBJECTS = 128
 MAX_TEXT = 512
