@@ -486,6 +486,140 @@
           "lsblk"
         ]
       }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.mount",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Mount one discovered local filesystem for the running system only. This does not create or modify an /etc/fstab entry.",
+      "inputs": {
+        "properties": {
+          "filesystem": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mountable_filesystem"
+            }
+          },
+          "target": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512
+          },
+          "persistence": {
+            "type": "enum",
+            "enum": [
+              "runtime_only"
+            ]
+          }
+        },
+        "required": [
+          "filesystem"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.storage.mount.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.storage.mount.present",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "A successful runtime mount can normally be reversed with system.storage.unmount. Any created empty mountpoint directory may remain. /etc/fstab is never modified."
+      },
+      "affects": [
+        {
+          "object": "filesystem",
+          "input": "filesystem"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "lsblk",
+          "mount",
+          "mkdir"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.unmount",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Unmount one eligible local runtime mount without force or lazy semantics. This does not remove or modify an /etc/fstab entry.",
+      "inputs": {
+        "properties": {
+          "mount": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "unmountable_mount"
+            }
+          },
+          "persistence": {
+            "type": "enum",
+            "enum": [
+              "runtime_only"
+            ]
+          }
+        },
+        "required": [
+          "mount"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.storage.unmount.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.storage.mount.absent",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Remounting may require the original filesystem and mount options. Persistent configuration is intentionally unchanged."
+      },
+      "affects": [
+        {
+          "object": "mount",
+          "input": "mount"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "umount"
+        ]
+      }
     }
   ]
 }
