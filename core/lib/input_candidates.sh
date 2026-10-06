@@ -111,18 +111,17 @@ igor_input_candidates_resolve() {
         service)
             _raw="$(_igor_service_candidate_raw)" || return 1
             _result="$(
-                printf '%s' "$_raw" |
-                    "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source                         "$_selector" "$_input_type" platform systemd.services
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
             )" || return 1
             ;;
         *)
             _result="$(
-                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-none                     "$_selector" "$_input_type"
+                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-none "$_selector" "$_input_type"
             )" || return 1
             ;;
     esac
 
-    "${IGOR_PYTHON:-python3}" -         "$_result" "$_id" "$_selected_provider" "$_input" <<'PY'
+    "${IGOR_PYTHON:-python3}" - "$_result" "$_id" "$_selected_provider" "$_input" <<'PY'
 import json
 import sys
 
