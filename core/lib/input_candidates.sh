@@ -101,8 +101,8 @@ _igor_storage_platform_candidate_raw() {
         source "$(_igor_input_candidate_root)/core/lib/storage.sh"
     fi
     case "$_kind" in
-        mount) _rows="$(storage_mounts_query)" || _rows="" ;;
-        filesystem) _rows="$(storage_filesystems_query)" || _rows="" ;;
+        mount|unmountable_mount) _rows="$(storage_mounts_query)" || _rows="" ;;
+        filesystem|mountable_filesystem) _rows="$(storage_filesystems_query)" || _rows="" ;;
         *) return 2 ;;
     esac
     [ -n "$_rows" ] || {
@@ -115,9 +115,24 @@ import os
 
 kind = os.environ["STORAGE_KIND"]
 rows = json.loads(os.environ["STORAGE_ROWS"])
+base_kind = "mount" if kind in {"mount", "unmountable_mount"} else "filesystem"
 candidates = []
 for row in rows[:128]:
-    if kind == "mount":
+    if kind == "mountable_filesystem":
+        if row.get("mounted") is not False:
+            continue
+        if not str(row.get("device", "")).startswith("/dev/"):
+            continue
+        if row.get("filesystem_type") in {
+            "swap", "crypto_LUKS", "LVM2_member", "linux_raid_member", "zfs_member"
+        }:
+            continue
+    if kind == "unmountable_mount":
+        if not str(row.get("target", "")).startswith(("/mnt/", "/media/", "/srv/")):
+            continue
+        if not str(row.get("source", "")).startswith("/dev/"):
+            continue
+    if base_kind == "mount":
         detail = "{} · {}% used · {}".format(
             row["filesystem_type"], row["use_percent"], row["source"]
         )
@@ -156,12 +171,13 @@ import json
 import os
 
 kind = os.environ["STORAGE_KIND"]
+base_kind = "mount" if kind in {"mount", "unmountable_mount"} else "filesystem"
 snapshot = json.loads(os.environ["STORAGE_MODEL"])
-observer = {"mount": "storage.mounts", "filesystem": "storage.filesystems"}[kind]
+observer = {"mount": "storage.mounts", "filesystem": "storage.filesystems"}[base_kind]
 facts = [
     fact for fact in snapshot.get("facts", [])
     if fact.get("observer") == observer
-    and str(fact.get("object_id", "")).startswith(kind + ":")
+    and str(fact.get("object_id", "")).startswith(base_kind + ":")
 ]
 attempt = snapshot.get("observers", {}).get(observer)
 if isinstance(attempt, dict) and attempt.get("status") not in {"ok", None}:
@@ -202,12 +218,16 @@ for fact in facts:
     grouped.setdefault(fact["object_id"], {})[fact["property"]] = fact
 candidates = []
 for object_id, props in sorted(grouped.items()):
-    if kind == "mount":
+    if base_kind == "mount":
         target = props.get("mount.target", {}).get("value")
         fs_type = props.get("mount.filesystem_type", {}).get("value")
         used = props.get("mount.use_percent", {}).get("value")
         source = props.get("mount.source", {}).get("value")
         if not all(isinstance(value, str) for value in (target, fs_type, source)) or type(used) is not int:
+            continue
+        if kind == "unmountable_mount" and (
+                not target.startswith(("/mnt/", "/media/", "/srv/"))
+                or not source.startswith("/dev/")):
             continue
         label = target
         detail = f"{fs_type} · {used}% used · {source}"
@@ -220,6 +240,11 @@ for object_id, props in sorted(grouped.items()):
         if (not isinstance(device, str) or not isinstance(fs_type, str) or
                 type(size) is not int or type(mounted) is not bool or
                 not isinstance(mountpoint, str)):
+            continue
+        if kind == "mountable_filesystem" and (
+                mounted or not device.startswith("/dev/")
+                or fs_type in {"swap", "crypto_LUKS", "LVM2_member",
+                               "linux_raid_member", "zfs_member"}):
             continue
         label = device
         detail = f"{fs_type} · {size} bytes · " + (
@@ -270,10 +295,10 @@ igor_input_candidates_resolve() {
                 printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
             )" || return 1
             ;;
-        mount|filesystem)
+        mount|filesystem|mountable_filesystem|unmountable_mount)
             local _model_result _state _source_id
             _raw="$(_igor_storage_model_candidate_raw "$_resource_kind")" || return 1
-            _source_id="system_model.storage.${_resource_kind}s"
+            _source_id="system_model.storage.${_resource_kind}"
             _model_result="$(
                 printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model "$_source_id"
             )" || return 1
@@ -283,7 +308,7 @@ igor_input_candidates_resolve() {
             else
                 _raw="$(_igor_storage_platform_candidate_raw "$_resource_kind")" || return 1
                 _result="$(
-                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}s"
+                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}"
                 )" || return 1
             fi
             ;;
