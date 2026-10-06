@@ -890,7 +890,7 @@ _ai_runtime_private_dir() {
             fi
         done
         if [ "$phase" = before ]; then
-            mkdir -p -m 700 -- "$rt" 2>/dev/null || {
+            (umask 077; mkdir -p -- "$rt") 2>/dev/null || {
                 _AI_RUNTIME_DETAIL="Could not create private runtime directory; parent is unavailable or not writable."
                 return 1
             }
@@ -1309,10 +1309,20 @@ _ai_replay() {
     local _id="$1"
     local _sess_dir="${IGOR_DIR}/data/sessions"
     # Look for matching .log file
-    local _f
-    _f=$(ls "${_sess_dir}/${_id}".log "${_sess_dir}/session_"*".log" 2>/dev/null | grep "${_id}" | head -1)
-    if [ -z "$_f" ] || [ ! -f "$_f" ]; then
-        _f=$(ls "${_sess_dir}"/*.log 2>/dev/null | xargs grep -l "$_id" 2>/dev/null | head -1)
+    local _f="" _candidate
+    for _candidate in "${_sess_dir}"/*"${_id}"*.log; do
+        [ -f "$_candidate" ] || continue
+        _f="$_candidate"
+        break
+    done
+    if [ -z "$_f" ]; then
+        for _candidate in "${_sess_dir}"/*.log; do
+            [ -f "$_candidate" ] || continue
+            if grep -Fq -- "$_id" "$_candidate" 2>/dev/null; then
+                _f="$_candidate"
+                break
+            fi
+        done
     fi
     if [ -z "$_f" ] || [ ! -f "$_f" ]; then
         echo -e "  ${YEL}Session log for '${_id}' not found.${NC}"; return
