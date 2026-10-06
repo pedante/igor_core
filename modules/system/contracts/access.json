@@ -85,7 +85,7 @@
           },
           "users": {
             "type": "string",
-            "maxLength": 8192
+            "maxLength": 4096
           },
           "source": {
             "type": "string",
@@ -225,7 +225,7 @@
           },
           "groups": {
             "type": "string",
-            "maxLength": 8192
+            "maxLength": 4096
           },
           "source": {
             "type": "string",
