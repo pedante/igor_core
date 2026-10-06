@@ -4,11 +4,18 @@
 # capability or grant approval/privilege. The chosen value is still submitted
 # through the canonical capability dispatcher.
 
+_igor_input_candidate_root() {
+    local _root="${_IGOR_LOADER_DIR:-${IGOR_DIR:-}}"
+    [ -n "$_root" ] || return 2
+    printf '%s\n' "$_root"
+}
+
 _igor_input_candidate_spec() {
-    local _id="${1:-}" _provider="${2:-}" _input="${3:-}" _inspection
+    local _id="${1:-}" _provider="${2:-}" _input="${3:-}" _inspection _root
     [ "$#" -eq 3 ] && [ -n "$_id" ] && [ -n "$_input" ] || return 2
     declare -f igor_capability_inspect >/dev/null 2>&1 || return 2
     _inspection="$(igor_capability_inspect "$_id" "$_provider")" || return 2
+    _root="$(_igor_input_candidate_root)" || return 2
     printf '%s' "$_inspection" | "${IGOR_PYTHON:-python3}" -c '
 import json
 import sys
@@ -43,14 +50,14 @@ print(provider)
 print(spec.get("type", ""))
 print(json.dumps(selector, sort_keys=True, separators=(",", ":")))
 print(selector["resource_kind"])
-' "$_input" "${IGOR_DIR}/core/lib"
+' "$_input" "$_root/core/lib"
 }
 
 _igor_service_candidate_raw() {
     local _rows
     if ! declare -f svc_list_query >/dev/null 2>&1; then
         # shellcheck source=core/lib/pkg.sh
-        source "${IGOR_DIR}/core/lib/pkg.sh"
+        source "$(_igor_input_candidate_root)/core/lib/pkg.sh"
     fi
     if ! _rows="$(svc_list_query)"; then
         printf '%s' '{"state":"unavailable","candidates":[],"reason":"service enumeration unavailable"}'
@@ -91,7 +98,7 @@ _igor_storage_platform_candidate_raw() {
     local _kind="${1:-}" _rows
     if ! declare -f storage_mounts_query >/dev/null 2>&1; then
         # shellcheck source=core/lib/storage.sh
-        source "${IGOR_DIR}/core/lib/storage.sh"
+        source "$(_igor_input_candidate_root)/core/lib/storage.sh"
     fi
     case "$_kind" in
         mount) _rows="$(storage_mounts_query)" || _rows="" ;;
@@ -260,7 +267,7 @@ igor_input_candidates_resolve() {
         service)
             _raw="$(_igor_service_candidate_raw)" || return 1
             _result="$(
-                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
             )" || return 1
             ;;
         mount|filesystem)
@@ -268,7 +275,7 @@ igor_input_candidates_resolve() {
             _raw="$(_igor_storage_model_candidate_raw "$_resource_kind")" || return 1
             _source_id="system_model.storage.${_resource_kind}s"
             _model_result="$(
-                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model "$_source_id"
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model "$_source_id"
             )" || return 1
             _state="$(printf '%s' "$_model_result" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || return 1
             if [ "$_state" = ready ] || [ "$_state" = empty ]; then
@@ -276,13 +283,13 @@ igor_input_candidates_resolve() {
             else
                 _raw="$(_igor_storage_platform_candidate_raw "$_resource_kind")" || return 1
                 _result="$(
-                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}s"
+                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}s"
                 )" || return 1
             fi
             ;;
         *)
             _result="$(
-                "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-none "$_selector" "$_input_type"
+                "${IGOR_PYTHON:-python3}" "$(_igor_input_candidate_root)/core/lib/input_candidates.py" resolve-none "$_selector" "$_input_type"
             )" || return 1
             ;;
     esac
