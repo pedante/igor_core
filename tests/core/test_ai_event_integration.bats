@@ -55,9 +55,14 @@ import json
 import sys
 
 events = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8")]
-assert [event["event_type"] for event in events] == ["mode_changed", "mode_changed"]
-assert [event["mode"] for event in events] == ["assist", "executive"]
-assert [event["status"] for event in events] == ["assist", "executive"]
+assert [event["event_type"] for event in events] == [
+    "mode_changed", "settings_snapshot", "mode_changed", "settings_snapshot",
+]
+mode_events = [event for event in events if event["event_type"] == "mode_changed"]
+settings = [event for event in events if event["event_type"] == "settings_snapshot"]
+assert [event["mode"] for event in mode_events] == ["assist", "executive"]
+assert [event["status"] for event in mode_events] == ["assist", "executive"]
+assert [event["settings"]["mode"] for event in settings] == ["assist", "executive"]
 PY
     [ "$status" -eq 0 ]
 }
