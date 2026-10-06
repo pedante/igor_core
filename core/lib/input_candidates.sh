@@ -87,6 +87,147 @@ print(json.dumps({
 '
 }
 
+_igor_storage_platform_candidate_raw() {
+    local _kind="${1:-}" _rows
+    if ! declare -f storage_mounts_query >/dev/null 2>&1; then
+        # shellcheck source=core/lib/storage.sh
+        source "${IGOR_DIR}/core/lib/storage.sh"
+    fi
+    case "$_kind" in
+        mount) _rows="$(storage_mounts_query)" || _rows="" ;;
+        filesystem) _rows="$(storage_filesystems_query)" || _rows="" ;;
+        *) return 2 ;;
+    esac
+    [ -n "$_rows" ] || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"storage discovery unavailable"}'
+        return 0
+    }
+    STORAGE_ROWS="$_rows" STORAGE_KIND="$_kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["STORAGE_KIND"]
+rows = json.loads(os.environ["STORAGE_ROWS"])
+candidates = []
+for row in rows[:128]:
+    if kind == "mount":
+        detail = "{} · {}% used · {}".format(
+            row["filesystem_type"], row["use_percent"], row["source"]
+        )
+        label = row["target"]
+    else:
+        mount = "mounted at " + row["mountpoint"] if row["mounted"] else "unmounted"
+        detail = "{} · {} bytes · {}".format(
+            row["filesystem_type"], row["size_bytes"], mount
+        )
+        label = row["device"]
+    candidates.append({
+        "value": row["object_id"],
+        "label": label,
+        "detail": detail,
+        "object_id": row["object_id"],
+    })
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates,
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
+_igor_storage_model_candidate_raw() {
+    local _kind="${1:-}" _snapshot
+    declare -f igor_model_list >/dev/null 2>&1 || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model unavailable","freshness":"stale"}'
+        return 0
+    }
+    _snapshot="$(igor_model_list 2>/dev/null)" || {
+        printf '%s' '{"state":"unavailable","candidates":[],"reason":"System Model read failed","freshness":"stale"}'
+        return 0
+    }
+    STORAGE_MODEL="$_snapshot" STORAGE_KIND="$_kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["STORAGE_KIND"]
+snapshot = json.loads(os.environ["STORAGE_MODEL"])
+observer = {"mount": "storage.mounts", "filesystem": "storage.filesystems"}[kind]
+facts = [
+    fact for fact in snapshot.get("facts", [])
+    if fact.get("observer") == observer
+    and str(fact.get("object_id", "")).startswith(kind + ":")
+]
+attempt = snapshot.get("observers", {}).get(observer)
+if not facts:
+    if isinstance(attempt, dict) and attempt.get("status") == "ok":
+        print(json.dumps({
+            "state": "empty",
+            "candidates": [],
+            "freshness": "fresh",
+            "recorded_at": attempt.get("at"),
+        }, sort_keys=True, separators=(",", ":")))
+    else:
+        print(json.dumps({
+            "state": "unavailable",
+            "candidates": [],
+            "reason": "fresh storage observation unavailable",
+            "freshness": "stale",
+        }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+if any(fact.get("availability") != "known" for fact in facts):
+    print(json.dumps({
+        "state": "unavailable",
+        "candidates": [],
+        "reason": "storage observation is stale",
+        "freshness": "stale",
+    }, sort_keys=True, separators=(",", ":")))
+    raise SystemExit(0)
+
+grouped = {}
+for fact in facts:
+    grouped.setdefault(fact["object_id"], {})[fact["property"]] = fact
+candidates = []
+for object_id, props in sorted(grouped.items()):
+    if kind == "mount":
+        target = props.get("mount.target", {}).get("value")
+        fs_type = props.get("mount.filesystem_type", {}).get("value")
+        used = props.get("mount.use_percent", {}).get("value")
+        source = props.get("mount.source", {}).get("value")
+        if not all(isinstance(value, str) for value in (target, fs_type, source)) or type(used) is not int:
+            continue
+        label = target
+        detail = f"{fs_type} · {used}% used · {source}"
+    else:
+        device = props.get("filesystem.device", {}).get("value")
+        fs_type = props.get("filesystem.type", {}).get("value")
+        size = props.get("filesystem.size_bytes", {}).get("value")
+        mounted = props.get("filesystem.mounted", {}).get("value")
+        mountpoint = props.get("filesystem.mountpoint", {}).get("value")
+        if (not isinstance(device, str) or not isinstance(fs_type, str) or
+                type(size) is not int or type(mounted) is not bool or
+                not isinstance(mountpoint, str)):
+            continue
+        label = device
+        detail = f"{fs_type} · {size} bytes · " + (
+            f"mounted at {mountpoint}" if mounted else "unmounted"
+        )
+    candidates.append({
+        "value": object_id,
+        "label": label,
+        "detail": detail,
+        "object_id": object_id,
+    })
+times = [fact.get("recorded_at") for fact in facts if isinstance(fact.get("recorded_at"), str)]
+expires = [fact.get("expires_at") for fact in facts if isinstance(fact.get("expires_at"), str)]
+print(json.dumps({
+    "state": "ready" if candidates else "empty",
+    "candidates": candidates[:128],
+    "freshness": "fresh",
+    **({"recorded_at": max(times)} if times else {}),
+    **({"expires_at": min(expires)} if expires else {}),
+}, sort_keys=True, separators=(",", ":")))
+PY
+}
+
 igor_input_candidates_resolve() {
     local _target="${1:-}" _input="${2:-}" _id _provider="" _spec_text _raw _result
     local _selected_provider _input_type _selector _resource_kind
@@ -113,6 +254,23 @@ igor_input_candidates_resolve() {
             _result="$(
                 printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform systemd.services
             )" || return 1
+            ;;
+        mount|filesystem)
+            local _model_result _state _source_id
+            _raw="$(_igor_storage_model_candidate_raw "$_resource_kind")" || return 1
+            _source_id="system_model.storage.${_resource_kind}s"
+            _model_result="$(
+                printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" system_model "$_source_id"
+            )" || return 1
+            _state="$(printf '%s' "$_model_result" | "${IGOR_PYTHON:-python3}" -c 'import json,sys; print(json.load(sys.stdin)["state"])')" || return 1
+            if [ "$_state" = ready ] || [ "$_state" = empty ]; then
+                _result="$_model_result"
+            else
+                _raw="$(_igor_storage_platform_candidate_raw "$_resource_kind")" || return 1
+                _result="$(
+                    printf '%s' "$_raw" | "${IGOR_PYTHON:-python3}" "${IGOR_DIR}/core/lib/input_candidates.py" resolve-source "$_selector" "$_input_type" platform "linux.${_resource_kind}s"
+                )" || return 1
+            fi
             ;;
         *)
             _result="$(
