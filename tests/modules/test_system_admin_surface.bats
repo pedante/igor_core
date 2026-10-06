@@ -477,9 +477,6 @@ EOF
     export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_CAPABILITY_APPROVAL_STATUS
     run igor_capability_execute "$proposal"
     [ "$status" -eq 0 ]
-    if [[ "$output" != *'"verification_status":"passed"'* ]]; then
-        printf '# service enable execute: %s\n' "$output" >&3
-    fi
     [[ "$output" == *'"verification_status":"passed"'* ]]
     [[ "$output" == *'"check_id":"system.service.enabled"'* ]]
     [ -e "$ADMIN_DOCKER_ENABLED" ]
@@ -564,9 +561,6 @@ PY
     run igor_capability_execute "$proposal"
     [ "$status" -eq 0 ]
     [[ "$output" == *'"execution_status":"succeeded"'* ]]
-    if [[ "$output" != *'"verification_status":"passed"'* ]]; then
-        printf '# package upgrade execute: %s\n' "$output" >&3
-    fi
     [[ "$output" == *'"verification_status":"passed"'* ]]
     [[ "$output" == *'"remaining_updates":0'* ]]
     [ "$(sed -n '1p' "$ADMIN_PRIVILEGE_TRACE")" = 'sudo -n -- apt-get update' ]
