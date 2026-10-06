@@ -502,6 +502,173 @@ PY
 }
 
 
+# S7.2 provider-neutral network read model. Core owns bounded Linux network
+# reads; System owns host-domain observation and presentation. Wi-Fi provider
+# behavior and every network mutation remain outside this block.
+_mod_sys_network_read() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/network.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/network.sh"
+    case "$kind" in
+        interfaces) network_interfaces_query ;;
+        routes) network_routes_query ;;
+        dns) network_dns_query ;;
+        snapshot) network_snapshot_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_network_surface() {
+    local action="${1:-}" object_id="${2:-}" package
+    package="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    if [ -n "$object_id" ]; then
+        "${IGOR_PYTHON:-python3}" "$package/lib/network_surface.py" "$action" "$object_id"
+    else
+        "${IGOR_PYTHON:-python3}" "$package/lib/network_surface.py" "$action"
+    fi
+}
+
+system__observe_interfaces() {
+    local input rows result
+    input="$(_mod_sys_admin_request network.interfaces)" || {
+        _mod_sys_admin_error invalid_request "expected network.interfaces v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "network.interfaces takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface observe-interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_summary() {
+    local input snapshot result
+    input="$(_mod_sys_admin_request system.network.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.summary takes no inputs"
+        return 0
+    }
+    snapshot="$(_mod_sys_network_read snapshot)" || {
+        _mod_sys_admin_error unavailable "network snapshot discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$snapshot" | _mod_sys_network_surface summary)" || {
+        _mod_sys_admin_error unavailable "network summary normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_interfaces_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.interfaces.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.interfaces.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.interfaces.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface interfaces-list)" || {
+        _mod_sys_admin_error unavailable "network interface presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_interface_status() {
+    local input object_id rows result
+    input="$(_mod_sys_admin_request system.network.interface.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.interface.status v2 request"
+        return 0
+    }
+    object_id="$(NETWORK_INPUT="$input" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+value = json.loads(os.environ["NETWORK_INPUT"]).get("interface")
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$object_id" in
+        interface:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "interface identity is required"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface interface-status "$object_id")" || {
+        _mod_sys_admin_error unavailable "interface object is not currently present"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_routes_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.routes.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.routes.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.routes.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read routes)" || {
+        _mod_sys_admin_error unavailable "network route discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface routes-list)" || {
+        _mod_sys_admin_error unavailable "network route presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_dns_status() {
+    local input row result
+    input="$(_mod_sys_admin_request system.network.dns.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.dns.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.dns.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_network_read dns)" || {
+        _mod_sys_admin_error unavailable "resolver configuration discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$row" | _mod_sys_network_surface dns-status)" || {
+        _mod_sys_admin_error unavailable "resolver presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+
 # Experimental generic administration capabilities. Platform-specific package
 # and service mechanics stay in Core; this module gives them host-domain meaning.
 _mod_sys_admin_platform() {
