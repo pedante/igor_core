@@ -65,7 +65,7 @@ def _object_matches_kind(object_id: Any, object_kind: Any) -> bool:
         return re.fullmatch(r"group:gid:[0-9]+", object_id) is not None
     if object_kind == "interface":
         return re.fullmatch(
-            r"interface:[A-Za-z0-9_.+@-]+(?:%[0-9A-F]{2}[A-Za-z0-9_.+@%-]*)*",
+            r"interface:(?:[A-Za-z0-9_.+@-]|%[0-9A-F]{2})+",
             object_id,
         ) is not None
     return False
