@@ -120,7 +120,7 @@ igor_observer_refresh() {
             [ -z "$_target" ] && _target=host:local
             [ "$_target" = host:local ] || return 1
             ;;
-        mount|filesystem)
+        mount|filesystem|user|group)
             # Collection observers own a bounded snapshot, not one caller-picked
             # object. A target argument would falsely imply per-object probing.
             [ -z "$_target" ] || return 1
