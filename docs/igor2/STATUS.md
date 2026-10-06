@@ -3141,13 +3141,21 @@ recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
 
-S7.1 is implemented on `feature/sys-network-wifi` under D073 pending
-the stacked validation gate. Core now owns bounded read-only iproute2
+S7.1–S7.2 are implemented on `feature/sys-network-wifi` under D073
+pending the stacked validation gate. Core owns bounded read-only iproute2
 link/address/route normalization and bounded resolver inspection through
-`core/lib/network_query.py` plus `core/lib/network.sh`. The existing
-`interface:<name>` Host Intelligence identity is accepted for S7.2; routes
-and DNS remain current reads/derived evidence rather than durable objects.
+`core/lib/network_query.py` plus `core/lib/network.sh`.
 
-S7.1 adds no System module contribution, package-version bump, Wi-Fi provider,
-secret consumer or mutation authority. Q017–Q018 remain open for the
-NetworkManager saved-profile and new-profile/credential boundaries.
+System 2.8.0 adds the `network.interfaces` collection observer and READ-only
+`system.network.summary`, `interfaces.list`, `interface.status`,
+`routes.list` and `dns.status` capabilities. The existing
+`interface:<name>` Host Intelligence identity is canonical. The interface
+selector prefers fresh System Model facts and falls back to the bounded Core
+read. Routes and DNS remain current reads/derived evidence rather than durable
+objects.
+
+The `ip` requirement is contribution-local: its absence does not deactivate
+System and does not block resolver inspection. S7.2 adds no Wi-Fi provider,
+secret consumer, connectivity probe or mutation authority. Q017–Q018 remain
+open for the NetworkManager saved-profile and new-profile/credential
+boundaries.
