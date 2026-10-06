@@ -213,7 +213,7 @@ elif value is not None:
 
 igor_capability_prepare() {
     local _id="${1:-}" _inputs="${2:-}" _provider="${3:-}" _version="${4:-}" _records _resolution_ids _proposal _spec='[]' _unit _precondition_status=satisfied _source_version=""
-    local _family _argv _update_argv _upgrade_argv _package _resolved_package _op
+    local _family _argv _update_argv _upgrade_argv _package _resolved_package _op _plan
     local _base_privilege _base_version _base_owner _base_inputs _field_text
     local -a _base_fields=()
     [ -n "$_inputs" ] || _inputs='{}'
@@ -270,6 +270,21 @@ print(json.dumps(["sudo", "-n", "--", "systemctl", sys.argv[1], sys.argv[2]],
                  separators=(",", ":")))
 PY
 )" || return 1
+                ;;
+            system.storage.mount|system.storage.unmount)
+                if ! declare -f storage_admin_plan_mount >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/storage.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+                fi
+                case "$_id" in
+                    system.storage.mount)
+                        _plan="$(storage_admin_plan_mount "$_base_inputs")" || return 1
+                        ;;
+                    system.storage.unmount)
+                        _plan="$(storage_admin_plan_unmount "$_base_inputs")" || return 1
+                        ;;
+                esac
+                _spec="$(_igor_capability_field "$_plan" commands)" || return 1
                 ;;
             system.package.install)
                 _package="$(_igor_capability_field "$_base_inputs" package)" || return 1
@@ -439,6 +454,23 @@ except ValueError:
     raise SystemExit(1)
 PY
                 ;;
+            trusted_validator)
+                _inputs="$_known_inputs"
+                [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                if ! declare -f storage_admin_ready_mount >/dev/null 2>&1; then
+                    # shellcheck source=core/lib/storage.sh
+                    source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+                fi
+                case "$_arg" in
+                    system.storage.mount.ready)
+                        storage_admin_ready_mount "$_inputs" >/dev/null || return 1
+                        ;;
+                    system.storage.unmount.ready)
+                        storage_admin_ready_unmount "$_inputs" >/dev/null || return 1
+                        ;;
+                    *) return 1 ;;
+                esac
+                ;;
             capability_available)
                 _state="$(igor_capability_inspect "$_arg")" || return 1
                 [ "$(_igor_capability_field "$_state" resolution)" = resolved ] || return 1 ;;
@@ -463,7 +495,12 @@ PY
 import json, sys
 p = json.load(sys.stdin)
 for x in p["preconditions"]:
-    arg = x.get("capability_id") if x.get("kind") == "capability_available" else x.get("input", "")
+    if x.get("kind") == "capability_available":
+        arg = x.get("capability_id")
+    elif x.get("kind") == "trusted_validator":
+        arg = x.get("validator")
+    else:
+        arg = x.get("input", "")
     print("\t".join(str(v) for v in (x.get("kind", ""), arg or "", x.get("object_id", ""), x.get("property", ""), x.get("equals", ""))))
 ')
 }
@@ -576,6 +613,28 @@ PY
                             _igor_configuration_memory_warning_verify "$_proposal" ;;
                         *) return 1 ;;
                     esac
+                    ;;
+                system.storage.mount.present)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.storage.mount ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    local _storage_inputs
+                    _storage_inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                    if ! declare -f storage_admin_verify_mount >/dev/null 2>&1; then
+                        # shellcheck source=core/lib/storage.sh
+                        source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+                    fi
+                    storage_admin_verify_mount "$_storage_inputs"
+                    ;;
+                system.storage.mount.absent)
+                    [ "$(_igor_capability_field "$_proposal" capability_id)" = system.storage.unmount ] || return 1
+                    [ "$(_igor_capability_field "$_proposal" descriptor.handler)" = system__privileged_marker ] || return 1
+                    local _storage_inputs
+                    _storage_inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+                    if ! declare -f storage_admin_verify_unmount >/dev/null 2>&1; then
+                        # shellcheck source=core/lib/storage.sh
+                        source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+                    fi
+                    storage_admin_verify_unmount "$_storage_inputs"
                     ;;
                 system.package.installed)
                     [ "$(_igor_capability_field "$_proposal" capability_id)" = system.package.install ] || return 1
@@ -744,6 +803,41 @@ if ident in {"system.service.restart","system.service.start","system.service.ena
     if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl",operation]:
         raise SystemExit(1)
     commands=[spec]
+elif ident=="system.storage.mount":
+    if not isinstance(spec,list) or len(spec)!=2 or any(not isinstance(row,list) for row in spec):
+        raise SystemExit(1)
+    mkdir_cmd,mount_cmd=spec
+    if (len(mkdir_cmd)!=8 or mkdir_cmd[:7]!=["sudo","-n","--","mkdir","-p","--",mkdir_cmd[6]]):
+        # Shape is checked explicitly below; keep the target bound once.
+        pass
+    if not (len(mkdir_cmd)==8 and mkdir_cmd[:6]==["sudo","-n","--","mkdir","-p","--"]):
+        raise SystemExit(1)
+    target=mkdir_cmd[6]
+    if mkdir_cmd[7:] or not isinstance(target,str):
+        raise SystemExit(1)
+    if not (target.startswith(("/mnt/","/media/","/srv/")) and
+            ".." not in target.split("/") and
+            all(ord(ch)>=32 for ch in target)):
+        raise SystemExit(1)
+    if (len(mount_cmd)!=8 or mount_cmd[:6]!=["sudo","-n","--","mount","--"] or
+            mount_cmd[7]!=target):
+        raise SystemExit(1)
+    device=mount_cmd[6]
+    if not isinstance(device,str) or not __import__("re").fullmatch(r"/dev/[A-Za-z0-9_./+@:-]+",device):
+        raise SystemExit(1)
+    commands=spec
+elif ident=="system.storage.unmount":
+    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+        raise SystemExit(1)
+    argv=spec[0]
+    if len(argv)!=7 or argv[:6]!=["sudo","-n","--","umount","--"]:
+        raise SystemExit(1)
+    target=argv[6]
+    if (not isinstance(target,str) or
+            not target.startswith(("/mnt/","/media/","/srv/")) or
+            ".." in target.split("/") or any(ord(ch)<32 for ch in target)):
+        raise SystemExit(1)
+    commands=spec
 elif ident=="system.package.install":
     if (not isinstance(spec,list) or len(spec)!=7 or
             not isinstance(spec[-1],str) or
@@ -775,11 +869,12 @@ elif ident=="system.package.cache.clean":
     commands=spec
 else:
     raise SystemExit(1)
+command_timeout = 120 if ident in {"system.storage.mount","system.storage.unmount"} else 1800
 for argv in commands:
     try:
         result=subprocess.run(argv,check=False,stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                              timeout=1800)
+                              timeout=command_timeout)
     except (OSError,subprocess.TimeoutExpired):
         raise SystemExit(1)
     if result.returncode:
@@ -853,6 +948,14 @@ PY
             _outcome=unverified_change
         fi
         [ "$_outcome" = failed ] && _outcome=success
+    fi
+    if [ "$_exec" = succeeded ] && [[ "$_id" = system.storage.mount || "$_id" = system.storage.unmount ]]; then
+        if ! declare -f igor_observer_refresh >/dev/null 2>&1; then
+            # shellcheck source=core/lib/observation.sh
+            source "${_IGOR_LOADER_DIR}/core/lib/observation.sh"
+        fi
+        igor_observer_refresh storage.mounts >/dev/null 2>&1 || true
+        igor_observer_refresh storage.filesystems >/dev/null 2>&1 || true
     fi
     _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" "$_output_status" "$_domain_result" <<'PY'
 import json, sys
