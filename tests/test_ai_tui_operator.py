@@ -42,7 +42,7 @@ class Reader:
         return [self.events.pop(0)] if self.events else []
 
 
-def snapshot_event(sequence, entries, *, state_name=None, sources=None):
+def snapshot_event(sequence, entries, *, state_name=None, sources=None, aliases=None):
     if state_name is None:
         state_name = "empty" if not entries else "ready"
     if sources is None:
@@ -53,7 +53,8 @@ def snapshot_event(sequence, entries, *, state_name=None, sources=None):
     return {"event_type": "operator_snapshot", "sequence": sequence,
             "surface": {"surface_version": 1, "digest": "0" * 64,
                         "state": state_name, "entry_count": len(entries),
-                        "sources": sources, "entries": entries}}
+                        "sources": sources, "entries": entries,
+                        "aliases": aliases or {}}}
 
 
 def ready_event(sequence):
@@ -109,6 +110,58 @@ def capability(path="system.host.memory.refresh", required=(), provider_required
 
 
 class OperatorExplorerTests(unittest.TestCase):
+    def test_sys_alias_keeps_canonical_invoke_target(self):
+        entry = capability()
+        keys = [ord(c) for c in "sys"] + [ord(".")] + \
+               [ord(c) for c in "host"] + [ord(".")] + \
+               [ord(c) for c in "memory"] + [ord(".")] + \
+               [ord(c) for c in "refresh"] + [10]
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(
+            state,
+            snapshot_event(1, [entry], aliases={"sys": "system"}),
+        ))
+        state.backend_ready = True
+        screen = Screen(keys)
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            selected = tui._operator_overlay(
+                screen, 17, Reader([]), state, tui.InputBuffer()
+            )
+
+        self.assertEqual(selected, "invoke system.host.memory.refresh")
+        self.assertEqual(sent, [(17, "invoke system.host.memory.refresh")])
+        self.assertTrue(any(
+            ":sys.host.memory.refresh" in str(args[2])
+            for args in screen.drawn if len(args) > 2
+        ))
+
+    def test_sys_alias_is_visible_as_root_navigation_hint(self):
+        state = tui.EventState()
+        self.assertTrue(tui.apply_event(
+            state,
+            snapshot_event(1, [capability()], aliases={"sys": "system"}),
+        ))
+        state.backend_ready = True
+        screen = Screen([27])
+        with patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(screen, 17, Reader([]), state, tui.InputBuffer())
+        self.assertTrue(any(
+            "Aliases :sys → :system" in str(args[2])
+            for args in screen.drawn if len(args) > 2
+        ))
+
+    def test_alias_helpers_reject_malformed_or_missing_projection(self):
+        self.assertIsNone(tui._operator_alias_target(None, "sys"))
+        self.assertIsNone(tui._operator_alias_target({"aliases": {"sys": "../system"}}, "sys"))
+        self.assertIsNone(tui._operator_alias_target({"aliases": {"sys.bad": "system"}}, "sys.bad"))
+        self.assertEqual(
+            tui._operator_display_prefix("system.service", ("sys", "system")),
+            "sys.service",
+        )
+
     def test_operator_candidate_event_is_metadata_not_activity(self):
         state = tui.EventState()
         event = candidate_event(1)
