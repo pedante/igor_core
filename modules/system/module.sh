@@ -67,6 +67,259 @@ system__apply_memory_warning() { _mod_sys_memory_warning_request apply; }
 system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
 
+# S4 storage read model. Core owns the normalized Linux mechanism; System owns
+# host-domain observation and presentation. Nothing in this block mutates mount
+# state, filesystems or persistence.
+_mod_sys_storage_rows() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/storage.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+    case "$kind" in
+        mounts) storage_mounts_query ;;
+        filesystems) storage_filesystems_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_storage_observe() {
+    local contribution="$1" kind="$2" rows input
+    input="$(_mod_sys_admin_request "$contribution")" || {
+        _mod_sys_admin_error invalid_request "expected $contribution v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$contribution takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind storage discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" STORAGE_KIND="$kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["STORAGE_KIND"]
+rows = json.loads(os.environ["STORAGE_ROWS"])
+maps = {
+    "mounts": {
+        "mount.target": "target",
+        "mount.source": "source",
+        "mount.filesystem_type": "filesystem_type",
+        "mount.total_bytes": "total_bytes",
+        "mount.used_bytes": "used_bytes",
+        "mount.available_bytes": "available_bytes",
+        "mount.use_percent": "use_percent",
+        "mount.read_only": "read_only",
+    },
+    "filesystems": {
+        "filesystem.device": "device",
+        "filesystem.type": "filesystem_type",
+        "filesystem.uuid": "uuid",
+        "filesystem.label": "label",
+        "filesystem.size_bytes": "size_bytes",
+        "filesystem.mounted": "mounted",
+        "filesystem.mountpoint": "mountpoint",
+    },
+}
+objects = []
+for row in rows:
+    object_id = row["object_id"]
+    evidence = [f"core.storage.{kind}:{object_id}"]
+    objects.append({
+        "object_id": object_id,
+        "facts": [
+            {"property": prop, "value": row[field], "evidence": evidence}
+            for prop, field in maps[kind].items()
+        ],
+        "unavailable": [],
+    })
+print(json.dumps({"status": "ok", "result": {"objects": objects}},
+                 separators=(",", ":")))
+PY
+}
+
+system__observe_mounts() { _mod_sys_storage_observe storage.mounts mounts; }
+system__observe_filesystems() { _mod_sys_storage_observe storage.filesystems filesystems; }
+
+_mod_sys_storage_refresh() {
+    local expected="$1" observer="$2" input
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$expected takes no inputs"
+        return 0
+    }
+    STORAGE_OBSERVER="$observer" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+print(json.dumps({"status": "ok", "result": {"observer_id": os.environ["STORAGE_OBSERVER"]}},
+                 separators=(",", ":")))
+PY
+}
+
+system__refresh_mounts() {
+    _mod_sys_storage_refresh system.storage.mounts.refresh storage.mounts
+}
+
+system__refresh_filesystems() {
+    _mod_sys_storage_refresh system.storage.filesystems.refresh storage.filesystems
+}
+
+system__storage_mounts_list() {
+    local input rows
+    input="$(_mod_sys_admin_request system.storage.mounts.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.mounts.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.mounts.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows mounts)" || {
+        _mod_sys_admin_error unavailable "mount discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+lines = [
+    f'{row["object_id"]}\t{row["target"]}\t{row["filesystem_type"]}\t'
+    f'{row["use_percent"]}%\t{row["source"]}'
+    for row in rows
+]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    "mounts": "\n".join(lines)[:4096],
+    "source": "core.storage.mounts",
+}}, separators=(",", ":")))
+PY
+}
+
+system__storage_filesystems_list() {
+    local input rows
+    input="$(_mod_sys_admin_request system.storage.filesystems.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.filesystems.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.filesystems.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows filesystems)" || {
+        _mod_sys_admin_error unavailable "filesystem discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+lines = [
+    f'{row["object_id"]}\t{row["device"]}\t{row["filesystem_type"]}\t'
+    f'{row["size_bytes"]}\t{row["mountpoint"] or "unmounted"}'
+    for row in rows
+]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    "filesystems": "\n".join(lines)[:4096],
+    "source": "core.storage.filesystems",
+}}, separators=(",", ":")))
+PY
+}
+
+system__storage_summary() {
+    local input mounts filesystems
+    input="$(_mod_sys_admin_request system.storage.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.summary takes no inputs"
+        return 0
+    }
+    mounts="$(_mod_sys_storage_rows mounts)" || {
+        _mod_sys_admin_error unavailable "mount discovery failed"
+        return 0
+    }
+    filesystems="$(_mod_sys_storage_rows filesystems)" || {
+        _mod_sys_admin_error unavailable "filesystem discovery failed"
+        return 0
+    }
+    STORAGE_MOUNTS="$mounts" STORAGE_FILESYSTEMS="$filesystems" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+mounts = json.loads(os.environ["STORAGE_MOUNTS"])
+filesystems = json.loads(os.environ["STORAGE_FILESYSTEMS"])
+root = next((row for row in mounts if row["target"] == "/"), None)
+mounted = sum(bool(row["mounted"]) for row in filesystems)
+print(json.dumps({"status": "ok", "result": {
+    "mount_count": len(mounts),
+    "filesystem_count": len(filesystems),
+    "mounted_filesystem_count": mounted,
+    "unmounted_filesystem_count": len(filesystems) - mounted,
+    "root_use_percent": root["use_percent"] if root else 0,
+    "source": "core.storage",
+}}, separators=(",", ":")))
+PY
+}
+
+_mod_sys_storage_status() {
+    local expected="$1" kind="$2" input_name="$3" input object_id rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    object_id="$(STORAGE_INPUT="$input" STORAGE_INPUT_NAME="$input_name"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["STORAGE_INPUT"]).get(os.environ["STORAGE_INPUT_NAME"])
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$kind:$object_id" in
+        mounts:mount:*) ;;
+        filesystems:filesystem:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "storage object identity does not match selector kind"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_storage_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind storage discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" STORAGE_OBJECT_ID="$object_id" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+ident = os.environ["STORAGE_OBJECT_ID"]
+row = next((item for item in rows if item.get("object_id") == ident), None)
+if row is None:
+    raise SystemExit(3)
+print(json.dumps({"status": "ok", "result": row}, separators=(",", ":")))
+PY
+    case "$?" in
+        0) ;;
+        3) _mod_sys_admin_error unavailable "storage object is not currently present" ;;
+        *) _mod_sys_admin_error unavailable "storage status normalization failed" ;;
+    esac
+}
+
+system__storage_mount_status() {
+    _mod_sys_storage_status system.storage.mount.status mounts mount
+}
+
+system__storage_filesystem_status() {
+    _mod_sys_storage_status system.storage.filesystem.status filesystems filesystem
+}
+
+
 # Experimental generic administration capabilities. Platform-specific package
 # and service mechanics stay in Core; this module gives them host-domain meaning.
 _mod_sys_admin_platform() {
