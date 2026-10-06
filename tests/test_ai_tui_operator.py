@@ -153,6 +153,46 @@ class OperatorExplorerTests(unittest.TestCase):
             ],
         )
 
+    def test_service_selector_tab_preserves_manual_input_path(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        state = tui.EventState()
+        state.backend_ready = True
+        buffer = tui.InputBuffer()
+        sent = []
+        with patch.object(tui, "_send", side_effect=lambda master, text:
+                          sent.append((master, text))):
+            outcome, command = tui._operator_candidate_overlay(
+                Screen([9]), 17, Reader([]), state, buffer, entry, "unit"
+            )
+        self.assertEqual(outcome, "draft")
+        self.assertIsNone(command)
+        self.assertEqual(buffer.text(), "invoke system.service.status ")
+        self.assertEqual(sent, [(17, "candidates system.service.status unit")])
+
+    def test_selector_capability_uses_candidate_chooser_before_raw_draft(self):
+        entry = capability(
+            path="system.service.status",
+            required=("unit",),
+            selector=True,
+        )
+        keys = [ord(c) for c in "system"] + [ord(".")] + \
+               [ord(c) for c in "service"] + [ord(".")] + \
+               [ord(c) for c in "status"] + [10]
+        state = tui.EventState()
+        state.backend_ready = True
+        self.assertTrue(tui.apply_event(state, snapshot_event(1, [entry])))
+        buffer = tui.InputBuffer()
+        with patch.object(tui, "_operator_candidate_overlay",
+                          return_value=("draft", None)) as chooser, \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            tui._operator_overlay(Screen(keys), 17, Reader([]), state, buffer)
+        chooser.assert_called_once()
+        self.assertEqual(buffer.text(), "")
+
     def test_operator_snapshot_is_metadata_not_activity(self):
         state = tui.EventState()
         event = snapshot_event(1, [capability()])
