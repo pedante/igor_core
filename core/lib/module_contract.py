@@ -308,7 +308,7 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
                 raise _error(f"{where}.inputs.{name}.selector is invalid: {exc}") from exc
         if "validator" in spec:
             valid_validators = {
-                "string": {"systemd_unit", "package_name"},
+                "string": {"systemd_unit", "package_name", "unix_mode"},
                 "object_id": {"object_id"},
                 "path": {"confined_path"},
             }
@@ -384,7 +384,7 @@ def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str,
         raise _error(f"{where}.affects must be a bounded array")
     for index, raw in enumerate(affects):
         affect = _closed_object(raw, {"object", "id", "input"}, f"{where}.affects[{index}]")
-        if affect.get("object") not in {"host", "service", "package", "mount", "filesystem"} or ("id" in affect) == ("input" in affect):
+        if affect.get("object") not in {"host", "service", "package", "mount", "filesystem", "user", "group", "path"} or ("id" in affect) == ("input" in affect):
             raise _error(f"{where}.affects[{index}] has invalid object selector")
         if "input" in affect and affect["input"] not in props:
             raise _error(f"{where}.affects[{index}] references unknown input")
@@ -629,8 +629,8 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
     if kind == "observer" and "output_type" not in result:
         raise _error(f"{where} requires output_type")
     if kind == "observer" and "properties" in item:
-        if item.get("object_kind") not in {"host", "mount", "filesystem"}:
-            raise _error(f"{where}.object_kind must be host, mount or filesystem")
+        if item.get("object_kind") not in {"host", "mount", "filesystem", "user", "group"}:
+            raise _error(f"{where}.object_kind must be host, mount, filesystem, user or group")
         props = item["properties"]
         if not isinstance(props, list) or not props:
             raise _error(f"{where}.properties must be non-empty")
