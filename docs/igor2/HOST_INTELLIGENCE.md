@@ -240,6 +240,33 @@ operator meaning above those mechanisms. Storage health cutover remains
 separate: the legacy root-filesystem health lines are not replaced merely by
 adding the S4 read model.
 
+
+### S5 storage administration boundary
+
+S5 consumes the S4 current-state objects but does not make observations
+authorization. The System declarations identify the selected canonical
+filesystem or mount; Core independently re-reads current storage state during a
+trusted preflight before privileged execution. Candidate freshness therefore
+improves UX but cannot make an unsafe or stale selection executable.
+
+The first mutation slice is deliberately runtime-only. A mount plan freezes a
+local discovered filesystem, a reviewed target below `/mnt`, `/media` or
+`/srv`, and exact privileged argv. Existing target ancestry must be
+root-owned, non-symlink and not group/other writable. Unmount accepts only an
+eligible current local-device mount under those roots and uses normal
+`umount`; force/lazy semantics are not fallback behavior.
+
+After execution Core verifies the observed target/source relationship (or
+absence for unmount) through the bounded storage read. A successful change then
+best-effort refreshes the S4 storage observers so reusable model facts converge
+quickly; observer-refresh failure cannot rewrite the already verified operation
+result. Operational History remains the durable execution record.
+
+No S5 capability edits `/etc/fstab` or claims desired persistent mount state.
+Persistent boot configuration must be modeled as its own explicit capability
+with separate preflight/verification/recovery semantics before it is added.
+Formatting, filesystem repair and arbitrary network mounts remain outside S5.
+
 The handler still returns the Wave C outer `status=ok|error` envelope. Its
 Step 9 `result` contains `object_id`, `facts` (property/value pairs), and
 optionally `unavailable` (declared properties with a bounded reason). A
