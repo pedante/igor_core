@@ -26,7 +26,7 @@ MAX_WIFI_PROFILES = 256
 MAX_NMCLI_OUTPUT_BYTES = 1024 * 1024
 MAX_TEXT = 512
 
-_IFNAME = re.compile(r"^[^\\s/:]{1,32}$")
+_IFNAME = re.compile(r"^[^\s/:]{1,32}$")
 _BSSID = re.compile(r"^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}$")
 _WIFI_TYPES = {"wifi", "802-11-wireless"}
 _RADIO_STATES = {"enabled", "disabled", "missing"}

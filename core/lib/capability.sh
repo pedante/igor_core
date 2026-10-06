@@ -945,7 +945,7 @@ elif ident=="system.network.wifi.connect_known":
     uuid_re=r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     if __import__("re").fullmatch(uuid_re,profile) is None:
         raise SystemExit(1)
-    if __import__("re").fullmatch(r"[^\\s/:]{1,32}",interface) is None:
+    if __import__("re").fullmatch(r"[^\s/:]{1,32}",interface) is None:
         raise SystemExit(1)
     commands=spec
 elif ident=="system.package.install":
