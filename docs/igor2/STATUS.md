@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 ## How to read this file
 
@@ -3118,22 +3118,25 @@ domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
 
-### System operator S1–S5
+### System operator S1–S6
 
 S1–S3 are merged into `igor2` under D070. S4's storage read model is green on
-`feature/sys-storage-read-model` (affected run #209) and provides bounded
-mount/filesystem discovery, canonical collection observations, read-only
-storage inspection and semantic candidates.
+`feature/sys-storage-read-model` (affected run #209). S5 is implemented on
+`feature/sys-storage-admin` under D071 with runtime-only mount/unmount,
+Core-frozen privileged argv, trusted preflight and deterministic verification;
+it does not edit `/etc/fstab` or escalate to force/lazy unmount.
 
-S5 is implemented on stacked branch `feature/sys-storage-admin` pending its
-combined validation gate. System 2.6.0 adds runtime-only
-`system.storage.mount` and `system.storage.unmount`. Core owns the trusted
-preflight, exact privileged argv and post-state verification; System retains
-host-domain declaration and meaning. Mount selection is restricted to
-discoverable unmounted local filesystems and eligible unmount selection to
-local-device mounts under reviewed storage roots.
+S6 is implemented on stacked branch `feature/sys-users-permissions-paths`
+pending its PR validation gate. System 2.7.0 adds bounded local user/group
+collection observations with canonical UID/GID identities, read-only account
+and path inspection, and prefix-aware path candidates. Candidate prefix
+resolution remains ephemeral reference data and does not change capability
+authority.
 
-S5 never implicitly changes persistence: neither capability reads or writes
-`/etc/fstab`, and normal unmount never escalates to force/lazy behavior.
-Persistent boot configuration, formatting/repair and network mounts remain
-outside this slice. D071 records this authority and persistence boundary.
+The only S6 permission mutations are exact single-path owner, group and
+0000..0777 mode changes on reviewed application/data roots. Core owns the
+trusted preflight, numeric identity resolution, frozen non-recursive
+`chown`/`chgrp`/`chmod` argv and post-state verification. Symlink paths,
+recursive changes, account creation/deletion, passwords/shadow data, ACL
+mutation, special permission bits and arbitrary roots remain outside S6.
+D072 records this boundary.
