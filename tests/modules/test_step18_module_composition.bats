@@ -34,8 +34,15 @@ _composition_files() {
 import hashlib,json,sys
 from pathlib import Path
 root=Path(sys.argv[1])
-print(json.dumps({str(path.relative_to(root)):hashlib.sha256(path.read_bytes()).hexdigest()
-    for path in sorted(root.rglob("*")) if path.is_file()},sort_keys=True))
+derived = {
+    Path("data/cache/module-registry-v2.json"),
+    Path("data/cache/module-registry-v2.json.lock"),
+}
+print(json.dumps({
+    str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+    for path in sorted(root.rglob("*"))
+    if path.is_file() and path.relative_to(root) not in derived
+}, sort_keys=True))
 PY
 }
 
