@@ -552,6 +552,10 @@ def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
             return f"service:systemd:{value}"
         if kind == "package" and value:
             return f"package:{value}"
+        if kind in {"mount", "filesystem"} and isinstance(value, str):
+            if value.startswith(kind + ":") and OBJECT_ID.fullmatch(value):
+                return value
+            return None
         if kind == "host":
             return "host:local"
     return None
