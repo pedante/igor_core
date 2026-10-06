@@ -306,6 +306,11 @@ expected={
  "system.permissions.owner.set",
  "system.permissions.group.set",
  "system.permissions.mode.set",
+ "system.network.summary",
+ "system.network.interfaces.list",
+ "system.network.interface.status",
+ "system.network.routes.list",
+ "system.network.dns.status",
 }
 assert expected <= paths,(expected-paths)
 PY
@@ -372,7 +377,7 @@ PY
     [ "${_IGOR_HANDLER_TIMEOUT[capability:system.service.list]:-}" = 30 ]
     [ "${_IGOR_MODULE_ENTRYPOINT[system]:-}" = module.sh ]
     [ "${_IGOR_OWNER_HAS_DOMAIN_EVENTS[system]:-0}" = 0 ]
-    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.7.0 ]
+    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.8.0 ]
 }
 
 @test "targeted preparation evaluates only the selected capability requirement path" {
