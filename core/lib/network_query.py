@@ -310,7 +310,10 @@ def parse_resolv_conf(
     nameservers: list[str] = []
     search_domains: list[str] = []
     for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
+        hash_at = raw.find("#")
+        semicolon_at = raw.find(";")
+        cuts = [index for index in (hash_at, semicolon_at) if index >= 0]
+        line = raw[:min(cuts)].strip() if cuts else raw.strip()
         if not line:
             continue
         parts = line.split()
@@ -326,14 +329,17 @@ def parse_resolv_conf(
             domains = parts[1:]
             if not domains:
                 raise NetworkQueryError("resolver search line is invalid")
+            parsed_domains: list[str] = []
             for domain in domains:
                 domain = _bounded(domain, "resolver search domain", 253).rstrip(".")
                 if not domain or not re.fullmatch(r"[A-Za-z0-9_.-]+", domain):
                     raise NetworkQueryError("resolver search domain is invalid")
-                if domain not in search_domains:
-                    search_domains.append(domain)
-                    if len(search_domains) > 32:
+                if domain not in parsed_domains:
+                    parsed_domains.append(domain)
+                    if len(parsed_domains) > 32:
                         raise NetworkQueryError("resolver search domain count exceeds bound")
+            # resolv.conf search/domain directives replace the previous search list.
+            search_domains = parsed_domains
 
     local_stub = False
     for endpoint in nameservers:
