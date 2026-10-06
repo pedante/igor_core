@@ -1,6 +1,6 @@
 # System S7 — Network & Wi-Fi Discovery Proposal
 
-Status: **D073 accepted; S7.1 Core network read substrate implemented on the feature branch pending the stacked validation gate. Q017–Q018 remain open.**
+Status: **D073 accepted; S7.1–S7.2 implemented on the feature branch pending the stacked validation gate. Q017–Q018 remain open.**
 
 Branch: feature/sys-network-wifi
 
@@ -178,6 +178,42 @@ The iproute2 subprocess boundary has a bounded timeout and 1 MiB stdout limit;
 interface/address/route counts are bounded and malformed data fails closed.
 No S7.1 function contains a privileged or mutating command.
 
+## S7.2 implementation
+
+System 2.8.0 now consumes the S7.1 Core substrate without adding another
+inventory or provider runtime.
+
+The `network.interfaces` observer publishes canonical `interface:...`
+objects into the existing System Model with a 30-second freshness window. It
+declares the interface facts proposed above and uses the same atomic collection
+semantics already proven for storage and local accounts.
+
+The operator surface currently contains exactly these network READ
+capabilities:
+
+~~~text
+system.network.summary
+system.network.interfaces.list
+system.network.interface.status
+system.network.routes.list
+system.network.dns.status
+~~~
+
+The status input uses the existing D070 `resource_kind=interface` selector.
+Candidate resolution prefers fresh `network.interfaces` facts; if those are
+absent or stale it performs the bounded S7.1 Core interface read. Selection
+remains reference data until submitted to canonical capability invocation.
+
+The `ip` dependency is contribution-local. The observer plus interface,
+summary and route capabilities are unavailable when `ip` is missing, while
+the System package and `system.network.dns.status` remain usable. Resolver
+inspection therefore does not acquire an unnecessary iproute2 dependency.
+
+Routes and DNS are still current READ results, not durable System Model object
+kinds. List text is deliberately capped at the existing 4 KiB typed-output
+boundary; the normalized Core reads themselves retain their separate bounded
+row limits. S7.2 adds no Wi-Fi scan/profile surface and no mutation.
+
 ## Proposed S7 read model
 
 ### Interface collection
@@ -275,7 +311,7 @@ No frontend, module prose or AI call gains network authority.
 |---|---|---:|
 | S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; Q017–Q018 open |
 | S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete pending stacked validation |
-| S7.2 | interface System Model collection observer + READ capabilities/selectors | 1–2 days |
+| S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete pending stacked validation |
 | S7.3 | NetworkManager Wi-Fi read provider + scan/profile candidates | 1–2 days |
 | S7.4 | Reviewed connect_known CHANGE adapter + verification | 1–2 days |
 | S7.5 | Docs, Debian/Arch/provider fixtures, affected PR gate | 1 day |
