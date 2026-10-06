@@ -172,8 +172,46 @@ def _memory_query_supported(record: dict[str, Any]) -> bool:
     )
 
 
+def _storage_admin_supported(record: dict[str, Any]) -> bool:
+    if (
+        record.get("owner") != "system"
+        or record.get("handler") != "system__privileged_marker"
+        or record.get("capability_version") != 1
+        or record.get("privilege") != "required"
+        or not isinstance(record.get("safety"), dict)
+        or record["safety"].get("tier") != "CHANGE"
+    ):
+        return False
+    expected = {
+        "system.storage.mount": (
+            [
+                {"kind": "owner_active"},
+                {"kind": "trusted_validator", "validator": "system.storage.mount.ready"},
+            ],
+            {
+                "kind": "trusted_query",
+                "check_id": "system.storage.mount.present",
+                "required": True,
+            },
+        ),
+        "system.storage.unmount": (
+            [
+                {"kind": "owner_active"},
+                {"kind": "trusted_validator", "validator": "system.storage.unmount.ready"},
+            ],
+            {
+                "kind": "trusted_query",
+                "check_id": "system.storage.mount.absent",
+                "required": True,
+            },
+        ),
+    }
+    spec = expected.get(record.get("id"))
+    return spec is not None and record.get("preconditions") == spec[0] and record.get("verification") == spec[1]
+
+
 def _trusted_query_supported(record: dict[str, Any]) -> bool:
-    if _memory_query_supported(record):
+    if _memory_query_supported(record) or _storage_admin_supported(record):
         return True
     verification = record.get("verification")
     if record.get("owner") != "system" or record.get("handler") != "system__privileged_marker":
@@ -239,16 +277,23 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
                     "system.package.cache.clean",
                     "system.service.start",
                     "system.service.enable",
+                    "system.storage.mount",
+                    "system.storage.unmount",
                 }
             )
             if not reviewed:
                 return "privileged_adapter_unavailable"
         preconditions = record.get("preconditions", [])
         unsupported = any(
-            isinstance(item, dict)
-            and item.get("kind") in {"platform_feature", "trusted_validator"}
+            isinstance(item, dict) and item.get("kind") == "platform_feature"
             for item in preconditions
         )
+        trusted_validators = [
+            item for item in preconditions
+            if isinstance(item, dict) and item.get("kind") == "trusted_validator"
+        ]
+        if trusted_validators and not _storage_admin_supported(record):
+            unsupported = True
         verification = record.get("verification", {})
         if isinstance(verification, dict) and verification.get("kind") == "trusted_query":
             unsupported = unsupported or not _trusted_query_supported(record)
