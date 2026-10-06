@@ -196,7 +196,7 @@ class SystemModel:
         time = stamp(at or now())
         object_kind = descriptor.get("object_kind")
         failure = {"reason": reason, "at": time, "owner": owner, "observer": observer_id}
-        if object_kind in {"mount", "filesystem"}:
+        if object_kind in {"mount", "filesystem", "user", "group"}:
             # A failed collection read must never invent objects. Existing
             # observations become stale while retaining their last evidence.
             for slot, fact in self.facts.items():
@@ -291,7 +291,7 @@ class SystemModel:
         object_kind = descriptor.get("object_kind")
         time = at or now()
 
-        if object_kind in {"mount", "filesystem"}:
+        if object_kind in {"mount", "filesystem", "user", "group"}:
             if not isinstance(result, dict) or set(result) != {"objects"}:
                 raise ModelError("invalid collection observer result")
             objects = result["objects"]
