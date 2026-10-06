@@ -55,7 +55,8 @@ EVENT_TYPES = frozenset(
         "approval_waiting", "explanation", "action_started", "action_output",
         "action_result", "action_skipped", "action_declined", "action_stopped",
         "privilege_waiting", "privilege_result", "continuation", "warning", "error",
-        "mode_changed", "settings_snapshot", "operator_snapshot", "session_finished", "context_routing",
+        "mode_changed", "settings_snapshot", "operator_snapshot", "operator_candidates",
+        "session_finished", "context_routing",
     }
 )
 
@@ -100,6 +101,7 @@ class EventState:
     settings_snapshot: dict[str, Any] | None = None
     settings_sources: dict[str, str] = field(default_factory=dict)
     operator_snapshot: dict[str, Any] | None = None
+    operator_candidates: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
     context_routing: dict[str, Any] | None = None
@@ -119,7 +121,7 @@ class EventState:
             return False
         if sequence <= self.sequence:
             return False
-        if kind not in {"settings_snapshot", "operator_snapshot"}:
+        if kind not in {"settings_snapshot", "operator_snapshot", "operator_candidates"}:
             self.cancel_terminal_capture()
         self.sequence = sequence
         if kind == "context_routing":
@@ -134,6 +136,20 @@ class EventState:
             snapshot = event.get("surface")
             if isinstance(snapshot, dict):
                 self.operator_snapshot = copy.deepcopy(snapshot)
+            return True
+        if kind == "operator_candidates":
+            result = event.get("result")
+            capability_id = event.get("capability_id")
+            input_name = event.get("input_name")
+            provider = event.get("provider")
+            if (isinstance(result, dict) and isinstance(capability_id, str) and
+                    isinstance(input_name, str) and isinstance(provider, str)):
+                self.operator_candidates = {
+                    "capability_id": capability_id,
+                    "provider": provider,
+                    "input_name": input_name,
+                    "result": copy.deepcopy(result),
+                }
             return True
         self.mode = str(event.get("mode") or self.mode)
         self.provider = str(event.get("provider") or self.provider)
@@ -1409,6 +1425,164 @@ def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
     return "invoke " + target, bool(required)
 
 
+def _operator_selector_input(entry: dict[str, Any]) -> str | None:
+    """Return the one required selector-backed input supported by the S2 chooser."""
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
+    selectors = inputs.get("selectors") if isinstance(inputs.get("selectors"), dict) else {}
+    if len(required) != 1 or not isinstance(required[0], str):
+        return None
+    return required[0] if isinstance(selectors.get(required[0]), dict) else None
+
+
+def _operator_candidate_request(entry: dict[str, Any], input_name: str) -> str:
+    target = str(entry.get("target_id") or "")
+    if not target:
+        raise ValueError("operator entry has no target")
+    provider = str(entry.get("provider") or "")
+    if entry.get("provider_required") and provider:
+        target += "@" + provider
+    return f"candidates {target} {input_name}"
+
+
+def _operator_candidate_matches(record: dict[str, Any] | None,
+                                entry: dict[str, Any], input_name: str) -> bool:
+    if not isinstance(record, dict):
+        return False
+    if record.get("capability_id") != entry.get("target_id") or record.get("input_name") != input_name:
+        return False
+    if entry.get("provider_required"):
+        return record.get("provider") == entry.get("provider")
+    return True
+
+
+def _operator_candidate_overlay(
+    screen: Any,
+    master: int,
+    reader: EventReader,
+    state: EventState,
+    buffer: InputBuffer,
+    entry: dict[str, Any],
+    input_name: str,
+) -> tuple[str, str | None]:
+    """Choose one ephemeral candidate without acquiring execution authority."""
+    try:
+        request = _operator_candidate_request(entry, input_name)
+    except ValueError:
+        return "back", None
+    state.operator_candidates = None
+    _send(master, request)
+    state.backend_ready = False
+    query, selected = "", 0
+    notice = "Loading candidates…"
+    screen.timeout(100)
+    try:
+        while True:
+            for event in reader.read():
+                apply_event(state, event)
+                if event.get("event_type") in {"warning", "error"}:
+                    notice = str(event.get("display") or "Candidate selection unavailable")
+            record = state.operator_candidates
+            result = record.get("result") if _operator_candidate_matches(
+                record, entry, input_name
+            ) else None
+            rows = result.get("candidates") if isinstance(result, dict) else []
+            rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("value"), str)]
+            needle = query.casefold()
+            if needle:
+                rows = [
+                    row for row in rows
+                    if needle in str(row.get("value", "")).casefold()
+                    or needle in str(row.get("label", "")).casefold()
+                    or needle in str(row.get("detail", "")).casefold()
+                ]
+            if isinstance(result, dict):
+                state_name = str(result.get("state") or "")
+                if state_name in {"unavailable", "error"}:
+                    notice = str(result.get("reason") or "Candidate source unavailable")
+                elif state_name == "empty":
+                    notice = "No candidates are currently available"
+                elif state_name == "ready":
+                    notice = ""
+            if selected >= len(rows):
+                selected = max(0, len(rows) - 1)
+
+            height, width = screen.getmaxyx()
+            screen.erase()
+            target = str(entry.get("target_id") or "")
+            try:
+                screen.addnstr(
+                    0, 0, f"Select {input_name}  {target}", max(1, width - 1), curses.A_BOLD
+                )
+                source = result.get("source") if isinstance(result, dict) else None
+                source_text = ""
+                if isinstance(source, dict):
+                    source_text = f"source: {source.get('id', source.get('kind', 'unknown'))}"
+                screen.addnstr(
+                    1, 0, f"filter: {query}  {source_text}".rstrip(),
+                    max(1, width - 1), curses.A_DIM
+                )
+                visible = max(1, height - 4)
+                first = max(0, selected - visible + 1)
+                for row_number, candidate in enumerate(rows[first:first + visible], 2):
+                    index = first + row_number - 2
+                    marker = ">" if index == selected else " "
+                    label = str(candidate.get("label") or candidate["value"])
+                    detail = str(candidate.get("detail") or "")
+                    line = f"{marker} {label}"
+                    if detail:
+                        line += f"  {detail}"
+                    screen.addnstr(
+                        row_number, 0, line, max(1, width - 1),
+                        curses.A_REVERSE if index == selected else 0,
+                    )
+                footer = notice or "Type filter · ↑↓ choose · Enter select · Tab manual · Esc back"
+                screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
+            except curses.error:
+                pass
+            screen.refresh()
+
+            key = _next_key(screen)
+            if key in (27, 3):
+                if key == 3:
+                    _send(master, "/stop")
+                return "back", None
+            if key == 9:
+                command, _ = _operator_invoke_command(entry)
+                buffer.replace(command + " ")
+                return "draft", None
+            if key == curses.KEY_UP:
+                selected = max(0, selected - 1)
+                continue
+            if key == curses.KEY_DOWN:
+                selected = min(max(0, len(rows) - 1), selected + 1)
+                continue
+            if key in (curses.KEY_BACKSPACE, 127, 8):
+                query = query[:-1]
+                selected = 0
+                continue
+            if key in (10, 13, curses.KEY_ENTER) and rows:
+                if not state.backend_ready:
+                    notice = "Backend busy — candidate is selected but invocation must wait for READY"
+                    continue
+                value = rows[selected]["value"]
+                command, _ = _operator_invoke_command(entry)
+                command += " " + json.dumps(
+                    {input_name: value}, sort_keys=True, separators=(",", ":")
+                )
+                _send(master, command)
+                state.backend_ready = False
+                return "invoke", command
+            if isinstance(key, str) and key not in "\n\r":
+                query += key
+                selected = 0
+            elif isinstance(key, int) and 32 <= key <= 126:
+                query += chr(key)
+                selected = 0
+    finally:
+        screen.timeout(100)
+
+
 def _operator_surface_summary(snapshot: dict[str, Any] | None) -> tuple[str, str]:
     """Return compact source counts and an actionable state message."""
     if not isinstance(snapshot, dict):
@@ -1608,6 +1782,19 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                         notice = str(error)
                         continue
                     if needs_input:
+                        selector_input = _operator_selector_input(entry)
+                        if selector_input:
+                            if not state.backend_ready:
+                                notice = "Backend busy — candidate lookup available when READY"
+                                continue
+                            outcome, selected_command = _operator_candidate_overlay(
+                                screen, master, reader, state, buffer, entry, selector_input
+                            )
+                            if outcome == "back":
+                                continue
+                            if outcome == "invoke":
+                                return selected_command
+                            return None
                         buffer.replace(command + " ")
                         return None
                     if not state.backend_ready:
