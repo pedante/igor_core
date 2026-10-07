@@ -10,9 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "lib"))
 
-from host_runtime_query import (  # noqa: E402
-    HostRuntimeQueryError,
+from host_runtime_query import (
     MAX_PROC_BYTES,
+    HostRuntimeQueryError,
     parse_loadavg,
     parse_swap_meminfo,
     parse_uptime,
@@ -31,9 +31,8 @@ class HostRuntimeQueryTests(unittest.TestCase):
             "1.0 2.0 3.0\n",
             "1.0 2.0\nextra\n",
         ):
-            with self.subTest(value=value):
-                with self.assertRaises(HostRuntimeQueryError):
-                    parse_uptime(value)
+            with self.subTest(value=value), self.assertRaises(HostRuntimeQueryError):
+                parse_uptime(value)
 
     def test_loadavg_normalizes_three_load_values(self):
         self.assertEqual(
@@ -47,9 +46,8 @@ class HostRuntimeQueryTests(unittest.TestCase):
             "1 2 3 1/2 0\n",
             "1 2 3 1/2\n",
         ):
-            with self.subTest(value=value):
-                with self.assertRaises(HostRuntimeQueryError):
-                    parse_loadavg(value)
+            with self.subTest(value=value), self.assertRaises(HostRuntimeQueryError):
+                parse_loadavg(value)
 
     def test_swap_meminfo_is_exact_and_handles_no_swap(self):
         result = parse_swap_meminfo(
@@ -74,9 +72,8 @@ class HostRuntimeQueryTests(unittest.TestCase):
             "malformed row\nSwapTotal: 1 kB\nSwapFree: 0 kB\n",
         )
         for value in cases:
-            with self.subTest(value=value):
-                with self.assertRaises(HostRuntimeQueryError):
-                    parse_swap_meminfo(value)
+            with self.subTest(value=value), self.assertRaises(HostRuntimeQueryError):
+                parse_swap_meminfo(value)
 
     def test_query_runtime_reads_only_bounded_proc_files(self):
         with tempfile.TemporaryDirectory() as tmp:
