@@ -72,7 +72,6 @@ system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 # owns host-domain observation and typed presentation. This block is READ-only
 # and intentionally excludes thermal-provider meaning and health thresholds.
 _mod_sys_runtime_read() {
-    [ "$#" -eq 0 ] || return 2
     [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
     # shellcheck source=core/lib/host_runtime.sh
     source "${_IGOR_LOADER_DIR}/core/lib/host_runtime.sh"

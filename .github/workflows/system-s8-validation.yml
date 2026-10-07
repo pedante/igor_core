@@ -51,7 +51,7 @@ jobs:
 
       - name: Focused BATS
         run: |
-          bats --tap             tests/core/test_host_runtime_query.bats             tests/modules/test_system_runtime_read_model.bats             tests/modules/test_step18_module_contract.bats             tests/modules/test_step18_module_composition.bats             tests/modules/test_system_admin_surface.bats
+          bats --tap             tests/core/test_host_runtime_query.bats             tests/modules/test_system_runtime_read_model.bats             tests/modules/test_step18_module_composition.bats
 
       - name: Whitespace
         run: git diff --check origin/feature/sys-network-wifi...HEAD

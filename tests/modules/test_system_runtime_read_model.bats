@@ -86,16 +86,11 @@ PY
     run bash -c '
         source "$1/modules/system/module.sh"
         _mod_sys_runtime_read() {
-            printf "%s\n" '''{
-              "uptime_seconds":42,
-              "load_1":0.25,"load_5":0.5,"load_15":0.75,
-              "swap_total_bytes":1048576,"swap_free_bytes":786432,
-              "swap_used_bytes":262144,"swap_use_percent":25
-            }'''
+            printf "%s\n" "{\"uptime_seconds\":42,\"load_1\":0.25,\"load_5\":0.5,\"load_15\":0.75,\"swap_total_bytes\":1048576,\"swap_free_bytes\":786432,\"swap_used_bytes\":262144,\"swap_use_percent\":25}"
         }
-        printf "%s\n" '''{"api_version":2,"contribution_id":"host.runtime","input":{}}''' |
+        printf "%s\n" "{\"api_version\":2,\"contribution_id\":\"host.runtime\",\"input\":{}}" |
             system__observe_runtime
-        printf "%s\n" '''{"api_version":2,"contribution_id":"system.host.runtime.status","input":{}}''' |
+        printf "%s\n" "{\"api_version\":2,\"contribution_id\":\"system.host.runtime.status\",\"input\":{}}" |
             system__host_runtime_status
     ' _ "$REPO_DIR"
     [ "$status" -eq 0 ]
@@ -110,14 +105,9 @@ PY
         bash -c '
             source "$1/modules/system/module.sh"
             _mod_sys_runtime_read() {
-                printf "%s\n" '''{
-                  "uptime_seconds":"wrong",
-                  "load_1":0.25,"load_5":0.5,"load_15":0.75,
-                  "swap_total_bytes":1,"swap_free_bytes":1,
-                  "swap_used_bytes":0,"swap_use_percent":0
-                }'''
+                printf "%s\n" "{\"uptime_seconds\":\"wrong\",\"load_1\":0.25,\"load_5\":0.5,\"load_15\":0.75,\"swap_total_bytes\":1,\"swap_free_bytes\":1,\"swap_used_bytes\":0,\"swap_use_percent\":0}"
             }
-            printf "%s\n" '''{"api_version":2,"contribution_id":"host.runtime","input":{}}''' |
+            printf "%s\n" "{\"api_version\":2,\"contribution_id\":\"host.runtime\",\"input\":{}}" |
                 system__observe_runtime
         ' _ "$REPO_DIR"
     }
@@ -157,13 +147,9 @@ PY
         nmcli() { printf "MUTATION_CALLED\n"; return 99; }
         timedatectl() { printf "MUTATION_CALLED\n"; return 99; }
         _mod_sys_runtime_read() {
-            printf "%s\n" '''{
-              "uptime_seconds":1,"load_1":0,"load_5":0,"load_15":0,
-              "swap_total_bytes":0,"swap_free_bytes":0,
-              "swap_used_bytes":0,"swap_use_percent":0
-            }'''
+            printf "%s\n" "{\"uptime_seconds\":1,\"load_1\":0,\"load_5\":0,\"load_15\":0,\"swap_total_bytes\":0,\"swap_free_bytes\":0,\"swap_used_bytes\":0,\"swap_use_percent\":0}"
         }
-        printf "%s\n" '''{"api_version":2,"contribution_id":"system.host.runtime.status","input":{}}''' |
+        printf "%s\n" "{\"api_version\":2,\"contribution_id\":\"system.host.runtime.status\",\"input\":{}}" |
             system__host_runtime_status
     ' _ "$REPO_DIR"
     [ "$status" -eq 0 ]
