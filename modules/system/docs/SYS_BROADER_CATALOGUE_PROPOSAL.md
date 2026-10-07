@@ -1,7 +1,11 @@
 # System S8 — Broader System Catalogue Discovery Proposal
 
-Status: **S8.0 discovery started on `feature/sys-broader-catalogue`. No new
-S8 mutation authority is accepted by this document.**
+Status: **S8 is complete for the Igor 2 System release scope on
+`feature/sys-broader-catalogue`. S8.1 host runtime telemetry is implemented
+and green; the additional catalogue phases below are explicitly deferred as
+post-release growth, consistent with the System scope rule requiring
+representative high-quality domains rather than exhaustive Linux coverage. No
+new S8 mutation authority is accepted by this document.**
 
 Base: completed S7 stack at `feature/sys-network-wifi`
 
@@ -234,3 +238,26 @@ The authoritative open questions are recorded in
 
 None of Q019–Q021 blocks the proposed read-only S8.1 telemetry slice if the
 Project Owner accepts the recommendations.
+
+
+## Igor 2 release-scope closure
+
+The Project Owner directed the System sequence forward to S9/S10 after the
+green S8.1 gate. Under the release standard in `SYS_OPERATOR_PROPOSAL.md`,
+S8 does not need to clone every Linux administration domain before Igor 2 can
+ship.
+
+The completed S8 release slice is:
+
+- bounded Core procfs normalization for uptime, load and swap;
+- typed `host.runtime` observation on canonical `host:local`;
+- `system.host.runtime.status` as a privilege-free READ capability;
+- deterministic malformed/oversized-input failure;
+- focused and affected stacked validation.
+
+S8.2–S8.7 remain useful future catalogue work, not hidden completion claims.
+Hardware component identity, thermal provider semantics, boot/time catalogues,
+security-provider posture, raw-log exposure and additional S8 mutations remain
+deferred under Q019–Q021 and their existing authority boundaries.
+
+This closure introduces no persistence migration and no new execution authority.

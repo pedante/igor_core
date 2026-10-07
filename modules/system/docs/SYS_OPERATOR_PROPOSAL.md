@@ -1,8 +1,9 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070–D075 accepted; S1–S7 are implemented through the green stacked
-S7 closure gate. S8.0 — Broader System catalogue discovery is active.** The
-discovery rationale is retained here as the design record.
+Status: **D070–D075 accepted; S1–S7 are complete and S8 is complete for the
+Igor 2 release scope with the green S8.1 runtime-telemetry slice. Additional
+S8 catalogue domains remain explicitly deferred post-release.** The discovery
+rationale is retained here as the design record.
 
 Current S8 branch: `feature/sys-broader-catalogue`
 
@@ -377,7 +378,7 @@ phases can overlap with existing Igor 2 completion work.
 | S5 — Storage administration | **Implemented on stacked feature branch:** runtime-only mount/unmount, frozen Core argv, trusted preflight, verification and explicit no-fstab semantics | complete pending validation |
 | S6 — Users, groups, permissions & paths | **Implemented on stacked feature branch:** UID/GID identities, bounded path completion/inspection, exact single-path owner/group/mode changes | complete pending validation |
 | S7 — Network & Wi-Fi | **Complete on feature/sys-network-wifi:** provider-neutral reads, interface System Model objects, optional NetworkManager READs/candidates, reviewed saved-profile activation, Debian/Arch/provider closure proof; Q018 remains deferred | complete |
-| S8 — Broader System catalogue | **Discovery active on feature/sys-broader-catalogue:** health/telemetry cutover, hardware, boot/time, security and richer logs/packages; read-first, mutations require separate review | 5–15+ days iterative |
+| S8 — Broader System catalogue | **Igor 2 release scope complete:** S8.1 typed host runtime telemetry is green; hardware/boot/time/security/richer-log expansion remains post-release under existing open decisions | complete for release scope |
 | S9 — Cross-module reuse | Other modules consume canonical System capabilities/objects instead of duplicating host mechanics | 2–5 days |
 | S10 — Step 20 polish/release gate | CLI/TUI parity, rich generated views, performance budgets, five proof classes and release regression | 4–8 days |
 

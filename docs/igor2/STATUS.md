@@ -3216,3 +3216,20 @@ The proposed first S8.1 slice is bounded host runtime telemetry
 observation/presentation. It adds no persistent object kind, privilege,
 mutation, raw-log channel or optional-provider requirement. Q019–Q021 record
 the remaining catalogue identity, raw-log and mutation decisions.
+
+
+### S8 release-scope closure
+
+S8 is complete for the Igor 2 System release scope at
+`feature/sys-broader-catalogue`. The final S8.1 stacked validation is green.
+The implemented slice adds bounded uptime/load/swap normalization, typed
+`host.runtime` facts on `host:local`, and
+`system.host.runtime.status` without privilege or mutation.
+
+This is an explicit scope closure, not a claim that every discovery phase was
+implemented. The accepted System release rule requires representative
+high-quality administration domains rather than exhaustive Linux-command
+coverage. S8.2–S8.7 hardware, thermal, boot/time, security-provider,
+richer-log and additional mutation work is deferred post-release. Q019–Q021
+remain the authority gates for those future additions. No persistent migration
+or recovery action is introduced by this closure.
