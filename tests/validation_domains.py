@@ -62,6 +62,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "module": (
         "tests/test_module_contract.py",
+        "tests/test_module_registry.py",
         "tests/test_module_inspection.py",
         "tests/modules/test_module_contracts.bats",
         "tests/modules/test_loader_regressions.bats",
@@ -138,6 +139,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
         "tests/modules/test_step18_module_composition.bats",
         "tests/test_network_query.py",
         "tests/test_networkmanager_wifi.py",
+        "tests/test_module_registry.py",
         "tests/test_system_network_surface.py",
         "tests/test_docker_module.py",
     ),

@@ -268,6 +268,14 @@ observer and link/route capabilities. Its absence makes those contributions
 unavailable while the System package and provider-independent contributions
 such as resolver inspection remain active.
 
+S7.5 proves this same generic network contract with explicit Debian and Arch
+fixtures. The proof is intentionally manager-neutral: both families use the
+same canonical System IDs and bounded iproute2/resolver mechanics. Optional
+NetworkManager Wi-Fi reads and known-profile activation are separately tested
+on both fixture families when `nmcli` is present. That is not a claim that
+iwd/iwctl, systemd-networkd, static configuration or another manager already
+implements the Wi-Fi provider contract.
+
 ### S5 storage administration boundary
 
 S5 consumes the S4 current-state objects but does not make observations

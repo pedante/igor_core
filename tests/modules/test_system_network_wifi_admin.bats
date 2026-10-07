@@ -150,3 +150,19 @@ PY
     [ "$status" -ne 0 ]
     [ ! -s "$WIFI_SUDO_TRACE" ]
 }
+
+
+@test "S7.5 known-profile activation plan is identical on Debian and Arch fixtures" {
+    local family
+    for family in debian arch; do
+        export IGOR_DISTRO_FAMILY="$family"
+        export IGOR_DISTRO_ID="$family"
+        run igor_capability_prepare system.network.wifi.connect_known \
+            "$(printf '{"interface":"interface:wlan0","profile":"%s"}' "$PROFILE_UUID")" \
+            system 1
+        [ "$status" -eq 0 ]
+        [[ "$output" == *'"safety":{"tier":"CHANGE"}'* ]]
+        [[ "$output" == *'"privilege":"required"'* ]]
+        [[ "$output" == *'"privileged_argv":[["sudo","-n","--","nmcli","--wait","30","connection","up","uuid","123e4567-e89b-12d3-a456-426614174000","ifname","wlan0"]]'* ]]
+    done
+}

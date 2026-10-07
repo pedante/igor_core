@@ -314,7 +314,7 @@ No frontend, module prose or AI call gains network authority.
 | S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete pending stacked validation |
 | S7.3 | **Implemented:** optional NetworkManager Wi-Fi READ provider + bounded scan/profile candidates | complete pending stacked validation |
 | S7.4 | **Implemented:** reviewed connect_known CHANGE adapter + execution-fence preflight + verification | complete pending stacked validation |
-| S7.5 | Docs, Debian/Arch/provider fixtures, affected PR gate | 1 day |
+| S7.5 | **Implemented:** docs + Debian/Arch/provider fixtures; affected stacked PR gate pending | closure gate |
 | later | New/open Wi-Fi profiles after secret/config ownership consumer | separate decision |
 
 The focused S7 remains in the original 5–10 day estimate. Password-bearing

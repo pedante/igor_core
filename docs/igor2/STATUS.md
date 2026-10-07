@@ -3146,7 +3146,7 @@ pending the stacked validation gate. Core owns bounded read-only iproute2
 link/address/route normalization and bounded resolver inspection through
 `core/lib/network_query.py` plus `core/lib/network.sh`.
 
-System 2.9.0 retains the `network.interfaces` collection observer and READ-only
+System 2.10.0 retains the `network.interfaces` collection observer and READ-only
 `system.network.summary`, `interfaces.list`, `interface.status`,
 `routes.list` and `dns.status` capabilities. The existing
 `interface:<name>` Host Intelligence identity is canonical. The interface
@@ -3174,3 +3174,20 @@ Igor's privilege gate, re-prepares at the execution fence and verifies that the
 same UUID is active on the same interface. It does not create/edit profiles,
 retrieve credentials, disconnect, toggle radio or change routes/DNS. D075
 resolves Q017; Q018 still defers new/open/password-bearing profile creation.
+
+
+### S7.5 closure evidence
+
+S7.5 adds explicit Debian/Arch fixture proof without widening the support
+claim. Generic S7 network reads remain iproute2/resolver based and
+provider-neutral on both fixture families. NetworkManager Wi-Fi reads and
+`system.network.wifi.connect_known` are exercised on both families only when
+the optional `nmcli` provider is present; this does not imply Wi-Fi mutation
+support for systemd-networkd, iwd/iwctl or other managers.
+
+The compiled Module API registry now has regression proof for D075 as well as
+the normal loader path: the exact reviewed `connect_known` declaration is
+admitted, while trusted-validator/verifier drift remains unavailable. The final
+S7 completion gate is the affected validation run against the stacked S6 base.
+Q018 remains deferred and S7.5 introduces no new credential/configuration
+authority.

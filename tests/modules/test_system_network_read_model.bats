@@ -418,3 +418,22 @@ assert not any(
 )
 PY
 }
+
+
+@test "S7.5 Debian and Arch fixtures preserve generic and optional provider reads" {
+    local family
+    for family in debian arch; do
+        run env IGOR_DISTRO_FAMILY="$family" IGOR_DISTRO_ID="$family" \
+            _IGOR_LOADER_DIR="$REPO_DIR" PATH="$PATH" bash -c '
+                source "$1/modules/system/module.sh"
+                printf "%s\n" '\''{"api_version":2,"contribution_id":"system.network.interfaces.list","input":{}}'\'' |
+                    system__network_interfaces_list
+                printf "%s\n" '\''{"api_version":2,"contribution_id":"system.network.wifi.status","input":{}}'\'' |
+                    system__network_wifi_status
+            ' _ "$REPO_DIR"
+        [ "$status" -eq 0 ]
+        [[ "$output" == *'"source":"core.network.interfaces"'* ]]
+        [[ "$output" == *'"provider":"NetworkManager"'* ]]
+        [[ "$output" == *'"source":"networkmanager.wifi.status"'* ]]
+    done
+}
