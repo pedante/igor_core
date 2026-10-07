@@ -172,7 +172,8 @@ PY
     [[ "$output" == *'"outcome":"success"'* ]]
     [ "$(sed -n '1p' "$ADMIN_SUDO_TRACE")" = 'sudo -n -- mkdir -p -- /mnt/DATA' ]
     [ "$(sed -n '2p' "$ADMIN_SUDO_TRACE")" = 'sudo -n -- mount -- /dev/sdb1 /mnt/DATA' ]
-    ! grep -Eq 'fstab|mount -a|--force|--lazy| -f | -l ' "$ADMIN_SUDO_TRACE"
+    run ! grep -Eq 'fstab|mount -a|--force|--lazy| -f | -l ' "$ADMIN_SUDO_TRACE"
+    [ "$status" -eq 0 ]
     [ "$(cat "$ADMIN_FSTAB_FIXTURE")" = "$before" ]
 }
 
@@ -212,7 +213,8 @@ PY
     [[ "$output" == *'"verification_status":"passed"'* ]]
     [[ "$output" == *'"check_id":"system.storage.mount.absent"'* ]]
     [ "$(tail -n 1 "$ADMIN_SUDO_TRACE")" = 'sudo -n -- umount -- /mnt/DATA' ]
-    ! grep -Eq -- '--force|--lazy| -f | -l ' "$ADMIN_SUDO_TRACE"
+    run ! grep -Eq -- '--force|--lazy| -f | -l ' "$ADMIN_SUDO_TRACE"
+    [ "$status" -eq 0 ]
     [ "$(cat "$ADMIN_FSTAB_FIXTURE")" = "$before" ]
 }
 
