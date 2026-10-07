@@ -29,6 +29,21 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y shellcheck ripgrep
 
-      - name: Run focused S7.4 admission proof
+      - name: Run S7 affected validation against stacked S6 base
         run: |
-          bats --tap --timing tests/modules/test_system_network_wifi_admin.bats
+          git fetch origin feature/sys-users-permissions-paths
+          tests/validate.sh affected \
+            --base origin/feature/sys-users-permissions-paths \
+            --output-dir validation-results \
+            --fail-fast-preflight \
+            --interactive-timeout 60 \
+            --group-timeout 240 \
+            --slow-timeout 300
+
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s7-stacked-validation
+          path: validation-results/
+          if-no-files-found: warn
