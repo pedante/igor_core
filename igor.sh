@@ -26,6 +26,37 @@ fi
 IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export IGOR_DIR
 
+# Step 20 public interface routing happens before operational startup.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    if [ "${1:-}" = "--classic" ]; then
+        export IGOR_FORCE_CLASSIC_UI=true
+        shift
+    fi
+    # shellcheck source=core/lib/operator_cli.sh
+    source "${IGOR_DIR}/core/lib/operator_cli.sh"
+    _igor_stdin_tty=false; _igor_stdout_tty=false
+    [ -t 0 ] && _igor_stdin_tty=true
+    [ -t 1 ] && _igor_stdout_tty=true
+    if [ "$(igor_operator_default_frontend "$#" "$_igor_stdin_tty" "$_igor_stdout_tty" "${IGOR_FORCE_CLASSIC_UI:-false}")" = tui ]; then
+        if command -v python3 >/dev/null 2>&1; then
+            exec python3 "${IGOR_DIR}/core/ai/tui.py"
+        elif command -v python >/dev/null 2>&1 && python --version 2>&1 | grep -q '^Python 3'; then
+            exec python "${IGOR_DIR}/core/ai/tui.py"
+        fi
+        printf 'Python 3 is required for the Igor TUI. Use bash igor.sh --classic for the classic UI.\n' >&2
+        exit 2
+    fi
+    _igor_public_args=()
+    mapfile -d '' -t _igor_public_args < <(igor_operator_cli_normalize "$@") || {
+        printf 'Invalid Igor CLI arguments. Run: bash igor.sh --help\n' >&2
+        exit 2
+    }
+    if [ "${#_igor_public_args[@]}" -gt 0 ]; then
+        set -- "${_igor_public_args[@]}"
+    fi
+    unset _igor_public_args _igor_stdin_tty _igor_stdout_tty
+fi
+
 # The UI, AI session, and private runtime belong to the invoking user. Root
 # execution would mix root state with a user's checkout and runtime directory.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]] && [ "$(id -u)" -eq 0 ]; then
@@ -71,7 +102,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             ;;
         --ai-tui)
             if [ ! -t 0 ] || [ ! -t 1 ]; then
-                printf 'The AI TUI needs an interactive terminal. Use bash igor.sh for the classic UI.\n' >&2
+                printf 'The AI TUI needs an interactive terminal. Use bash igor.sh --classic for the classic UI.\n' >&2
                 exit 2
             fi
             if command -v python3 >/dev/null 2>&1; then
@@ -80,7 +111,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
                  python --version 2>&1 | grep -q '^Python 3'; then
                 exec python "${IGOR_DIR}/core/ai/tui.py"
             fi
-            printf 'Python 3 is required for the AI TUI. Use bash igor.sh for the classic UI.\n' >&2
+            printf 'Python 3 is required for the AI TUI. Use bash igor.sh --classic for the classic UI.\n' >&2
             exit 2
             ;;
         --ai)
@@ -1326,6 +1357,40 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     # ── Command-line flag handling ────────────────────────────────────────────
     for _igor_arg in "$@"; do
         case "$_igor_arg" in
+            --ask-once-backend)
+                [ "$#" -eq 2 ] || { printf 'Usage: bash igor.sh ask "QUESTION"\n' >&2; exit 2; }
+                _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
+                IGOR_ONESHOT_PROMPT="$2" AI_SKIP_INTERSTITIAL=true menu_ai
+                exit $?
+                ;;
+            --capability-run)
+                [ "$#" -ge 3 ] && [ "$#" -le 4 ] || { printf 'Usage: bash igor.sh capability run ID [INPUTS_JSON] [PROVIDER]\n' >&2; exit 2; }
+                _igor_cli_cap_id="$2"; _igor_cli_cap_inputs="${3:-{}}"; _igor_cli_cap_provider="${4:-}"
+                _igor_cli_cap_inspect="$(igor_capability_inspect "$_igor_cli_cap_id" "$_igor_cli_cap_provider")" || exit 1
+                _igor_cli_cap_tier="$(printf '%s' "$_igor_cli_cap_inspect" | "${IGOR_PYTHON:-python3}" -c '
+import json,sys
+row=json.load(sys.stdin); providers=row.get("providers") or []; selected=row.get("selected_provider")
+match=next((p for p in providers if p.get("provider")==selected), providers[0] if len(providers)==1 else None)
+if not isinstance(match,dict): raise SystemExit(1)
+print(match["descriptor"]["safety"]["tier"])
+')" || exit 1
+                if { [ ! -t 0 ] || [ ! -t 1 ]; } && [ "$_igor_cli_cap_tier" != READ ]; then
+                    printf '{"status":"approval_required","capability_id":"%s","classification":"%s","interface":"cli"}\n' "$_igor_cli_cap_id" "$_igor_cli_cap_tier"
+                    exit 3
+                fi
+                _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
+                _igor_cli_tool="$("${IGOR_PYTHON:-python3}" - "$_igor_cli_cap_id" "$_igor_cli_cap_provider" "$_igor_cli_cap_inputs" <<'PY'
+import json,sys
+ident,provider,raw=sys.argv[1:4]; inputs=json.loads(raw)
+if not isinstance(inputs,dict): raise SystemExit(2)
+request={"tool":"run_capability","id":ident,"inputs":inputs}
+if provider: request["provider"]=provider
+print(json.dumps(request,separators=(",",":")))
+PY
+)" || exit 2
+                IGOR_HISTORY_INTERFACE=cli ai_execute_tool "$_igor_cli_tool"
+                exit $?
+                ;;
             --ai-tui-backend)
                 if [ "${IGOR_TUI_MODE:-false}" = true ]; then
                     _IGOR_TUI_PHASE_ENDED_MS=$(date +%s%3N)

@@ -3626,6 +3626,7 @@ except: pass
             "$_rt_dir" "Could not write the private runtime state file."
         return $?
     }
+    local _oneshot_sent=false
     while true; do
         # Poll for --extra IPC commands (non-blocking, ~50ms timeout)
         _ai_poll_fifo || break   # break if end_session was requested
@@ -3676,7 +3677,14 @@ except: pass
         # click/move/scroll events as escape sequences (^[[A ^[[B etc.) into the
         # active pane, which pollutes the readline buffer.
         printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l' 2>/dev/null || true
-        if ! IFS= read -r user_input; then
+        if [ -n "${IGOR_ONESHOT_PROMPT:-}" ]; then
+            if [ "$_oneshot_sent" = false ]; then
+                user_input="$IGOR_ONESHOT_PROMPT"
+                _oneshot_sent=true
+            else
+                user_input="/quit"
+            fi
+        elif ! IFS= read -r user_input; then
             _ai_set_session_state input_closed
             _ai_session_cleanup
             printf '\nAI session input closed unexpectedly. Returning to the main menu.\n' >&2
