@@ -64,9 +64,11 @@ class AccessTests(unittest.TestCase):
             real.mkdir()
             link = root / "link"
             link.symlink_to(real, target_is_directory=True)
-            with patch.object(access, "_INSPECT_ROOTS", (root,)):
-                with self.assertRaisesRegex(access.AccessError, "symbolic-link"):
-                    access.inspect_path(str(link / "child").lstrip("/"))
+            with (
+                patch.object(access, "_INSPECT_ROOTS", (root,)),
+                self.assertRaisesRegex(access.AccessError, "symbolic-link"),
+            ):
+                access.inspect_path(str(link / "child").lstrip("/"))
 
     def test_permission_plans_freeze_numeric_nonrecursive_argv(self) -> None:
         path_row = {
@@ -121,17 +123,21 @@ class AccessTests(unittest.TestCase):
             "device": 1,
             "inode": 2,
         }
-        with patch.object(access, "inspect_path", return_value=path_row):
-            with self.assertRaisesRegex(access.AccessError, "0000..0777"):
-                access.plan_mode({"path": "srv/data", "mode": "4755"})
+        with (
+            patch.object(access, "inspect_path", return_value=path_row),
+            self.assertRaisesRegex(access.AccessError, "0000..0777"),
+        ):
+            access.plan_mode({"path": "srv/data", "mode": "4755"})
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             target = root / "data"
             target.mkdir()
-            with patch.object(access, "_MUTATION_ROOTS", (root / "allowed",)):
-                with self.assertRaisesRegex(access.AccessError, "outside reviewed"):
-                    access.inspect_path(str(target).lstrip("/"), mutation=True)
+            with (
+                patch.object(access, "_MUTATION_ROOTS", (root / "allowed",)),
+                self.assertRaisesRegex(access.AccessError, "outside reviewed"),
+            ):
+                access.inspect_path(str(target).lstrip("/"), mutation=True)
 
 
 if __name__ == "__main__":

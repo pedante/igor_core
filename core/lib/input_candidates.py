@@ -100,9 +100,11 @@ def _candidate_rows(value: Any, limit: int, *, input_type: str | None = None) ->
         candidate_value = _bounded_text(raw.get("value"), f"candidates[{index}].value", 512)
         if input_type == "object_id" and not _OBJECT_ID.fullmatch(candidate_value):
             raise _error(f"candidates[{index}].value is not an object identity")
-        if input_type == "path":
-            if candidate_value.startswith("/") or ".." in candidate_value.split("/"):
-                raise _error(f"candidates[{index}].value is not a confined relative path")
+        if (
+            input_type == "path"
+            and (candidate_value.startswith("/") or ".." in candidate_value.split("/"))
+        ):
+            raise _error(f"candidates[{index}].value is not a confined relative path")
         if candidate_value in seen:
             raise _error("candidate values must be unique")
         seen.add(candidate_value)
