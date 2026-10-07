@@ -1,0 +1,59 @@
+name: S8 Stacked Validation
+
+on:
+  push:
+    branches: ["feature/sys-broader-catalogue"]
+
+concurrency:
+  group: system-s8-validation
+  cancel-in-progress: true
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install focused validation tools
+        run: |
+          pip install 'pytest>=9,<10' ruff
+          sudo npm install -g bats@1.13.0
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck ripgrep
+
+      - name: Python compile and Ruff
+        run: |
+          python -m py_compile core/lib/host_runtime_query.py tests/test_host_runtime_query.py
+          ruff check core/lib/host_runtime_query.py tests/test_host_runtime_query.py tests/validation_domains.py
+
+      - name: Shell syntax
+        run: |
+          bash -n core/lib/host_runtime.sh
+          bash -n modules/system/module.sh
+          bash -n tests/core/test_host_runtime_query.bats
+          bash -n tests/modules/test_system_runtime_read_model.bats
+
+      - name: ShellCheck changed shell
+        continue-on-error: true
+        run: |
+          shellcheck --severity=warning --exclude=SC2086,SC1090,SC1091,SC2034 --shell=bash core/lib/host_runtime.sh
+          shellcheck --severity=warning --exclude=SC2086,SC1090,SC1091,SC2034 --shell=bash modules/system/module.sh
+          shellcheck --severity=warning --exclude=SC2086,SC1090,SC1091,SC2034 --shell=bash tests/core/test_host_runtime_query.bats tests/modules/test_system_runtime_read_model.bats
+
+      - name: Focused Python
+        run: |
+          pytest -q             tests/test_host_runtime_query.py             tests/test_module_contract.py             tests/test_validation_domains.py
+
+      - name: Focused BATS
+        run: |
+          bats --tap             tests/core/test_host_runtime_query.bats             tests/modules/test_system_runtime_read_model.bats             tests/modules/test_step18_module_contract.bats             tests/modules/test_step18_module_composition.bats             tests/modules/test_system_admin_surface.bats
+
+      - name: Whitespace
+        run: git diff --check origin/feature/sys-network-wifi...HEAD
