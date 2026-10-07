@@ -1803,9 +1803,12 @@ def _operator_text_input_overlay(
             if isinstance(key, str) and key not in "\n\r" and ord(key) >= 32:
                 if len(value) < int(spec.get("maxLength", 4096)):
                     value += key
-            elif isinstance(key, int) and 32 <= key <= 126:
-                if len(value) < int(spec.get("maxLength", 4096)):
-                    value += chr(key)
+            elif (
+                isinstance(key, int)
+                and 32 <= key <= 126
+                and len(value) < int(spec.get("maxLength", 4096))
+            ):
+                value += chr(key)
     finally:
         screen.timeout(100)
 
