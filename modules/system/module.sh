@@ -67,6 +67,105 @@ system__apply_memory_warning() { _mod_sys_memory_warning_request apply; }
 system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
 
+
+# S8.1 host runtime telemetry. Core owns strict procfs normalization; System
+# owns host-domain observation and typed presentation. This block is READ-only
+# and intentionally excludes thermal-provider meaning and health thresholds.
+_mod_sys_runtime_read() {
+    [ "$#" -eq 0 ] || return 2
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/host_runtime.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/host_runtime.sh"
+    host_runtime_status_query
+}
+
+system__observe_runtime() {
+    local input row
+    input="$(_mod_sys_admin_request host.runtime)" || {
+        _mod_sys_admin_error invalid_request "expected host.runtime v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "host.runtime takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_runtime_read)" || {
+        _mod_sys_admin_error unavailable "host runtime discovery failed"
+        return 0
+    }
+    HOST_RUNTIME_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+row = json.loads(os.environ["HOST_RUNTIME_ROW"])
+mapping = [
+    ("runtime.uptime_seconds", "uptime_seconds", ["/proc/uptime"]),
+    ("load.one_minute", "load_1", ["/proc/loadavg"]),
+    ("load.five_minute", "load_5", ["/proc/loadavg"]),
+    ("load.fifteen_minute", "load_15", ["/proc/loadavg"]),
+    ("swap.total_bytes", "swap_total_bytes", ["/proc/meminfo:SwapTotal"]),
+    ("swap.free_bytes", "swap_free_bytes", ["/proc/meminfo:SwapFree"]),
+    (
+        "swap.used_bytes",
+        "swap_used_bytes",
+        ["/proc/meminfo:SwapTotal", "/proc/meminfo:SwapFree"],
+    ),
+    (
+        "swap.use_percent",
+        "swap_use_percent",
+        ["/proc/meminfo:SwapTotal", "/proc/meminfo:SwapFree"],
+    ),
+]
+facts = [
+    {"property": prop, "value": row[field], "evidence": evidence}
+    for prop, field, evidence in mapping
+]
+print(json.dumps({
+    "status": "ok",
+    "result": {
+        "object_id": "host:local",
+        "facts": facts,
+        "unavailable": [],
+    },
+}, separators=(",", ":")))
+PY
+}
+
+system__host_runtime_status() {
+    local input row
+    input="$(_mod_sys_admin_request system.host.runtime.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.host.runtime.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.host.runtime.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_runtime_read)" || {
+        _mod_sys_admin_error unavailable "host runtime discovery failed"
+        return 0
+    }
+    HOST_RUNTIME_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+row = json.loads(os.environ["HOST_RUNTIME_ROW"])
+result = {
+    "uptime_seconds": row["uptime_seconds"],
+    "load_1": row["load_1"],
+    "load_5": row["load_5"],
+    "load_15": row["load_15"],
+    "swap_total_bytes": row["swap_total_bytes"],
+    "swap_free_bytes": row["swap_free_bytes"],
+    "swap_used_bytes": row["swap_used_bytes"],
+    "swap_use_percent": row["swap_use_percent"],
+    "source": "core.host.runtime",
+}
+print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
+PY
+}
+
+
 # S4 storage read model. Core owns the normalized Linux mechanism; System owns
 # host-domain observation and presentation. Nothing in this block mutates mount
 # state, filesystems or persistence.

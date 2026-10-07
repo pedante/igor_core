@@ -131,12 +131,15 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     ),
     "system": (
         "tests/core/test_system_model.py",
+        "tests/core/test_host_runtime_query.bats",
         "tests/core/test_network_query.bats",
         "tests/modules/test_system_storage.bats",
         "tests/modules/test_system_admin_surface.bats",
         "tests/modules/test_system_network_read_model.bats",
         "tests/modules/test_system_network_wifi_admin.bats",
+        "tests/modules/test_system_runtime_read_model.bats",
         "tests/modules/test_step18_module_composition.bats",
+        "tests/test_host_runtime_query.py",
         "tests/test_network_query.py",
         "tests/test_networkmanager_wifi.py",
         "tests/test_module_registry.py",
@@ -158,7 +161,7 @@ _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("automation", "healing", "judgment"), "automation"),
     (("context", "host_context"), "context"),
     (("investigation", "investigations"), "investigations"),
-    (("system_model", "network_query", "networkmanager_wifi", "core/lib/network.sh", "modules/system", "modules/docker", "docker"), "system"),
+    (("system_model", "host_runtime_query", "core/lib/host_runtime.sh", "network_query", "networkmanager_wifi", "core/lib/network.sh", "modules/system", "modules/docker", "docker"), "system"),
 )
 
 
