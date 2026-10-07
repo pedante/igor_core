@@ -46,15 +46,14 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         printf 'Python 3 is required for the Igor TUI. Use bash igor.sh --classic for the classic UI.\n' >&2
         exit 2
     fi
-    _igor_public_args=()
-    mapfile -d '' -t _igor_public_args < <(igor_operator_cli_normalize "$@") || {
+    if ! igor_operator_cli_normalize "$@"; then
         printf 'Invalid Igor CLI arguments. Run: bash igor.sh --help\n' >&2
         exit 2
-    }
-    if [ "${#_igor_public_args[@]}" -gt 0 ]; then
-        set -- "${_igor_public_args[@]}"
     fi
-    unset _igor_public_args _igor_stdin_tty _igor_stdout_tty
+    if [ "${#_IGOR_OPERATOR_ARGS[@]}" -gt 0 ]; then
+        set -- "${_IGOR_OPERATOR_ARGS[@]}"
+    fi
+    unset _IGOR_OPERATOR_ARGS _igor_stdin_tty _igor_stdout_tty
 fi
 
 # The UI, AI session, and private runtime belong to the invoking user. Root

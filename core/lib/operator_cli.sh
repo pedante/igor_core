@@ -1,46 +1,62 @@
 #!/usr/bin/env bash
+# Step 20 CLI argument normalization only. This selects existing Igor backend
+# entry points and owns no facts, authorization, privilege or execution.
+
 igor_operator_cli_normalize() {
-    local _cmd _sub _prompt
+    _IGOR_OPERATOR_ARGS=()
     if [ "${1:-}" = "--json" ]; then
         export IGOR_CLI_JSON=true
         shift
     else
         export IGOR_CLI_JSON=false
     fi
-    _cmd="${1:-}"
+    local _cmd="${1:-}" _sub _prompt
     case "$_cmd" in
-        "") return 0 ;;
+        "") ;;
         modules)
             shift
             case "${1:-list}" in
-                list) printf '%s\0' --modules ;;
-                inspect|detach-plan) _sub="$1"; shift; [ "$#" -eq 1 ] || return 2; printf '%s\0' --modules "$_sub" "$1" ;;
+                list) _IGOR_OPERATOR_ARGS=(--modules) ;;
+                inspect|detach-plan)
+                    _sub="$1"; shift
+                    [ "$#" -eq 1 ] || return 2
+                    _IGOR_OPERATOR_ARGS=(--modules "$_sub" "$1") ;;
                 *) return 2 ;;
             esac ;;
         capability|capabilities)
             shift
             case "${1:-list}" in
-                list) printf '%s\0' --capabilities list ;;
-                inspect) shift; [ "$#" -ge 1 ] && [ "$#" -le 2 ] || return 2; printf '%s\0' --capabilities inspect "$@" ;;
-                plan) shift; [ "$#" -eq 1 ] || return 2; printf '%s\0' --capabilities plan "$1" ;;
-                run) shift; [ "$#" -ge 1 ] && [ "$#" -le 3 ] || return 2; printf '%s\0' --capability-run "$1" "${2:-{}}" "${3:-}" ;;
+                list) _IGOR_OPERATOR_ARGS=(--capabilities list) ;;
+                inspect)
+                    shift
+                    [ "$#" -ge 1 ] && [ "$#" -le 2 ] || return 2
+                    _IGOR_OPERATOR_ARGS=(--capabilities inspect "$@") ;;
+                plan)
+                    shift; [ "$#" -eq 1 ] || return 2
+                    _IGOR_OPERATOR_ARGS=(--capabilities plan "$1") ;;
+                run)
+                    shift; [ "$#" -ge 1 ] && [ "$#" -le 3 ] || return 2
+                    _IGOR_OPERATOR_ARGS=(--capability-run "$1" "${2:-{}}" "${3:-}") ;;
                 *) return 2 ;;
             esac ;;
-        deployments) shift; printf '%s\0' --deployments "${@:-list}" ;;
-        history) shift; printf '%s\0' --history "${@:-recent}" ;;
-        investigations) shift; printf '%s\0' --investigations "${@:-list}" ;;
-        config|configuration) shift; printf '%s\0' --configuration "${@:-status}" ;;
+        deployments) shift; _IGOR_OPERATOR_ARGS=(--deployments "${@:-list}") ;;
+        history) shift; _IGOR_OPERATOR_ARGS=(--history "${@:-recent}") ;;
+        investigations) shift; _IGOR_OPERATOR_ARGS=(--investigations "${@:-list}") ;;
+        config|configuration) shift; _IGOR_OPERATOR_ARGS=(--configuration "${@:-status}") ;;
         health)
             shift
             case "${1:-summary}" in
-                summary) printf '%s\0' --model summary ;;
-                inspect) shift; printf '%s\0' --model health "${1:-}" ;;
+                summary) _IGOR_OPERATOR_ARGS=(--model summary) ;;
+                inspect) shift; _IGOR_OPERATOR_ARGS=(--model health "${1:-}") ;;
                 *) return 2 ;;
             esac ;;
-        facts) shift; printf '%s\0' --model facts "$@" ;;
-        ask) shift; [ "$#" -ge 1 ] || return 2; _prompt="$*"; printf '%s\0' --ask-once-backend "$_prompt" ;;
-        --*) printf '%s\0' "$@" ;;
-        *) _prompt="$*"; printf '%s\0' --ask-once-backend "$_prompt" ;;
+        facts) shift; _IGOR_OPERATOR_ARGS=(--model facts "$@") ;;
+        ask)
+            shift; [ "$#" -ge 1 ] || return 2
+            _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
+        --*) _IGOR_OPERATOR_ARGS=("$@") ;;
+        *)
+            _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
     esac
 }
 

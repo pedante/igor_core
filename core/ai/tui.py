@@ -992,8 +992,32 @@ class InvestigationInspection(HistoryInspection):
     command = ("--investigations", "list")
 
 
+class ModuleInspection(HistoryInspection):
+    """Read-only module availability through the owning loader CLI."""
+
+    label = "Modules"
+    command = ("--modules",)
+
+
+class HealthInspection(HistoryInspection):
+    """Read-only unified health through the owning System Model projection."""
+
+    label = "System Health"
+    command = ("--model", "health")
+
+
+class DeploymentInspection(HistoryInspection):
+    """Read-only deployment registry projection."""
+
+    label = "Deployments"
+    command = ("--deployments", "list")
+
+
 def panel_sections(state: EventState, inspection: HistoryInspection,
-                   investigations: InvestigationInspection | None = None) -> list[dict[str, Any]]:
+                   investigations: InvestigationInspection | None = None,
+                   modules: ModuleInspection | None = None,
+                   health: HealthInspection | None = None,
+                   deployments: DeploymentInspection | None = None) -> list[dict[str, Any]]:
     """Reusable section data, projected from backend-owned interfaces only."""
     sections = [
         {"id": "session", "label": "Session", "source": "frontend event stream",
@@ -1017,6 +1041,28 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
         sections.append({"id": "investigations", "label": "Investigations",
                          "source": "--investigations list", "data": investigations.data,
                          "hint": investigations.status})
+    if modules is not None:
+        sections.append({"id": "modules", "label": "Modules",
+                         "source": "--modules", "data": modules.data,
+                         "hint": modules.status})
+    if health is not None:
+        sections.append({"id": "health", "label": "System Health",
+                         "source": "--model health", "data": health.data,
+                         "hint": health.status})
+    if deployments is not None:
+        sections.append({"id": "deployments", "label": "Deployments",
+                         "source": "--deployments list", "data": deployments.data,
+                         "hint": deployments.status})
+    snapshot = state.operator_snapshot if isinstance(state.operator_snapshot, dict) else {}
+    entries = snapshot.get("entries") if isinstance(snapshot.get("entries"), list) else []
+    sections.append({"id": "capabilities", "label": "Capabilities",
+                     "source": "backend operator_snapshot",
+                     "data": [row for row in entries if row.get("kind") == "capability"],
+                     "hint": "Generated from canonical capability registry"})
+    sections.append({"id": "configuration", "label": "Configuration",
+                     "source": "backend operator_snapshot",
+                     "data": [row for row in entries if row.get("kind") == "configuration"],
+                     "hint": "Generated from Configuration Service metadata"})
     sections.append({"id": "context_routing", "label": "Context / Routing",
                      "source": "backend context_routing decision",
                      "data": state.context_routing or {"availability": "not reported"},
@@ -2331,7 +2377,7 @@ def run_tui(backend: Iterable[str] = DEFAULT_BACKEND, stream: Path | None = None
         try:
             result = curses.wrapper(lambda screen: _loop(screen, pid, master, path, state))
         except curses.error as error:
-            print(f"AI TUI could not start: {error}. Use bash igor.sh for the classic UI.",
+            print(f"Igor TUI could not start: {error}. Use bash igor.sh --classic for the classic UI.",
                   file=sys.stderr)
             return 2
         if result:
@@ -2387,11 +2433,17 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
           state: EventState | None = None) -> int:
     inspection = HistoryInspection()
     investigations = InvestigationInspection()
+    modules = ModuleInspection()
+    health = HealthInspection()
+    deployments = DeploymentInspection()
     try:
-        return _interaction_loop(screen, pid, master, path, state, inspection, investigations)
+        return _interaction_loop(
+            screen, pid, master, path, state, inspection, investigations,
+            modules, health, deployments,
+        )
     finally:
-        inspection.close()
-        investigations.close()
+        for reader in (inspection, investigations, modules, health, deployments):
+            reader.close()
 
 
 def _configure_mouse() -> bool:
@@ -2415,7 +2467,10 @@ def _configure_mouse() -> bool:
 
 def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                       state: EventState | None, inspection: HistoryInspection,
-                      investigations: InvestigationInspection | None = None) -> int:
+                      investigations: InvestigationInspection | None = None,
+                      modules: ModuleInspection | None = None,
+                      health: HealthInspection | None = None,
+                      deployments: DeploymentInspection | None = None) -> int:
     screen.keypad(True)
     screen.timeout(100)
     state, buffer = state or EventState(), InputBuffer()
@@ -2440,6 +2495,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
         dirty = inspection.poll() or dirty or bool(events)
         if investigations is not None:
             dirty = investigations.poll() or dirty
+        for reader in (modules, health, deployments):
+            if reader is not None:
+                dirty = reader.poll() or dirty
         try:
             raw = os.read(master, 4096)
             if not raw:
@@ -2460,7 +2518,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 return _child_exit_code(pid, True) or 0
             raise
         if dirty:
-            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations))
+            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations, modules, health, deployments))
             dirty = False
         key = _next_key(screen)
         if key == -1:
@@ -2508,8 +2566,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.preserve_view(after_count - before_count, maximum)
                 if not focus.panel_open:
                     inspection.close()
-                    if investigations is not None:
-                        investigations.close()
+                    for reader in (investigations, modules, health, deployments):
+                        if reader is not None:
+                            reader.close()
             continue
         if focus.region == "panel":
             sections = panel_sections(state, inspection, investigations)
@@ -2535,6 +2594,12 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                     inspection.start()
                 elif section_id == "investigations" and investigations is not None:
                     investigations.start()
+                elif section_id == "modules" and modules is not None:
+                    modules.start()
+                elif section_id == "health" and health is not None:
+                    health.start()
+                elif section_id == "deployments" and deployments is not None:
+                    deployments.start()
                 elif section_id == "properties" and not state.pending_action:
                     _settings_overlay(screen, master, reader, state)
                     focus.set_focus("input")
