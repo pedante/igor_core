@@ -36,7 +36,12 @@ printf '%s\n' "${_IGOR_OPERATOR_ARGS[@]}"
         self.assertEqual(result.stdout.splitlines(), ["true", "--modules"])
 
     def test_json_does_not_claim_machine_readable_conversation_output(self):
-        for argv in (("--json", "ask", "hello"), ("--json", "hello"), ("--json",)):
+        for argv in (
+            ("--json", "ask", "hello"),
+            ("--json", "hello"),
+            ("--json", "--help"),
+            ("--json",),
+        ):
             with self.subTest(argv=argv):
                 quoted = " ".join(subprocess.list2cmdline([item]) for item in argv)
                 result = run_shell(

@@ -56,7 +56,9 @@ igor_operator_cli_normalize() {
             [ "${IGOR_CLI_JSON}" != true ] || return 2
             shift; [ "$#" -ge 1 ] || return 2
             _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
-        --*) _IGOR_OPERATOR_ARGS=("$@") ;;
+        --*)
+            [ "${IGOR_CLI_JSON}" != true ] || return 2
+            _IGOR_OPERATOR_ARGS=("$@") ;;
         *)
             [ "${IGOR_CLI_JSON}" != true ] || return 2
             _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
