@@ -434,6 +434,6 @@ PY
         [ "$status" -eq 0 ]
         [[ "$output" == *'"source":"core.network.interfaces"'* ]]
         [[ "$output" == *'"provider":"NetworkManager"'* ]]
-        [[ "$output" == *'"source":"networkmanager.wifi.status"'* ]]
+        [[ "$output" == *'"source":"core.networkmanager.wifi.status"'* ]]
     done
 }
