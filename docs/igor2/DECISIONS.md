@@ -1094,6 +1094,42 @@ This resolves Q017. Q018 remains deferred.
 
 ## Open decisions
 
+### Q019 — Initial S8 hardware/runtime identity
+
+Should initial S8 runtime and hardware catalogue work use the existing
+`host:local` identity for typed observations/current reads, and defer durable
+CPU/device/sensor object kinds until selection, relationships or mutation prove
+a need?
+
+Recommendation: **yes**. Avoid a speculative hardware inventory and avoid
+persisting serial/board identifiers. Component identities can be added later
+with explicit stability/provenance rules.
+
+Decision target: before S8 creates any durable hardware-component object kind.
+
+### Q020 — Richer log data exposure
+
+Should S8 keep raw journal/application messages outside ordinary typed
+capability output, Operational History and AI reference context by default
+until a dedicated sensitive-log contract defines bounded access and redaction?
+
+Recommendation: **yes**. Enrich metadata/counts/unit/priority summaries first.
+Logs may contain credentials or private application data even when the journal
+API itself is read-only.
+
+Decision target: before any S8 capability returns raw log-message bodies.
+
+### Q021 — S8 mutation expansion
+
+Should reboot/shutdown, timezone/NTP, boot-target and security/firewall policy
+changes remain deferred until each operation has an explicit reviewed Core
+adapter, recovery semantics and deterministic verification?
+
+Recommendation: **yes**. S8 is read-first; the existence of a Linux command or
+legacy affordance is not authority to add a canonical mutation.
+
+Decision target: before the first new S8 state-changing capability.
+
 ### Q018 — New Wi-Fi profile and credential authority
 
 Should S7 defer creation/editing of open or password-bearing Wi-Fi profiles

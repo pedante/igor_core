@@ -3196,3 +3196,23 @@ FAIL_BASELINE, 4 BASELINE_FIXED, no timeouts, environment/tool skips or
 errors**. The workflow concluded successfully and the reviewed baseline was not
 changed. Q018 remains deferred and S7.5 introduces no new
 credential/configuration authority.
+
+
+### S8.0 broader System catalogue discovery
+
+S8 discovery is active on `feature/sys-broader-catalogue`, stacked on the
+completed S7 branch. The authoritative proposal is
+`modules/system/docs/SYS_BROADER_CATALOGUE_PROPOSAL.md`.
+
+Repository evidence favors a read-first sequence. Existing typed System
+coverage already owns host summary/memory, package/service/log inspection,
+storage, access and network. The remaining legacy System health/context hooks
+still probe temperature, swap, load, root filesystem usage, platform identity
+and I/O text directly. Host Intelligence already marks those probes for
+observer/check adaptation domain by domain.
+
+The proposed first S8.1 slice is bounded host runtime telemetry
+(uptime/load/swap) through Core normalization and System-owned typed
+observation/presentation. It adds no persistent object kind, privilege,
+mutation, raw-log channel or optional-provider requirement. Q019–Q021 record
+the remaining catalogue identity, raw-log and mutation decisions.
