@@ -1,10 +1,10 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070/D071 accepted; S1–S5 implemented, and S6 implemented on the
-stacked users/permissions/paths branch pending its PR validation gate.** The
-discovery rationale is retained here as the design record.
+Status: **D070–D075 accepted; S1–S7 are implemented through the green stacked
+S7 closure gate. S8 — Broader System catalogue is next.** The discovery
+rationale is retained here as the design record.
 
-Current S6 branch: `feature/sys-users-permissions-paths`
+Current completed System stack head: `feature/sys-network-wifi`
 
 ## Purpose
 
@@ -376,7 +376,7 @@ phases can overlap with existing Igor 2 completion work.
 | S4 — Storage read model | **Green on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete |
 | S5 — Storage administration | **Implemented on stacked feature branch:** runtime-only mount/unmount, frozen Core argv, trusted preflight, verification and explicit no-fstab semantics | complete pending validation |
 | S6 — Users, groups, permissions & paths | **Implemented on stacked feature branch:** UID/GID identities, bounded path completion/inspection, exact single-path owner/group/mode changes | complete pending validation |
-| S7 — Network & Wi-Fi | **S7.1–S7.2 implemented on feature/sys-network-wifi:** bounded Core network reads, canonical interface System Model objects, READ capabilities and typed selection; Q017–Q018 remain open for Wi-Fi | 5–10 days |
+| S7 — Network & Wi-Fi | **Complete on feature/sys-network-wifi:** provider-neutral reads, interface System Model objects, optional NetworkManager READs/candidates, reviewed saved-profile activation, Debian/Arch/provider closure proof; Q018 remains deferred | complete |
 | S8 — Broader System catalogue | Hardware, boot, time, security, richer logs/packages/health; read-first and selectively verified mutations | 5–15+ days iterative |
 | S9 — Cross-module reuse | Other modules consume canonical System capabilities/objects instead of duplicating host mechanics | 2–5 days |
 | S10 — Step 20 polish/release gate | CLI/TUI parity, rich generated views, performance budgets, five proof classes and release regression | 4–8 days |

@@ -3118,7 +3118,7 @@ domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
 
-### System operator S1–S6
+### System operator S1–S7
 
 S1–S3 are merged into `igor2` under D070. S4's storage read model is green on
 `feature/sys-storage-read-model` (affected run #209). S5 is implemented on
@@ -3141,8 +3141,8 @@ recursive changes, account creation/deletion, passwords/shadow data, ACL
 mutation, special permission bits and arbitrary roots remain outside S6.
 D072 records this boundary.
 
-S7.1–S7.4 are implemented on `feature/sys-network-wifi` under D073–D075
-pending the stacked validation gate. Core owns bounded read-only iproute2
+S7.1–S7.5 are complete on `feature/sys-network-wifi` under D073–D075.
+The stacked affected validation gate against S6 is green. Core owns bounded read-only iproute2
 link/address/route normalization and bounded resolver inspection through
 `core/lib/network_query.py` plus `core/lib/network.sh`.
 
@@ -3187,7 +3187,12 @@ support for systemd-networkd, iwd/iwctl or other managers.
 
 The compiled Module API registry now has regression proof for D075 as well as
 the normal loader path: the exact reviewed `connect_known` declaration is
-admitted, while trusted-validator/verifier drift remains unavailable. The final
-S7 completion gate is the affected validation run against the stacked S6 base.
-Q018 remains deferred and S7.5 introduces no new credential/configuration
-authority.
+admitted, while trusted-validator/verifier drift remains unavailable.
+
+The final GitHub Actions `S7 Stacked Validation` run **#15**
+(`37591480474`) validated the branch against
+`feature/sys-users-permissions-paths`: **1756 PASS, 0 FAIL_NEW, 6 reviewed
+FAIL_BASELINE, 4 BASELINE_FIXED, no timeouts, environment/tool skips or
+errors**. The workflow concluded successfully and the reviewed baseline was not
+changed. Q018 remains deferred and S7.5 introduces no new
+credential/configuration authority.

@@ -1,6 +1,6 @@
 # System S7 — Network & Wi-Fi Discovery Proposal
 
-Status: **D073–D075 accepted; S7.1–S7.4 implemented on the feature branch pending the stacked validation gate. Q017 is resolved; Q018 remains open.**
+Status: **D073–D075 accepted; S7.1–S7.5 complete on the stacked feature branch. The final affected gate against S6 is green. Q017 is resolved; Q018 remains deferred.**
 
 Branch: feature/sys-network-wifi
 
@@ -310,11 +310,11 @@ No frontend, module prose or AI call gains network authority.
 | Phase | Outcome | Rough focused effort |
 |---|---|---:|
 | S7.0 | Discovery, Q016–Q018, proof gate | Q016 resolved by D073; provider READ by D074; Q017 resolved by D075; Q018 open |
-| S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete pending stacked validation |
-| S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete pending stacked validation |
-| S7.3 | **Implemented:** optional NetworkManager Wi-Fi READ provider + bounded scan/profile candidates | complete pending stacked validation |
-| S7.4 | **Implemented:** reviewed connect_known CHANGE adapter + execution-fence preflight + verification | complete pending stacked validation |
-| S7.5 | **Implemented:** docs + Debian/Arch/provider fixtures; affected stacked PR gate pending | closure gate |
+| S7.1 | **Implemented:** Core bounded link/address/route/DNS reads, shell bridge and focused tests | complete |
+| S7.2 | **Implemented:** interface System Model collection, five READ capabilities and model-first semantic selector | complete |
+| S7.3 | **Implemented:** optional NetworkManager Wi-Fi READ provider + bounded scan/profile candidates | complete |
+| S7.4 | **Implemented:** reviewed connect_known CHANGE adapter + execution-fence preflight + verification | complete |
+| S7.5 | **Implemented:** docs + Debian/Arch/provider fixtures; affected stacked S6 gate green | complete |
 | later | New/open Wi-Fi profiles after secret/config ownership consumer | separate decision |
 
 The focused S7 remains in the original 5–10 day estimate. Password-bearing
@@ -366,3 +366,11 @@ The authoritative questions live in docs/igor2/DECISIONS.md:
 
 Q018 remains deliberately deferred. S7.4 does not weaken the configuration or
 secret-consumer boundary to make new-network setup appear convenient.
+
+### S7 completion evidence
+
+GitHub Actions `S7 Stacked Validation` run **#15** (`37591480474`) validated
+the final S7 branch against `feature/sys-users-permissions-paths`: **1756 PASS,
+0 FAIL_NEW, 6 reviewed FAIL_BASELINE, 4 BASELINE_FIXED, 0 new/baseline
+timeouts, 0 environment/tool skips and 0 errors**. The workflow concluded
+successfully. No validation baseline was broadened to obtain closure.
