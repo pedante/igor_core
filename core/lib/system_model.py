@@ -369,4 +369,3 @@ class SystemModel:
             "status": "partial" if partial else "ok",
             "reason": "partial" if partial else None,
         }
-
