@@ -658,7 +658,8 @@ _igor_print() {
 _igor_show_recent() {
     # Show last 3 unique recently-used menu items (newest first)
     [ -f "$_IGOR_RECENT_FILE" ] || return
-    local _seen=() _count=0
+    local -a _seen=()
+    local _count=0
     while IFS='|' read -r rkey rlabel; do
         [ -z "$rkey" ] && continue
         local _dup=0
