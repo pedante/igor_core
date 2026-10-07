@@ -157,7 +157,7 @@ PY
 }
 
 @test "inactive System owner cannot refresh or prepare S8.1 telemetry" {
-    _IGOR_MODULE_STATUS[system]=disabled
+    _IGOR_MODULE_STATUS["system"]=disabled
     run igor_observer_refresh host.runtime
     [ "$status" -ne 0 ]
     run igor_capability_prepare system.host.runtime.status '{}' system 2
