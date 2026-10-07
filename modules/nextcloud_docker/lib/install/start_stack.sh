@@ -35,18 +35,7 @@ _mod_setup_start_stack() {
     # ── Prerequisites ──────────────────────────────────────────────────────────
     step "Checking prerequisites"
     local abort=false
-    command -v docker &>/dev/null       || { fail "Docker not installed — run S→1 DOCKER first."; abort=true; }
-    if ! docker info &>/dev/null; then
-        info "Docker daemon not responding — attempting to start..."
-        if declare -f pkg_install_docker_post &>/dev/null; then
-            pkg_install_docker_post 2>/dev/null || true
-        else
-            sudo systemctl enable docker 2>/dev/null || true
-            sudo systemctl start  docker 2>/dev/null || true
-            sleep 2
-        fi
-        docker info &>/dev/null || { fail "Docker not running or user not in docker group."; abort=true; }
-    fi
+    _mod_install_ensure_docker_runtime || abort=true
     [ -f "${COMPOSE_FILE}" ]            || { fail "docker-compose.yml not found at ${COMPOSE_FILE}"; abort=true; }
     [ -f "${IGOR_DIR}/secrets/db.env" ] || { fail "secrets/db.env missing — run S→0 WIZARD first."; abort=true; }
     $abort && { warn "Fix the issues above and re-run."; pause; return 1; }

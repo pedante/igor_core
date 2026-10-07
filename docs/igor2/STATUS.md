@@ -3233,3 +3233,51 @@ coverage. S8.2–S8.7 hardware, thermal, boot/time, security-provider,
 richer-log and additional mutation work is deferred post-release. Q019–Q021
 remain the authority gates for those future additions. No persistent migration
 or recovery action is introduced by this closure.
+
+### S9.0 cross-module reuse discovery
+
+S9 work is active on `feature/sys-cross-module-reuse`, stacked on the current
+green S8.1 head at Project Owner direction. This does **not** declare the
+broader S8 catalogue complete.
+
+The authoritative discovery record is
+`modules/system/docs/SYS_CROSS_MODULE_REUSE_PROPOSAL.md`. D076 fixes the first
+reuse boundary: user-triggered cross-module host operations reuse canonical
+capabilities through the existing dispatcher, preserving approval, privilege,
+provider resolution, verification and Operational History. A migrated
+operation does not keep a raw-shell fallback that silently reacquires the same
+authority.
+
+The first vertical is Nextcloud's Docker runtime prerequisite. Existing
+`docker.install` already composes canonical System package/service
+capabilities and a typed `docker.status` final check. S9.1 will route the
+Nextcloud install/start-stack recovery path through that capability and retain
+an independent `docker info` domain prerequisite check afterward.
+
+Legacy background health probes, recursive Nextcloud ownership repair and
+application-specific public reachability are explicitly not treated as
+equivalent System operations by this slice.
+
+
+### S9 release-scope closure
+
+S9 is complete for the Igor 2 System release scope on
+`feature/sys-cross-module-reuse`. The final `S9 Stacked Validation` run for
+the implementation head is green after fixing only the branch-introduced
+ShellCheck identity.
+
+The representative vertical routes Nextcloud install/start-stack Docker
+readiness through canonical `docker.install`, preserving the existing
+composition of System package/service capabilities, approval, privilege,
+verification and Operational History. The migrated seam contains no raw
+`systemctl enable/start docker` or `pkg_install_docker_post` fallback.
+Failure or decline stops the consumer, and Nextcloud rechecks `docker info`
+before continuing.
+
+S9.2's optional read cutover is deferred by design: legacy classic-menu/check
+paths do not uniformly share the AI-session dispatcher or process-local System
+Model. Creating a second direct executor would violate D076 and Step 20. The
+remaining Cloudflared/storage-health/recursive-permission/application-
+reachability cases are recorded in the S9 proposal as defer/keep decisions.
+
+S10 is now the final System operator-interface and release gate.

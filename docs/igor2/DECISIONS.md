@@ -1092,6 +1092,33 @@ the selected UUID is active on the selected interface.
 
 This resolves Q017. Q018 remains deferred.
 
+### D076 — S9 canonical cross-module reuse boundary
+
+Accepted by the Project Owner on 2026-10-07 by explicitly directing work to
+continue with S9.
+
+A module may reuse another active module's canonical capability only through
+Igor's existing capability dispatcher. The consumer does not copy the
+provider's package/service/sudo mechanism. CHANGE/DESTROY reuse keeps the
+normal approval, privilege, provider resolution, verification and Operational
+History contracts.
+
+Once a host-operation seam is migrated to a canonical capability, missing,
+disabled, unavailable, declined or failed providers fail that operation
+closed. The consumer must not silently fall back to raw shell and regain the
+same host authority. Domain-specific postconditions may still be checked by the
+consumer after the canonical operation.
+
+This decision does not require background health checks to execute user-facing
+capabilities merely to read state. Legacy isolated checks may remain until
+there is a fact/check/integration projection that preserves System Model and
+History semantics. It also does not widen S6 recursive permissions, S7
+internet-reachability semantics or Q018 secret authority.
+
+The first S9 proof is Nextcloud Docker runtime readiness: replace its direct
+Docker service enable/start fallback with canonical `docker.install`, which
+already composes System package/service capabilities.
+
 ## Open decisions
 
 ### Q019 — Initial S8 hardware/runtime identity
