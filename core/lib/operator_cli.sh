@@ -10,6 +10,7 @@ igor_operator_cli_normalize() {
     else
         export IGOR_CLI_JSON=false
     fi
+    [ "${IGOR_CLI_JSON}" != true ] || [ "$#" -gt 0 ] || return 2
     local _cmd="${1:-}" _sub _prompt
     case "$_cmd" in
         "") ;;
@@ -52,10 +53,12 @@ igor_operator_cli_normalize() {
             esac ;;
         facts) shift; _IGOR_OPERATOR_ARGS=(--model facts "$@") ;;
         ask)
+            [ "${IGOR_CLI_JSON}" != true ] || return 2
             shift; [ "$#" -ge 1 ] || return 2
             _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
         --*) _IGOR_OPERATOR_ARGS=("$@") ;;
         *)
+            [ "${IGOR_CLI_JSON}" != true ] || return 2
             _prompt="$*"; _IGOR_OPERATOR_ARGS=(--ask-once-backend "$_prompt") ;;
     esac
 }

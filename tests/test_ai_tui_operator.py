@@ -565,5 +565,52 @@ class OperatorExplorerTests(unittest.TestCase):
                          ["Operator: system.service.list"])
 
 
+    def test_step20_panel_sections_use_backend_owned_surfaces(self):
+        state = tui.EventState()
+        state.operator_snapshot = {
+            "entries": [
+                {"kind": "capability", "path": "system.host.summary"},
+                {"kind": "configuration", "path": "system.memory.preferences"},
+            ]
+        }
+        history = tui.HistoryInspection()
+        investigations = tui.InvestigationInspection()
+        modules = tui.ModuleInspection()
+        health = tui.HealthInspection()
+        deployments = tui.DeploymentInspection()
+        readers = (history, investigations, modules, health, deployments)
+        try:
+            history.data = [{"operation_id": "op-1"}]
+            investigations.data = [{"investigation_id": "inv-1"}]
+            modules.data = [{"name": "system", "status": "active"}]
+            health.data = {"status": "OK"}
+            deployments.data = [{"deployment_id": "dep-1"}]
+            sections = tui.panel_sections(
+                state, history, investigations, modules, health, deployments
+            )
+        finally:
+            for reader in readers:
+                reader.close()
+
+        by_id = {row["id"]: row for row in sections}
+        self.assertEqual(
+            tui.ModuleInspection.command,
+            ("--json", "modules", "list"),
+        )
+        self.assertEqual(by_id["modules"]["data"][0]["name"], "system")
+        self.assertEqual(by_id["health"]["data"]["status"], "OK")
+        self.assertEqual(
+            by_id["deployments"]["data"][0]["deployment_id"], "dep-1"
+        )
+        self.assertEqual(
+            [row["path"] for row in by_id["capabilities"]["data"]],
+            ["system.host.summary"],
+        )
+        self.assertEqual(
+            [row["path"] for row in by_id["configuration"]["data"]],
+            ["system.memory.preferences"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

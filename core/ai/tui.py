@@ -996,7 +996,7 @@ class ModuleInspection(HistoryInspection):
     """Read-only module availability through the owning loader CLI."""
 
     label = "Modules"
-    command = ("--modules",)
+    command = ("--json", "modules", "list")
 
 
 class HealthInspection(HistoryInspection):
@@ -1043,7 +1043,7 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
                          "hint": investigations.status})
     if modules is not None:
         sections.append({"id": "modules", "label": "Modules",
-                         "source": "--modules", "data": modules.data,
+                         "source": "--json modules list", "data": modules.data,
                          "hint": modules.status})
     if health is not None:
         sections.append({"id": "health", "label": "System Health",
@@ -2571,7 +2571,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                             reader.close()
             continue
         if focus.region == "panel":
-            sections = panel_sections(state, inspection, investigations)
+            sections = panel_sections(
+                state, inspection, investigations, modules, health, deployments
+            )
             if key == curses.KEY_UP:
                 focus.select(-1, len(sections))
             elif key == curses.KEY_DOWN:

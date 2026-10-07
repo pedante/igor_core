@@ -26,6 +26,13 @@ fi
 IGOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export IGOR_DIR
 
+# The UI, AI session, and private runtime belong to the invoking user. Root
+# execution would mix root state with a user's checkout and runtime directory.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]] && [ "$(id -u)" -eq 0 ]; then
+    printf 'Igor is intended to run as a normal user. Privileged operations elevate when required.\nRun: bash igor.sh\n' >&2
+    exit 1
+fi
+
 # Step 20 public interface routing happens before operational startup.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     if [ "${1:-}" = "--classic" ]; then
@@ -54,13 +61,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         set -- "${_IGOR_OPERATOR_ARGS[@]}"
     fi
     unset _IGOR_OPERATOR_ARGS _igor_stdin_tty _igor_stdout_tty
-fi
-
-# The UI, AI session, and private runtime belong to the invoking user. Root
-# execution would mix root state with a user's checkout and runtime directory.
-if [[ "${BASH_SOURCE[0]}" == "$0" ]] && [ "$(id -u)" -eq 0 ]; then
-    printf 'Igor is intended to run as a normal user. Privileged operations elevate when required.\nRun: bash igor.sh\n' >&2
-    exit 1
 fi
 
 # ── Directory layout exports ────────────────────────────────────────────────────────
@@ -280,7 +280,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
                 igor_load_config >/dev/null
                 igor_load_all_modules >/dev/null
                 igor_load_capabilities >/dev/null
-                igor_module_list
+                if [ "${IGOR_CLI_JSON:-false}" = true ]; then
+                    igor_module_records
+                else
+                    igor_module_list
+                fi
                 exit $?
             fi
             if [[ $# != 2 ]]; then
