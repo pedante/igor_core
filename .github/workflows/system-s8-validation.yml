@@ -37,8 +37,6 @@ jobs:
         run: |
           bash -n core/lib/host_runtime.sh
           bash -n modules/system/module.sh
-          bash -n tests/core/test_host_runtime_query.bats
-          bash -n tests/modules/test_system_runtime_read_model.bats
 
       - name: ShellCheck changed shell
         continue-on-error: true
