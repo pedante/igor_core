@@ -665,7 +665,7 @@ _igor_show_recent() {
         local _dup=0
         [ ${#_seen[@]} -gt 0 ] && for _s in "${_seen[@]}"; do [ "$_s" = "$rkey" ] && { _dup=1; break; }; done
         [ $_dup -eq 1 ] && continue
-        _seen+=("$rkey")
+        _seen[${#_seen[@]}]="$rkey"
         printf "  ${CYAN}%-4s${NC} %s\n" "${rkey})" "${rlabel}"
         _count=$((_count + 1))
         [ $_count -ge 3 ] && break
