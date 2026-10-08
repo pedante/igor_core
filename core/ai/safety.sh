@@ -1150,7 +1150,8 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                 _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" authenticated "Administrator authentication already available" "" 0 true)"
             elif [ -t 0 ] && [ -r /dev/tty ]; then
                 _ai_emit_event privilege_waiting "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" waiting "Administrator authentication required" "" "" true)"
-                if sudo -v </dev/tty >/dev/tty 2>&1; then
+                # The caller opens its own terminal; sudo only authenticates.
+                if { sudo -v; } </dev/tty >/dev/tty 2>&1; then
                     _ai_emit_event privilege_result "$(_ai_event_payload "$_operation_id" "$T_TOOL" "$tier" "$_meta_approval" authenticated "Administrator authentication completed" "" 0 true)"
                 else
                     _admin_auth_failed=true
@@ -1421,7 +1422,8 @@ _safe_file_edit() {
     local path="$1"
     local find_str="$2"
     local replace_str="$3"
-    local backup_path="${path}.bak.$(date +%s)"
+    local backup_path
+    backup_path="${path}.bak.$(date +%s)"
 
     # Validate file path with enhanced security
     if declare -f validate_file_operation >/dev/null; then
@@ -1537,7 +1539,8 @@ _ai_propose_menu_item() {
         { echo "Error: TIER must be READ, CHANGE, or DESTROY."; return 1; }
 
     # Generate ID from timestamp
-    local item_id="$(date +%s)"
+    local item_id
+    item_id="$(date +%s)"
 
     # Write item file
     mkdir -p "$items_dir"

@@ -55,6 +55,20 @@ resolution and AI can reject an unavailable composition that is still registered
 AI's empty-input composition check supports the current no-input `docker.install`
 contract and conservatively omits required-parent-input compositions.
 
+**PR #70 ShellCheck follow-up:** the first GitHub affected run
+[37817533002](https://github.com/pedante/igor_core/actions/runs/37817533002)
+stopped at preflight with Ubuntu's ShellCheck 0.9.0. That version and the exact
+CI flags (`--severity=warning --exclude=SC2086,SC1090,SC1091,SC2034 --shell=bash`)
+reproduce all three warnings on byte-identical unchanged `f4976d0` source.
+The correction separates the two timestamp declarations from their assignments
+and applies caller-owned `/dev/tty` redirections to a shell group containing only
+`sudo -v`. No lint exclusions, gate weakening, privilege shell or authority
+change is introduced. The PTY test now captures backend output while requiring
+terminal stdin/stdout/stderr for native authentication; isolated timestamp
+fixtures verify retained backup content/naming and unapproved menu-item identity.
+The corrected affected shell set passes ShellCheck 0.9.0. Remote rerun evidence
+and any remaining baseline classifications are recorded in PR #70.
+
 The local stash, OpenRouter ownership, Nextcloud configuration migration and
 module detachment remain outside this slice. This entry does not close the
 Ownership Foundation or certify third-party module portability.
