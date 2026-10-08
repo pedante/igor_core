@@ -15,11 +15,13 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "ai"))
+sys.path.insert(0, str(ROOT / "core" / "lib"))
 
 import ai_engine
 import catalog
 import operations
 import request_boundary
+from operator_surface import build_surface, children
 from tool_input import command_is_read, tool_fields
 
 
@@ -277,6 +279,122 @@ ai_catalog_json
             env={**os.environ, "REPO": str(ROOT), "IGOR_AI_ALLOWED_TOOLS": "read_file"},
             check=False)
         self.assertNotEqual(blocked.returncode, 0)
+
+    def test_catalog_discovers_only_resolvable_leaf_and_composite_capabilities(self):
+        schema = {"properties": {}, "required": [], "additionalProperties": False}
+        composite = {
+            "kind": "composition",
+            "intended_outcome": "Fixture composition",
+            "variants": [{"requires": {"platform_families": ["debian"]},
+                          "steps": [{"capability_id": "system.host.memory.refresh",
+                                     "inputs": {}}]}],
+            "final_check": {"capability_id": "system.host.memory.refresh",
+                            "inputs": {}, "expect": {"available": True}},
+        }
+
+        def row(ident, owner, availability, implementation=None, handler=None):
+            descriptor = {
+                "id": ident, "kind": "capability", "capability_version": 1,
+                "description": ident, "inputs": schema,
+                "safety": {"tier": "CHANGE"}, "privilege": "none",
+                "preconditions": [], "verification": {},
+                "recovery": {"class": "best_effort"}, "affects": [],
+            }
+            if implementation is not None:
+                descriptor["implementation"] = implementation
+            if handler is not None:
+                descriptor["handler"] = handler
+            return {"id": ident, "owner": owner, "provider": owner,
+                    "availability": availability, "descriptor": descriptor}
+
+        rows = [
+            row("docker.install", "docker", "active", implementation=composite),
+            row("system.host.memory.refresh", "system", "active",
+                handler="system__refresh_memory"),
+            row("docker.disabled", "docker", "inactive", implementation=composite),
+            row("docker.unavailable", "docker", "unavailable", implementation=composite),
+            row("docker.ambiguous", "docker", "active", implementation=composite),
+            row("docker.ambiguous", "other", "active", implementation=composite),
+        ]
+        script = r'''
+source "$REPO/core/ai/control.sh"
+igor_capability_list() {
+    printf '%s' "$CAPABILITY_ROWS"
+}
+igor_capability_prepare() {
+    printf '%s\n' "$1" >> "$PREPARED"
+}
+ai_catalog_json
+'''
+        prepared = self.root / "prepared-capabilities"
+        result = subprocess.run(
+            ["bash", "-c", script],
+            env={**os.environ, "REPO": str(ROOT), "PREPARED": str(prepared),
+                 "CAPABILITY_ROWS": json.dumps(rows)},
+            capture_output=True, text=True, check=True,
+        )
+        catalog_data = json.loads(result.stdout)
+        capability_tool = next(
+            tool for tool in catalog_data["tools"] if tool["name"] == "run_capability"
+        )
+        self.assertEqual(
+            capability_tool["openai_params"]["id"]["enum"],
+            ["docker.install", "system.host.memory.refresh"],
+        )
+        self.assertEqual(prepared.read_text().splitlines(), ["docker.install"])
+
+        # CLI and TUI inspect the shared operator surface. They retain inactive
+        # and unavailable rows for explanation, while AI receives only the
+        # active, uniquely resolvable executable subset.
+        surface_capabilities = [
+            {"id": "docker.install", "owner": "docker", "provider": "docker",
+             "availability": "active", "descriptor": {"safety": {"tier": "CHANGE"}}},
+            {"id": "system.host.memory.refresh", "owner": "system", "provider": "system",
+             "availability": "active", "descriptor": {"safety": {"tier": "READ"}}},
+            {"id": "docker.disabled", "owner": "docker", "provider": "docker",
+             "availability": "inactive", "unavailable_reason": "disabled",
+             "descriptor": {"safety": {"tier": "CHANGE"}}},
+            {"id": "docker.unavailable", "owner": "docker", "provider": "docker",
+             "availability": "unavailable", "unavailable_reason": "missing child",
+             "descriptor": {"safety": {"tier": "CHANGE"}}},
+            {"id": "docker.ambiguous", "owner": "docker", "provider": "docker",
+             "availability": "active", "descriptor": {"safety": {"tier": "CHANGE"}}},
+            {"id": "docker.ambiguous", "owner": "other", "provider": "other",
+             "availability": "active", "descriptor": {"safety": {"tier": "CHANGE"}}},
+        ]
+        operator = build_surface({
+            "modules": [
+                {"name": "docker", "status": "active", "enabled": True},
+                {"name": "system", "status": "active", "enabled": True},
+                {"name": "other", "status": "active", "enabled": True},
+            ],
+            "capabilities": surface_capabilities,
+        })
+        operator_rows = {row["path"]: row for row in operator["entries"]}
+        self.assertEqual(
+            {row["target_id"] for row in operator["entries"]
+             if row["availability"] == "active" and not row["provider_required"]},
+            set(capability_tool["openai_params"]["id"]["enum"]),
+        )
+        self.assertTrue(operator_rows["docker.ambiguous@docker"]["provider_required"])
+        self.assertTrue(operator_rows["docker.ambiguous@other"]["provider_required"])
+        self.assertEqual(operator_rows["docker.disabled"]["availability"], "inactive")
+        self.assertEqual(operator_rows["docker.unavailable"]["availability"], "unavailable")
+        self.assertEqual(
+            {node["name"] for node in children(operator, "docker")},
+            {"ambiguous@docker", "ambiguous@other", "install", "disabled", "unavailable"},
+        )
+
+        denied = subprocess.run(
+            ["bash", "-c", script],
+            env={**os.environ, "REPO": str(ROOT), "PREPARED": str(prepared),
+                 "CAPABILITY_ROWS": json.dumps(rows),
+                 "IGOR_AI_ALLOWED_TOOLS": "read_file"},
+            capture_output=True, text=True, check=True,
+        )
+        self.assertNotIn("run_capability", [
+            tool["name"] for tool in json.loads(denied.stdout)["tools"]
+        ])
 
     def test_cli_status_tools_and_last_without_api_key_or_active_modules(self):
         files = ["igor.sh", "core/lib/config_loader.sh", "core/lib/module_loader.sh"]

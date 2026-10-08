@@ -13,27 +13,36 @@
 # not already usable, request canonical docker.install through Igor's existing
 # capability dispatcher. Never regain equivalent host authority with raw
 # systemctl/pkg helpers when that provider is unavailable or declined.
+# Engine installation does not promise Compose: require the Compose plugin
+# separately before any Nextcloud configuration, volume or stack mutation.
 _mod_install_ensure_docker_runtime() {
-    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-        return 0
-    fi
-
-    info "Docker runtime is unavailable — requesting canonical Docker setup..."
-
-    if ! declare -f ai_execute_tool >/dev/null 2>&1; then
-        fail "Canonical capability dispatcher is unavailable; cannot prepare Docker safely."
-        return 1
-    fi
-
-    local _request
-    _request='{"tool":"run_capability","id":"docker.install","provider":"docker","inputs":{},"capability_version":1}'
-    if ! ai_execute_tool "$_request"         "Nextcloud requires an installed, enabled, active and reachable Docker Engine."; then
-        fail "Docker setup was not completed through the canonical capability path."
-        return 1
-    fi
-
     if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
-        fail "Canonical Docker setup completed, but the daemon is still not accessible to this user."
+        info "Docker Engine is unavailable — requesting canonical Docker setup..."
+
+        if ! declare -f ai_execute_tool >/dev/null 2>&1; then
+            if ! declare -f _igor_capability_load_dispatcher >/dev/null 2>&1 ||
+               ! _igor_capability_load_dispatcher; then
+                fail "Canonical capability dispatcher is unavailable; cannot prepare Docker safely."
+                return 1
+            fi
+        fi
+
+        local _request
+        _request='{"tool":"run_capability","id":"docker.install","provider":"docker","inputs":{},"capability_version":1}'
+        if ! ai_execute_tool "$_request" \
+            "Nextcloud requires an installed, enabled, active and reachable Docker Engine."; then
+            fail "Docker setup was not completed through the canonical capability path."
+            return 1
+        fi
+
+        if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+            fail "Canonical Docker setup completed, but the daemon is still not accessible to this user."
+            return 1
+        fi
+    fi
+
+    if ! docker compose version >/dev/null 2>&1; then
+        fail "Docker Engine is accessible, but Docker Compose is unavailable. Install or repair the Docker Compose plugin before setting up Nextcloud."
         return 1
     fi
     return 0

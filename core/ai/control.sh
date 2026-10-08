@@ -92,29 +92,75 @@ ai_catalog_json() {
             printf '%s\0' tool "$name" "$owner" "$tier" ""
         done < <(python3 "${_AI_CONTROL_DIR}/catalog.py" names)
         if ai_tool_available run_capability &&
-           declare -f igor_capability_list >/dev/null 2>&1; then
+           declare -f igor_capability_list >/dev/null 2>&1 &&
+           [ -f "${_AI_CONTROL_DIR%/ai}/lib/capability_runtime.py" ]; then
             # Keep owner, provider, descriptor and safety sourced from the
             # loader's active contribution index; model text never supplies
-            # capability metadata.
+            # capability metadata. A composition has no leaf handler, so its
+            # declared implementation can make it executable. The canonical
+            # CapabilityRegistry resolves the complete index in one pass.
             igor_capability_list 2>/dev/null | python3 -c '
 import json, sys
+sys.path.insert(0, sys.argv[1])
+from capability_runtime import CapabilityDescriptor, CapabilityRegistry
+
 rows = json.load(sys.stdin)
+registry = CapabilityRegistry()
+valid = []
 for row in rows:
     descriptor = row.get("descriptor") or {}
-    if (descriptor.get("kind") != "capability" or
-            row.get("availability") != "active" or
-            not descriptor.get("handler") or
+    if descriptor.get("kind") != "capability":
+        continue
+    descriptor = dict(descriptor)
+    for field in ("owner", "provider", "source"):
+        if field in row:
+            descriptor[field] = row[field]
+    descriptor["active"] = row.get("availability") == "active"
+    if row.get("unavailable_reason"):
+        descriptor["unavailable_reason"] = row["unavailable_reason"]
+    try:
+        registry.register(CapabilityDescriptor.from_dict(descriptor))
+        valid.append((row, descriptor))
+    except (TypeError, ValueError):
+        continue
+
+for row, descriptor in valid:
+    implementation = descriptor.get("implementation") or {}
+    if (row.get("availability") != "active" or
+            not (descriptor.get("handler") or
+                 implementation.get("kind") == "composition") or
             descriptor.get("safety", {}).get("tier") not in {"READ", "CHANGE", "DESTROY"}):
         continue
-    sys.stdout.write("capability\0%s\0%s\0%s\0%s\0" % (
-        descriptor.get("id", row.get("id", "")), row.get("provider", row.get("owner", "")),
-        descriptor.get("safety", {}).get("tier", ""), json.dumps({
-            "provider": row.get("provider", row.get("owner", "")),
+    ident = descriptor.get("id", row.get("id", ""))
+    provider = row.get("provider", row.get("owner", ""))
+    resolution = registry.resolve(ident)
+    if resolution.status != "available" or resolution.selected_provider != provider:
+        continue
+    sys.stdout.write("%s\0%s\0%s\0%s\0%s\0" % (
+        ident, provider,
+        descriptor.get("safety", {}).get("tier", ""),
+        "composition" if implementation.get("kind") == "composition" else "leaf",
+        json.dumps({
+            "provider": provider,
             "owner": row.get("owner", ""),
             "description": descriptor.get("description", ""),
             "descriptor": descriptor,
         }, sort_keys=True, separators=(",", ":"))))
-'
+' "${_AI_CONTROL_DIR%/ai}/lib" | while IFS= read -r -d '' ident &&
+              IFS= read -r -d '' provider &&
+              IFS= read -r -d '' tier &&
+              IFS= read -r -d '' kind &&
+              IFS= read -r -d '' metadata; do
+                # Preparing a composition performs only canonical resolution,
+                # input validation and plan construction. It rejects missing
+                # child capabilities/platform variants without authorizing or
+                # executing any step.
+                if [ "$kind" = composition ]; then
+                    declare -f igor_capability_prepare >/dev/null 2>&1 || continue
+                    igor_capability_prepare "$ident" '{}' "$provider" >/dev/null 2>&1 || continue
+                fi
+                printf '%s\0' capability "$ident" "$provider" "$tier" "$metadata"
+            done
         fi
         if declare -p _IGOR_CAPABILITIES >/dev/null 2>&1; then
             for name in "${!_IGOR_CAPABILITIES[@]}"; do

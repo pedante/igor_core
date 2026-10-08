@@ -10,6 +10,18 @@ source "${_IGOR_LOADER_DIR}/core/lib/configuration.sh"
 # shellcheck source=core/lib/deployment_attachment.sh
 source "${_IGOR_LOADER_DIR}/core/lib/deployment_attachment.sh"
 
+# Classic module workflows use the same deterministic dispatcher as AI/CLI
+# requests, without initializing chat, providers or credentials. Keep loading
+# lazy and reuse safety.sh's authority boundary; this is not another executor.
+_igor_capability_load_dispatcher() {
+    declare -f ai_execute_tool >/dev/null 2>&1 && return 0
+    local _dispatcher="${_IGOR_LOADER_DIR}/core/ai/safety.sh"
+    [ -f "$_dispatcher" ] || return 1
+    # shellcheck source=core/ai/safety.sh
+    source "$_dispatcher" || return 1
+    declare -f ai_execute_tool >/dev/null 2>&1
+}
+
 if [ "${IGOR_CAPABILITY_RESULT_OWNER:-}" != "$$" ] ||
    [ -z "${IGOR_CAPABILITY_RESULT_FILE:-}" ] ||
    [ ! -f "${IGOR_CAPABILITY_RESULT_FILE:-}" ]; then

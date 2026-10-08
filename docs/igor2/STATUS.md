@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
 ## How to read this file
 
@@ -9,6 +9,55 @@ sections are retained as scoped implementation/validation evidence and are not a
 linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
+
+## Post-merge module integration — bounded corrective slice
+
+This slice starts from PR #69's `igor2` merge `f4976d0` and corrects three
+integration defects without advancing a roadmap wave or changing Module API
+contracts:
+
+- AI capability discovery recognizes executable composites through the existing
+  Core registry while withholding disabled, unavailable and ambiguous entries.
+- Classic Nextcloud setup lazily initializes the existing deterministic safety
+  dispatcher without AI transport. Its deterministic validator now belongs to
+  that dispatcher; unavailable validation fails closed.
+- Nextcloud checks Docker Engine accessibility and Compose availability
+  separately before its configuration or stack mutations. `docker.install`
+  continues to promise Engine setup only.
+
+The focused classic fixture exercises real System/Docker declarations and
+canonical dispatch with mocked host commands: declined approval performs no
+host/setup mutation and preserves existing credentials. Readiness, unavailable
+dispatcher, missing validator and initializer reuse have explicit regression
+proofs. The existing safety/approval/Wave E suite remains intact.
+
+**Validation (2026-10-08):** 13 readiness tests, 3 real-loader catalog tests and
+72 existing safety/approval/Wave E tests pass. The full developer gate ran all
+130 groups: 1,808 `PASS` identities/check groups, 6 reviewed baseline failures,
+4 formerly failing baseline entries passing, and 2 permitted environment skips;
+no timeouts, missing tools or runner errors. The raw gate exits 1 and flags 5
+entries outside its existing manifest; the manifest was not changed:
+
+- ShellCheck reports the same 3 warnings reproduced from unchanged `f4976d0`
+  `safety.sh` (SC2024 and two SC2155 declarations).
+- Four Automation Registry assertions fail under the checkout's ignored
+  `ai_mode=guide` setting. The exact four pass on the base export, including
+  with the reporting plugin and enabled System/Docker policy, and also pass
+  with the five changed product files overlaid. Restoring the base files and
+  adding only synthetic `ai_mode=guide` reproduces all four failures. The
+  existing Guide gate correctly refuses an Assist tick; no user setting or
+  approval policy was changed to make tests pass.
+
+No introduced regression was identified. This is not an unconditionally green
+release gate: the existing baseline failures, environment-sensitive fixtures
+and lint warnings remain. CLI/TUI inspect registration availability; canonical
+resolution and AI can reject an unavailable composition that is still registered.
+AI's empty-input composition check supports the current no-input `docker.install`
+contract and conservatively omits required-parent-input compositions.
+
+The local stash, OpenRouter ownership, Nextcloud configuration migration and
+module detachment remain outside this slice. This entry does not close the
+Ownership Foundation or certify third-party module portability.
 
 ## Ownership Foundation Boundary B — approved; implementation in progress
 

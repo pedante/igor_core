@@ -139,6 +139,23 @@ become an instruction. Raw host commands retain the normal safety and approval
 controls: disabling a module is not an operating-system sandbox or a ban on an
 operator explicitly requesting a command.
 
+Executable composite capabilities use the same active-provider resolution as
+leaf capabilities. AI discovery omits ambiguous or unavailable entries; operator
+inspection reports registration availability and may still show a registered
+composition whose dependencies cannot currently resolve. Discovery grants no
+approval or privilege, and dispatch resolves the request again. The current
+`docker.install` composite has no required inputs; AI validates its plan with
+empty inputs. Composites needing required parent inputs remain omitted by this
+conservative catalog check.
+
+Classic workflows can lazily load Core's existing deterministic capability
+dispatcher without initializing AI chat or provider transport. They retain the
+same validation, approval, privilege and verification gates. Nextcloud requests
+`docker.install` when the Engine is inaccessible, then checks `docker compose
+version` separately before changing its configuration or stack. Engine setup
+does not promise Compose installation; a missing plugin stops Nextcloud setup
+with a distinct prerequisite error.
+
 ## Lifecycle operations
 
 Installing module code means placing a reviewed module package in `modules/`.

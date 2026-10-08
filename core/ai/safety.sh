@@ -143,6 +143,18 @@ elif [ -f "${IGOR_DIR}/core/ai/control.sh" ]; then
     source "${IGOR_DIR}/core/ai/control.sh"
 fi
 
+# Deterministic pre-execution validation belongs to the dispatcher, including
+# classic workflows that have never initialized the optional AI transport.
+# Keep one bridge to the existing validator and let the caller fail closed if
+# validation is missing, fails, or returns a malformed verdict.
+_ai_validate_tool_call() {
+    local _tool_json="$1" _raw
+    _raw=$(NEXUS_TOOL_JSON="$_tool_json" \
+        python3 "${_AI_SAFETY_DIR}/ai_engine.py" validate 2>/dev/null) || return 1
+    [ -n "$_raw" ] || return 1
+    printf '%s\n' "$_raw"
+}
+
 _ai_audit_dispatch() {
     declare -f ai_audit_tool >/dev/null 2>&1 || return 0
     ai_audit_tool "$@" || warn "AI audit write failed" 2>/dev/null || true
@@ -1333,7 +1345,8 @@ ${tail_out}"
             "${_ria_owner:-}" "$tool_json" "$output" "$_operation_id"
         unset IGOR_AI_CAPABILITY_OPERATION_ID IGOR_AI_CAPABILITY_OUTCOME IGOR_AI_CAPABILITY_VERIFICATION
         [[ "$tier" == "CHANGE" || "$tier" == "DESTROY" ]] && \
-            [ "$_admin_auth_failed" = false ] && ai_knowledge_mark_changed
+            [ "$_admin_auth_failed" = false ] && \
+            declare -f ai_knowledge_mark_changed >/dev/null 2>&1 && ai_knowledge_mark_changed
         # P3-2: track executed command counts
         if [ "$_admin_auth_failed" = false ]; then
             case "$tier" in
