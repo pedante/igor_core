@@ -1,16 +1,20 @@
 """Tiny fixtures prove the harness without invoking Igor product regressions."""
 
+import concurrent.futures
 import contextlib
 import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import validation_runner as runner
@@ -40,8 +44,8 @@ class ValidationRunnerTests(unittest.TestCase):
         self.command("git", "add", ".")
         self.command("git", "commit", "-m", "fixture base")
 
-    def run_main(self, *args):
-        evidence = self.root / "evidence"
+    def run_main(self, *args, output_name="evidence"):
+        evidence = self.root / output_name
         with patch.object(runner, "ROOT", self.root), contextlib.redirect_stdout(io.StringIO()):
             code = runner.main([*args, "--output-dir", str(evidence)])
         return code, json.loads((evidence / "summary.json").read_text())
@@ -111,6 +115,7 @@ class ValidationRunnerTests(unittest.TestCase):
         identifiers = [group["id"] for group in plan]
         self.assertIn("canonical:bash", identifiers)
         self.assertIn("canonical:rendering", identifiers)
+        self.assertEqual(sum(group["files"] == ["tests/test_ai_render.py"] for group in plan), 1)
         self.assertIn("pytest:tests/core/test_nested.py", identifiers)
         for directory in ("core", "modules", "integration"):
             self.assertTrue(any(identity.startswith(f"canonical:{directory}:") for identity in identifiers))
@@ -304,6 +309,247 @@ class ValidationRunnerTests(unittest.TestCase):
         result = runner.run_group({"id": "fixture", "kind": "pytest", "files": ["tests/test_fixture.py"]},
                                   self.root, self.root, 0, args)
         self.assertEqual(result["status"], "TOOL_UNAVAILABLE")
+
+    def test_serial_lane_overlaps_private_service_and_preserves_plan_order(self):
+        plan = [
+            {"id": "structure", "kind": "structure", "files": []},
+            {"id": "serial:first", "kind": "bats", "files": ["tests/first.bats"]},
+            {"id": "serial:second", "kind": "bats", "files": ["tests/second.bats"]},
+            {"id": "private", "kind": "pytest", "files": ["tests/test_local_learning.py"]},
+            {"id": "contract", "kind": "module-contract", "files": ["modules/example"]},
+        ]
+        args = SimpleNamespace(jobs=2, progress_interval=.1, fail_fast_preflight=False,
+                               cancel_event=threading.Event())
+        serial_started, private_started, private_checkpointed = [threading.Event() for _ in range(3)]
+        finished = []
+        snapshots = []
+
+        def fixture(group, root, output, index, _args):
+            if group["id"] == "serial:first":
+                self.assertEqual(finished, ["structure", "contract"])
+                serial_started.set()
+                self.assertTrue(private_started.wait(3), "private lane never overlapped serial lane")
+                self.assertTrue(private_checkpointed.wait(3), "completed private evidence was not checkpointed")
+            elif group["id"] == "private":
+                self.assertTrue(serial_started.wait(3))
+                private_started.set()
+            elif group["id"] == "serial:second":
+                self.assertIn("serial:first", finished)
+            finished.append(group["id"])
+            return {**group, "status": "PASS", "returncode": 0, "elapsed_seconds": 0}
+
+        def checkpoint(state, completed, active, pending):
+            snapshots.append((state, sorted(completed), sorted(active), sorted(pending)))
+            if 3 in completed:
+                private_checkpointed.set()
+
+        with patch.object(runner, "run_group", side_effect=fixture), contextlib.redirect_stdout(io.StringIO()):
+            state = runner.run_plan(plan, self.root, self.root, args, checkpoint)
+        self.assertEqual(state, "complete")
+        self.assertEqual(snapshots[-1], ("complete", [0, 1, 2, 3, 4], [], []))
+        self.assertTrue(any(3 in complete and 1 in active for _, complete, active, _ in snapshots))
+
+    def test_worker_crash_is_error_and_other_groups_continue(self):
+        self.write("tests/test_a.py", "def test_a(): pass\n")
+        self.write("tests/test_local_learning.py", "def test_b(): pass\n")
+        self.init_git()
+
+        def fixture(group, root, output, index, args):
+            if group["files"] == ["tests/test_a.py"]:
+                raise RuntimeError("fixture worker crash")
+            return {**group, "status": "PASS", "returncode": 0, "elapsed_seconds": 0}
+
+        with patch.object(runner, "run_group", side_effect=fixture):
+            code, summary = self.run_main("focused", "--jobs", "2", "--test", "tests/test_a.py",
+                                          "--test", "tests/test_local_learning.py")
+        self.assertEqual(code, 1)
+        self.assertEqual(summary["counts"]["ERROR"], 1)
+        self.assertEqual(summary["run_state"], "complete")
+        self.assertEqual(summary["groups"][-1]["status"], "PASS")
+        self.assertEqual(summary["pending_groups"], [])
+
+    def test_private_bats_and_pytest_overlap_with_one_unsafe_bats_lane(self):
+        plan = [
+            {"id": "unsafe:first", "kind": "bats", "files": ["tests/modules/test_unknown.bats"]},
+            {"id": "unsafe:second", "kind": "bats", "files": ["tests/core/test_unknown.bats"]},
+            {"id": "private:bats", "kind": "bats", "files": ["tests/core/test_ai_privilege.bats"]},
+            {"id": "private:pytest", "kind": "pytest", "files": ["tests/test_local_learning.py"]},
+        ]
+        args = SimpleNamespace(jobs=3, progress_interval=.1, fail_fast_preflight=False,
+                               cancel_event=threading.Event())
+        overlap = threading.Barrier(3, timeout=3)
+        lock = threading.Lock()
+        unsafe_active = []
+        final = {}
+
+        def fixture(group, root, output, index, _args):
+            unsafe = group["id"].startswith("unsafe:")
+            if unsafe:
+                with lock:
+                    self.assertEqual(unsafe_active, [], "unsafe BATS groups overlapped")
+                    unsafe_active.append(group["id"])
+            if group["id"] != "unsafe:second":
+                # All three distinct workers must be active simultaneously.
+                overlap.wait()
+            if unsafe:
+                with lock:
+                    unsafe_active.remove(group["id"])
+            return {**group, "status": "PASS", "returncode": 0, "elapsed_seconds": 0}
+
+        def checkpoint(state, completed, active, pending):
+            self.assertFalse(0 in active and 1 in active, "scheduler dispatched two unsafe BATS groups")
+            if state == "complete":
+                final.update(completed)
+
+        with patch.object(runner, "run_group", side_effect=fixture), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.run_plan(plan, self.root, self.root, args, checkpoint), "complete")
+        self.assertEqual(len(final), 4)
+        self.assertEqual([final[index]["status"] for index in sorted(final)], ["PASS"] * 4)
+
+    def test_serial_and_parallel_preserve_exact_identities_and_failure_classifications(self):
+        self.write("tests/test_local_learning.py", '''def test_pass(): pass
+def test_accepted(): assert False, "accepted fixture"
+def test_regression(): assert False, "introduced fixture"
+def test_timeout(): raise TimeoutError("inner fixture timeout")
+''')
+        self.write("tests/test_serial.py", "def test_serial(): pass\n")
+        entry = {"suite": "pytest", "identity": "tests/test_local_learning.py::test_accepted",
+                 "classification": "FAIL", "reason": "reviewed fixture failure"}
+        self.write("tests/validation_baseline.json", json.dumps({"schema_version": 1,
+                   "source_commit": "a" * 40, "entries": [entry]}))
+        self.init_git()
+        outcomes = []
+        for jobs in (1, 2):
+            code, summary = self.run_main("focused", "--jobs", str(jobs),
+                                          "--test", "tests/test_serial.py",
+                                          "--test", "tests/test_local_learning.py", output_name=f"jobs-{jobs}")
+            self.assertEqual(code, 1)
+            self.assertEqual(summary["counts"]["FAIL_BASELINE"], 1)
+            self.assertEqual(summary["counts"]["FAIL_NEW"], 1)
+            self.assertEqual(summary["counts"]["TIMEOUT_NEW"], 1)
+            outcomes.append([(row["suite"], row["identity"], row["classification"])
+                             for row in summary["results"]])
+        self.assertEqual(outcomes[0], outcomes[1])
+
+    def test_periodic_progress_reports_active_work_without_waiting_for_completion(self):
+        plan = [{"id": "slow:fixture", "kind": "pytest", "files": ["tests/test_other.py"]}]
+        args = SimpleNamespace(jobs=1, progress_interval=.1, fail_fast_preflight=False,
+                               cancel_event=threading.Event())
+        release = threading.Event()
+        console = io.StringIO()
+
+        def fixture(group, root, output, index, _args):
+            self.assertTrue(release.wait(3), "no periodic progress arrived while fixture was active")
+            return {**group, "status": "PASS", "returncode": 0, "elapsed_seconds": 0}
+
+        def checkpoint(state, completed, active, pending):
+            if "Progress:" in console.getvalue():
+                release.set()
+
+        with patch.object(runner, "run_group", side_effect=fixture), contextlib.redirect_stdout(console):
+            self.assertEqual(runner.run_plan(plan, self.root, self.root, args, checkpoint), "complete")
+        self.assertIn("0/1 complete; 0 pending; active: slow:fixture", console.getvalue())
+
+    def test_simultaneous_pytest_groups_have_private_environment_and_fixture_storage(self):
+        source = '''import json, os, pathlib, subprocess, sys, tempfile
+def test_isolated(tmp_path):
+    poisoned = ("IGOR_TEST_SENTINEL", "NEXUS_TEST_SENTINEL", "PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONHOME", "ai_mode", "executive_mode", "BASH_ENV", "ENV", "BASH_FUNC_fixture%%", "OPENROUTER_API_KEY", "ANTHROPIC_BASE_URL", "OLLAMA_HOST", "PRIVATE_TOKEN", "APP_PASSWORD", "AWS_ACCESS_KEY_ID")
+    assert not any(key in os.environ for key in poisoned)
+    assert tempfile.gettempdir() == os.environ["TMPDIR"]
+    shell_python = subprocess.check_output(["bash", "-c", "python3 -c 'import sys; print(sys.executable)'"], text=True).strip()
+    assert pathlib.Path(shell_python).parent == pathlib.Path(sys.executable).parent
+    fields = ("HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR", "IGOR_DATA_DIR")
+    info = {key: os.environ[key] for key in fields}
+    info["pytest_tmp"] = str(tmp_path)
+    pathlib.Path(info["HOME"], "same-name.json").write_text(json.dumps(info))
+'''
+        names = ["tests/test_first.py", "tests/test_second.py"]
+        for name in names:
+            self.write(name, source)
+        args = SimpleNamespace(python=sys.executable, bats="bats", ruff="ruff", shellcheck="shellcheck",
+                               bats_timeout=0, group_timeout=10, slow_timeout=20)
+        ambient = {"IGOR_TEST_SENTINEL": "ambient", "NEXUS_TEST_SENTINEL": "ambient",
+                   "PYTEST_ADDOPTS": "--not-a-real-option", "PYTEST_PLUGINS": "not_a_real_plugin",
+                   "PYTHONHOME": "/not/a/python/home", "PYTHONPATH": "/unreviewed/plugins",
+                   "ai_mode": "executive", "executive_mode": "1", "BASH_ENV": "/unreviewed/startup",
+                   "ENV": "/unreviewed/startup", "BASH_FUNC_fixture%%": "() { exit 99; }",
+                   "OPENROUTER_API_KEY": "fixture-secret", "ANTHROPIC_BASE_URL": "https://unreviewed.invalid",
+                   "OLLAMA_HOST": "https://unreviewed.invalid", "PRIVATE_TOKEN": "fixture-secret",
+                   "APP_PASSWORD": "fixture-secret", "AWS_ACCESS_KEY_ID": "fixture-secret"}
+        with patch.dict(os.environ, ambient), concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(runner.run_group, {"id": name, "kind": "pytest", "files": [name]},
+                                   self.root, self.root, index, args) for index, name in enumerate(names)]
+            results = [future.result() for future in futures]
+        self.assertEqual([result["status"] for result in results], ["PASS", "PASS"])
+        environments = [json.loads((self.root / "work" / f"{index:03d}" / "home/same-name.json").read_text())
+                        for index in range(2)]
+        for field in environments[0]:
+            self.assertNotEqual(environments[0][field], environments[1][field], field)
+            for index, environment in enumerate(environments):
+                self.assertTrue(Path(environment[field]).is_relative_to(self.root / "work" / f"{index:03d}"))
+
+    def test_sigint_and_sigterm_checkpoint_completed_active_and_pending_evidence(self):
+        started = self.root / "slow-started"
+        descendant = self.root / "descendant-marker"
+        self.write("tests/test_a.py", "def test_complete(): pass\n")
+        slow = f'''import pathlib, subprocess, sys, time
+def test_slow():
+    subprocess.Popen([sys.executable, "-c", "import pathlib,time; time.sleep(1); pathlib.Path({str(descendant)!r}).touch()"])
+    pathlib.Path({str(started)!r}).touch()
+    time.sleep(30)
+'''
+        self.write("tests/test_slow.py", slow)
+        self.write("tests/test_local_learning.py", "import time\ndef test_private(): time.sleep(30)\n")
+        self.write("tests/test_z.py", "def test_pending(): pass\n")
+        self.init_git()
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=signum):
+                evidence = self.root / f"signal-{signum}"
+                arguments = ["focused", "--jobs", "2", "--output-dir", str(evidence)]
+                for name in ("test_a.py", "test_slow.py", "test_local_learning.py", "test_z.py"):
+                    arguments.extend(["--test", f"tests/{name}"])
+                code = (f"import sys; sys.path.insert(0, {str(Path(runner.__file__).parent)!r}); "
+                        f"import validation_runner as r; from pathlib import Path; r.ROOT=Path({str(self.root)!r}); "
+                        f"sys.exit(r.main({arguments!r}))")
+                with (self.root / f"signal-{signum}.log").open("w") as log:
+                    process = subprocess.Popen([sys.executable, "-c", code], stdout=log, stderr=log,
+                                               start_new_session=True)
+                    try:
+                        deadline = time.monotonic() + 10
+                        while time.monotonic() < deadline:
+                            try:
+                                current = json.loads((evidence / "summary.json").read_text())
+                            except (OSError, ValueError):
+                                current = {}
+                            if (started.exists() and len(current.get("active_groups", [])) == 2
+                                    and any(row.get("identity") == "tests/test_a.py::test_complete"
+                                            for row in current.get("results", []))):
+                                break
+                            self.assertIsNone(process.poll(), log.name)
+                            time.sleep(.02)
+                        else:
+                            self.fail("runner did not checkpoint expected active/completed groups")
+                        self.assertEqual(current["exit_code"], 1, "running checkpoint must not claim success")
+                        for group in current["active_groups"]:
+                            self.assertTrue(Path(group["log"]).is_relative_to(evidence))
+                            self.assertTrue(group["log"].endswith("-pytest.log"))
+                            self.assertTrue(Path(group["report"]).is_relative_to(evidence))
+                            self.assertTrue(group["report"].endswith("-pytest.jsonl"))
+                        process.send_signal(signum)
+                        self.assertEqual(process.wait(timeout=5), 128 + signum)
+                    finally:
+                        if process.poll() is None:
+                            process.send_signal(signal.SIGTERM)
+                            process.wait(timeout=5)
+                summary = json.loads((evidence / "summary.json").read_text())
+                self.assertEqual(summary["run_state"], "interrupted")
+                self.assertEqual(summary["exit_code"], 128 + signum)
+                self.assertEqual(summary["active_groups"], [])
+                self.assertIn("pytest:tests/test_z.py", [row["id"] for row in summary["pending_groups"]])
+                self.assertEqual(summary["counts"]["PASS"], 2)  # structure and completed test
+                self.assertGreaterEqual(summary["counts"]["ERROR"], 2)
+                time.sleep(1.1)
+                self.assertFalse(descendant.exists(), "interrupted worker left a live descendant")
 
 
 if __name__ == "__main__":

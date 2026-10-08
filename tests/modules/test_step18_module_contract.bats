@@ -69,13 +69,14 @@ PY
     done
     printf 'touch "$IGOR_DIR/source-marker"\n' >> "$IGOR_DIR/modules/system/module.sh"
     rm -f "$IGOR_DIR/config/modules.conf"
-    before_data="$(rg --files --hidden "$IGOR_DIR/data" || true)"
+    # Compare membership deterministically; parallel rg traversal has no order guarantee.
+    before_data="$(rg --files --hidden --sort path "$IGOR_DIR/data" || true)"
     run bash "$IGOR_DIR/igor.sh" --modules inspect system
     [ "$status" -eq 0 ]
     [[ "$output" == *'migration_pending_unknown'* ]]
     [ ! -e "$IGOR_DIR/source-marker" ]
     [ ! -e "$IGOR_DIR/config/modules.conf" ]
-    [ "$(rg --files --hidden "$IGOR_DIR/data" || true)" = "$before_data" ]
+    [ "$(rg --files --hidden --sort path "$IGOR_DIR/data" || true)" = "$before_data" ]
     run bash "$IGOR_DIR/igor.sh" --modules detach-plan system
     [ "$status" -eq 0 ]
     [[ "$output" == *'"ready":false'* ]]

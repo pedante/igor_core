@@ -9,8 +9,11 @@ and conventional test_<python_module>.py matches; supply other feature tests.
 
 Full mirrors the canonical run_all.sh groups (legacy Bash, rendering, Core,
 module and integration BATS) and additionally discovers every test_*.py under
-tests. Each test file is a bounded subprocess. BATS uses its native per-test
-watchdog and continuation; a Python file timeout moves on to the next file.
+tests. Rendering identities execute once. Each test file is a bounded subprocess.
+--jobs defaults to 1; higher values overlap reviewed private-state files
+with one serial lane for remaining tests, after a serial preflight barrier.
+Every subprocess has private home/temp/data/cache directories and controlled
+Igor/Python configuration. No test's timeout or baseline policy changes.
 Limits default to 600s/file, 60s for interactive TUI Python files, and 1200s
 for System configuration/administration vertical slices. BATS' native per-test
 watchdog is disabled by default because
@@ -20,8 +23,11 @@ BATS timeout can still be opted into explicitly. These are ceilings, not
 expected durations. No full run is ever triggered by focused/affected. CI and
 local validation share this entry point.
 
-Raw output and summary.json live in a unique temporary directory by default;
---output-dir must name a new directory. Summary counts refer to test identities
+Raw output and atomic summary.json checkpoints live in a unique temporary
+directory by default; --output-dir must name a new directory. Running/interrupted
+evidence includes active/pending groups and cannot claim a successful full run.
+Progress heartbeats default to 15 seconds; summaries include per-test timings,
+slowest groups/tests and run-wide child CPU time. Counts refer to test identities
 and structural/tool groups. Raw group outcomes remain in groups. A new failure,
 new timeout, error or unavailable required tool makes exit nonzero. Only exact
 reviewed failure/timeout identities can match validation_baseline.json. Only
@@ -32,15 +38,18 @@ anchors, reference-style links and external URLs remain outside this check.
 """
 
 import argparse
+import concurrent.futures
 import json
 import math
 import os
 import re
+import resource
 import shutil
 import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -51,11 +60,26 @@ from validation_results import compare_results, load_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELLCHECK_FLAGS = ["--severity=warning", "--exclude=SC2086,SC1090,SC1091,SC2034", "--shell=bash"]
-PREFLIGHT_KINDS = frozenset({"structure", "ruff", "shellcheck", "syntax", "bats-count"})
+PREFLIGHT_KINDS = frozenset({"structure", "ruff", "shellcheck", "syntax", "bats-count", "module-contract"})
 INTERACTIVE_PYTEST_FILES = frozenset({"test_ai_tui.py", "test_ai_tui_step7.py"})
+# Reviewed service contracts and Bash safety fixtures: state is in private
+# temporary directories, host operations are mocked, and repository files are
+# only read. New files remain serial until fixtures receive the same review.
+PARALLEL_PYTEST_FILES = frozenset({
+    "tests/test_local_learning.py", "tests/test_knowledge_artifacts.py",
+    "tests/test_baselines.py", "tests/test_capability_runtime.py",
+    "tests/test_deployments.py", "tests/test_deployment_attachment.py",
+    "tests/test_domain_event.py", "tests/test_module_contract.py",
+    "tests/test_context_engine.py", "tests/core/test_system_model.py",
+})
+PARALLEL_BATS_FILES = frozenset({
+    "tests/core/test_safety.bats", "tests/core/test_scrubbing.bats",
+    "tests/core/test_ai_modes.bats", "tests/core/test_ai_privilege.bats",
+    "tests/core/test_safety_dispatch.bats",
+})
 
 
-def execute(command, root, log, seconds, env=None):
+def execute(command, root, log, seconds, env=None, cancel_event=None):
     """Write directly to disk (no pipe deadlocks); bound and clean the process group."""
     started = time.monotonic()
     status = "ERROR"
@@ -73,8 +97,19 @@ def execute(command, root, log, seconds, env=None):
             output.write(f"Runner error: {error}\n")
         else:
             try:
-                returncode = process.wait(timeout=seconds)
-                status = "PASS" if returncode == 0 else "FAIL"
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        output.write("\nINTERRUPTED: validation cancelled\n")
+                        break
+                    remaining = seconds - (time.monotonic() - started)
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, seconds)
+                    try:
+                        returncode = process.wait(timeout=min(remaining, 0.2))
+                        status = "PASS" if returncode == 0 else "FAIL"
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
             except subprocess.TimeoutExpired:
                 output.write(f"\nTIMEOUT: process group exceeded {seconds}s\n")
                 status = "TIMEOUT"
@@ -197,6 +232,8 @@ def make_plan(root, mode, changed, supplied=()):
         tests = {str(path.relative_to(root)) for path in (root / "tests").rglob("test_*.py")}
         if not tests:
             raise ValueError("Complete Python suite missing or empty")
+        # The canonical rendering group already exercises these identities.
+        tests.discard("tests/test_ai_render.py")
     for name in sorted(tests):
         if not local_path(root, name.split("::", 1)[0]).is_file():
             # A removed test is not executable; explicit missing targets fail closed.
@@ -206,6 +243,33 @@ def make_plan(root, mode, changed, supplied=()):
         kind = "bats" if name.endswith(".bats") else "pytest"
         plan.append({"id": f"{kind}:{name}", "kind": kind, "files": [name]})
     return domains, plan
+
+
+def group_environment(root, output_dir, index, python):
+    """Private process state; ambient developer configuration is not test input."""
+    work = output_dir / "work" / f"{index:03d}"
+    directories = {name: work / name for name in ("home", "tmp", "config", "cache", "data", "runtime", "igor-data")}
+    for directory in directories.values():
+        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    secret_name = re.compile(r"secret|token|password|credential|(?:api|private|access)[_-]?key|(?:^|_)key(?:$|_)", re.IGNORECASE)
+    env = {key: value for key, value in os.environ.items()
+           if not key.upper().startswith(("IGOR_", "NEXUS_", "PYTEST_", "PYTHON", "BASH_FUNC_",
+                                          "OPENROUTER_", "ANTHROPIC_", "OLLAMA_"))
+           and key.upper() not in ("AI_MODE", "EXECUTIVE_MODE", "BASH_ENV", "ENV")
+           and not secret_name.search(key)}
+    executable = shutil.which(python)
+    if executable:
+        # Preserve virtualenv symlinks: resolving their target would select the
+        # host interpreter instead of the sibling python3 used by Bash fixtures.
+        interpreter_dir = Path(executable).absolute().parent
+        if (interpreter_dir / "python3").is_file():
+            env["PATH"] = str(interpreter_dir) + os.pathsep + env.get("PATH", os.defpath)
+    env.update(IGOR_DIR=str(root), IGOR_DATA_DIR=str(directories["igor-data"]),
+               HOME=str(directories["home"]), TMPDIR=str(directories["tmp"]),
+               XDG_CONFIG_HOME=str(directories["config"]), XDG_CACHE_HOME=str(directories["cache"]),
+               XDG_DATA_HOME=str(directories["data"]), XDG_RUNTIME_DIR=str(directories["runtime"]),
+               PYTHONDONTWRITEBYTECODE="1", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+    return env, work
 
 
 def run_group(group, root, output_dir, index, args):
@@ -233,7 +297,7 @@ def run_group(group, root, output_dir, index, args):
         "pytest": [args.python, "-m", "pytest", "-p", "validation_pytest", "-q", *files],
         "module-contract": [args.python, "core/lib/module_contract.py", "validate", *files],
     }
-    env = {**os.environ, "IGOR_DIR": str(root)}
+    env, work = group_environment(root, output_dir, index, args.python)
     # BATS 1.13.0 issue #1206: a native watchdog can keep a fast-failing suite
     # alive until the timeout expires. The outer process-group timeout already
     # fails closed, so do not enable the defective watchdog unless explicitly
@@ -244,7 +308,9 @@ def run_group(group, root, output_dir, index, args):
     report_path = output_dir / f"{index:03d}-pytest.jsonl"
     if kind == "pytest":
         env["IGOR_VALIDATION_REPORT"] = str(report_path)
-        env["PYTHONPATH"] = str(Path(__file__).parent) + os.pathsep + env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(Path(__file__).parent)
+        commands[kind].extend(["--basetemp", str(work / "pytest-tmp"),
+                               "-o", f"cache_dir={work / 'pytest-cache'}", "-o", "addopts="])
     seconds = args.group_timeout
     if kind == "pytest" and any(
         Path(name.split("::", 1)[0]).name in INTERACTIVE_PYTEST_FILES for name in files
@@ -253,7 +319,9 @@ def run_group(group, root, output_dir, index, args):
     if any(Path(name.split("::", 1)[0]).name in ("test_system_configuration_workflow.py",
                                                    "test_system_admin_surface.bats") for name in files):
         seconds = args.slow_timeout
-    result = execute(commands[kind], root, log, seconds, env)
+    cancellation = getattr(args, "cancel_event", None)
+    result = (execute(commands[kind], root, log, seconds, env, cancellation) if cancellation is not None
+              else execute(commands[kind], root, log, seconds, env))
     content = log.read_text(encoding="utf-8", errors="replace")
     if kind == "pytest" and "No module named pytest" in content:
         result["status"] = "TOOL_UNAVAILABLE"
@@ -268,7 +336,7 @@ def run_group(group, root, output_dir, index, args):
     try:
         if kind == "pytest":
             combined["report"] = str(report_path)
-            combined["observations"] = pytest_observations(combined, report_path)
+            combined["observations"] = pytest_observations(combined, report_path, require_collection=True)
         elif kind == "bats":
             combined["observations"] = bats_observations(combined)
     except (ValueError, OSError, KeyError, TypeError) as error:
@@ -290,6 +358,132 @@ def nonnegative_int(value):
     return number
 
 
+def positive_jobs(value):
+    number = int(value)
+    if number < 1 or number > 32:
+        raise argparse.ArgumentTypeError("jobs must be between 1 and 32")
+    return number
+
+
+def progress_seconds(value):
+    number = positive_seconds(value)
+    if number > 30:
+        raise argparse.ArgumentTypeError("progress interval must be at most 30 seconds")
+    return number
+
+
+def parallel_safe(group):
+    allowed = {"pytest": PARALLEL_PYTEST_FILES, "bats": PARALLEL_BATS_FILES}.get(group["kind"], ())
+    return bool(group["files"]) and all(name.split("::", 1)[0] in allowed for name in group["files"])
+
+
+def run_plan(plan, root, output_dir, args, checkpoint):
+    """One serial lane plus reviewed isolated files; aggregation uses plan order."""
+    completed, active = {}, {}
+    pending = set(range(len(plan)))
+    preflight = [index for index, group in enumerate(plan) if group["kind"] in PREFLIGHT_KINDS]
+    serial = [index for index, group in enumerate(plan)
+              if group["kind"] not in PREFLIGHT_KINDS and not parallel_safe(group)]
+    isolated = [index for index, group in enumerate(plan)
+                if group["kind"] not in PREFLIGHT_KINDS and parallel_safe(group)]
+    # Stable explicit priority: start the measured longest private-state service
+    # while the serial lane works through BATS. No mutable timing cache/schedule.
+    isolated.sort(key=lambda index: (plan[index]["files"][0].split("::", 1)[0] !=
+                                    "tests/test_local_learning.py", index))
+    futures = {}
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
+    next_progress = time.monotonic() + args.progress_interval
+    stopped = False
+
+    def publish(state="running"):
+        checkpoint(state, completed, active, pending)
+
+    def launch(index):
+        pending.remove(index)
+        active[index] = time.monotonic()
+        print(f"Running [{index + 1}/{len(plan)}] {plan[index]['id']}", flush=True)
+        futures[pool.submit(run_group, plan[index], root, output_dir, index, args)] = index
+        publish()
+
+    publish()
+    try:
+        while pending or futures:
+            if args.cancel_event.is_set():
+                stopped = True
+            if not stopped:
+                if args.jobs == 1:
+                    if not futures and pending:
+                        launch(min(pending))
+                elif preflight or any(plan[index]["kind"] in PREFLIGHT_KINDS for index in active):
+                    if not futures and preflight:
+                        launch(preflight.pop(0))
+                else:
+                    # Only one unknown/host-facing group may run at a time.
+                    serial_active = any(not parallel_safe(plan[index]) for index in active)
+                    if serial and not serial_active and len(futures) < args.jobs:
+                        launch(serial.pop(0))
+                    while isolated and len(futures) < args.jobs:
+                        launch(isolated.pop(0))
+            if not futures:
+                break
+            done, _ = concurrent.futures.wait(futures, timeout=0.2,
+                                              return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in sorted(done, key=lambda item: futures[item]):
+                index = futures.pop(future)
+                error = future.exception()
+                if error is None:
+                    result = future.result()
+                else:
+                    result = {**plan[index], "status": "ERROR", "returncode": None,
+                              "detail": f"Worker error: {type(error).__name__}: {error}",
+                              "elapsed_seconds": round(time.monotonic() - active[index], 3)}
+                completed[index] = result
+                active.pop(index)
+                print(f"  [{index + 1}/{len(plan)}] {result['status']} "
+                      f"{result['elapsed_seconds']}s {result['id']}", flush=True)
+                if (args.fail_fast_preflight and plan[index]["kind"] in PREFLIGHT_KINDS
+                        and result["status"] != "PASS"):
+                    print("  stopping after preflight failure", flush=True)
+                    stopped = True
+                publish()
+            if time.monotonic() >= next_progress:
+                running = ", ".join(f"{plan[index]['id']} ({time.monotonic() - active[index]:.1f}s)"
+                                    for index in sorted(active))
+                print(f"Progress: {len(completed)}/{len(plan)} complete; "
+                      f"{len(pending)} pending; active: {running or 'none'}", flush=True)
+                publish()
+                next_progress = time.monotonic() + args.progress_interval
+        state = "interrupted" if args.cancel_event.is_set() else "incomplete" if pending else "complete"
+        publish(state)
+        return state
+    finally:
+        if futures:
+            args.cancel_event.set()
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+def write_summary(output_dir, summary):
+    temporary = output_dir / ".summary.json.tmp"
+    temporary.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(output_dir / "summary.json")
+
+
+def slow_reports(groups, results, limit=20):
+    slow_groups = sorted(({"identity": group["id"], "elapsed_seconds": group["elapsed_seconds"],
+                           "log": group.get("log")} for group in groups),
+                         key=lambda row: (-row["elapsed_seconds"], row["identity"]))[:limit]
+    tests = {}
+    for result in results:
+        if result["suite"] not in ("pytest", "bats") or "elapsed_seconds" not in result:
+            continue
+        key = result["suite"], result["identity"]
+        row = {key: result[key] for key in ("suite", "identity", "elapsed_seconds", "log")}
+        if key not in tests or row["elapsed_seconds"] > tests[key]["elapsed_seconds"]:
+            tests[key] = row
+    slow_tests = sorted(tests.values(), key=lambda row: (-row["elapsed_seconds"], row["suite"], row["identity"]))[:limit]
+    return {"slow_groups": slow_groups, "slow_tests": slow_tests}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("focused", "affected", "full"))
@@ -300,6 +494,10 @@ def main(argv=None):
     parser.add_argument("--baseline", type=Path, default=ROOT / "tests/validation_baseline.json",
                         help="reviewed JSON baseline; never written by this runner")
     parser.add_argument("--dry-run", action="store_true", help="print JSON plan; execute nothing")
+    parser.add_argument("--jobs", type=positive_jobs, default=1,
+                        help="bounded workers; only reviewed private-state files overlap the serial lane (default: 1)")
+    parser.add_argument("--progress-interval", type=progress_seconds, default=15,
+                        help="active-group heartbeat, at most 30 seconds (default: 15)")
     parser.add_argument("--group-timeout", type=positive_seconds, default=600)
     parser.add_argument("--interactive-timeout", type=positive_seconds, default=60,
                         help="timeout for interactive TUI Python files (default: 60s)")
@@ -313,43 +511,77 @@ def main(argv=None):
     parser.add_argument("--shellcheck", default=shutil.which("shellcheck") or "shellcheck")
     parser.add_argument("--bats", default=shutil.which("bats") or "bats")
     args = parser.parse_args(argv)
+    args.cancel_event = threading.Event()
     started = time.monotonic()
+    child_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
     output_dir = args.output_dir.resolve() if args.output_dir else Path(tempfile.mkdtemp(prefix="igor-validation-"))
     if args.output_dir:
         output_dir.mkdir(parents=True, exist_ok=False)
     summary = {"schema_version": 2, "mode": args.mode, "base": args.base,
                "baseline": str(args.baseline), "count_unit": "test_identities_and_check_groups",
-               "changed_files": [], "domains": [], "groups": []}
+               "changed_files": [], "domains": [], "groups": [], "jobs": args.jobs,
+               "run_state": "running", "plan": [], "active_groups": [], "pending_groups": []}
     baseline = []
+    interruption = {}
+    previous_handlers = {}
+
+    def interrupt(signum, _frame):
+        interruption["signal"] = signum
+        args.cancel_event.set()
+
+    if threading.current_thread() is threading.main_thread():
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            previous_handlers[signum] = signal.signal(signum, interrupt)
+
+    def checkpoint(state, completed, active, pending):
+        summary["run_state"] = state
+        summary["groups"] = [completed[index] for index in sorted(completed)]
+        summary["active_groups"] = [{"index": index, "id": summary["plan"][index]["id"],
+                                     "elapsed_seconds": round(time.monotonic() - active[index], 3),
+                                     "log": str(output_dir / f"{index:03d}-{summary['plan'][index]['kind']}.log"),
+                                     **({"report": str(output_dir / f"{index:03d}-pytest.jsonl")}
+                                        if summary["plan"][index]["kind"] == "pytest" else {})}
+                                    for index in sorted(active)]
+        summary["pending_groups"] = [{"index": index, "id": summary["plan"][index]["id"]}
+                                     for index in sorted(pending)]
+        observations = []
+        for group in summary["groups"]:
+            observations.extend(group.get("observations", [group_observation(group)]))
+        summary.update(compare_results(observations, baseline, PERMITTED_SKIPS))
+        if state != "complete":
+            summary["exit_code"] = 1
+        if interruption:
+            summary["interruption"] = dict(interruption)
+            summary["exit_code"] = 128 + interruption["signal"]
+        summary["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
+        summary["child_cpu_seconds"] = {"user": round(cpu.ru_utime - child_cpu.ru_utime, 3),
+                                        "system": round(cpu.ru_stime - child_cpu.ru_stime, 3)}
+        summary.update(slow_reports(summary["groups"], summary["results"]))
+        write_summary(output_dir, summary)
+
     try:
+        checkpoint("running", {}, {}, set())
         baseline = load_baseline(args.baseline, ROOT)
         changed = sorted(set(changed_files(ROOT, args.base)) | set(args.changed_file))
         for name in changed:
             local_path(ROOT, name)
         domains, plan = make_plan(ROOT, args.mode, changed, args.test)
-        summary.update(changed_files=changed, domains=domains)
+        summary.update(changed_files=changed, domains=domains, plan=plan)
         if args.dry_run:
-            summary["plan"] = plan
+            summary.update(run_state="planned", exit_code=0)
+            write_summary(output_dir, summary)
             print(json.dumps(summary, indent=2))
             return 0
-        for index, group in enumerate(plan):
-            print(f"Running {group['id']}", flush=True)
-            result = run_group(group, ROOT, output_dir, index, args)
-            summary["groups"].append(result)
-            print(f"  {result['status']} {result['elapsed_seconds']}s", flush=True)
-            if (args.fail_fast_preflight and group["kind"] in PREFLIGHT_KINDS
-                    and result["status"] != "PASS"):
-                print("  stopping after preflight failure", flush=True)
-                break
-    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        run_plan(plan, ROOT, output_dir, args, checkpoint)
+    except (ValueError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         summary["groups"].append({"id": "runner", "status": "ERROR", "detail": str(error),
                                   "elapsed_seconds": 0})
-    observations = []
-    for group in summary["groups"]:
-        observations.extend(group.get("observations", [group_observation(group)]))
-    summary.update(compare_results(observations, baseline, PERMITTED_SKIPS))
-    summary["elapsed_seconds"] = round(time.monotonic() - started, 3)
-    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        checkpoint("interrupted" if isinstance(error, KeyboardInterrupt) else "incomplete",
+                   dict(enumerate(summary["groups"])), {}, set())
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
     print(f"\nValidation: {args.mode} (test identities and check groups)")
     for status, count in summary["counts"].items():
         print(f"{status:18} {count}")
@@ -359,6 +591,13 @@ def main(argv=None):
         if result["classification"] != "PASS":
             print(f"  {result['classification']}: {result['suite']} {result['identity']} ({result.get('log', 'no log')})")
     print(f"Baseline entries not exercised: {len(summary['unexercised_baseline'])}")
+    print(f"Run state: {summary['run_state']}; child CPU: {summary['child_cpu_seconds']}")
+    print("Slowest groups:")
+    for row in summary["slow_groups"][:5]:
+        print(f"  {row['elapsed_seconds']}s {row['identity']}")
+    print("Slowest tests:")
+    for row in summary["slow_tests"][:5]:
+        print(f"  {row['elapsed_seconds']}s {row['identity']}")
     print(f"Elapsed: {summary['elapsed_seconds']}s; evidence: {output_dir / 'summary.json'}")
     return summary["exit_code"]
 

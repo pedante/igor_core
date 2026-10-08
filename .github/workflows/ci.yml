@@ -110,20 +110,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tests/validation-requirements.txt
+
+      - name: Cache BATS downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: validation-npm-${{ runner.os }}-bats-1.13.0
 
       - name: Install validation tools
         run: |
-          pip install 'pytest>=9,<10' ruff
-          sudo npm install -g bats@1.13.0
-          sudo apt-get update -qq
-          sudo apt-get install -y shellcheck ripgrep
+          pip install -r tests/validation-requirements.txt
+          npm install --global --prefix "$RUNNER_TEMP/validation-tools" bats@1.13.0
+          echo "$RUNNER_TEMP/validation-tools/bin" >> "$GITHUB_PATH"
+          missing=()
+          command -v shellcheck >/dev/null || missing+=(shellcheck)
+          command -v rg >/dev/null || missing+=(ripgrep)
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y "${missing[@]}"
+          fi
 
       - name: Run shared validation harness
         env:
           VALIDATION_MODE: ${{ inputs.mode || 'affected' }}
           VALIDATION_BASE: ${{ github.event.pull_request.base.sha || inputs.base || github.event.before }}
         run: |
-          extra=(--fail-fast-preflight --interactive-timeout 60)
+          extra=(--jobs 2 --fail-fast-preflight --interactive-timeout 60)
           if [ "$VALIDATION_MODE" != "full" ]; then
             extra+=(--group-timeout 240 --slow-timeout 300)
           fi

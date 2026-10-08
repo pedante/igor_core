@@ -67,12 +67,28 @@ Run tests from the repository root.
 Common checks:
 
 ```bash
-bash tests/run_all.sh
-bash tests/run_all.sh --fast
-bats tests/modules/
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r tests/validation-requirements.txt
+tests/validate.sh focused --base igor2 --test tests/test_capability_runtime.py
+tests/validate.sh affected --base igor2 --jobs 2
+tests/validate.sh full --base igor2 --jobs 2
 ruff check .
 git diff --check
 ```
+
+Use the shared [validation harness](igor2/VALIDATION.md) for focused, affected
+and full evidence. `--dry-run` shows selection; `--jobs 1` preserves serial
+execution for diagnosis. Only reviewed Python and BATS groups with private
+state can overlap; host-facing and unknown groups use one serial lane. Run full once after
+stabilization. Logs, partial checkpoints, slow tests and exact baseline
+classifications remain available in the reported evidence directory.
+
+`bash tests/run_all.sh` remains the legacy Bash/rendering/BATS convenience
+command; it omits most Python files and permits missing-tool skips. It is not
+the complete validation gate. Direct `bats tests/modules/` remains useful for
+native framework diagnosis. Install BATS 1.13.0, ShellCheck and ripgrep as
+described in the validation guide.
 
 For changed shell files also run `bash -n` and ShellCheck with the flags used by `.github/workflows/ci.yml`.
 
