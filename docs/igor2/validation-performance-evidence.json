@@ -1488,13 +1488,25 @@
       "exit_code": 0
     },
     "final_selftests": {
-      "passed": 40,
-      "signal_subtests": 2
+      "passed": 68,
+      "signal_subtests": 2,
+      "suites": [
+        "runner",
+        "reports",
+        "domains",
+        "baseline_results"
+      ]
     }
   },
   "lint": {
     "base_diagnostics": 137,
     "final_diagnostics": 136,
     "introduced": 0
+  },
+  "post_benchmark_selection_correction": {
+    "condition": "checkout-local initial checkpoint incorrectly became a changed input",
+    "fix": "capture changed-file selection before first evidence write",
+    "regression_test": "test_repository_checkpoint_does_not_expand_affected_selection",
+    "benchmark_effect": "none; controlled changed-file provider returns a fixed empty list"
   }
 }

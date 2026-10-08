@@ -561,9 +561,10 @@ def main(argv=None):
         write_summary(output_dir, summary)
 
     try:
+        # Select before our first write: CI may place evidence inside the checkout.
+        changed = sorted(set(changed_files(ROOT, args.base)) | set(args.changed_file))
         checkpoint("running", {}, {}, set())
         baseline = load_baseline(args.baseline, ROOT)
-        changed = sorted(set(changed_files(ROOT, args.base)) | set(args.changed_file))
         for name in changed:
             local_path(ROOT, name)
         domains, plan = make_plan(ROOT, args.mode, changed, args.test)

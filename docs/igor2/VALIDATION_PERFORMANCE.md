@@ -207,7 +207,7 @@ canonical invocation retains every rendering node.
   reparse. This correction requires report tests, not re-execution of product
   effects.
 - The first affected check reports **123 PASS**, no failures/skips/errors.
-  Final runner/report self-tests report **40 PASS plus two signal subtests**.
+  Final runner/report/domain/baseline self-tests report **68 PASS plus two signal subtests**.
   They prove reversed completion order, serial preflight, exact accepted/new
   failure and timeout handling in serial/parallel schedules, crash/missing-tool
   failure, incomplete collection, truncated-report evidence, simultaneous
@@ -218,6 +218,13 @@ canonical invocation retains every rendering node.
   configuration; poisoning ambient settings does not change the fixture mode.
   Its active-checkout file takes 140.3 seconds, including the new isolation case;
   this separate focused timing is not substituted into the controlled pair.
+- CI inspection exposed a checkout-local checkpoint being included in its own
+  changed-file query and triggering broad fallback. A minimal ordering correction
+  captures changes before the first checkpoint write. Its regression fixture
+  proves the real documentation change still selects documentation tests and
+  excludes an unrelated test. No path exclusion or dependency-map change is added.
+  The controlled benchmark supplies a fixed empty changed-file list, so this
+  selection correction changes neither benchmark execution nor its measurements.
 - CI and local commands use the same runner, adapters, baseline, domains and
   result schema. Workflow YAML and embedded Bash parse. Changed Python lint,
   BATS CI-flag ShellCheck/count checks, compilation, JSON and documentation

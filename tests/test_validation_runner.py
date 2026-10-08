@@ -50,6 +50,20 @@ class ValidationRunnerTests(unittest.TestCase):
             code = runner.main([*args, "--output-dir", str(evidence)])
         return code, json.loads((evidence / "summary.json").read_text())
 
+    def test_repository_checkpoint_does_not_expand_affected_selection(self):
+        self.write("tests/test_unrelated.py", "def test_unrelated(): pass\n")
+        self.write("tests/test_documentation_health.py", "def test_documentation(): pass\n")
+        self.init_git()
+        self.write("docs/change.md", "A real documentation change.\n")
+        code, summary = self.run_main("affected", "--base", "HEAD", "--dry-run",
+                                      output_name="validation-results")
+        self.assertEqual(code, 0)
+        self.assertEqual(summary["changed_files"], ["docs/change.md"])
+        self.assertEqual(summary["domains"], ["documentation"])
+        self.assertEqual([group["files"] for group in summary["plan"] if group["kind"] == "pytest"],
+                         [["tests/test_documentation_health.py"]])
+        self.assertEqual(summary["run_state"], "planned")
+
     def test_pass_and_assertion_failure_preserve_raw_logs(self):
         for script, status in (("print('fixture pass')", "PASS"), ("assert False, 'fixture assertion'", "FAIL")):
             log = self.root / f"{status}.log"

@@ -157,6 +157,10 @@ exit code. Counts combine unique test identities and structural/tool groups,
 not just test cases. Raw group failures remain visible even if accepted by the
 baseline. Human output shows classifications, identities and evidence paths.
 
+Changed-file selection is captured before the first evidence write, so a new
+checkout-local output directory cannot broaden its own plan. Existing untracked
+files retain their normal selection semantics.
+
 The summary is atomically checkpointed after planning, dispatch, completion
 and each heartbeat (`--progress-interval`, default 15 seconds, maximum 30).
 `run_state`, the complete plan, active groups and pending groups distinguish
