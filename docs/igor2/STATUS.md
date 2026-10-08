@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-06
+Last updated: 2026-10-08
 
 ## How to read this file
 
@@ -9,6 +9,73 @@ sections are retained as scoped implementation/validation evidence and are not a
 linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
+
+## Post-merge module integration — bounded corrective slice
+
+This slice starts from PR #69's `igor2` merge `f4976d0` and corrects three
+integration defects without advancing a roadmap wave or changing Module API
+contracts:
+
+- AI capability discovery recognizes executable composites through the existing
+  Core registry while withholding disabled, unavailable and ambiguous entries.
+- Classic Nextcloud setup lazily initializes the existing deterministic safety
+  dispatcher without AI transport. Its deterministic validator now belongs to
+  that dispatcher; unavailable validation fails closed.
+- Nextcloud checks Docker Engine accessibility and Compose availability
+  separately before its configuration or stack mutations. `docker.install`
+  continues to promise Engine setup only.
+
+The Boundary A recommendations accepted under [D069](DECISIONS.md) remain in
+force. This corrective slice does not advance the separate Ownership Foundation
+implementation.
+
+The focused classic fixture exercises real System/Docker declarations and
+canonical dispatch with mocked host commands: declined approval performs no
+host/setup mutation and preserves existing credentials. Readiness, unavailable
+dispatcher, missing validator and initializer reuse have explicit regression
+proofs. The existing safety/approval/Wave E suite remains intact.
+
+**Validation (2026-10-08):** 13 readiness tests, 3 real-loader catalog tests and
+72 existing safety/approval/Wave E tests pass. The full developer gate ran all
+130 groups: 1,808 `PASS` identities/check groups, 6 reviewed baseline failures,
+4 formerly failing baseline entries passing, and 2 permitted environment skips;
+no timeouts, missing tools or runner errors. The raw gate exits 1 and flags 5
+entries outside its existing manifest; the manifest was not changed:
+
+- ShellCheck reports the same 3 warnings reproduced from unchanged `f4976d0`
+  `safety.sh` (SC2024 and two SC2155 declarations).
+- Four Automation Registry assertions fail under the checkout's ignored
+  `ai_mode=guide` setting. The exact four pass on the base export, including
+  with the reporting plugin and enabled System/Docker policy, and also pass
+  with the five changed product files overlaid. Restoring the base files and
+  adding only synthetic `ai_mode=guide` reproduces all four failures. The
+  existing Guide gate correctly refuses an Assist tick; no user setting or
+  approval policy was changed to make tests pass.
+
+No introduced regression was identified. This is not an unconditionally green
+release gate: the existing baseline failures, environment-sensitive fixtures
+and lint warnings remain. CLI/TUI inspect registration availability; canonical
+resolution and AI can reject an unavailable composition that is still registered.
+AI's empty-input composition check supports the current no-input `docker.install`
+contract and conservatively omits required-parent-input compositions.
+
+**PR #70 ShellCheck follow-up:** the first GitHub affected run
+[37817533002](https://github.com/pedante/igor_core/actions/runs/37817533002)
+stopped at preflight with Ubuntu's ShellCheck 0.9.0. That version and the exact
+CI flags (`--severity=warning --exclude=SC2086,SC1090,SC1091,SC2034 --shell=bash`)
+reproduce all three warnings on byte-identical unchanged `f4976d0` source.
+The correction separates the two timestamp declarations from their assignments
+and applies caller-owned `/dev/tty` redirections to a shell group containing only
+`sudo -v`. No lint exclusions, gate weakening, privilege shell or authority
+change is introduced. The PTY test now captures backend output while requiring
+terminal stdin/stdout/stderr for native authentication; isolated timestamp
+fixtures verify retained backup content/naming and unapproved menu-item identity.
+The corrected affected shell set passes ShellCheck 0.9.0. Remote rerun evidence
+and any remaining baseline classifications are recorded in PR #70.
+
+The local stash, OpenRouter ownership, Nextcloud configuration migration and
+module detachment remain outside this slice. This entry does not close the
+Ownership Foundation or certify third-party module portability.
 
 ## Ownership Foundation Boundary B — approved; implementation in progress
 

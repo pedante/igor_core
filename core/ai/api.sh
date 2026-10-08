@@ -413,21 +413,3 @@ _ai_py_parse() {
     printf '%s' "$_raw" | python3 "$_lib" 2>/dev/null \
         || printf '{"scratchpad":null,"tool_calls":[],"reply":null,"raw_reasoning":"","parse_errors":["ai_parse.py failed"]}'
 }
-
-# ── P1-4: Bridge to lib/ai_validate.py ───────────────────────────────────────
-# Validate a single tool_call JSON dict before execution.
-# Input:  tool_call JSON dict via $1  e.g. '{"tool":"host","cmd":"df -h"}'
-# Output: verdict JSON to stdout:
-#         {"valid":true,"warnings":[],"blocked":false,"block_reason":null}
-# On any error, returns a permissive verdict (fail-open) so Igor keeps working.
-_ai_validate_tool_call() {
-    local _tool_json="$1"
-    local _raw
-    _raw=$(NEXUS_TOOL_JSON="$_tool_json" python3 "${IGOR_DIR}/core/ai/ai_engine.py" validate 2>/dev/null)
-    if [ -z "$_raw" ]; then
-        # Fail-open: if engine unavailable, allow execution
-        printf 'VALID: true\nBLOCKED: false\nREASON: \nWARNINGS: \n'
-    else
-        printf '%s\n' "$_raw"
-    fi
-}

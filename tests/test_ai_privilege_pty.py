@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Exercise approved native tty authentication with the real dispatcher."""
 
 import json
@@ -11,7 +10,6 @@ import termios
 import time
 import unittest
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,6 +31,9 @@ class PrivilegePtyTests(unittest.TestCase):
             sudo.write_text('''#!/bin/bash
 if [ "$1" = -n ] && [ "$2" = -v ]; then exit 1; fi
 if [ "$1" = -v ]; then
+    # Authentication must use the caller's terminal even when backend output
+    # is captured; no privileged shell or alternate authentication path.
+    [ -t 0 ] && [ -t 1 ] && [ -t 2 ] || exit 2
     IFS= read -r supplied </dev/tty || exit 1
     [ "$supplied" = "test-password" ] || exit 1
     touch "$AUTH_MARKER"
@@ -53,7 +54,7 @@ ai_scrub_outbound() { printf '%s' "$1"; }
 _ai_validate_tool_call() { printf 'BLOCKED: false\\n'; }
 ai_audit_tool() { printf '%s\\n' "$*" >> "$AUDIT_LOG"; }
 ai_knowledge_mark_changed() { :; }
-ai_execute_tool "$TOOL_JSON"
+ai_execute_tool "$TOOL_JSON" >"$OUTPUT_LOG" 2>"$ERROR_LOG"
 ''', encoding="utf-8")
             env = os.environ.copy()
             env.update({
@@ -63,6 +64,7 @@ ai_execute_tool "$TOOL_JSON"
                 "ai_mode": "assist", "executive_mode": "false",
                 "AUTH_MARKER": str(auth_marker), "SUDO_ARGV_LOG": str(argv_log),
                 "AUDIT_LOG": str(audit_log),
+                "OUTPUT_LOG": str(base / "output"), "ERROR_LOG": str(base / "error"),
                 "TOOL_JSON": json.dumps({"tool": "host", "cmd": f"sudo touch {marker}"}),
                 "PATH": str(binaries) + os.pathsep + os.environ.get("PATH", ""),
             })
