@@ -67,6 +67,786 @@ system__apply_memory_warning() { _mod_sys_memory_warning_request apply; }
 system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
 
+
+# S8.1 host runtime telemetry. Core owns strict procfs normalization; System
+# owns host-domain observation and typed presentation. This block is READ-only
+# and intentionally excludes thermal-provider meaning and health thresholds.
+_mod_sys_runtime_read() {
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/host_runtime.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/host_runtime.sh"
+    host_runtime_status_query
+}
+
+system__observe_runtime() {
+    local input row
+    input="$(_mod_sys_admin_request host.runtime)" || {
+        _mod_sys_admin_error invalid_request "expected host.runtime v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "host.runtime takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_runtime_read)" || {
+        _mod_sys_admin_error unavailable "host runtime discovery failed"
+        return 0
+    }
+    HOST_RUNTIME_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+row = json.loads(os.environ["HOST_RUNTIME_ROW"])
+mapping = [
+    ("runtime.uptime_seconds", "uptime_seconds", ["/proc/uptime"]),
+    ("load.one_minute", "load_1", ["/proc/loadavg"]),
+    ("load.five_minute", "load_5", ["/proc/loadavg"]),
+    ("load.fifteen_minute", "load_15", ["/proc/loadavg"]),
+    ("swap.total_bytes", "swap_total_bytes", ["/proc/meminfo:SwapTotal"]),
+    ("swap.free_bytes", "swap_free_bytes", ["/proc/meminfo:SwapFree"]),
+    (
+        "swap.used_bytes",
+        "swap_used_bytes",
+        ["/proc/meminfo:SwapTotal", "/proc/meminfo:SwapFree"],
+    ),
+    (
+        "swap.use_percent",
+        "swap_use_percent",
+        ["/proc/meminfo:SwapTotal", "/proc/meminfo:SwapFree"],
+    ),
+]
+facts = [
+    {"property": prop, "value": row[field], "evidence": evidence}
+    for prop, field, evidence in mapping
+]
+print(json.dumps({
+    "status": "ok",
+    "result": {
+        "object_id": "host:local",
+        "facts": facts,
+        "unavailable": [],
+    },
+}, separators=(",", ":")))
+PY
+}
+
+system__host_runtime_status() {
+    local input row
+    input="$(_mod_sys_admin_request system.host.runtime.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.host.runtime.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.host.runtime.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_runtime_read)" || {
+        _mod_sys_admin_error unavailable "host runtime discovery failed"
+        return 0
+    }
+    HOST_RUNTIME_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+row = json.loads(os.environ["HOST_RUNTIME_ROW"])
+result = {
+    "uptime_seconds": row["uptime_seconds"],
+    "load_1": row["load_1"],
+    "load_5": row["load_5"],
+    "load_15": row["load_15"],
+    "swap_total_bytes": row["swap_total_bytes"],
+    "swap_free_bytes": row["swap_free_bytes"],
+    "swap_used_bytes": row["swap_used_bytes"],
+    "swap_use_percent": row["swap_use_percent"],
+    "source": "core.host.runtime",
+}
+print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
+PY
+}
+
+
+# S4 storage read model. Core owns the normalized Linux mechanism; System owns
+# host-domain observation and presentation. Nothing in this block mutates mount
+# state, filesystems or persistence.
+_mod_sys_storage_rows() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/storage.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/storage.sh"
+    case "$kind" in
+        mounts) storage_mounts_query ;;
+        filesystems) storage_filesystems_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_storage_observe() {
+    local contribution="$1" kind="$2" rows input
+    input="$(_mod_sys_admin_request "$contribution")" || {
+        _mod_sys_admin_error invalid_request "expected $contribution v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$contribution takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind storage discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" STORAGE_KIND="$kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["STORAGE_KIND"]
+rows = json.loads(os.environ["STORAGE_ROWS"])
+maps = {
+    "mounts": {
+        "mount.target": "target",
+        "mount.source": "source",
+        "mount.filesystem_type": "filesystem_type",
+        "mount.total_bytes": "total_bytes",
+        "mount.used_bytes": "used_bytes",
+        "mount.available_bytes": "available_bytes",
+        "mount.use_percent": "use_percent",
+        "mount.read_only": "read_only",
+    },
+    "filesystems": {
+        "filesystem.device": "device",
+        "filesystem.type": "filesystem_type",
+        "filesystem.uuid": "uuid",
+        "filesystem.label": "label",
+        "filesystem.size_bytes": "size_bytes",
+        "filesystem.mounted": "mounted",
+        "filesystem.mountpoint": "mountpoint",
+    },
+}
+objects = []
+for row in rows:
+    object_id = row["object_id"]
+    evidence = [f"core.storage.{kind}:{object_id}"]
+    objects.append({
+        "object_id": object_id,
+        "facts": [
+            {"property": prop, "value": row[field], "evidence": evidence}
+            for prop, field in maps[kind].items()
+        ],
+        "unavailable": [],
+    })
+print(json.dumps({"status": "ok", "result": {"objects": objects}},
+                 separators=(",", ":")))
+PY
+}
+
+system__observe_mounts() { _mod_sys_storage_observe storage.mounts mounts; }
+system__observe_filesystems() { _mod_sys_storage_observe storage.filesystems filesystems; }
+
+system__storage_mounts_list() {
+    local input rows
+    input="$(_mod_sys_admin_request system.storage.mounts.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.mounts.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.mounts.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows mounts)" || {
+        _mod_sys_admin_error unavailable "mount discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+lines = [
+    f'{row["object_id"]}\t{row["target"]}\t{row["filesystem_type"]}\t'
+    f'{row["use_percent"]}%\t{row["source"]}'
+    for row in rows
+]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    "mounts": "\n".join(lines)[:4096],
+    "source": "core.storage.mounts",
+}}, separators=(",", ":")))
+PY
+}
+
+system__storage_filesystems_list() {
+    local input rows
+    input="$(_mod_sys_admin_request system.storage.filesystems.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.filesystems.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.filesystems.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_storage_rows filesystems)" || {
+        _mod_sys_admin_error unavailable "filesystem discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+lines = [
+    f'{row["object_id"]}\t{row["device"]}\t{row["filesystem_type"]}\t'
+    f'{row["size_bytes"]}\t{row["mountpoint"] or "unmounted"}'
+    for row in rows
+]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    "filesystems": "\n".join(lines)[:4096],
+    "source": "core.storage.filesystems",
+}}, separators=(",", ":")))
+PY
+}
+
+system__storage_summary() {
+    local input mounts filesystems
+    input="$(_mod_sys_admin_request system.storage.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.storage.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.storage.summary takes no inputs"
+        return 0
+    }
+    mounts="$(_mod_sys_storage_rows mounts)" || {
+        _mod_sys_admin_error unavailable "mount discovery failed"
+        return 0
+    }
+    filesystems="$(_mod_sys_storage_rows filesystems)" || {
+        _mod_sys_admin_error unavailable "filesystem discovery failed"
+        return 0
+    }
+    STORAGE_MOUNTS="$mounts" STORAGE_FILESYSTEMS="$filesystems" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+mounts = json.loads(os.environ["STORAGE_MOUNTS"])
+filesystems = json.loads(os.environ["STORAGE_FILESYSTEMS"])
+root = next((row for row in mounts if row["target"] == "/"), None)
+mounted = sum(bool(row["mounted"]) for row in filesystems)
+print(json.dumps({"status": "ok", "result": {
+    "mount_count": len(mounts),
+    "filesystem_count": len(filesystems),
+    "mounted_filesystem_count": mounted,
+    "unmounted_filesystem_count": len(filesystems) - mounted,
+    "root_use_percent": root["use_percent"] if root else 0,
+    "source": "core.storage",
+}}, separators=(",", ":")))
+PY
+}
+
+_mod_sys_storage_status() {
+    local expected="$1" kind="$2" input_name="$3" input object_id rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    object_id="$(STORAGE_INPUT="$input" STORAGE_INPUT_NAME="$input_name"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["STORAGE_INPUT"]).get(os.environ["STORAGE_INPUT_NAME"])
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$kind:$object_id" in
+        mounts:mount:*) ;;
+        filesystems:filesystem:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "storage object identity does not match selector kind"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_storage_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind storage discovery failed"
+        return 0
+    }
+    STORAGE_ROWS="$rows" STORAGE_OBJECT_ID="$object_id" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["STORAGE_ROWS"])
+ident = os.environ["STORAGE_OBJECT_ID"]
+row = next((item for item in rows if item.get("object_id") == ident), None)
+if row is None:
+    raise SystemExit(3)
+print(json.dumps({"status": "ok", "result": row}, separators=(",", ":")))
+PY
+    case "$?" in
+        0) ;;
+        3) _mod_sys_admin_error unavailable "storage object is not currently present" ;;
+        *) _mod_sys_admin_error unavailable "storage status normalization failed" ;;
+    esac
+}
+
+system__storage_mount_status() {
+    _mod_sys_storage_status system.storage.mount.status mounts mount
+}
+
+system__storage_filesystem_status() {
+    _mod_sys_storage_status system.storage.filesystem.status filesystems filesystem
+}
+
+
+# S6 local accounts, permissions and bounded path inspection. Core owns
+# deterministic Linux reads and reviewed privileged mechanics; System owns
+# host-domain object meaning and presentation.
+_mod_sys_account_rows() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/access.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+    case "$kind" in
+        users) account_users_query ;;
+        groups) account_groups_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_account_observe() {
+    local contribution="$1" kind="$2" rows input
+    input="$(_mod_sys_admin_request "$contribution")" || {
+        _mod_sys_admin_error invalid_request "expected $contribution v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$contribution takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_KIND="$kind" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+kind = os.environ["ACCOUNT_KIND"]
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+maps = {
+    "users": {
+        "user.name": "name",
+        "user.uid": "uid",
+        "user.primary_gid": "primary_gid",
+        "user.home": "home",
+        "user.shell": "shell",
+    },
+    "groups": {
+        "group.name": "name",
+        "group.gid": "gid",
+        "group.member_count": "member_count",
+        "group.members": "members",
+    },
+}
+objects = []
+for row in rows:
+    object_id = row["object_id"]
+    evidence = [f"core.accounts.{kind}:{object_id}"]
+    objects.append({
+        "object_id": object_id,
+        "facts": [
+            {"property": prop, "value": row[field], "evidence": evidence}
+            for prop, field in maps[kind].items()
+        ],
+        "unavailable": [],
+    })
+print(json.dumps({"status": "ok", "result": {"objects": objects}},
+                 separators=(",", ":")))
+PY
+}
+
+system__observe_users() { _mod_sys_account_observe accounts.users users; }
+system__observe_groups() { _mod_sys_account_observe accounts.groups groups; }
+
+_mod_sys_account_list() {
+    local expected="$1" kind="$2" output_key="$3" input rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "$expected takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_KIND="$kind" ACCOUNT_OUTPUT="$output_key"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+kind = os.environ["ACCOUNT_KIND"]
+key = os.environ["ACCOUNT_OUTPUT"]
+if kind == "users":
+    lines = [
+        f'{row["object_id"]}\t{row["name"]}\tuid={row["uid"]}\t'
+        f'gid={row["primary_gid"]}\t{row["home"]}'
+        for row in rows
+    ]
+else:
+    lines = [
+        f'{row["object_id"]}\t{row["name"]}\tgid={row["gid"]}\t'
+        f'members={row["member_count"]}'
+        for row in rows
+    ]
+print(json.dumps({"status": "ok", "result": {
+    "count": len(rows),
+    key: "\n".join(lines)[:4096],
+    "source": "core.accounts." + kind,
+}}, separators=(",", ":")))
+PY
+}
+
+system__users_list() {
+    _mod_sys_account_list system.users.list users users
+}
+
+system__groups_list() {
+    _mod_sys_account_list system.groups.list groups groups
+}
+
+_mod_sys_account_status() {
+    local expected="$1" kind="$2" input_name="$3" input object_id rows
+    input="$(_mod_sys_admin_request "$expected")" || {
+        _mod_sys_admin_error invalid_request "expected $expected v2 request"
+        return 0
+    }
+    object_id="$(ACCOUNT_INPUT="$input" ACCOUNT_INPUT_NAME="$input_name"         "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["ACCOUNT_INPUT"]).get(os.environ["ACCOUNT_INPUT_NAME"])
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$kind:$object_id" in
+        users:user:uid:*) ;;
+        groups:group:gid:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "account identity does not match selector kind"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_account_rows "$kind")" || {
+        _mod_sys_admin_error unavailable "$kind account discovery failed"
+        return 0
+    }
+    ACCOUNT_ROWS="$rows" ACCOUNT_OBJECT_ID="$object_id" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+rows = json.loads(os.environ["ACCOUNT_ROWS"])
+ident = os.environ["ACCOUNT_OBJECT_ID"]
+row = next((item for item in rows if item.get("object_id") == ident), None)
+if row is None:
+    raise SystemExit(3)
+print(json.dumps({"status": "ok", "result": row}, separators=(",", ":")))
+PY
+    case "$?" in
+        0) ;;
+        3) _mod_sys_admin_error unavailable "account object is not currently present" ;;
+        *) _mod_sys_admin_error unavailable "account status normalization failed" ;;
+    esac
+}
+
+system__user_status() {
+    _mod_sys_account_status system.users.status users user
+}
+
+system__group_status() {
+    _mod_sys_account_status system.groups.status groups group
+}
+
+system__path_status() {
+    local input path row
+    input="$(_mod_sys_admin_request system.permissions.path.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.permissions.path.status v2 request"
+        return 0
+    }
+    path="$(ACCESS_INPUT="$input" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+value = json.loads(os.environ["ACCESS_INPUT"]).get("path")
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || path=""
+    [ -n "$path" ] || {
+        _mod_sys_admin_error invalid_request "path is required"
+        return 0
+    }
+    # shellcheck source=core/lib/access.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/access.sh"
+    row="$(path_status_query "$path")" || {
+        _mod_sys_admin_error unavailable "path metadata is unavailable or outside bounded inspection roots"
+        return 0
+    }
+    ACCESS_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+row = json.loads(os.environ["ACCESS_ROW"])
+result = {key: row[key] for key in (
+    "object_id", "path", "kind", "uid", "gid", "owner", "group", "mode", "size_bytes"
+)}
+print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
+PY
+}
+
+
+# S7.2 provider-neutral network read model. Core owns bounded Linux network
+# reads; System owns host-domain observation and presentation. Wi-Fi provider
+# behavior and every network mutation remain outside this block.
+_mod_sys_network_read() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/network.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/network.sh"
+    case "$kind" in
+        interfaces) network_interfaces_query ;;
+        routes) network_routes_query ;;
+        dns) network_dns_query ;;
+        snapshot) network_snapshot_query ;;
+        *) return 2 ;;
+    esac
+}
+
+_mod_sys_network_surface() {
+    local action="${1:-}" object_id="${2:-}" package
+    package="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    if [ -n "$object_id" ]; then
+        "${IGOR_PYTHON:-python3}" "$package/lib/network_surface.py" "$action" "$object_id"
+    else
+        "${IGOR_PYTHON:-python3}" "$package/lib/network_surface.py" "$action"
+    fi
+}
+
+system__observe_interfaces() {
+    local input rows result
+    input="$(_mod_sys_admin_request network.interfaces)" || {
+        _mod_sys_admin_error invalid_request "expected network.interfaces v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "network.interfaces takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface observe-interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_summary() {
+    local input snapshot result
+    input="$(_mod_sys_admin_request system.network.summary)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.summary v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.summary takes no inputs"
+        return 0
+    }
+    snapshot="$(_mod_sys_network_read snapshot)" || {
+        _mod_sys_admin_error unavailable "network snapshot discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$snapshot" | _mod_sys_network_surface summary)" || {
+        _mod_sys_admin_error unavailable "network summary normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_interfaces_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.interfaces.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.interfaces.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.interfaces.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface interfaces-list)" || {
+        _mod_sys_admin_error unavailable "network interface presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_interface_status() {
+    local input object_id rows result
+    input="$(_mod_sys_admin_request system.network.interface.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.interface.status v2 request"
+        return 0
+    }
+    object_id="$(NETWORK_INPUT="$input" "${IGOR_PYTHON:-python3}" - <<'PY'
+import json
+import os
+
+value = json.loads(os.environ["NETWORK_INPUT"]).get("interface")
+if not isinstance(value, str):
+    raise SystemExit(1)
+print(value)
+PY
+)" || object_id=""
+    case "$object_id" in
+        interface:*) ;;
+        *)
+            _mod_sys_admin_error invalid_request "interface identity is required"
+            return 0
+            ;;
+    esac
+    rows="$(_mod_sys_network_read interfaces)" || {
+        _mod_sys_admin_error unavailable "network interface discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface interface-status "$object_id")" || {
+        _mod_sys_admin_error unavailable "interface object is not currently present"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_routes_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.routes.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.routes.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.routes.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_network_read routes)" || {
+        _mod_sys_admin_error unavailable "network route discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface routes-list)" || {
+        _mod_sys_admin_error unavailable "network route presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_dns_status() {
+    local input row result
+    input="$(_mod_sys_admin_request system.network.dns.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.dns.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.dns.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_network_read dns)" || {
+        _mod_sys_admin_error unavailable "resolver configuration discovery failed"
+        return 0
+    }
+    result="$(printf '%s' "$row" | _mod_sys_network_surface dns-status)" || {
+        _mod_sys_admin_error unavailable "resolver presentation failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+
+# S7.3 optional NetworkManager Wi-Fi READ provider. This is deliberately
+# separate from _mod_sys_network_read so generic network reads never acquire an
+# nmcli dependency. No function in this block exposes Wi-Fi mutation.
+_mod_sys_wifi_read() {
+    local kind="${1:-}"
+    [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
+    # shellcheck source=core/lib/networkmanager_wifi.sh
+    source "${_IGOR_LOADER_DIR}/core/lib/networkmanager_wifi.sh"
+    case "$kind" in
+        status) networkmanager_wifi_status_query ;;
+        scan) networkmanager_wifi_scan_query ;;
+        profiles) networkmanager_wifi_profiles_query ;;
+        *) return 2 ;;
+    esac
+}
+
+system__network_wifi_status() {
+    local input row result
+    input="$(_mod_sys_admin_request system.network.wifi.status)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.status v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.status takes no inputs"
+        return 0
+    }
+    row="$(_mod_sys_wifi_read status)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi status unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$row" | _mod_sys_network_surface wifi-status)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi status normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_wifi_scan() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.wifi.scan)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.scan v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.scan takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_wifi_read scan)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi scan unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface wifi-scan)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi scan normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+system__network_wifi_profiles_list() {
+    local input rows result
+    input="$(_mod_sys_admin_request system.network.wifi.profiles.list)" || {
+        _mod_sys_admin_error invalid_request "expected system.network.wifi.profiles.list v2 request"
+        return 0
+    }
+    [ "$input" = '{}' ] || {
+        _mod_sys_admin_error invalid_request "system.network.wifi.profiles.list takes no inputs"
+        return 0
+    }
+    rows="$(_mod_sys_wifi_read profiles)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi profiles unavailable"
+        return 0
+    }
+    result="$(printf '%s' "$rows" | _mod_sys_network_surface wifi-profiles-list)" || {
+        _mod_sys_admin_error unavailable "NetworkManager Wi-Fi profiles normalization failed"
+        return 0
+    }
+    printf '%s\n' "$result"
+}
+
+
 # Experimental generic administration capabilities. Platform-specific package
 # and service mechanics stay in Core; this module gives them host-domain meaning.
 _mod_sys_admin_platform() {

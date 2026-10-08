@@ -211,6 +211,97 @@ The implemented extension of the Wave C `host.memory` descriptor is:
 }
 ```
 
+### S4 bounded collection observations
+
+The original Wave D observer slice was intentionally single-object and
+`host.memory` remains unchanged. S4 extends that same validation boundary only
+for `object_kind=mount` and `object_kind=filesystem`. Those observers return a
+bounded snapshot of at most 128 objects. Each object carries one canonical
+`object_id`, the complete declared property set split between typed facts and
+explicit unavailable properties, and bounded evidence.
+
+Collection results are validated completely before any model change. A
+successful refresh replaces that observer's current object set, so a mount or
+filesystem omitted from the new snapshot is no longer presented as observed.
+An unavailable property may retain its last fact as stale. A failed collection
+refresh stales prior facts but creates no object merely to represent failure.
+The observer attempt record carries failure even when no objects were previously
+known.
+
+S4 uses `mount:/`, `mount:/srv/data` and
+`filesystem:/dev/sdb1`-style locally scoped identities; unsafe path characters
+are percent-encoded at the discovery boundary. These remain current-state object
+identities, not persistence paths or provisioning ownership.
+
+Core's read-only storage mechanism reads `/proc/self/mountinfo` plus bounded
+`statvfs` usage and, for filesystem inventory, bounded `lsblk` JSON. It never
+mounts, unmounts, repairs, formats or edits fstab. System owns the observer and
+operator meaning above those mechanisms. Storage health cutover remains
+separate: the legacy root-filesystem health lines are not replaced merely by
+adding the S4 read model.
+
+
+### S7.2 interface collection observations
+
+D073 extends the same bounded collection contract to
+`object_kind=interface`. The canonical identity is the existing Host
+Intelligence form `interface:<encoded-interface-name>`; ordinary Linux
+interface characters remain readable and unsafe identity characters are
+percent-encoded at the Core discovery boundary.
+
+`network.interfaces` publishes at most 128 current interface objects with a
+30-second freshness window. Its declared facts are name, ifindex, operational
+and administrative state, carrier, MTU, link-layer address, interface kind,
+wireless property, bounded IPv4/IPv6 address strings, and current IPv4/IPv6
+default-route ownership. A successful refresh atomically replaces that
+observer's interface set. Failure stales prior facts without inventing
+interfaces, exactly like the existing storage/account collection semantics.
+
+Routes and resolver configuration are deliberately **not** new durable object
+kinds in S7.2. They remain bounded current Core reads. Route data may derive
+current default-route facts for interface observations; resolver data is exposed
+through a READ capability with its source/symlink context. This does not create
+desired network state, configuration ownership or route/DNS reconciliation.
+
+The `ip` binary is a contribution-local requirement for the interface
+observer and link/route capabilities. Its absence makes those contributions
+unavailable while the System package and provider-independent contributions
+such as resolver inspection remain active.
+
+S7.5 proves this same generic network contract with explicit Debian and Arch
+fixtures. The proof is intentionally manager-neutral: both families use the
+same canonical System IDs and bounded iproute2/resolver mechanics. Optional
+NetworkManager Wi-Fi reads and known-profile activation are separately tested
+on both fixture families when `nmcli` is present. That is not a claim that
+iwd/iwctl, systemd-networkd, static configuration or another manager already
+implements the Wi-Fi provider contract.
+
+### S5 storage administration boundary
+
+S5 consumes the S4 current-state objects but does not make observations
+authorization. The System declarations identify the selected canonical
+filesystem or mount; Core independently re-reads current storage state during a
+trusted preflight before privileged execution. Candidate freshness therefore
+improves UX but cannot make an unsafe or stale selection executable.
+
+The first mutation slice is deliberately runtime-only. A mount plan freezes a
+local discovered filesystem, a reviewed target below `/mnt`, `/media` or
+`/srv`, and exact privileged argv. Existing target ancestry must be
+root-owned, non-symlink and not group/other writable. Unmount accepts only an
+eligible current local-device mount under those roots and uses normal
+`umount`; force/lazy semantics are not fallback behavior.
+
+After execution Core verifies the observed target/source relationship (or
+absence for unmount) through the bounded storage read. A successful change then
+best-effort refreshes the S4 storage observers so reusable model facts converge
+quickly; observer-refresh failure cannot rewrite the already verified operation
+result. Operational History remains the durable execution record.
+
+No S5 capability edits `/etc/fstab` or claims desired persistent mount state.
+Persistent boot configuration must be modeled as its own explicit capability
+with separate preflight/verification/recovery semantics before it is added.
+Formatting, filesystem repair and arbitrary network mounts remain outside S5.
+
 The handler still returns the Wave C outer `status=ok|error` envelope. Its
 Step 9 `result` contains `object_id`, `facts` (property/value pairs), and
 optionally `unavailable` (declared properties with a bounded reason). A

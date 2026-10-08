@@ -1,0 +1,763 @@
+{
+  "contract_version": 1,
+  "contributions": [
+    {
+      "kind": "observer",
+      "id": "network.interfaces",
+      "handler": "system__observe_interfaces",
+      "output_type": "network.interfaces",
+      "timeout_seconds": 10,
+      "object_kind": "interface",
+      "properties": [
+        {
+          "name": "interface.name",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.ifindex",
+          "value_type": "integer",
+          "minimum": 1
+        },
+        {
+          "name": "interface.operstate",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.admin_up",
+          "value_type": "boolean"
+        },
+        {
+          "name": "interface.carrier",
+          "value_type": "boolean"
+        },
+        {
+          "name": "interface.mtu",
+          "value_type": "integer",
+          "minimum": 1
+        },
+        {
+          "name": "interface.mac",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.kind",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.wireless",
+          "value_type": "boolean"
+        },
+        {
+          "name": "interface.ipv4_addresses",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.ipv6_addresses",
+          "value_type": "string"
+        },
+        {
+          "name": "interface.default_route_v4",
+          "value_type": "boolean"
+        },
+        {
+          "name": "interface.default_route_v6",
+          "value_type": "boolean"
+        }
+      ],
+      "freshness_seconds": 30,
+      "privilege": "none",
+      "requires": {
+        "bins": [
+          "ip"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.summary",
+      "handler": "system__network_summary",
+      "capability_version": 2,
+      "description": "Summarize bounded current interface, route and configured resolver state without connectivity probing.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "interface_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "admin_up_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "carrier_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "wireless_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "default_route_v4": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "default_route_v6": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "resolver_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resolver_local_stub": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "interface_count",
+          "admin_up_count",
+          "carrier_count",
+          "wireless_count",
+          "default_route_v4",
+          "default_route_v6",
+          "resolver_count",
+          "resolver_local_stub",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "ip"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.interfaces.list",
+      "handler": "system__network_interfaces_list",
+      "capability_version": 2,
+      "description": "List bounded current network interfaces and normalized address/default-route state.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "interfaces": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "interfaces",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "ip"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.interface.status",
+      "handler": "system__network_interface_status",
+      "capability_version": 2,
+      "description": "Inspect one canonical current interface object.",
+      "inputs": {
+        "properties": {
+          "interface": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "interface"
+            }
+          }
+        },
+        "required": [
+          "interface"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "ifindex": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "operstate": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "admin_up": {
+            "type": "boolean"
+          },
+          "carrier": {
+            "type": "boolean"
+          },
+          "mtu": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mac": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "kind": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "wireless": {
+            "type": "boolean"
+          },
+          "ipv4_addresses": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "ipv6_addresses": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "default_route_v4": {
+            "type": "boolean"
+          },
+          "default_route_v6": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object_id",
+          "name",
+          "ifindex",
+          "operstate",
+          "admin_up",
+          "carrier",
+          "mtu",
+          "mac",
+          "kind",
+          "wireless",
+          "ipv4_addresses",
+          "ipv6_addresses",
+          "default_route_v4",
+          "default_route_v6"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "interface",
+          "input": "interface"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "ip"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.routes.list",
+      "handler": "system__network_routes_list",
+      "capability_version": 2,
+      "description": "List the bounded normalized current IPv4 and IPv6 route table without creating durable route objects.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "routes": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "routes",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "ip"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.dns.status",
+      "handler": "system__network_dns_status",
+      "capability_version": 2,
+      "description": "Inspect configured resolver endpoints and resolv.conf source context without claiming upstream recursive resolver identity.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "nameserver_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "nameservers": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "search_domains": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "local_stub": {
+            "type": "boolean"
+          },
+          "symlink": {
+            "type": "boolean"
+          },
+          "symlink_target": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "resolved_path": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "nameserver_count",
+          "nameservers",
+          "search_domains",
+          "local_stub",
+          "symlink",
+          "symlink_target",
+          "resolved_path",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.status",
+      "handler": "system__network_wifi_status",
+      "capability_version": 2,
+      "description": "Inspect bounded current NetworkManager Wi-Fi radio and wireless-device state without connectivity probing.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "wifi_hardware": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "wifi_radio": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "device_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "devices": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "provider",
+          "wifi_hardware",
+          "wifi_radio",
+          "device_count",
+          "devices",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.scan",
+      "handler": "system__network_wifi_scan",
+      "capability_version": 2,
+      "description": "List a bounded current NetworkManager Wi-Fi scan without persisting networks or retrieving credentials.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "networks": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "networks",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.profiles.list",
+      "handler": "system__network_wifi_profiles_list",
+      "capability_version": 2,
+      "description": "List bounded non-secret NetworkManager saved Wi-Fi profile references without claiming Igor ownership.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "profiles": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "profiles",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.network.wifi.connect_known",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Activate one existing saved NetworkManager Wi-Fi profile on one selected wireless interface without creating, editing or retrieving credentials.",
+      "inputs": {
+        "properties": {
+          "interface": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "interface"
+            }
+          },
+          "profile": {
+            "type": "string",
+            "minLength": 36,
+            "maxLength": 36,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "wifi_profile"
+            }
+          }
+        },
+        "required": [
+          "interface",
+          "profile"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.network.wifi.connect_known.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.network.wifi.profile.active",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Activating a saved profile may replace another Wi-Fi connection. Igor does not disconnect, delete profiles or attempt automatic rollback; recovery is explicit activation of an appropriate saved profile."
+      },
+      "affects": [
+        {
+          "object": "interface",
+          "input": "interface"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "nmcli"
+        ]
+      }
+    }
+  ]
+}

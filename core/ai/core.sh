@@ -295,14 +295,29 @@ print(json.dumps({"session_id":os.environ.get("AI_EVENT_SESSION_ID",""),
 # Resolve ephemeral candidates for one validated capability input.
 # This is a presentation/reference read only; selected values still enter invoke.
 _ai_operator_candidates() {
-    local _candidate_rest="${1:-}" _candidate_target _candidate_input _extra
-    local _candidate_result _candidate_payload _candidate_rc
-    read -r _candidate_target _candidate_input _extra <<< "$_candidate_rest"
-    if [ -z "$_candidate_target" ] || [ -z "$_candidate_input" ] || [ -n "$_extra" ]; then
-        return 2
+    local _candidate_rest="${1:-}" _candidate_target _candidate_input _candidate_tail
+    local _candidate_query="" _candidate_query_json="" _candidate_result _candidate_payload _candidate_rc
+    _candidate_target="${_candidate_rest%% *}"
+    [ -n "$_candidate_target" ] && [ "$_candidate_target" != "$_candidate_rest" ] || return 2
+    _candidate_tail="${_candidate_rest#* }"
+    _candidate_input="${_candidate_tail%% *}"
+    [ -n "$_candidate_input" ] || return 2
+    if [ "$_candidate_tail" != "$_candidate_input" ]; then
+        _candidate_query_json="${_candidate_tail#* }"
+        _candidate_query="$(python3 - "$_candidate_query_json" <<'PY'
+import json,sys
+try:
+    value=json.loads(sys.argv[1])
+except ValueError:
+    raise SystemExit(2)
+if not isinstance(value,str) or len(value)>512 or any(ord(ch)<32 for ch in value):
+    raise SystemExit(2)
+print(value)
+PY
+)" || return 2
     fi
     _candidate_result="$(
-        igor_input_candidates_resolve "$_candidate_target" "$_candidate_input"
+        igor_input_candidates_resolve "$_candidate_target" "$_candidate_input" "$_candidate_query"
     )"
     _candidate_rc=$?
     case "$_candidate_rc" in
@@ -373,7 +388,7 @@ _ai_frontend_control() {
             _ai_operator_candidates "${_input#candidates }"
             _invoke_rc=$?
             if [ "$_invoke_rc" -eq 2 ]; then
-                warn "Usage: candidates <capability-id[@provider]> <input-name>"
+                warn "Usage: candidates <capability-id[@provider]> <input-name> [query-json]"
                 _ai_frontend_event warning "Candidate selection is unavailable for this input."
             elif [ "$_invoke_rc" -ne 0 ]; then
                 warn "Candidate resolution failed."
@@ -3611,6 +3626,7 @@ except: pass
             "$_rt_dir" "Could not write the private runtime state file."
         return $?
     }
+    local _oneshot_sent=false
     while true; do
         # Poll for --extra IPC commands (non-blocking, ~50ms timeout)
         _ai_poll_fifo || break   # break if end_session was requested
@@ -3661,7 +3677,14 @@ except: pass
         # click/move/scroll events as escape sequences (^[[A ^[[B etc.) into the
         # active pane, which pollutes the readline buffer.
         printf '\e[?1000l\e[?1002l\e[?1003l\e[?1006l' 2>/dev/null || true
-        if ! IFS= read -r user_input; then
+        if [ -n "${IGOR_ONESHOT_PROMPT:-}" ]; then
+            if [ "$_oneshot_sent" = false ]; then
+                user_input="$IGOR_ONESHOT_PROMPT"
+                _oneshot_sent=true
+            else
+                user_input="/quit"
+            fi
+        elif ! IFS= read -r user_input; then
             _ai_set_session_state input_closed
             _ai_session_cleanup
             printf '\nAI session input closed unexpectedly. Returning to the main menu.\n' >&2

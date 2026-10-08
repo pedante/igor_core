@@ -80,6 +80,96 @@ For example, the current v2 System slice can be discovered as:
 :sys.host.memory.refresh
 ```
 
+S4 extends the same generated tree with read-only storage paths such as:
+
+```text
+:sys.storage.summary
+:sys.storage.mounts.list
+:sys.storage.mount.status
+:sys.storage.filesystems.list
+:sys.storage.filesystem.status
+```
+
+The two status leaves declare semantic selectors. Their chooser values are
+canonical object IDs, while labels remain human-oriented paths/devices. Fresh
+System Model storage observations are preferred; otherwise the candidate
+boundary may use the bounded Core storage read. Selecting a candidate still
+only supplies explicit input to the canonical `system.*` capability.
+
+
+S5 adds two CHANGE leaves to that same generated namespace:
+
+```text
+:sys.storage.mount
+:sys.storage.unmount
+```
+
+`system.storage.mount` has exactly one required selector-backed input,
+`filesystem`, with the operation-specific `mountable_filesystem` view.
+Choosing it can therefore use the normal one-step chooser; Core derives a
+deterministic runtime target below `/mnt` unless advanced manual JSON supplies
+a confined target below `/mnt`, `/media` or `/srv`.
+`system.storage.unmount` likewise selects an `unmountable_mount` view. These
+resource kinds filter S4 objects; they do not create new durable identities.
+
+Selection still does not execute. The resulting canonical capability enters the
+existing CHANGE approval, privilege and verification path. The reviewed S5
+adapter accepts only exact runtime `mkdir`/`mount`/`umount` argv. Neither
+leaf performs fstab persistence, force unmount or lazy unmount.
+
+S7.2 adds the first provider-neutral network READ surface:
+
+```text
+:sys.network.summary
+:sys.network.interfaces.list
+:sys.network.interface.status
+:sys.network.routes.list
+:sys.network.dns.status
+```
+
+`system.network.interface.status` declares
+`resource_kind=interface`. Candidate resolution prefers fresh
+`network.interfaces` System Model facts and falls back to the bounded Core
+iproute2 read when those observations are absent or stale. Candidate values are
+canonical `interface:...` IDs while labels remain human interface names such
+as `eth0` or `wlan0`.
+
+Routes and DNS remain READ results, not selector-backed durable objects.
+
+S7.3 adds three optional NetworkManager-backed READ leaves without changing the
+generic network abstraction:
+
+```text
+:sys.network.wifi.status
+:sys.network.wifi.scan
+:sys.network.wifi.profiles.list
+```
+
+When `nmcli` is available, D070 may also project bounded ephemeral
+`wifi_network` scan candidates and `wifi_profile` saved-profile references.
+A network candidate uses its BSSID as the reference value and presents SSID,
+signal, security and interface as non-secret detail. A saved profile uses the
+NetworkManager UUID as its external reference. Neither candidate kind becomes
+a System Model object, Configuration value, desired state or execution
+authority merely because it is displayed.
+
+Missing NetworkManager makes only the Wi-Fi leaves/candidates unavailable.
+S7.3 does not expose credential material, internet probing or mutation.
+
+S7.4 adds one selector-backed CHANGE leaf:
+
+```text
+:sys.network.wifi.connect_known
+```
+
+It requires a canonical `interface` selection and an ephemeral
+`wifi_profile` UUID reference. Selection remains non-authoritative: Core
+revalidates the wireless interface/profile pair, freezes exact non-secret
+NetworkManager argv, passes through normal approval/privilege, re-prepares at
+the execution fence and verifies that the same UUID is active on the same
+interface. No profile creation/edit/delete, secret access, disconnect, radio
+toggle or route/DNS mutation is added.
+
 The dotted path is a **presentation/navigation path**, not a second durable
 identity scheme. Where a contribution already has a canonical dotted ID, that
 ID remains the target. Generic module contributions that are not owner-prefixed

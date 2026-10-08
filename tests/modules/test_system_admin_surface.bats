@@ -291,6 +291,26 @@ expected={
  "system.service.status",
  "system.service.restart",
  "system.logs.summary",
+ "system.storage.summary",
+ "system.storage.mounts.list",
+ "system.storage.filesystems.list",
+ "system.storage.mount.status",
+ "system.storage.filesystem.status",
+ "system.storage.mount",
+ "system.storage.unmount",
+ "system.users.list",
+ "system.users.status",
+ "system.groups.list",
+ "system.groups.status",
+ "system.permissions.path.status",
+ "system.permissions.owner.set",
+ "system.permissions.group.set",
+ "system.permissions.mode.set",
+ "system.network.summary",
+ "system.network.interfaces.list",
+ "system.network.interface.status",
+ "system.network.routes.list",
+ "system.network.dns.status",
 }
 assert expected <= paths,(expected-paths)
 PY
@@ -357,7 +377,7 @@ PY
     [ "${_IGOR_HANDLER_TIMEOUT[capability:system.service.list]:-}" = 30 ]
     [ "${_IGOR_MODULE_ENTRYPOINT[system]:-}" = module.sh ]
     [ "${_IGOR_OWNER_HAS_DOMAIN_EVENTS[system]:-0}" = 0 ]
-    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.4.0 ]
+    [ "${_IGOR_MODULE_VERSION[system]:-}" = 2.11.0 ]
 }
 
 @test "targeted preparation evaluates only the selected capability requirement path" {

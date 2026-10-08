@@ -84,8 +84,8 @@ def validate_selector(value: Any, *, input_type: str | None = None) -> dict[str,
     resource_kind = value["resource_kind"]
     if not isinstance(resource_kind, str) or not _ID.fullmatch(resource_kind):
         raise _error("selector.resource_kind must be a canonical lowercase identifier")
-    if input_type is not None and input_type not in {"string", "object_id"}:
-        raise _error("resource selector requires a string or object_id input")
+    if input_type is not None and input_type not in {"string", "object_id", "path"}:
+        raise _error("resource selector requires a string, object_id or path input")
     return copy.deepcopy(value)
 
 
@@ -100,6 +100,11 @@ def _candidate_rows(value: Any, limit: int, *, input_type: str | None = None) ->
         candidate_value = _bounded_text(raw.get("value"), f"candidates[{index}].value", 512)
         if input_type == "object_id" and not _OBJECT_ID.fullmatch(candidate_value):
             raise _error(f"candidates[{index}].value is not an object identity")
+        if (
+            input_type == "path"
+            and (candidate_value.startswith("/") or ".." in candidate_value.split("/"))
+        ):
+            raise _error(f"candidates[{index}].value is not a confined relative path")
         if candidate_value in seen:
             raise _error("candidate values must be unique")
         seen.add(candidate_value)

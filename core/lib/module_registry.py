@@ -172,8 +172,118 @@ def _memory_query_supported(record: dict[str, Any]) -> bool:
     )
 
 
+def _storage_admin_supported(record: dict[str, Any]) -> bool:
+    if (
+        record.get("owner") != "system"
+        or record.get("handler") != "system__privileged_marker"
+        or record.get("capability_version") != 1
+        or record.get("privilege") != "required"
+        or not isinstance(record.get("safety"), dict)
+        or record["safety"].get("tier") != "CHANGE"
+    ):
+        return False
+    expected = {
+        "system.storage.mount": (
+            [
+                {"kind": "owner_active"},
+                {"kind": "trusted_validator", "validator": "system.storage.mount.ready"},
+            ],
+            {
+                "kind": "trusted_query",
+                "check_id": "system.storage.mount.present",
+                "required": True,
+            },
+        ),
+        "system.storage.unmount": (
+            [
+                {"kind": "owner_active"},
+                {"kind": "trusted_validator", "validator": "system.storage.unmount.ready"},
+            ],
+            {
+                "kind": "trusted_query",
+                "check_id": "system.storage.mount.absent",
+                "required": True,
+            },
+        ),
+    }
+    spec = expected.get(record.get("id"))
+    return spec is not None and record.get("preconditions") == spec[0] and record.get("verification") == spec[1]
+
+
+def _permission_admin_supported(record: dict[str, Any]) -> bool:
+    if (
+        record.get("owner") != "system"
+        or record.get("handler") != "system__privileged_marker"
+        or record.get("capability_version") != 1
+        or record.get("privilege") != "required"
+        or not isinstance(record.get("safety"), dict)
+        or record["safety"].get("tier") != "CHANGE"
+    ):
+        return False
+    expected = {
+        "system.permissions.owner.set": (
+            "system.permissions.owner.ready",
+            "system.permissions.owner.matches",
+        ),
+        "system.permissions.group.set": (
+            "system.permissions.group.ready",
+            "system.permissions.group.matches",
+        ),
+        "system.permissions.mode.set": (
+            "system.permissions.mode.ready",
+            "system.permissions.mode.matches",
+        ),
+    }
+    spec = expected.get(record.get("id"))
+    if spec is None:
+        return False
+    validator, check_id = spec
+    return (
+        record.get("preconditions")
+        == [
+            {"kind": "owner_active"},
+            {"kind": "trusted_validator", "validator": validator},
+        ]
+        and record.get("verification")
+        == {"kind": "trusted_query", "check_id": check_id, "required": True}
+    )
+
+
+
+
+def _wifi_connect_known_supported(record: dict[str, Any]) -> bool:
+    return (
+        record.get("owner") == "system"
+        and record.get("id") == "system.network.wifi.connect_known"
+        and record.get("handler") == "system__privileged_marker"
+        and record.get("capability_version") == 1
+        and record.get("privilege") == "required"
+        and isinstance(record.get("safety"), dict)
+        and record["safety"].get("tier") == "CHANGE"
+        and record.get("preconditions")
+        == [
+            {"kind": "owner_active"},
+            {
+                "kind": "trusted_validator",
+                "validator": "system.network.wifi.connect_known.ready",
+            },
+        ]
+        and record.get("verification")
+        == {
+            "kind": "trusted_query",
+            "check_id": "system.network.wifi.profile.active",
+            "required": True,
+        }
+    )
+
+
 def _trusted_query_supported(record: dict[str, Any]) -> bool:
-    if _memory_query_supported(record):
+    if (
+        _memory_query_supported(record)
+        or _storage_admin_supported(record)
+        or _permission_admin_supported(record)
+        or _wifi_connect_known_supported(record)
+    ):
         return True
     verification = record.get("verification")
     if record.get("owner") != "system" or record.get("handler") != "system__privileged_marker":
@@ -239,16 +349,31 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
                     "system.package.cache.clean",
                     "system.service.start",
                     "system.service.enable",
+                    "system.storage.mount",
+                    "system.storage.unmount",
+                    "system.permissions.owner.set",
+                    "system.permissions.group.set",
+                    "system.permissions.mode.set",
+                    "system.network.wifi.connect_known",
                 }
             )
             if not reviewed:
                 return "privileged_adapter_unavailable"
         preconditions = record.get("preconditions", [])
         unsupported = any(
-            isinstance(item, dict)
-            and item.get("kind") in {"platform_feature", "trusted_validator"}
+            isinstance(item, dict) and item.get("kind") == "platform_feature"
             for item in preconditions
         )
+        trusted_validators = [
+            item for item in preconditions
+            if isinstance(item, dict) and item.get("kind") == "trusted_validator"
+        ]
+        if trusted_validators and not (
+            _storage_admin_supported(record)
+            or _permission_admin_supported(record)
+            or _wifi_connect_known_supported(record)
+        ):
+            unsupported = True
         verification = record.get("verification", {})
         if isinstance(verification, dict) and verification.get("kind") == "trusted_query":
             unsupported = unsupported or not _trusted_query_supported(record)

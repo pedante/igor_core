@@ -205,6 +205,163 @@ class OperatorExplorerTests(unittest.TestCase):
             ],
         )
 
+    def test_multi_selector_inputs_are_collected_before_one_canonical_invoke(self):
+        entry = {
+            "path": "system.permissions.owner.set",
+            "kind": "capability",
+            "owner": "system",
+            "target_id": "system.permissions.owner.set",
+            "provider": "system",
+            "provider_required": False,
+            "availability": "active",
+            "unavailable_reason": None,
+            "description": "Set owner",
+            "inputs": {
+                "required": ["path", "user"],
+                "properties": {
+                    "path": {"type": "path", "root": "/", "maxLength": 512},
+                    "user": {"type": "object_id"},
+                },
+                "selectors": {
+                    "path": {"schema_version": 1, "kind": "resource",
+                             "resource_kind": "mutable_path"},
+                    "user": {"schema_version": 1, "kind": "resource",
+                             "resource_kind": "user"},
+                },
+            },
+        }
+        state = tui.EventState()
+        state.backend_ready = True
+        reader = Reader([])
+        sent = []
+
+        def candidates(sequence, input_name, resource_kind, value, label):
+            return {
+                "event_type": "operator_candidates",
+                "sequence": sequence,
+                "capability_id": entry["target_id"],
+                "provider": "system",
+                "input_name": input_name,
+                "query": "",
+                "result": {
+                    "candidate_api_version": 1,
+                    "selector": {"schema_version": 1, "kind": "resource",
+                                 "resource_kind": resource_kind},
+                    "state": "ready",
+                    "source": {"kind": "platform", "id": "test.source",
+                               "freshness": "not_applicable"},
+                    "candidates": [{"value": value, "label": label}],
+                    "reason": None,
+                    "resolved_at": "2026-10-06T18:00:00Z",
+                },
+            }
+
+        sequence = 0
+
+        def send(master, text):
+            nonlocal sequence
+            sent.append((master, text))
+            if text.startswith("candidates "):
+                sequence += 1
+                candidate_sequence = sequence
+                sequence += 1
+                ready_sequence = sequence
+                if text.endswith(" path \"\""):
+                    reader.events.extend([
+                        candidates(candidate_sequence, "path", "mutable_path",
+                                   "srv/data", "/srv/data"),
+                        ready_event(ready_sequence),
+                    ])
+                elif text.endswith(" user"):
+                    reader.events.extend([
+                        candidates(candidate_sequence, "user", "user",
+                                   "user:uid:1001", "alice"),
+                        ready_event(ready_sequence),
+                    ])
+
+        with patch.object(tui, "_send", side_effect=send), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            outcome, command = tui._operator_required_input_overlay(
+                Screen([-1, -1, 10, -1, -1, 10]),
+                17, reader, state, tui.InputBuffer(), entry,
+            )
+
+        self.assertEqual(outcome, "invoke")
+        self.assertEqual(
+            command,
+            'invoke system.permissions.owner.set {"path":"srv/data","user":"user:uid:1001"}',
+        )
+        self.assertEqual(sent[-1], (17, command))
+        self.assertEqual(sum(text.startswith("candidates ") for _, text in sent), 2)
+
+    def test_path_selector_then_text_input_supports_mode_change_without_raw_json(self):
+        entry = {
+            "path": "system.permissions.mode.set",
+            "kind": "capability",
+            "owner": "system",
+            "target_id": "system.permissions.mode.set",
+            "provider": "system",
+            "provider_required": False,
+            "availability": "active",
+            "unavailable_reason": None,
+            "description": "Set mode",
+            "inputs": {
+                "required": ["path", "mode"],
+                "properties": {
+                    "path": {"type": "path", "root": "/", "maxLength": 512},
+                    "mode": {"type": "string", "maxLength": 4},
+                },
+                "selectors": {
+                    "path": {"schema_version": 1, "kind": "resource",
+                             "resource_kind": "mutable_path"},
+                },
+            },
+        }
+        state = tui.EventState()
+        state.backend_ready = True
+        reader = Reader([])
+        sent = []
+
+        def send(master, text):
+            sent.append((master, text))
+            if text.startswith("candidates "):
+                reader.events.extend([
+                    {
+                        "event_type": "operator_candidates",
+                        "sequence": 1,
+                        "capability_id": entry["target_id"],
+                        "provider": "system",
+                        "input_name": "path",
+                        "query": "",
+                        "result": {
+                            "candidate_api_version": 1,
+                            "selector": {"schema_version": 1, "kind": "resource",
+                                         "resource_kind": "mutable_path"},
+                            "state": "ready",
+                            "source": {"kind": "platform", "id": "linux.mutable_path",
+                                       "freshness": "not_applicable"},
+                            "candidates": [{"value": "srv/data", "label": "/srv/data"}],
+                            "reason": None,
+                            "resolved_at": "2026-10-06T18:00:00Z",
+                        },
+                    },
+                    ready_event(2),
+                ])
+
+        keys = [-1, -1, 10] + [ord(c) for c in "0755"] + [10]
+        with patch.object(tui, "_send", side_effect=send), \
+                patch.object(tui.os, "read", side_effect=BlockingIOError):
+            outcome, command = tui._operator_required_input_overlay(
+                Screen(keys), 17, reader, state, tui.InputBuffer(), entry,
+            )
+
+        self.assertEqual(outcome, "invoke")
+        self.assertEqual(
+            command,
+            'invoke system.permissions.mode.set {"mode":"0755","path":"srv/data"}',
+        )
+        self.assertEqual(sent[-1], (17, command))
+
     def test_service_selector_tab_preserves_manual_input_path(self):
         entry = capability(
             path="system.service.status",
@@ -406,6 +563,53 @@ class OperatorExplorerTests(unittest.TestCase):
         state.add_operator_input("invoke system.service.list")
         self.assertEqual(tui.render_activity(state, 100),
                          ["Operator: system.service.list"])
+
+
+    def test_step20_panel_sections_use_backend_owned_surfaces(self):
+        state = tui.EventState()
+        state.operator_snapshot = {
+            "entries": [
+                {"kind": "capability", "path": "system.host.summary"},
+                {"kind": "configuration", "path": "system.memory.preferences"},
+            ]
+        }
+        history = tui.HistoryInspection()
+        investigations = tui.InvestigationInspection()
+        modules = tui.ModuleInspection()
+        health = tui.HealthInspection()
+        deployments = tui.DeploymentInspection()
+        readers = (history, investigations, modules, health, deployments)
+        try:
+            history.data = [{"operation_id": "op-1"}]
+            investigations.data = [{"investigation_id": "inv-1"}]
+            modules.data = [{"name": "system", "status": "active"}]
+            health.data = {"status": "OK"}
+            deployments.data = [{"deployment_id": "dep-1"}]
+            sections = tui.panel_sections(
+                state, history, investigations, modules, health, deployments
+            )
+        finally:
+            for reader in readers:
+                reader.close()
+
+        by_id = {row["id"]: row for row in sections}
+        self.assertEqual(
+            tui.ModuleInspection.command,
+            ("--json", "modules", "list"),
+        )
+        self.assertEqual(by_id["modules"]["data"][0]["name"], "system")
+        self.assertEqual(by_id["health"]["data"]["status"], "OK")
+        self.assertEqual(
+            by_id["deployments"]["data"][0]["deployment_id"], "dep-1"
+        )
+        self.assertEqual(
+            [row["path"] for row in by_id["capabilities"]["data"]],
+            ["system.host.summary"],
+        )
+        self.assertEqual(
+            [row["path"] for row in by_id["configuration"]["data"]],
+            ["system.memory.preferences"],
+        )
 
 
 if __name__ == "__main__":

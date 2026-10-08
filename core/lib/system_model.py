@@ -38,7 +38,7 @@ def _typed(value: Any, value_type: str) -> bool:
 
 
 def _identifier(value: Any) -> bool:
-    return isinstance(value, str) and len(value) <= 160 and bool(re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+-]+", value))
+    return isinstance(value, str) and len(value) <= 160 and bool(re.fullmatch(r"[a-z][a-z0-9_-]*:[A-Za-z0-9_./:%+@-]+", value))
 
 
 def _observer_target(descriptor: dict[str, Any]) -> str:
@@ -48,6 +48,27 @@ def _observer_target(descriptor: dict[str, Any]) -> str:
     if kind in {"deployment", "resource"} and isinstance(target, str) and re.fullmatch(kind + r":[0-9a-f]{32}", target):
         return target
     raise ModelError("unsupported observer target")
+
+
+def _object_matches_kind(object_id: Any, object_kind: Any) -> bool:
+    if not _identifier(object_id) or not isinstance(object_kind, str):
+        return False
+    if object_kind == "host":
+        return object_id == "host:local"
+    if object_kind in {"deployment", "resource"}:
+        return re.fullmatch(object_kind + r":[0-9a-f]{32}", object_id) is not None
+    if object_kind in {"mount", "filesystem"}:
+        return object_id.startswith(object_kind + ":/")
+    if object_kind == "user":
+        return re.fullmatch(r"user:uid:[0-9]+", object_id) is not None
+    if object_kind == "group":
+        return re.fullmatch(r"group:gid:[0-9]+", object_id) is not None
+    if object_kind == "interface":
+        return re.fullmatch(
+            r"interface:(?:[A-Za-z0-9_.+@-]|%[0-9A-F]{2})+",
+            object_id,
+        ) is not None
+    return False
 
 
 class ModelError(ValueError):
@@ -178,29 +199,45 @@ class SystemModel:
     def observer_failure(self, descriptor: dict[str, Any], owner: str, observer_id: str,
                          reason: str, *, at: datetime | None = None) -> None:
         time = stamp(at or now())
-        object_id = _observer_target(descriptor)
-        for prop in descriptor["properties"]:
-            self.failures[key(object_id, prop["name"], "observed")] = {"reason": reason, "at": time}
-        self.attempts[observer_id] = {"owner": owner, "at": time, "status": "error", "reason": reason}
+        object_kind = descriptor.get("object_kind")
+        failure = {"reason": reason, "at": time, "owner": owner, "observer": observer_id}
+        if object_kind in {"mount", "filesystem", "user", "group", "interface"}:
+            # A failed collection read must never invent objects. Existing
+            # observations become stale while retaining their last evidence.
+            for slot, fact in self.facts.items():
+                if (fact.get("state_class") == "observed" and fact.get("owner") == owner and
+                        fact.get("observer") == observer_id and
+                        _object_matches_kind(fact.get("object_id"), object_kind)):
+                    self.failures[slot] = dict(failure)
+        else:
+            object_id = _observer_target(descriptor)
+            for prop in descriptor["properties"]:
+                self.failures[key(object_id, prop["name"], "observed")] = dict(failure)
+        self.attempts[observer_id] = {
+            "owner": owner, "at": time, "status": "error", "reason": reason
+        }
 
-    def observe(self, descriptor: dict[str, Any], owner: str, observer_id: str,
-                envelope: dict[str, Any], *, at: datetime | None = None) -> None:
-        """Validate a complete result, then commit all declared slots together."""
-        if not isinstance(envelope, dict) or set(envelope) != {"status", "result"} or envelope["status"] != "ok":
-            raise ModelError("invalid observer envelope")
-        result = envelope["result"]
-        if not isinstance(result, dict) or set(result) != {"object_id", "facts", "unavailable"}:
-            raise ModelError("invalid observer result")
-        object_id = result["object_id"]
-        if object_id != _observer_target(descriptor):
+    def _observed_object(
+        self,
+        descriptor: dict[str, Any],
+        owner: str,
+        observer_id: str,
+        raw: Any,
+        *,
+        at: datetime,
+    ) -> tuple[str, dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+        if not isinstance(raw, dict) or set(raw) != {"object_id", "facts", "unavailable"}:
+            raise ModelError("invalid observer object")
+        object_id = raw["object_id"]
+        if not _object_matches_kind(object_id, descriptor.get("object_kind")):
             raise ModelError("undeclared observer target")
-        if not isinstance(result["facts"], list) or not isinstance(result["unavailable"], list):
+        if not isinstance(raw["facts"], list) or not isinstance(raw["unavailable"], list):
             raise ModelError("invalid observation lists")
-        declared = {p["name"]: p for p in descriptor["properties"]}
+        declared = {prop["name"]: prop for prop in descriptor["properties"]}
         seen: set[str] = set()
         updates: dict[str, dict[str, Any]] = {}
-        time = at or now()
-        for item in result["facts"]:
+        failures: dict[str, dict[str, Any]] = {}
+        for item in raw["facts"]:
             if not isinstance(item, dict) or set(item) != {"property", "value", "evidence"}:
                 raise ModelError("invalid observed fact")
             prop = item["property"]
@@ -209,37 +246,126 @@ class SystemModel:
             seen.add(prop)
             spec = declared[prop]
             value_type = spec["value_type"]
-            if not _typed(item["value"], value_type) or ("minimum" in spec and item["value"] < spec["minimum"]):
+            if (not _typed(item["value"], value_type) or
+                    ("minimum" in spec and item["value"] < spec["minimum"])):
                 raise ModelError("observation type or range mismatch")
             evidence = item["evidence"]
-            if not isinstance(evidence, list) or len(evidence) > 8 or any(not isinstance(x, str) or len(x) > 200 or any(ord(c) < 32 for c in x) for x in evidence):
+            if (not isinstance(evidence, list) or len(evidence) > 8 or
+                    any(not isinstance(value, str) or len(value) > 200 or
+                        any(ord(char) < 32 for char in value) for value in evidence)):
                 raise ModelError("invalid evidence")
-            updates[key(object_id, prop, "observed")] = {
-                "object_id": object_id, "property": prop, "state_class": "observed",
-                "value": item["value"], "value_type": value_type, "owner": owner,
-                "source": observer_id, "observer": observer_id,
+            slot = key(object_id, prop, "observed")
+            updates[slot] = {
+                "object_id": object_id,
+                "property": prop,
+                "state_class": "observed",
+                "value": item["value"],
+                "value_type": value_type,
+                "owner": owner,
+                "source": observer_id,
+                "observer": observer_id,
                 "provenance": {"kind": "observer", "id": observer_id, "evidence": evidence},
-                "recorded_at": stamp(time),
-                "expires_at": stamp(time + timedelta(seconds=descriptor["freshness_seconds"])),
+                "recorded_at": stamp(at),
+                "expires_at": stamp(at + timedelta(seconds=descriptor["freshness_seconds"])),
             }
-        unavailable: dict[str, str] = {}
-        for item in result["unavailable"]:
+        for item in raw["unavailable"]:
             if not isinstance(item, dict) or set(item) != {"property", "reason"}:
                 raise ModelError("invalid unavailable property")
             prop, reason = item["property"], item["reason"]
-            if prop not in declared or prop in seen or not isinstance(reason, str) or not reason or len(reason) > 200:
+            if (prop not in declared or prop in seen or not isinstance(reason, str) or
+                    not reason or len(reason) > 200):
                 raise ModelError("duplicate or undeclared unavailable property")
             seen.add(prop)
-            unavailable[prop] = reason
+            failures[key(object_id, prop, "observed")] = {
+                "reason": reason,
+                "at": stamp(at),
+                "owner": owner,
+                "observer": observer_id,
+            }
         if seen != set(declared):
             raise ModelError("incomplete observation result")
-        if unavailable and not result["facts"]:
-            # A fully unavailable success remains a valid attempt with unknown slots.
-            pass
-        self.facts.update(updates)
-        for slot in updates:
-            self.failures.pop(slot, None)
-        for prop, reason in unavailable.items():
-            self.failures[key(object_id, prop, "observed")] = {"reason": reason, "at": stamp(time)}
-        self.attempts[observer_id] = {"owner": owner, "at": stamp(time), "status": "partial" if unavailable else "ok",
-                                      "reason": None if not unavailable else "partial"}
+        return object_id, updates, failures
+
+    def observe(self, descriptor: dict[str, Any], owner: str, observer_id: str,
+                envelope: dict[str, Any], *, at: datetime | None = None) -> None:
+        """Validate a complete observer result, then commit it atomically."""
+        if (not isinstance(envelope, dict) or set(envelope) != {"status", "result"} or
+                envelope["status"] != "ok"):
+            raise ModelError("invalid observer envelope")
+        result = envelope["result"]
+        object_kind = descriptor.get("object_kind")
+        time = at or now()
+
+        if object_kind in {"mount", "filesystem", "user", "group", "interface"}:
+            if not isinstance(result, dict) or set(result) != {"objects"}:
+                raise ModelError("invalid collection observer result")
+            objects = result["objects"]
+            if not isinstance(objects, list) or len(objects) > 128:
+                raise ModelError("collection observer result is not bounded")
+            updates: dict[str, dict[str, Any]] = {}
+            failures: dict[str, dict[str, Any]] = {}
+            object_ids: set[str] = set()
+            for raw in objects:
+                object_id, object_updates, object_failures = self._observed_object(
+                    descriptor, owner, observer_id, raw, at=time
+                )
+                if object_id in object_ids:
+                    raise ModelError("duplicate observed object")
+                object_ids.add(object_id)
+                if set(updates) & set(object_updates) or set(failures) & set(object_failures):
+                    raise ModelError("duplicate observed slot")
+                updates.update(object_updates)
+                failures.update(object_failures)
+
+            prior_fact_slots = {
+                slot
+                for slot, fact in self.facts.items()
+                if fact.get("state_class") == "observed" and fact.get("owner") == owner and
+                fact.get("observer") == observer_id and
+                _object_matches_kind(fact.get("object_id"), object_kind)
+            }
+            prior_failure_slots = {
+                slot
+                for slot, failure in self.failures.items()
+                if failure.get("owner") == owner and failure.get("observer") == observer_id
+            }
+            stale_slots = {
+                slot for slot in failures
+                if slot in prior_fact_slots
+            }
+            self.facts = {
+                slot: fact
+                for slot, fact in self.facts.items()
+                if slot not in prior_fact_slots or slot in stale_slots
+            }
+            self.failures = {
+                slot: failure
+                for slot, failure in self.failures.items()
+                if slot not in prior_failure_slots
+            }
+            self.facts.update(updates)
+            self.failures.update(failures)
+            for slot in updates:
+                self.failures.pop(slot, None)
+            partial = bool(failures)
+        else:
+            if not isinstance(result, dict) or set(result) != {"object_id", "facts", "unavailable"}:
+                raise ModelError("invalid observer result")
+            object_id = result["object_id"]
+            if object_id != _observer_target(descriptor):
+                raise ModelError("undeclared observer target")
+            _, updates, failures = self._observed_object(
+                descriptor, owner, observer_id, result, at=time
+            )
+            self.facts.update(updates)
+            for slot in updates:
+                self.failures.pop(slot, None)
+            self.failures.update(failures)
+            partial = bool(failures)
+
+        self.attempts[observer_id] = {
+            "owner": owner,
+            "at": stamp(time),
+            "status": "partial" if partial else "ok",
+            "reason": "partial" if partial else None,
+        }

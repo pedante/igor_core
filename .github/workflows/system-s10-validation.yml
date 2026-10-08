@@ -1,0 +1,64 @@
+name: S10 Integration Validation
+
+on:
+  push:
+    branches: ["feature/sys-step20-release"]
+
+concurrency:
+  group: system-s10-integration
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install validation tools
+        run: |
+          pip install 'pytest>=9,<10' ruff
+          sudo npm install -g bats@1.13.0
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck ripgrep
+
+      - name: Focused syntax and lint
+        run: |
+          python -m py_compile core/ai/tui.py tests/test_operator_cli.py tests/test_ai_tui_operator.py
+          ruff check core/ai/tui.py tests/test_operator_cli.py tests/test_ai_tui_operator.py
+          bash -n igor.sh core/lib/operator_cli.sh core/ai/core.sh
+          git diff --check origin/igor2...HEAD
+
+      - name: Focused Step 20 tests
+        run: |
+          pytest -q             tests/test_operator_cli.py             tests/test_ai_tui_operator.py             tests/test_ai_operator_backend.py             tests/test_startup_privilege.py             tests/test_operator_surface.py
+
+      - name: Focused legacy and frontend regressions
+        run: |
+          bats --tap tests/core/test_ai_tui_backend.bats tests/modules/test_module_cli.bats tests/modules/test_system_storage_admin.bats
+          bats --tap --filter 'static CLI never initializes runtime' tests/modules/test_step18_module_contract.bats
+          pytest -q tests/test_ai_interaction_surface.py tests/test_ai_tui_privilege.py tests/test_ai_tui_pty.py tests/test_investigation_inspection.py -k 'not typed_invoke_is_operator_activity_not_conversation'
+
+      - name: ShellCheck changed shell
+        continue-on-error: true
+        run: |
+          shellcheck --severity=warning             --exclude=SC2086,SC1090,SC1091,SC2034             --shell=bash             igor.sh core/lib/operator_cli.sh core/ai/core.sh
+
+      - name: Run cumulative S1-S10 affected gate against igor2
+        run: |
+          git fetch origin igor2
+          tests/validate.sh affected             --base origin/igor2             --output-dir validation-results             --fail-fast-preflight             --interactive-timeout 60             --group-timeout 240             --slow-timeout 300
+
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s10-integration-validation
+          path: validation-results/
+          if-no-files-found: warn

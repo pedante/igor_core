@@ -1,0 +1,648 @@
+{
+  "contract_version": 1,
+  "contributions": [
+    {
+      "kind": "observer",
+      "id": "accounts.users",
+      "handler": "system__observe_users",
+      "output_type": "accounts.users",
+      "timeout_seconds": 10,
+      "object_kind": "user",
+      "properties": [
+        {
+          "name": "user.name",
+          "value_type": "string"
+        },
+        {
+          "name": "user.uid",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "user.primary_gid",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "user.home",
+          "value_type": "string"
+        },
+        {
+          "name": "user.shell",
+          "value_type": "string"
+        }
+      ],
+      "freshness_seconds": 300,
+      "privilege": "none"
+    },
+    {
+      "kind": "observer",
+      "id": "accounts.groups",
+      "handler": "system__observe_groups",
+      "output_type": "accounts.groups",
+      "timeout_seconds": 10,
+      "object_kind": "group",
+      "properties": [
+        {
+          "name": "group.name",
+          "value_type": "string"
+        },
+        {
+          "name": "group.gid",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "group.member_count",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "group.members",
+          "value_type": "string"
+        }
+      ],
+      "freshness_seconds": 300,
+      "privilege": "none"
+    },
+    {
+      "kind": "capability",
+      "id": "system.users.list",
+      "handler": "system__users_list",
+      "capability_version": 2,
+      "description": "List bounded local users from the host account database.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "users": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "users",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.users.status",
+      "handler": "system__user_status",
+      "capability_version": 2,
+      "description": "Inspect one canonical local user object.",
+      "inputs": {
+        "properties": {
+          "user": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "user"
+            }
+          }
+        },
+        "required": [
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "primary_gid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "home": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "shell": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "object_id",
+          "name",
+          "uid",
+          "primary_gid",
+          "home",
+          "shell"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "user",
+          "input": "user"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.groups.list",
+      "handler": "system__groups_list",
+      "capability_version": 2,
+      "description": "List bounded local groups from the host account database.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "groups": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "groups",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.groups.status",
+      "handler": "system__group_status",
+      "capability_version": 2,
+      "description": "Inspect one canonical local group object.",
+      "inputs": {
+        "properties": {
+          "group": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "group"
+            }
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "gid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "member_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "members": {
+            "type": "string",
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "object_id",
+          "name",
+          "gid",
+          "member_count",
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "group",
+          "input": "group"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.permissions.path.status",
+      "handler": "system__path_status",
+      "capability_version": 2,
+      "description": "Inspect ownership and Unix mode metadata for one bounded real path without reading file contents.",
+      "inputs": {
+        "properties": {
+          "path": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "path"
+            }
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "kind": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gid": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "owner": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "group": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "mode": {
+            "type": "string",
+            "maxLength": 8
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "object_id",
+          "path",
+          "kind",
+          "uid",
+          "gid",
+          "owner",
+          "group",
+          "mode",
+          "size_bytes"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "path",
+          "input": "path"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.permissions.owner.set",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Set the owner of one reviewed non-symlink path using a canonical local user. Never recursive.",
+      "inputs": {
+        "properties": {
+          "path": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mutable_path"
+            }
+          },
+          "user": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "user"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "user"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.permissions.owner.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.permissions.owner.matches",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Read the previous owner before change and use this capability again to restore it. Recursive ownership changes are not supported."
+      },
+      "affects": [
+        {
+          "object": "path",
+          "input": "path"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "chown"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.permissions.group.set",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Set the group of one reviewed non-symlink path using a canonical local group. Never recursive.",
+      "inputs": {
+        "properties": {
+          "path": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mutable_path"
+            }
+          },
+          "group": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "group"
+            }
+          }
+        },
+        "required": [
+          "path",
+          "group"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.permissions.group.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.permissions.group.matches",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Read the previous group before change and use this capability again to restore it. Recursive group changes are not supported."
+      },
+      "affects": [
+        {
+          "object": "path",
+          "input": "path"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "chgrp"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.permissions.mode.set",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Set a 0000..0777 Unix mode on one reviewed non-symlink path. Setuid, setgid and sticky bits are intentionally excluded and the operation is never recursive.",
+      "inputs": {
+        "properties": {
+          "path": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512,
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mutable_path"
+            }
+          },
+          "mode": {
+            "type": "string",
+            "validator": "unix_mode",
+            "minLength": 4,
+            "maxLength": 4
+          }
+        },
+        "required": [
+          "path",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.permissions.mode.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.permissions.mode.matches",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Read the previous mode before change and use this capability again to restore it. Recursive mode changes and special permission bits are not supported."
+      },
+      "affects": [
+        {
+          "object": "path",
+          "input": "path"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "chmod"
+        ]
+      }
+    }
+  ]
+}

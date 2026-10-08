@@ -1476,7 +1476,7 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                         [ "$_name" = system ] &&
                         [ "$(_ml_json_field "$_record" handler)" = system__privileged_marker ] &&
                         case "${_key#capability:}" in
-                            system.package.install|system.package.upgrade|system.package.cache.clean|system.service.start|system.service.enable) true ;;
+                            system.package.install|system.package.upgrade|system.package.cache.clean|system.service.start|system.service.enable|system.storage.mount|system.storage.unmount|system.permissions.owner.set|system.permissions.group.set|system.permissions.mode.set|system.network.wifi.connect_known) true ;;
                             *) false ;;
                         esac
                     }
@@ -1493,7 +1493,7 @@ import json,sys
 record=json.load(sys.stdin)
 preconditions=record.get("preconditions",[])
 verification=record.get("verification",{})
-unsupported=any(p.get("kind") in {"platform_feature","trusted_validator"} for p in preconditions)
+unsupported=any(p.get("kind")=="platform_feature" for p in preconditions)
 reviewed={"system.memory.warning.apply":"system__apply_memory_warning",
           "system.memory.warning.readback":"system__read_memory_warning"}
 memory_query=(record.get("owner")=="system" and record.get("id") in reviewed and
@@ -1516,7 +1516,73 @@ service_enable_query=(record.get("owner")=="system" and record.get("id")=="syste
               record.get("capability_version")==1 and record.get("privilege")=="required" and
               verification=={"kind":"trusted_query","check_id":"system.service.enabled","required":True} and
               record.get("safety",{}).get("tier")=="CHANGE")
-trusted_query=memory_query or package_upgrade_query or package_install_query or service_enable_query
+storage_mount=(record.get("owner")=="system" and record.get("id")=="system.storage.mount" and
+              record.get("handler")=="system__privileged_marker" and
+              record.get("capability_version")==1 and record.get("privilege")=="required" and
+              preconditions==[
+                  {"kind":"owner_active"},
+                  {"kind":"trusted_validator","validator":"system.storage.mount.ready"},
+              ] and
+              verification=={"kind":"trusted_query","check_id":"system.storage.mount.present","required":True} and
+              record.get("safety",{}).get("tier")=="CHANGE")
+storage_unmount=(record.get("owner")=="system" and record.get("id")=="system.storage.unmount" and
+              record.get("handler")=="system__privileged_marker" and
+              record.get("capability_version")==1 and record.get("privilege")=="required" and
+              preconditions==[
+                  {"kind":"owner_active"},
+                  {"kind":"trusted_validator","validator":"system.storage.unmount.ready"},
+              ] and
+              verification=={"kind":"trusted_query","check_id":"system.storage.mount.absent","required":True} and
+              record.get("safety",{}).get("tier")=="CHANGE")
+storage_admin=storage_mount or storage_unmount
+permission_specs={
+    "system.permissions.owner.set": (
+        "system.permissions.owner.ready", "system.permissions.owner.matches"
+    ),
+    "system.permissions.group.set": (
+        "system.permissions.group.ready", "system.permissions.group.matches"
+    ),
+    "system.permissions.mode.set": (
+        "system.permissions.mode.ready", "system.permissions.mode.matches"
+    ),
+}
+permission_admin=False
+if record.get("id") in permission_specs:
+    validator, check_id = permission_specs[record["id"]]
+    permission_admin=(
+        record.get("owner")=="system" and
+        record.get("handler")=="system__privileged_marker" and
+        record.get("capability_version")==1 and
+        record.get("privilege")=="required" and
+        preconditions==[
+            {"kind":"owner_active"},
+            {"kind":"trusted_validator","validator":validator},
+        ] and
+        verification=={"kind":"trusted_query","check_id":check_id,"required":True} and
+        record.get("safety",{}).get("tier")=="CHANGE"
+    )
+wifi_connect_known=(
+    record.get("owner")=="system" and
+    record.get("id")=="system.network.wifi.connect_known" and
+    record.get("handler")=="system__privileged_marker" and
+    record.get("capability_version")==1 and
+    record.get("privilege")=="required" and
+    preconditions==[
+        {"kind":"owner_active"},
+        {"kind":"trusted_validator","validator":"system.network.wifi.connect_known.ready"},
+    ] and
+    verification=={
+        "kind":"trusted_query",
+        "check_id":"system.network.wifi.profile.active",
+        "required":True,
+    } and
+    record.get("safety",{}).get("tier")=="CHANGE"
+)
+trusted_validators=[p for p in preconditions if p.get("kind")=="trusted_validator"]
+reviewed_admin=storage_admin or permission_admin or wifi_connect_known
+unsupported=unsupported or (bool(trusted_validators) and not reviewed_admin)
+trusted_query=(memory_query or package_upgrade_query or package_install_query or
+               service_enable_query or reviewed_admin)
 unsupported=unsupported or (verification.get("kind") == "trusted_query" and not trusted_query)
 unsupported=unsupported or (record.get("id") in reviewed and not memory_query)
 raise SystemExit(0 if unsupported else 1)

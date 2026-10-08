@@ -1,9 +1,12 @@
 # System / `:sys` Operator Evolution — Discovery Proposal
 
-Status: **D070 accepted; S1–S3 implemented on the feature branch pending
-validation.** The discovery rationale is retained here as the design record.
+Status: **D070–D076 accepted; S1–S9 are complete for the Igor 2 System
+release scope. S8 closes on the green S8.1 representative runtime slice and S9
+closes on the green canonical Docker-reuse vertical. Deferred catalogue/reuse
+items remain explicit future work. S10 is the final operator/release gate.**
+The discovery rationale is retained here as the design record.
 
-Branch: `feature/sys-module-foundation`
+Current S9 branch: `feature/sys-cross-module-reuse`
 
 ## Purpose
 
@@ -29,7 +32,7 @@ IDs or input schemas.
 ### 1. Do not create a second module
 
 The repository already contains `modules/system/` as Module API v2 package
-`system`, currently version 2.4.0. It already owns host-domain semantics and
+`system`, currently version 2.6.0. It already owns host-domain semantics and
 declares host, package, service, log, memory, configuration and administration
 capabilities.
 
@@ -175,7 +178,7 @@ filesystem identity, target-path, persistence and verification questions. It
 should consume the proven generic input-selection contract rather than be used
 to invent it.
 
-## S1/S2/S3 implementation status
+## S1–S6 implementation status
 
 S1 provides the strict selector contract, Core candidate envelope/registry,
 Operator Surface projection and cache invalidation boundaries.
@@ -194,6 +197,69 @@ S3 adds the collision-safe `:sys` presentation alias in the shared Operator
 Surface projection. The TUI can keep `:sys...` in its breadcrumb while
 navigation and invocation continue to use canonical `system...` paths. A real
 top-level `sys` namespace suppresses the alias rather than being shadowed.
+
+S4 adds the first storage read model without crossing into storage mutation.
+Core normalizes bounded Linux mount and filesystem discovery; the System module
+publishes `storage.mounts` and `storage.filesystems` collection observers into
+the existing System Model using canonical `mount:...` and
+`filesystem:...` identities. Collection refresh is atomic, removes disappeared
+objects, and stales prior facts after a failed refresh without inventing phantom
+objects.
+
+The operator surface adds read-only `system.storage.summary`,
+`system.storage.mounts.list`, `system.storage.filesystems.list`,
+`system.storage.mount.status` and `system.storage.filesystem.status`.
+Mount/filesystem status inputs reuse the S1 selector contract. Candidate
+resolution prefers fresh System Model facts and falls back to the same bounded
+Core read when those observations are absent or stale. No mount, unmount,
+filesystem change, fstab edit, sudo path or persistence mutation is introduced
+by S4.
+
+S5 adds only the first reviewed storage-administration slice:
+`system.storage.mount` and `system.storage.unmount`. Both are runtime-only
+CHANGE capabilities and preserve the existing Igor approval/privilege boundary.
+System declares the operation through its privileged marker; Core freezes exact
+`mkdir`/`mount`/`umount` argv, reruns a trusted storage preflight at the
+execution fence, and verifies the resulting mount state using the bounded S4
+read path. The selected filesystem or mount remains the canonical affected
+object and Operational History records the normal capability result.
+
+The mount fast path requires only a `mountable_filesystem` selector. When no
+target is supplied, Core derives a deterministic `/mnt/<label-or-device>`
+target; advanced manual input may choose a confined target below `/mnt`,
+`/media` or `/srv`. Existing target ancestry must be real, root-owned and
+not group/other writable. Unmount candidates are limited to local-device mounts
+under those reviewed roots and use normal `umount` only: no force or lazy
+fallback.
+
+S5 does **not** edit `/etc/fstab`, format/repair filesystems, mount network
+shares, or introduce another persistence authority. Persistent boot mounts are
+a separate future capability/decision rather than an implicit side effect.
+
+
+S6 adds bounded local user/group and path semantics without creating another
+identity store. Local users use canonical `user:uid:<uid>` identities and
+local groups use `group:gid:<gid>`; discovery is bounded to local
+`/etc/passwd` and `/etc/group` data and never reads shadow/password material
+or enumerates remote identity providers.
+
+The read surface adds `system.users.list`, `system.users.status`,
+`system.groups.list`, `system.groups.status` and
+`system.permissions.path.status`. Path selection is a bounded one-directory
+Platform read under reviewed roots. The frontend may send the current typed
+prefix to Core so `/e` can resolve to `/etc/` and a later step can expose
+children; this prefix is ephemeral reference input to candidate resolution,
+not capability input or execution authority.
+
+Permission mutation is deliberately limited to
+`system.permissions.owner.set`, `system.permissions.group.set` and
+`system.permissions.mode.set`. Each changes exactly one existing real
+non-symlink path under reviewed application/data roots. Recursive changes,
+account creation/deletion, passwords, ACLs, setuid/setgid/sticky bits and
+arbitrary filesystem roots are outside S6. System declares the operation;
+Core resolves numeric UID/GID or explicit 0000..0777 mode, freezes exact
+`chown`/`chgrp`/`chmod` argv, repeats trusted preflight at the execution
+fence and verifies the resulting metadata.
 
 ## Proposed architecture
 
@@ -308,13 +374,13 @@ phases can overlap with existing Igor 2 completion work.
 | S0 — Discovery & decisions | This proposal, Q013–Q015, scope/proof gate | current |
 | S1 — Semantic input contract | Strict optional selector metadata, generic projection, candidate envelope/API, tests | 1–3 days |
 | S2 — Service vertical slice | Existing service inputs gain dynamic selection; TUI chooser/typeahead; canonical execution unchanged | 2–4 days |
-| S3 — Namespace UX | **Implemented on feature branch:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete pending validation |
-| S4 — Storage read model | Storage/filesystem/mount observations and read-only `system.storage.*` inspection using existing System Model identities | 3–6 days |
-| S5 — Storage changes | Mount/unmount capabilities with frozen targets, Core privilege mechanics, verification and explicit persistence semantics | 4–8 days |
-| S6 — Users, groups, permissions & paths | Bounded user/group/path selectors plus safe inspection/change capabilities | 3–6 days |
-| S7 — Network & Wi-Fi | Interface/route/DNS inspection; Wi-Fi only through a reviewed provider/secret-reference/verification contract | 5–10 days |
-| S8 — Broader System catalogue | Hardware, boot, time, security, richer logs/packages/health; read-first and selectively verified mutations | 5–15+ days iterative |
-| S9 — Cross-module reuse | Other modules consume canonical System capabilities/objects instead of duplicating host mechanics | 2–5 days |
+| S3 — Namespace UX | **Merged:** `:sys` presentation alias, collision-safe navigation, canonical IDs unchanged | complete |
+| S4 — Storage read model | **Green on feature branch:** bounded mount/filesystem observations, canonical System Model identities, read-only `system.storage.*` inspection and selectors | complete |
+| S5 — Storage administration | **Implemented on stacked feature branch:** runtime-only mount/unmount, frozen Core argv, trusted preflight, verification and explicit no-fstab semantics | complete pending validation |
+| S6 — Users, groups, permissions & paths | **Implemented on stacked feature branch:** UID/GID identities, bounded path completion/inspection, exact single-path owner/group/mode changes | complete pending validation |
+| S7 — Network & Wi-Fi | **Complete on feature/sys-network-wifi:** provider-neutral reads, interface System Model objects, optional NetworkManager READs/candidates, reviewed saved-profile activation, Debian/Arch/provider closure proof; Q018 remains deferred | complete |
+| S8 — Broader System catalogue | **Igor 2 release scope complete:** green S8.1 typed host runtime telemetry; further catalogue domains deferred post-release | complete for release scope |
+| S9 — Cross-module reuse | **Igor 2 release scope complete:** Nextcloud Docker readiness reuses canonical `docker.install`; raw recovery authority removed; remaining background/read duplicates explicitly deferred | complete for release scope |
 | S10 — Step 20 polish/release gate | CLI/TUI parity, rich generated views, performance budgets, five proof classes and release regression | 4–8 days |
 
 ### Scope rule for Igor 2

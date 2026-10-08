@@ -992,8 +992,32 @@ class InvestigationInspection(HistoryInspection):
     command = ("--investigations", "list")
 
 
+class ModuleInspection(HistoryInspection):
+    """Read-only module availability through the owning loader CLI."""
+
+    label = "Modules"
+    command = ("--json", "modules", "list")
+
+
+class HealthInspection(HistoryInspection):
+    """Read-only unified health through the owning System Model projection."""
+
+    label = "System Health"
+    command = ("--model", "health")
+
+
+class DeploymentInspection(HistoryInspection):
+    """Read-only deployment registry projection."""
+
+    label = "Deployments"
+    command = ("--deployments", "list")
+
+
 def panel_sections(state: EventState, inspection: HistoryInspection,
-                   investigations: InvestigationInspection | None = None) -> list[dict[str, Any]]:
+                   investigations: InvestigationInspection | None = None,
+                   modules: ModuleInspection | None = None,
+                   health: HealthInspection | None = None,
+                   deployments: DeploymentInspection | None = None) -> list[dict[str, Any]]:
     """Reusable section data, projected from backend-owned interfaces only."""
     sections = [
         {"id": "session", "label": "Session", "source": "frontend event stream",
@@ -1017,6 +1041,28 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
         sections.append({"id": "investigations", "label": "Investigations",
                          "source": "--investigations list", "data": investigations.data,
                          "hint": investigations.status})
+    if modules is not None:
+        sections.append({"id": "modules", "label": "Modules",
+                         "source": "--json modules list", "data": modules.data,
+                         "hint": modules.status})
+    if health is not None:
+        sections.append({"id": "health", "label": "System Health",
+                         "source": "--model health", "data": health.data,
+                         "hint": health.status})
+    if deployments is not None:
+        sections.append({"id": "deployments", "label": "Deployments",
+                         "source": "--deployments list", "data": deployments.data,
+                         "hint": deployments.status})
+    snapshot = state.operator_snapshot if isinstance(state.operator_snapshot, dict) else {}
+    entries = snapshot.get("entries") if isinstance(snapshot.get("entries"), list) else []
+    sections.append({"id": "capabilities", "label": "Capabilities",
+                     "source": "backend operator_snapshot",
+                     "data": [row for row in entries if row.get("kind") == "capability"],
+                     "hint": "Generated from canonical capability registry"})
+    sections.append({"id": "configuration", "label": "Configuration",
+                     "source": "backend operator_snapshot",
+                     "data": [row for row in entries if row.get("kind") == "configuration"],
+                     "hint": "Generated from Configuration Service metadata"})
     sections.append({"id": "context_routing", "label": "Context / Routing",
                      "source": "backend context_routing decision",
                      "data": state.context_routing or {"availability": "not reported"},
@@ -1463,35 +1509,78 @@ def _operator_invoke_command(entry: dict[str, Any]) -> tuple[str, bool]:
     return "invoke " + target, bool(required)
 
 
-def _operator_selector_input(entry: dict[str, Any]) -> str | None:
-    """Return the one required selector-backed input supported by the S2 chooser."""
+def _operator_required_inputs(entry: dict[str, Any]) -> list[str]:
+    """Return required capability inputs in declared order."""
     inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
     required = inputs.get("required") if isinstance(inputs.get("required"), list) else []
+    return [name for name in required if isinstance(name, str)]
+
+
+def _operator_selector_input(entry: dict[str, Any]) -> str | None:
+    """Compatibility helper for the single-input selector case."""
+    required = _operator_required_inputs(entry)
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
     selectors = inputs.get("selectors") if isinstance(inputs.get("selectors"), dict) else {}
-    if len(required) != 1 or not isinstance(required[0], str):
+    if len(required) != 1:
         return None
     return required[0] if isinstance(selectors.get(required[0]), dict) else None
 
 
-def _operator_candidate_request(entry: dict[str, Any], input_name: str) -> str:
+def _operator_input_spec(entry: dict[str, Any], input_name: str) -> dict[str, Any]:
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    properties = inputs.get("properties") if isinstance(inputs.get("properties"), dict) else {}
+    spec = properties.get(input_name)
+    return spec if isinstance(spec, dict) else {}
+
+
+def _operator_input_selector(entry: dict[str, Any], input_name: str) -> dict[str, Any] | None:
+    inputs = entry.get("inputs") if isinstance(entry.get("inputs"), dict) else {}
+    selectors = inputs.get("selectors") if isinstance(inputs.get("selectors"), dict) else {}
+    selector = selectors.get(input_name)
+    return selector if isinstance(selector, dict) else None
+
+
+def _operator_inputs_collectable(entry: dict[str, Any]) -> bool:
+    """Keep the generic form away from secret or non-text typed inputs."""
+    required = _operator_required_inputs(entry)
+    if not required:
+        return False
+    for input_name in required:
+        if _operator_input_selector(entry, input_name):
+            continue
+        if _operator_input_spec(entry, input_name).get("type") not in {"string", "path", "object_id"}:
+            return False
+    return True
+
+
+def _operator_candidate_request(
+    entry: dict[str, Any], input_name: str, query: str | None = None
+) -> str:
     target = str(entry.get("target_id") or "")
     if not target:
         raise ValueError("operator entry has no target")
     provider = str(entry.get("provider") or "")
     if entry.get("provider_required") and provider:
         target += "@" + provider
-    return f"candidates {target} {input_name}"
+    request = f"candidates {target} {input_name}"
+    if query is not None:
+        request += " " + json.dumps(query)
+    return request
 
 
-def _operator_candidate_matches(record: dict[str, Any] | None,
-                                entry: dict[str, Any], input_name: str) -> bool:
+def _operator_candidate_matches(
+    record: dict[str, Any] | None,
+    entry: dict[str, Any],
+    input_name: str,
+    query: str | None = None,
+) -> bool:
     if not isinstance(record, dict):
         return False
     if record.get("capability_id") != entry.get("target_id") or record.get("input_name") != input_name:
         return False
-    if entry.get("provider_required"):
-        return record.get("provider") == entry.get("provider")
-    return True
+    if entry.get("provider_required") and record.get("provider") != entry.get("provider"):
+        return False
+    return query is None or record.get("query", "") == query
 
 
 def _operator_candidate_overlay(
@@ -1502,16 +1591,27 @@ def _operator_candidate_overlay(
     buffer: InputBuffer,
     entry: dict[str, Any],
     input_name: str,
+    *,
+    invoke_on_select: bool = True,
 ) -> tuple[str, str | None]:
     """Choose one ephemeral candidate without acquiring execution authority."""
+    selector = _operator_input_selector(entry, input_name)
+    path_selector = (
+        isinstance(selector, dict)
+        and selector.get("resource_kind") in {"path", "mutable_path"}
+    )
+    query, selected = "", 0
+    requested_query: str | None = None
     try:
-        request = _operator_candidate_request(entry, input_name)
+        request = _operator_candidate_request(
+            entry, input_name, query if path_selector else None
+        )
     except ValueError:
         return "back", None
     state.operator_candidates = None
     _send(master, request)
     state.backend_ready = False
-    query, selected = "", 0
+    requested_query = query if path_selector else None
     notice = "Loading candidates…"
     screen.timeout(100)
     try:
@@ -1520,9 +1620,15 @@ def _operator_candidate_overlay(
                 apply_event(state, event)
                 if event.get("event_type") in {"warning", "error"}:
                     notice = str(event.get("display") or "Candidate selection unavailable")
+            if path_selector and state.backend_ready and requested_query != query:
+                state.operator_candidates = None
+                _send(master, _operator_candidate_request(entry, input_name, query))
+                state.backend_ready = False
+                requested_query = query
+                notice = "Loading path candidates…"
             record = state.operator_candidates
             result = record.get("result") if _operator_candidate_matches(
-                record, entry, input_name
+                record, entry, input_name, query if path_selector else None
             ) else None
             rows = result.get("candidates") if isinstance(result, dict) else []
             rows = [row for row in rows if isinstance(row, dict) and isinstance(row.get("value"), str)]
@@ -1574,7 +1680,10 @@ def _operator_candidate_overlay(
                         row_number, 0, line, max(1, width - 1),
                         curses.A_REVERSE if index == selected else 0,
                     )
-                footer = notice or "Type filter · ↑↓ choose · Enter select · Tab manual · Esc back"
+                if path_selector:
+                    footer = notice or "Type path · ↑↓ choose · Tab/→ descend · Enter select · Esc back"
+                else:
+                    footer = notice or "Type filter · ↑↓ choose · Enter select · Tab manual · Esc back"
                 screen.addnstr(max(0, height - 1), 0, footer, max(1, width - 1), curses.A_DIM)
             except curses.error:
                 pass
@@ -1586,9 +1695,37 @@ def _operator_candidate_overlay(
                     _send(master, "/stop")
                 return "back", None
             if key == 9:
+                if path_selector and rows:
+                    candidate = rows[selected]
+                    label = str(candidate.get("label") or "")
+                    if label.endswith("/"):
+                        query = label
+                        selected = 0
+                        continue
+                    if not state.backend_ready:
+                        notice = "Backend busy — path selection must wait for READY"
+                        continue
+                    value = candidate["value"]
+                    if not invoke_on_select:
+                        return "selected", value
+                    command, _ = _operator_invoke_command(entry)
+                    command += " " + json.dumps(
+                        {input_name: value}, sort_keys=True, separators=(",", ":")
+                    )
+                    _send(master, command)
+                    state.backend_ready = False
+                    return "invoke", command
+                if not invoke_on_select:
+                    return "manual", None
                 command, _ = _operator_invoke_command(entry)
                 buffer.replace(command + " ")
                 return "draft", None
+            if key == curses.KEY_RIGHT and path_selector and rows:
+                label = str(rows[selected].get("label") or "")
+                if label.endswith("/"):
+                    query = label
+                    selected = 0
+                continue
             if key == curses.KEY_UP:
                 selected = max(0, selected - 1)
                 continue
@@ -1604,6 +1741,8 @@ def _operator_candidate_overlay(
                     notice = "Backend busy — candidate is selected but invocation must wait for READY"
                     continue
                 value = rows[selected]["value"]
+                if not invoke_on_select:
+                    return "selected", value
                 command, _ = _operator_invoke_command(entry)
                 command += " " + json.dumps(
                     {input_name: value}, sort_keys=True, separators=(",", ":")
@@ -1619,6 +1758,97 @@ def _operator_candidate_overlay(
                 selected = 0
     finally:
         screen.timeout(100)
+
+
+def _operator_text_input_overlay(
+    screen: Any,
+    entry: dict[str, Any],
+    input_name: str,
+) -> tuple[str, str | None]:
+    """Collect one bounded textual input; canonical validation still happens in Core."""
+    value = ""
+    screen.timeout(100)
+    try:
+        while True:
+            height, width = screen.getmaxyx()
+            screen.erase()
+            target = str(entry.get("target_id") or "")
+            spec = _operator_input_spec(entry, input_name)
+            try:
+                screen.addnstr(
+                    0, 0, f"Enter {input_name}  {target}", max(1, width - 1), curses.A_BOLD
+                )
+                shown = value or "…"
+                screen.addnstr(2, 0, shown, max(1, width - 1))
+                screen.addnstr(
+                    max(0, height - 1), 0,
+                    "Type value · Enter accept · Esc back",
+                    max(1, width - 1), curses.A_DIM,
+                )
+            except curses.error:
+                pass
+            screen.refresh()
+            key = _next_key(screen)
+            if key in (27, 3):
+                return "back", None
+            if key in (curses.KEY_BACKSPACE, 127, 8):
+                value = value[:-1]
+                continue
+            if key in (10, 13, curses.KEY_ENTER):
+                if not value:
+                    continue
+                if spec.get("type") == "path" and spec.get("root") == "/":
+                    value = value.lstrip("/")
+                return "selected", value
+            if isinstance(key, str) and key not in "\n\r" and ord(key) >= 32:
+                if len(value) < int(spec.get("maxLength", 4096)):
+                    value += key
+            elif (
+                isinstance(key, int)
+                and 32 <= key <= 126
+                and len(value) < int(spec.get("maxLength", 4096))
+            ):
+                value += chr(key)
+    finally:
+        screen.timeout(100)
+
+
+def _operator_required_input_overlay(
+    screen: Any,
+    master: int,
+    reader: EventReader,
+    state: EventState,
+    buffer: InputBuffer,
+    entry: dict[str, Any],
+) -> tuple[str, str | None]:
+    """Collect multiple required inputs without moving domain authority into the TUI."""
+    values: dict[str, str] = {}
+    for input_name in _operator_required_inputs(entry):
+        selector = _operator_input_selector(entry, input_name)
+        if selector is not None:
+            outcome, value = _operator_candidate_overlay(
+                screen, master, reader, state, buffer, entry, input_name,
+                invoke_on_select=False,
+            )
+            if outcome == "back":
+                return "back", None
+            if outcome == "manual":
+                outcome, value = _operator_text_input_overlay(screen, entry, input_name)
+            if outcome != "selected" or value is None:
+                return outcome, value
+        else:
+            outcome, value = _operator_text_input_overlay(screen, entry, input_name)
+            if outcome != "selected" or value is None:
+                return outcome, value
+        values[input_name] = value
+
+    if not state.backend_ready:
+        return "busy", None
+    command, _ = _operator_invoke_command(entry)
+    command += " " + json.dumps(values, sort_keys=True, separators=(",", ":"))
+    _send(master, command)
+    state.backend_ready = False
+    return "invoke", command
 
 
 def _operator_surface_summary(snapshot: dict[str, Any] | None) -> tuple[str, str]:
@@ -1850,18 +2080,20 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                         notice = str(error)
                         continue
                     if needs_input:
-                        selector_input = _operator_selector_input(entry)
-                        if selector_input:
+                        if _operator_inputs_collectable(entry):
                             if not state.backend_ready:
-                                notice = "Backend busy — candidate lookup available when READY"
+                                notice = "Backend busy — input selection available when READY"
                                 continue
-                            outcome, selected_command = _operator_candidate_overlay(
-                                screen, master, reader, state, buffer, entry, selector_input
+                            outcome, selected_command = _operator_required_input_overlay(
+                                screen, master, reader, state, buffer, entry
                             )
                             if outcome == "back":
                                 continue
                             if outcome == "invoke":
                                 return selected_command
+                            if outcome == "busy":
+                                notice = "Backend busy — wait for READY or press Ctrl+C to stop current work"
+                                continue
                             return None
                         buffer.replace(command + " ")
                         return None
@@ -2148,7 +2380,7 @@ def run_tui(backend: Iterable[str] = DEFAULT_BACKEND, stream: Path | None = None
         try:
             result = curses.wrapper(lambda screen: _loop(screen, pid, master, path, state))
         except curses.error as error:
-            print(f"AI TUI could not start: {error}. Use bash igor.sh for the classic UI.",
+            print(f"Igor TUI could not start: {error}. Use bash igor.sh --classic for the classic UI.",
                   file=sys.stderr)
             return 2
         if result:
@@ -2204,11 +2436,17 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
           state: EventState | None = None) -> int:
     inspection = HistoryInspection()
     investigations = InvestigationInspection()
+    modules = ModuleInspection()
+    health = HealthInspection()
+    deployments = DeploymentInspection()
     try:
-        return _interaction_loop(screen, pid, master, path, state, inspection, investigations)
+        return _interaction_loop(
+            screen, pid, master, path, state, inspection, investigations,
+            modules, health, deployments,
+        )
     finally:
-        inspection.close()
-        investigations.close()
+        for reader in (inspection, investigations, modules, health, deployments):
+            reader.close()
 
 
 def _configure_mouse() -> bool:
@@ -2232,7 +2470,10 @@ def _configure_mouse() -> bool:
 
 def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                       state: EventState | None, inspection: HistoryInspection,
-                      investigations: InvestigationInspection | None = None) -> int:
+                      investigations: InvestigationInspection | None = None,
+                      modules: ModuleInspection | None = None,
+                      health: HealthInspection | None = None,
+                      deployments: DeploymentInspection | None = None) -> int:
     screen.keypad(True)
     screen.timeout(100)
     state, buffer = state or EventState(), InputBuffer()
@@ -2257,6 +2498,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
         dirty = inspection.poll() or dirty or bool(events)
         if investigations is not None:
             dirty = investigations.poll() or dirty
+        for inspector in (modules, health, deployments):
+            if inspector is not None:
+                dirty = inspector.poll() or dirty
         try:
             raw = os.read(master, 4096)
             if not raw:
@@ -2277,7 +2521,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 return _child_exit_code(pid, True) or 0
             raise
         if dirty:
-            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations))
+            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations, modules, health, deployments))
             dirty = False
         key = _next_key(screen)
         if key == -1:
@@ -2325,11 +2569,14 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.preserve_view(after_count - before_count, maximum)
                 if not focus.panel_open:
                     inspection.close()
-                    if investigations is not None:
-                        investigations.close()
+                    for inspector in (investigations, modules, health, deployments):
+                        if inspector is not None:
+                            inspector.close()
             continue
         if focus.region == "panel":
-            sections = panel_sections(state, inspection, investigations)
+            sections = panel_sections(
+                state, inspection, investigations, modules, health, deployments
+            )
             if key == curses.KEY_UP:
                 focus.select(-1, len(sections))
             elif key == curses.KEY_DOWN:
@@ -2352,6 +2599,12 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                     inspection.start()
                 elif section_id == "investigations" and investigations is not None:
                     investigations.start()
+                elif section_id == "modules" and modules is not None:
+                    modules.start()
+                elif section_id == "health" and health is not None:
+                    health.start()
+                elif section_id == "deployments" and deployments is not None:
+                    deployments.start()
                 elif section_id == "properties" and not state.pending_action:
                     _settings_overlay(screen, master, reader, state)
                     focus.set_focus("input")

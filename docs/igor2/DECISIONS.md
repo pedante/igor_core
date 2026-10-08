@@ -948,7 +948,227 @@ metadata. The alias is absent when its canonical target is absent and is
 suppressed if a real `sys` root exists. Navigation through the alias still
 targets the same `system.*` identities.
 
+### D071 — S5 storage administration is runtime-only and Core-executed
+
+Accepted by the Project Owner on 2026-10-06 as the S5 Storage Administration
+slice, building on the green S4 storage read model.
+
+The first generic storage mutations are exactly
+`system.storage.mount` and `system.storage.unmount`. Their durable identities
+remain the S4 `filesystem:...` and `mount:...` objects. Operation-specific
+selector resource kinds such as `mountable_filesystem` and
+`unmountable_mount` are ephemeral filtered views over those objects, not new
+System Model identities or authorization state.
+
+System owns the host-domain capability declarations. Core owns the privileged
+mechanism. The System provider uses the existing privileged marker and cannot
+construct or replace argv after approval. Core independently resolves current
+storage state, performs the reviewed preflight, freezes the exact privileged
+argv into the proposal, re-prepares the proposal at the execution fence, and
+performs deterministic post-state verification. The existing Igor
+approval/authentication/History contracts remain authoritative.
+
+`system.storage.mount` accepts one discovered unmounted local filesystem as
+its required semantic input. If no target is supplied, Core derives a
+deterministic `/mnt/<label-or-device>` target. A manually supplied target is
+relative input confined to a reviewed mount root and resolves below `/mnt`,
+`/media` or `/srv`; existing ancestry must be real, root-owned and not
+group/other writable. The reviewed effect is only creation of the target
+directory followed by a normal local mount of the selected `/dev/...` device.
+
+`system.storage.unmount` accepts only an eligible current local-device mount
+under the reviewed roots. Its reviewed effect is normal `umount`. It does not
+fall back to force or lazy unmount when the normal operation fails.
+
+Both capabilities are **runtime-only**. Neither reads, writes, creates, removes
+or reconciles `/etc/fstab`, and neither claims desired persistent mount state.
+Persistent boot mounts require a separate explicit capability and decision with
+their own configuration ownership, preflight, verification, rollback and
+migration semantics. Formatting, filesystem repair, encryption/container
+activation and arbitrary network mounts are also outside S5.
+
+A successful mutation may trigger best-effort refresh of the S4 storage
+observers so current-state facts converge promptly. Those observations remain
+machine evidence, not authorization, and refresh failure cannot rewrite an
+already verified operation result.
+
+### D072 — S6 local identities, bounded paths and single-path permissions
+
+Accepted by the Project Owner on 2026-10-06 by selecting S6 after the S5
+storage slice.
+
+System may model bounded local Unix users and groups as observed collection
+objects using stable numeric identities `user:uid:<uid>` and
+`group:gid:<gid>`. The initial source is local `/etc/passwd` and
+`/etc/group` only. It does not read shadow/password material or claim
+enumeration of remote NSS/LDAP/SSSD identity providers.
+
+D070's selector schema remains the authority boundary. S6 does not add a Module
+API contribution kind. It extends selector use to existing `path` inputs and
+allows the candidate request to carry one bounded printable prefix. Core owns
+prefix resolution and may list one directory level under explicitly reviewed
+roots. The prefix and candidates are ephemeral reference data: no recursive
+scan, durable path inventory, approval, privilege or execution authority is
+created by browsing.
+
+Read-only path inspection observes metadata only and rejects symbolic-link
+components. Permission-changing capabilities are exactly owner, group and mode
+for one existing real path. Mutation candidates are restricted to reviewed
+application/data roots and deliberately exclude `/etc`. The mode capability
+accepts only explicit `0000..0777`; setuid, setgid and sticky bits are outside
+this slice.
+
+System owns host-domain declarations. Core owns the privileged mechanism:
+current path/account state is resolved during preflight, exact non-recursive
+`chown`, `chgrp` or `chmod` argv is frozen into the proposal, the
+operation is re-prepared at the execution fence, and post-state metadata is
+verified. Existing approval, authentication and Operational History contracts
+remain authoritative.
+
+S6 does not add account creation/deletion, password management, ACL mutation,
+recursive permission changes, remote directory administration, arbitrary-root
+mutation or a second account/path database.
+
+### D073 — S7.1 network read substrate and interface identity
+
+Accepted by the Project Owner on 2026-10-06 by selecting S7.1 after the S7
+discovery proposal.
+
+The first durable S7 network object is the already-documented
+`interface:<encoded-interface-name>`. Interface rename/move may create a new
+locally scoped identity as defined by Host Intelligence. S7.1 does not create
+durable route or DNS objects.
+
+Core owns reusable Linux network mechanics. The initial read boundary uses
+bounded iproute2 JSON for link/address and IPv4/IPv6 route state, plus a bounded
+read of `/etc/resolv.conf` that preserves symlink/source context. The resolver
+read reports configured resolver endpoints and whether a local loopback stub is
+present; it does not infer or claim the true upstream recursive resolver.
+
+The read path is deterministic and read-only: no ping/internet-health probe,
+NetworkManager dependency, AI call, sudo, interface/route/DNS mutation or
+application-specific network interpretation is introduced. Malformed,
+duplicate, oversized, wrong-family or unavailable Platform data fails closed.
+
+Routes remain bounded current read results and may support derived interface or
+host facts in S7.2. Their identity/persistence contract is deliberately
+deferred until routing administration or reconciliation demonstrates a real
+need. Wi-Fi provider selection and Wi-Fi mutation remain Q017; new profile and
+credential authority remains Q018.
+
+### D074 — S7.3 optional NetworkManager Wi-Fi read provider
+
+Accepted by the Project Owner on 2026-10-06 for the S7.3 boundary.
+
+NetworkManager/nmcli is the first optional reviewed Wi-Fi **READ** provider.
+It may expose bounded current Wi-Fi status, scan results and non-secret saved
+profile references, plus ephemeral D070 `wifi_network` and `wifi_profile`
+candidates. Generic interface/route/DNS reads remain provider-neutral and an
+absent `nmcli` makes only these Wi-Fi contributions unavailable.
+
+Scan results and saved-profile references are not System Model objects,
+Configuration values, desired state or Igor-owned profiles. The adapter never
+requests Wi-Fi secrets. This decision resolves only the provider/read portion
+of Q017. D075 separately authorizes the later S7.4 mutation; Q018 remains
+deferred.
+
+### D075 — S7.4 known saved-profile activation
+
+Accepted by the Project Owner on 2026-10-07 by explicitly asking to start S7.4
+after completing S7.3.
+
+S7.4 adds exactly one Wi-Fi mutation:
+`system.network.wifi.connect_known`. It activates one existing saved
+NetworkManager Wi-Fi profile UUID on one selected current wireless interface.
+Core owns the trusted preflight, exact frozen argv, execution-fence re-prepare
+and post-state verification.
+
+The capability is CHANGE and uses Igor's existing per-operation privilege gate.
+It cannot create/edit/delete profiles, retrieve credentials, toggle Wi-Fi
+radio, disconnect an interface, change routes/DNS or infer success from internet
+reachability. A profile active on another interface is rejected so the approved
+affected-object set does not silently expand. Verification succeeds only when
+the selected UUID is active on the selected interface.
+
+This resolves Q017. Q018 remains deferred.
+
+### D076 — S9 canonical cross-module reuse boundary
+
+Accepted by the Project Owner on 2026-10-07 by explicitly directing work to
+continue with S9.
+
+A module may reuse another active module's canonical capability only through
+Igor's existing capability dispatcher. The consumer does not copy the
+provider's package/service/sudo mechanism. CHANGE/DESTROY reuse keeps the
+normal approval, privilege, provider resolution, verification and Operational
+History contracts.
+
+Once a host-operation seam is migrated to a canonical capability, missing,
+disabled, unavailable, declined or failed providers fail that operation
+closed. The consumer must not silently fall back to raw shell and regain the
+same host authority. Domain-specific postconditions may still be checked by the
+consumer after the canonical operation.
+
+This decision does not require background health checks to execute user-facing
+capabilities merely to read state. Legacy isolated checks may remain until
+there is a fact/check/integration projection that preserves System Model and
+History semantics. It also does not widen S6 recursive permissions, S7
+internet-reachability semantics or Q018 secret authority.
+
+The first S9 proof is Nextcloud Docker runtime readiness: replace its direct
+Docker service enable/start fallback with canonical `docker.install`, which
+already composes System package/service capabilities.
+
 ## Open decisions
+
+### Q019 — Initial S8 hardware/runtime identity
+
+Should initial S8 runtime and hardware catalogue work use the existing
+`host:local` identity for typed observations/current reads, and defer durable
+CPU/device/sensor object kinds until selection, relationships or mutation prove
+a need?
+
+Recommendation: **yes**. Avoid a speculative hardware inventory and avoid
+persisting serial/board identifiers. Component identities can be added later
+with explicit stability/provenance rules.
+
+Decision target: before S8 creates any durable hardware-component object kind.
+
+### Q020 — Richer log data exposure
+
+Should S8 keep raw journal/application messages outside ordinary typed
+capability output, Operational History and AI reference context by default
+until a dedicated sensitive-log contract defines bounded access and redaction?
+
+Recommendation: **yes**. Enrich metadata/counts/unit/priority summaries first.
+Logs may contain credentials or private application data even when the journal
+API itself is read-only.
+
+Decision target: before any S8 capability returns raw log-message bodies.
+
+### Q021 — S8 mutation expansion
+
+Should reboot/shutdown, timezone/NTP, boot-target and security/firewall policy
+changes remain deferred until each operation has an explicit reviewed Core
+adapter, recovery semantics and deterministic verification?
+
+Recommendation: **yes**. S8 is read-first; the existence of a Linux command or
+legacy affordance is not authority to add a canonical mutation.
+
+Decision target: before the first new S8 state-changing capability.
+
+### Q018 — New Wi-Fi profile and credential authority
+
+Should S7 defer creation/editing of open or password-bearing Wi-Fi profiles
+until Igor has an explicitly reviewed configuration/secret-consumer authority
+for that operation?
+
+Recommendation: **yes**. Generic secret_ref consumers are currently
+unavailable by policy. A password must not be downgraded into an ordinary
+string/argv/History value, and even an open network creates persistent external
+NetworkManager configuration whose ownership must be explicit.
+
+Decision target: before any new-profile Wi-Fi capability.
 
 ### Q004 — Later third-party module trust policy
 
@@ -1012,5 +1232,13 @@ D070 selects one Core-owned ephemeral resolver boundary: prefer eligible fresh
 System Model candidates, otherwise allow a registered bounded Platform read.
 Malformed results fail closed; candidates create no fact, adoption,
 responsibility or execution authority.
+
+
+### Q016 — S7 network object/read boundary — resolved by D073
+
+D073 implements the existing `interface:<name>` Host Intelligence vocabulary
+as the first S7 durable network identity. Routes and resolver configuration
+remain bounded current reads/derived evidence rather than new durable object
+kinds.
 
 

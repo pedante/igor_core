@@ -24,6 +24,58 @@
       "privilege": "none"
     },
     {
+      "kind": "observer",
+      "id": "host.runtime",
+      "handler": "system__observe_runtime",
+      "output_type": "host.runtime",
+      "timeout_seconds": 10,
+      "object_kind": "host",
+      "properties": [
+        {
+          "name": "runtime.uptime_seconds",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "load.one_minute",
+          "value_type": "number",
+          "minimum": 0
+        },
+        {
+          "name": "load.five_minute",
+          "value_type": "number",
+          "minimum": 0
+        },
+        {
+          "name": "load.fifteen_minute",
+          "value_type": "number",
+          "minimum": 0
+        },
+        {
+          "name": "swap.total_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "swap.free_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "swap.used_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "swap.use_percent",
+          "value_type": "integer",
+          "minimum": 0
+        }
+      ],
+      "freshness_seconds": 15,
+      "privilege": "none"
+    },
+    {
       "kind": "check",
       "id": "host.memory.health",
       "handler": "system__check_memory",
@@ -377,6 +429,96 @@
           "arch"
         ]
       }
+    },
+    {
+      "kind": "capability",
+      "id": "system.host.runtime.status",
+      "handler": "system__host_runtime_status",
+      "capability_version": 2,
+      "description": "Inspect bounded current local host uptime, load averages and swap counters from normalized Linux procfs state.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "uptime_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "load_1": {
+            "type": "number",
+            "minimum": 0
+          },
+          "load_5": {
+            "type": "number",
+            "minimum": 0
+          },
+          "load_15": {
+            "type": "number",
+            "minimum": 0
+          },
+          "swap_total_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "swap_free_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "swap_used_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "swap_use_percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "source": {
+            "type": "enum",
+            "enum": [
+              "core.host.runtime"
+            ]
+          }
+        },
+        "required": [
+          "uptime_seconds",
+          "load_1",
+          "load_5",
+          "load_15",
+          "swap_total_bytes",
+          "swap_free_bytes",
+          "swap_used_bytes",
+          "swap_use_percent",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
     },
     {
       "kind": "capability",

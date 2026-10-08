@@ -113,20 +113,7 @@ menu_install() {
     # ── Step 1: Prerequisites ──────────────────────────────────────────────────
     step "Checking prerequisites"
     local abort=false
-    command -v docker &>/dev/null || { fail "Docker not installed — run Menu 1 first."; abort=true; }
-    if ! docker info &>/dev/null; then
-        # On Arch (and any distro where Docker was just installed), the daemon
-        # may not be running yet.  Try to start it before giving up.
-        info "Docker daemon not responding — attempting to start..."
-        if declare -f pkg_install_docker_post &>/dev/null; then
-            pkg_install_docker_post 2>/dev/null || true
-        else
-            sudo systemctl enable docker 2>/dev/null || true
-            sudo systemctl start  docker 2>/dev/null || true
-            sleep 2
-        fi
-        docker info &>/dev/null || { fail "Docker not running or user not in docker group."; abort=true; }
-    fi
+    _mod_install_ensure_docker_runtime || abort=true
     [ -f "${COMPOSE_FILE}" ]        || { fail "docker-compose.yml not found in $(pwd)"; abort=true; }
     $abort && { warn "Fix issues above and re-run."; pause; return 1; }
     ok "Prerequisites OK."
@@ -172,7 +159,7 @@ menu_install() {
             ok "Keeping existing credentials."
         else
             warn "Clearing db.env — you will be asked for new values."
-            > "${DB_ENV}"; chmod 600 "${DB_ENV}"
+            : > "${DB_ENV}"; chmod 600 "${DB_ENV}"
         fi
     fi
 

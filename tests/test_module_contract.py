@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "core/lib/module_contract.py"
 sys.path.insert(0, str(ROOT / "core/lib"))
 import module_contract
+import module_registry
 
 
 class ModuleContractTests(unittest.TestCase):
@@ -46,6 +47,158 @@ class ModuleContractTests(unittest.TestCase):
         capability = next(r for r in result["contributions"] if r["kind"] == "capability")
         self.assertEqual(capability["capability_version"], 2)
         self.assertEqual(capability["outputs"]["required"], ["observer_id"])
+
+    def test_system_storage_contracts_use_collection_observers_and_shared_selectors(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        self.assertEqual(by_id["storage.mounts"]["object_kind"], "mount")
+        self.assertEqual(by_id["storage.filesystems"]["object_kind"], "filesystem")
+        self.assertEqual(
+            by_id["system.storage.mount.status"]["inputs"]["properties"]["mount"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "mount"},
+        )
+        self.assertEqual(
+            by_id["system.storage.filesystem.status"]["inputs"]["properties"]["filesystem"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "filesystem"},
+        )
+
+    def test_system_network_contracts_use_interface_collection_and_selector(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+
+        observer = by_id["network.interfaces"]
+        self.assertEqual(observer["object_kind"], "interface")
+        self.assertEqual(observer["freshness_seconds"], 30)
+        self.assertEqual(observer["requires"], {"bins": ["ip"]})
+
+        selector = by_id["system.network.interface.status"]["inputs"]["properties"][
+            "interface"
+        ]["selector"]
+        self.assertEqual(
+            selector,
+            {"schema_version": 1, "kind": "resource", "resource_kind": "interface"},
+        )
+
+        ip_caps = {
+            "system.network.summary",
+            "system.network.interfaces.list",
+            "system.network.interface.status",
+            "system.network.routes.list",
+        }
+        for ident in ip_caps | {"system.network.dns.status"}:
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 2)
+            self.assertEqual(row["safety"], {"tier": "READ"})
+            self.assertEqual(row["privilege"], "none")
+            self.assertEqual(row["verification"], {"kind": "none", "required": False})
+        for ident in ip_caps:
+            self.assertEqual(by_id[ident]["requires"], {"bins": ["ip"]})
+        self.assertNotIn("requires", by_id["system.network.dns.status"])
+
+    def test_system_storage_admin_contract_is_runtime_only_and_compiler_reviewed(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        cases = {
+            "system.storage.mount": (
+                "filesystem",
+                "mountable_filesystem",
+                "system.storage.mount.ready",
+                "system.storage.mount.present",
+            ),
+            "system.storage.unmount": (
+                "mount",
+                "unmountable_mount",
+                "system.storage.unmount.ready",
+                "system.storage.mount.absent",
+            ),
+        }
+        for ident, (input_name, resource_kind, validator, check_id) in cases.items():
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 1)
+            self.assertEqual(row["handler"], "system__privileged_marker")
+            self.assertEqual(row["safety"], {"tier": "CHANGE"})
+            self.assertEqual(row["privilege"], "required")
+            self.assertEqual(row["inputs"]["required"], [input_name])
+            self.assertEqual(
+                row["inputs"]["properties"][input_name]["selector"],
+                {"schema_version": 1, "kind": "resource", "resource_kind": resource_kind},
+            )
+            self.assertEqual(
+                row["preconditions"],
+                [
+                    {"kind": "owner_active"},
+                    {"kind": "trusted_validator", "validator": validator},
+                ],
+            )
+            self.assertEqual(
+                row["verification"],
+                {"kind": "trusted_query", "check_id": check_id, "required": True},
+            )
+            self.assertIn("fstab", row["description"])
+            self.assertEqual(module_registry.static_unavailable_reason(row, "system"), "")
+
+    def test_system_access_contracts_use_stable_identity_and_path_selectors(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+
+        self.assertEqual(by_id["accounts.users"]["object_kind"], "user")
+        self.assertEqual(by_id["accounts.groups"]["object_kind"], "group")
+        self.assertEqual(
+            by_id["system.users.status"]["inputs"]["properties"]["user"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "user"},
+        )
+        self.assertEqual(
+            by_id["system.groups.status"]["inputs"]["properties"]["group"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "group"},
+        )
+        self.assertEqual(
+            by_id["system.permissions.path.status"]["inputs"]["properties"]["path"]["selector"],
+            {"schema_version": 1, "kind": "resource", "resource_kind": "path"},
+        )
+
+    def test_system_permission_changes_are_exact_compiler_reviewed_single_path_caps(self):
+        result = module_contract.validate_module(ROOT / "modules/system")
+        by_id = {row["id"]: row for row in result["contributions"]}
+        cases = {
+            "system.permissions.owner.set": (
+                "system.permissions.owner.ready",
+                "system.permissions.owner.matches",
+            ),
+            "system.permissions.group.set": (
+                "system.permissions.group.ready",
+                "system.permissions.group.matches",
+            ),
+            "system.permissions.mode.set": (
+                "system.permissions.mode.ready",
+                "system.permissions.mode.matches",
+            ),
+        }
+        for ident, (validator, check_id) in cases.items():
+            row = by_id[ident]
+            self.assertEqual(row["capability_version"], 1)
+            self.assertEqual(row["handler"], "system__privileged_marker")
+            self.assertEqual(row["safety"], {"tier": "CHANGE"})
+            self.assertEqual(row["privilege"], "required")
+            self.assertEqual(
+                row["inputs"]["properties"]["path"]["selector"],
+                {"schema_version": 1, "kind": "resource", "resource_kind": "mutable_path"},
+            )
+            self.assertEqual(
+                row["preconditions"],
+                [
+                    {"kind": "owner_active"},
+                    {"kind": "trusted_validator", "validator": validator},
+                ],
+            )
+            self.assertEqual(
+                row["verification"],
+                {"kind": "trusted_query", "check_id": check_id, "required": True},
+            )
+            self.assertEqual(module_registry.static_unavailable_reason(row, "system"), "")
+
+        mode = by_id["system.permissions.mode.set"]["inputs"]["properties"]["mode"]
+        self.assertEqual(mode["validator"], "unix_mode")
+        self.assertEqual((mode["minLength"], mode["maxLength"]), (4, 4))
 
     def test_system_service_inputs_declare_the_shared_service_selector(self):
         result = module_contract.validate_module(ROOT / "modules/system")
@@ -418,7 +571,9 @@ class ModuleContractTests(unittest.TestCase):
             json.dumps({"contract_version": 1, "contributions": [incompatible]}),
             encoding="utf-8",
         )
-        with self.assertRaisesRegex(module_contract.ValidationError, "string or object_id"):
+        with self.assertRaisesRegex(
+            module_contract.ValidationError, "string, object_id or path"
+        ):
             module_contract.validate_module(root)
 
 

@@ -1,0 +1,625 @@
+{
+  "contract_version": 1,
+  "contributions": [
+    {
+      "kind": "observer",
+      "id": "storage.mounts",
+      "handler": "system__observe_mounts",
+      "output_type": "storage.mounts",
+      "timeout_seconds": 10,
+      "object_kind": "mount",
+      "properties": [
+        {
+          "name": "mount.target",
+          "value_type": "string"
+        },
+        {
+          "name": "mount.source",
+          "value_type": "string"
+        },
+        {
+          "name": "mount.filesystem_type",
+          "value_type": "string"
+        },
+        {
+          "name": "mount.total_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "mount.used_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "mount.available_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "mount.use_percent",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "mount.read_only",
+          "value_type": "boolean"
+        }
+      ],
+      "freshness_seconds": 60,
+      "privilege": "none"
+    },
+    {
+      "kind": "observer",
+      "id": "storage.filesystems",
+      "handler": "system__observe_filesystems",
+      "output_type": "storage.filesystems",
+      "timeout_seconds": 10,
+      "object_kind": "filesystem",
+      "properties": [
+        {
+          "name": "filesystem.device",
+          "value_type": "string"
+        },
+        {
+          "name": "filesystem.type",
+          "value_type": "string"
+        },
+        {
+          "name": "filesystem.uuid",
+          "value_type": "string"
+        },
+        {
+          "name": "filesystem.label",
+          "value_type": "string"
+        },
+        {
+          "name": "filesystem.size_bytes",
+          "value_type": "integer",
+          "minimum": 0
+        },
+        {
+          "name": "filesystem.mounted",
+          "value_type": "boolean"
+        },
+        {
+          "name": "filesystem.mountpoint",
+          "value_type": "string"
+        }
+      ],
+      "freshness_seconds": 60,
+      "privilege": "none",
+      "requires": {
+        "bins": [
+          "lsblk"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.summary",
+      "handler": "system__storage_summary",
+      "capability_version": 2,
+      "description": "Summarize local mounts and filesystems without changing storage state.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "mount_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "filesystem_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mounted_filesystem_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unmounted_filesystem_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "root_use_percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "mount_count",
+          "filesystem_count",
+          "mounted_filesystem_count",
+          "unmounted_filesystem_count",
+          "root_use_percent",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "lsblk"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.mounts.list",
+      "handler": "system__storage_mounts_list",
+      "capability_version": 2,
+      "description": "List bounded local mount summaries using canonical mount object identities.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mounts": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "mounts",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.filesystems.list",
+      "handler": "system__storage_filesystems_list",
+      "capability_version": 2,
+      "description": "List bounded local filesystem summaries using canonical filesystem object identities.",
+      "inputs": {
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "filesystems": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 160
+          }
+        },
+        "required": [
+          "count",
+          "filesystems",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "host",
+          "id": "local"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "lsblk"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.mount.status",
+      "handler": "system__storage_mount_status",
+      "capability_version": 2,
+      "description": "Inspect one currently observed local mount.",
+      "inputs": {
+        "properties": {
+          "mount": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mount"
+            }
+          }
+        },
+        "required": [
+          "mount"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "filesystem_type": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "total_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "used_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "available_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "use_percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "read_only": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object_id",
+          "target",
+          "source",
+          "filesystem_type",
+          "total_bytes",
+          "used_bytes",
+          "available_bytes",
+          "use_percent",
+          "read_only"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "mount",
+          "input": "mount"
+        }
+      ]
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.filesystem.status",
+      "handler": "system__storage_filesystem_status",
+      "capability_version": 2,
+      "description": "Inspect one currently discovered local filesystem.",
+      "inputs": {
+        "properties": {
+          "filesystem": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "filesystem"
+            }
+          }
+        },
+        "required": [
+          "filesystem"
+        ],
+        "additionalProperties": false
+      },
+      "outputs": {
+        "schema_version": 1,
+        "properties": {
+          "object_id": {
+            "type": "object_id"
+          },
+          "device": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "filesystem_type": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "uuid": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mounted": {
+            "type": "boolean"
+          },
+          "mountpoint": {
+            "type": "string",
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "object_id",
+          "device",
+          "filesystem_type",
+          "uuid",
+          "label",
+          "size_bytes",
+          "mounted",
+          "mountpoint"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "READ"
+      },
+      "privilege": "none",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        }
+      ],
+      "verification": {
+        "kind": "none",
+        "required": false
+      },
+      "recovery": {
+        "class": "not_applicable"
+      },
+      "affects": [
+        {
+          "object": "filesystem",
+          "input": "filesystem"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "lsblk"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.mount",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Mount one discovered local filesystem for the running system only. This does not create or modify an /etc/fstab entry.",
+      "inputs": {
+        "properties": {
+          "filesystem": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "mountable_filesystem"
+            }
+          },
+          "target": {
+            "type": "path",
+            "validator": "confined_path",
+            "root": "/",
+            "maxLength": 512
+          },
+          "persistence": {
+            "type": "enum",
+            "enum": [
+              "runtime_only"
+            ]
+          }
+        },
+        "required": [
+          "filesystem"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.storage.mount.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.storage.mount.present",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "A successful runtime mount can normally be reversed with system.storage.unmount. Any created empty mountpoint directory may remain. /etc/fstab is never modified."
+      },
+      "affects": [
+        {
+          "object": "filesystem",
+          "input": "filesystem"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "lsblk",
+          "mount",
+          "mkdir"
+        ]
+      }
+    },
+    {
+      "kind": "capability",
+      "id": "system.storage.unmount",
+      "handler": "system__privileged_marker",
+      "capability_version": 1,
+      "description": "Unmount one eligible local runtime mount without force or lazy semantics. This does not remove or modify an /etc/fstab entry.",
+      "inputs": {
+        "properties": {
+          "mount": {
+            "type": "object_id",
+            "validator": "object_id",
+            "selector": {
+              "schema_version": 1,
+              "kind": "resource",
+              "resource_kind": "unmountable_mount"
+            }
+          },
+          "persistence": {
+            "type": "enum",
+            "enum": [
+              "runtime_only"
+            ]
+          }
+        },
+        "required": [
+          "mount"
+        ],
+        "additionalProperties": false
+      },
+      "safety": {
+        "tier": "CHANGE"
+      },
+      "privilege": "required",
+      "preconditions": [
+        {
+          "kind": "owner_active"
+        },
+        {
+          "kind": "trusted_validator",
+          "validator": "system.storage.unmount.ready"
+        }
+      ],
+      "verification": {
+        "kind": "trusted_query",
+        "check_id": "system.storage.mount.absent",
+        "required": true
+      },
+      "recovery": {
+        "class": "best_effort",
+        "description": "Remounting may require the original filesystem and mount options. Persistent configuration is intentionally unchanged."
+      },
+      "affects": [
+        {
+          "object": "mount",
+          "input": "mount"
+        }
+      ],
+      "requires": {
+        "bins": [
+          "umount"
+        ]
+      }
+    }
+  ]
+}

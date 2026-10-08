@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06
 
 ## How to read this file
 
@@ -3118,18 +3118,166 @@ domain events, general Capability System v2, broad Ownership Foundation
 migration, non-Bash adapters and composable Nextcloud modules remain deferred.
 The Ownership Foundation remains a hard gate before broad module migration.
 
-### System operator S1/S2/S3 branch work
+### System operator S1–S7
 
-On `feature/sys-module-foundation`, D070 is implemented through namespace UX.
-S1 adds strict semantic selector metadata and the Core-owned ephemeral candidate
-boundary. S2 annotates the existing
-`system.service.status/start/enable/restart` unit inputs and adds a TUI chooser
-backed by bounded `svc_list_query` discovery. Candidate selection remains
-reference-only until the chosen value is submitted through canonical capability
-invocation.
+S1–S3 are merged into `igor2` under D070. S4's storage read model is green on
+`feature/sys-storage-read-model` (affected run #209). S5 is implemented on
+`feature/sys-storage-admin` under D071 with runtime-only mount/unmount,
+Core-frozen privileged argv, trusted preflight and deterministic verification;
+it does not edit `/etc/fstab` or escalate to force/lazy unmount.
 
-S3 adds `:sys` only as collision-safe Operator Surface presentation metadata
-for the canonical `:system` tree. The TUI preserves the short breadcrumb while
-leaf identity and invocation remain `system.*`; a real `sys` root suppresses
-the alias. Storage remains a later phase. This branch work is not part of the
-`igor2` baseline until merged and its validation gate is green.
+S6 is implemented on stacked branch `feature/sys-users-permissions-paths`
+pending its PR validation gate. System 2.7.0 adds bounded local user/group
+collection observations with canonical UID/GID identities, read-only account
+and path inspection, and prefix-aware path candidates. Candidate prefix
+resolution remains ephemeral reference data and does not change capability
+authority.
+
+The only S6 permission mutations are exact single-path owner, group and
+0000..0777 mode changes on reviewed application/data roots. Core owns the
+trusted preflight, numeric identity resolution, frozen non-recursive
+`chown`/`chgrp`/`chmod` argv and post-state verification. Symlink paths,
+recursive changes, account creation/deletion, passwords/shadow data, ACL
+mutation, special permission bits and arbitrary roots remain outside S6.
+D072 records this boundary.
+
+S7.1–S7.5 are complete on `feature/sys-network-wifi` under D073–D075.
+The stacked affected validation gate against S6 is green. Core owns bounded read-only iproute2
+link/address/route normalization and bounded resolver inspection through
+`core/lib/network_query.py` plus `core/lib/network.sh`.
+
+System 2.10.0 retains the `network.interfaces` collection observer and READ-only
+`system.network.summary`, `interfaces.list`, `interface.status`,
+`routes.list` and `dns.status` capabilities. The existing
+`interface:<name>` Host Intelligence identity is canonical. The interface
+selector prefers fresh System Model facts and falls back to the bounded Core
+read. Routes and DNS remain current reads/derived evidence rather than durable
+objects.
+
+S7.3 adds NetworkManager/nmcli only as an optional Wi-Fi READ provider through
+`core/lib/networkmanager_wifi.py`. The canonical System leaves are
+`system.network.wifi.status`, `system.network.wifi.scan` and
+`system.network.wifi.profiles.list`; D070 also exposes bounded ephemeral
+`wifi_network` and `wifi_profile` candidates. Scans and saved profile UUIDs
+remain current external-provider references, not System Model or Igor-owned
+configuration.
+
+Both `ip` and `nmcli` requirements are contribution-local. Missing `nmcli`
+does not deactivate System or block generic interface/route/DNS reads. S7.3
+adds no Wi-Fi mutation, secret consumer, credential retrieval or connectivity
+probe.
+
+S7.4 adds only `system.network.wifi.connect_known` as a reviewed CHANGE
+capability. Core validates the selected current wireless interface and saved
+Wi-Fi UUID, freezes exactly one non-secret `nmcli connection up` argv behind
+Igor's privilege gate, re-prepares at the execution fence and verifies that the
+same UUID is active on the same interface. It does not create/edit profiles,
+retrieve credentials, disconnect, toggle radio or change routes/DNS. D075
+resolves Q017; Q018 still defers new/open/password-bearing profile creation.
+
+
+### S7.5 closure evidence
+
+S7.5 adds explicit Debian/Arch fixture proof without widening the support
+claim. Generic S7 network reads remain iproute2/resolver based and
+provider-neutral on both fixture families. NetworkManager Wi-Fi reads and
+`system.network.wifi.connect_known` are exercised on both families only when
+the optional `nmcli` provider is present; this does not imply Wi-Fi mutation
+support for systemd-networkd, iwd/iwctl or other managers.
+
+The compiled Module API registry now has regression proof for D075 as well as
+the normal loader path: the exact reviewed `connect_known` declaration is
+admitted, while trusted-validator/verifier drift remains unavailable.
+
+The final GitHub Actions `S7 Stacked Validation` run **#15**
+(`37591480474`) validated the branch against
+`feature/sys-users-permissions-paths`: **1756 PASS, 0 FAIL_NEW, 6 reviewed
+FAIL_BASELINE, 4 BASELINE_FIXED, no timeouts, environment/tool skips or
+errors**. The workflow concluded successfully and the reviewed baseline was not
+changed. Q018 remains deferred and S7.5 introduces no new
+credential/configuration authority.
+
+
+### S8.0 broader System catalogue discovery
+
+S8 discovery is active on `feature/sys-broader-catalogue`, stacked on the
+completed S7 branch. The authoritative proposal is
+`modules/system/docs/SYS_BROADER_CATALOGUE_PROPOSAL.md`.
+
+Repository evidence favors a read-first sequence. Existing typed System
+coverage already owns host summary/memory, package/service/log inspection,
+storage, access and network. The remaining legacy System health/context hooks
+still probe temperature, swap, load, root filesystem usage, platform identity
+and I/O text directly. Host Intelligence already marks those probes for
+observer/check adaptation domain by domain.
+
+The proposed first S8.1 slice is bounded host runtime telemetry
+(uptime/load/swap) through Core normalization and System-owned typed
+observation/presentation. It adds no persistent object kind, privilege,
+mutation, raw-log channel or optional-provider requirement. Q019–Q021 record
+the remaining catalogue identity, raw-log and mutation decisions.
+
+
+### S8 release-scope closure
+
+S8 is complete for the Igor 2 System release scope at
+`feature/sys-broader-catalogue`. The final S8.1 stacked validation is green.
+The implemented slice adds bounded uptime/load/swap normalization, typed
+`host.runtime` facts on `host:local`, and
+`system.host.runtime.status` without privilege or mutation.
+
+This is an explicit scope closure, not a claim that every discovery phase was
+implemented. The accepted System release rule requires representative
+high-quality administration domains rather than exhaustive Linux-command
+coverage. S8.2–S8.7 hardware, thermal, boot/time, security-provider,
+richer-log and additional mutation work is deferred post-release. Q019–Q021
+remain the authority gates for those future additions. No persistent migration
+or recovery action is introduced by this closure.
+
+### S9.0 cross-module reuse discovery
+
+S9 work is active on `feature/sys-cross-module-reuse`, stacked on the current
+green S8.1 head at Project Owner direction. This does **not** declare the
+broader S8 catalogue complete.
+
+The authoritative discovery record is
+`modules/system/docs/SYS_CROSS_MODULE_REUSE_PROPOSAL.md`. D076 fixes the first
+reuse boundary: user-triggered cross-module host operations reuse canonical
+capabilities through the existing dispatcher, preserving approval, privilege,
+provider resolution, verification and Operational History. A migrated
+operation does not keep a raw-shell fallback that silently reacquires the same
+authority.
+
+The first vertical is Nextcloud's Docker runtime prerequisite. Existing
+`docker.install` already composes canonical System package/service
+capabilities and a typed `docker.status` final check. S9.1 will route the
+Nextcloud install/start-stack recovery path through that capability and retain
+an independent `docker info` domain prerequisite check afterward.
+
+Legacy background health probes, recursive Nextcloud ownership repair and
+application-specific public reachability are explicitly not treated as
+equivalent System operations by this slice.
+
+
+### S9 release-scope closure
+
+S9 is complete for the Igor 2 System release scope on
+`feature/sys-cross-module-reuse`. The final `S9 Stacked Validation` run for
+the implementation head is green after fixing only the branch-introduced
+ShellCheck identity.
+
+The representative vertical routes Nextcloud install/start-stack Docker
+readiness through canonical `docker.install`, preserving the existing
+composition of System package/service capabilities, approval, privilege,
+verification and Operational History. The migrated seam contains no raw
+`systemctl enable/start docker` or `pkg_install_docker_post` fallback.
+Failure or decline stops the consumer, and Nextcloud rechecks `docker info`
+before continuing.
+
+S9.2's optional read cutover is deferred by design: legacy classic-menu/check
+paths do not uniformly share the AI-session dispatcher or process-local System
+Model. Creating a second direct executor would violate D076 and Step 20. The
+remaining Cloudflared/storage-health/recursive-permission/application-
+reachability cases are recorded in the S9 proposal as defer/keep decisions.
+
+S10 is now the final System operator-interface and release gate.

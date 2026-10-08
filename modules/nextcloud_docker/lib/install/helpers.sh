@@ -6,6 +6,40 @@
 #  Sourced by modules/nextcloud_docker/install.sh.
 # ==============================================================================
 
+
+# ── _mod_install_ensure_docker_runtime ────────────────────────────────────────
+# S9 cross-module reuse: Nextcloud owns the need for an accessible Docker
+# runtime; Docker/System own package and service host mechanics. If Docker is
+# not already usable, request canonical docker.install through Igor's existing
+# capability dispatcher. Never regain equivalent host authority with raw
+# systemctl/pkg helpers when that provider is unavailable or declined.
+_mod_install_ensure_docker_runtime() {
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        return 0
+    fi
+
+    info "Docker runtime is unavailable — requesting canonical Docker setup..."
+
+    if ! declare -f ai_execute_tool >/dev/null 2>&1; then
+        fail "Canonical capability dispatcher is unavailable; cannot prepare Docker safely."
+        return 1
+    fi
+
+    local _request
+    _request='{"tool":"run_capability","id":"docker.install","provider":"docker","inputs":{},"capability_version":1}'
+    if ! ai_execute_tool "$_request"         "Nextcloud requires an installed, enabled, active and reachable Docker Engine."; then
+        fail "Docker setup was not completed through the canonical capability path."
+        return 1
+    fi
+
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+        fail "Canonical Docker setup completed, but the daemon is still not accessible to this user."
+        return 1
+    fi
+    return 0
+}
+
+
 # ── _mod_install_load_tier ────────────────────────────────────────────────────
 # Sources lib/tier_config.sh to populate NC_TIER_* variables, then applies any
 # user overrides from config/stacks/nextcloud/tier_overrides.env.

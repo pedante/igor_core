@@ -38,6 +38,9 @@ igor_model_read() {
         "$(_igor_model_state)" "$_object" "$_property" "$_class" "$_owners"
 }
 
+# Optional filters are part of the public model-list API even though current
+# in-tree callers normally request the full projection.
+# shellcheck disable=SC2120
 igor_model_list() {
     local _owners
     _owners="$(_igor_model_active_owners)" || return 1
@@ -106,12 +109,24 @@ igor_model_store_health() {
 }
 
 igor_observer_refresh() {
-    local _id="${1:-}" _target="${2:-host:local}" _descriptor _owner _envelope _response _failed=0
+    local _id="${1:-}" _target="${2:-}" _descriptor _owner _envelope _response _failed=0 _kind
     _descriptor="$(igor_v2_contribution_get observer "$_id")" || return 1
     _owner="${_IGOR_CONTRIBUTION_OWNER[observer:${_id}]:-}"
     [ -n "$_owner" ] && _ml_owner_active "$_owner" || return 1
     [ "$(_ml_json_field "$_descriptor" privilege)" = none ] || return 1
-    [ "$_target" = host:local ] || return 1
+    _kind="$(_ml_json_field "$_descriptor" object_kind)" || return 1
+    case "$_kind" in
+        host)
+            [ -z "$_target" ] && _target=host:local
+            [ "$_target" = host:local ] || return 1
+            ;;
+        mount|filesystem|user|group|interface)
+            # Collection observers own a bounded snapshot, not one caller-picked
+            # object. A target argument would falsely imply per-object probing.
+            [ -z "$_target" ] || return 1
+            ;;
+        *) return 1 ;;
+    esac
     if _envelope="$(igor_v2_invoke observer "$_id" '{}')"; then
         _response="$("$(_igor_model_python)" "${_IGOR_LOADER_DIR}/core/lib/model_bridge.py" --observe \
             "$(_igor_model_state)" "$_owner" "$_id" "$_descriptor" "$_envelope")" || return 1
