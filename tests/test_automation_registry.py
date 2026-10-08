@@ -11,12 +11,13 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core/lib"))
 from automation_registry import AutomationError, Registry
 from module_contract import validate_module
-from operational_history import OperationalHistory  # noqa: E402
+from operational_history import OperationalHistory
 
 TRIGGER = {"kind": "once_at", "schema_version": 1, "once_at": "2030-01-01T00:00:00Z"}
 PERIODIC = {"kind": "periodic", "schema_version": 1,
@@ -31,18 +32,81 @@ CONDITION = {"kind": "condition", "schema_version": 1,
 
 
 class AutomationRegistryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._validated_system_module = validate_module(ROOT / "modules/system")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        module = validate_module(ROOT / "modules/system")
+        module = copy.deepcopy(self._validated_system_module)
         desc = next(x for x in module["contributions"] if x["kind"] == "capability")
         proposal = next(x for x in module["contributions"] if x["kind"] == "automation")
         self.capabilities = [{"id": desc["id"], "provider": "system", "availability": "active", "descriptor": desc}]
         self.proposals = [{"id": proposal["id"], "owner": "system", "module_version": "2.0.0",
                            "source": proposal["source"], "availability": "active", "descriptor": proposal}]
         self.event_types = [{"event_type": "capability.completed", "availability": "active"}]
-        self.root = Path(self.temp.name)
+        self.scratch = Path(self.temp.name)
+        self.root = self.scratch / "data"
+        self.root.mkdir()
+        self.checkout = self.scratch / "checkout"
+        self.checkout.mkdir()
+        (self.checkout / "igor.sh").symlink_to(ROOT / "igor.sh")
+        (self.checkout / "core").symlink_to(ROOT / "core", target_is_directory=True)
+        (self.checkout / "modules").symlink_to(ROOT / "modules", target_is_directory=True)
+        config = self.checkout / "config"
+        config.mkdir()
+        (config / "variables").mkdir()
+        (config / "variables/ai.env").write_text(
+            "ai_mode=assist\nexecutive_mode=false\nIGOR_AI_ENABLED=true\n"
+            "IGOR_AI_ALLOWED_TOOLS=all\n"
+        )
+        (config / "modules.conf").write_text("system=enabled\n")
+        (self.checkout / "secrets").mkdir(mode=0o700)
+        self.private_home = self.scratch / "home"
+        self.private_home.mkdir(mode=0o700)
+        self.private_runtime = self.scratch / "runtime"
         self.registry = Registry(self.root, self.capabilities, self.proposals, self.event_types)
+
+    def shell_env(self, **overrides):
+        """Keep shell proofs independent of personal Igor settings and credentials."""
+        sensitive_fragments = ("SECRET", "PASSWORD", "TOKEN", "API_KEY", "CREDENTIAL")
+        env = {
+            key: value for key, value in os.environ.items()
+            if not key.startswith(("IGOR_", "NEXUS_", "OPENROUTER_", "ANTHROPIC_", "OLLAMA_", "XDG_", "PYTHON"))
+            and key not in ("ai_mode", "executive_mode", "BASH_ENV", "ENV")
+            and not key.startswith("BASH_FUNC_")
+            and not any(fragment in key.upper() for fragment in sensitive_fragments)
+        }
+        env.update({
+            "HOME": str(self.private_home),
+            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.environ.get("PATH", ""),
+            "XDG_CONFIG_HOME": str(self.private_home / ".config"),
+            "XDG_DATA_HOME": str(self.private_home / ".local/share"),
+            "IGOR_DIR": str(self.checkout),
+            "IGOR_DATA_DIR": str(self.root),
+            "IGOR_RUNTIME_DIR": str(self.private_runtime),
+        })
+        env.update({key: str(value) for key, value in overrides.items()})
+        return env
+
+    def test_shell_fixture_ignores_personal_configuration_and_environment(self):
+        with patch.dict(os.environ, {"IGOR_DIR": "/unavailable/personal",
+                                     "NEXUS_API_KEY": "fixture-poison",
+                                     "ai_mode": "guide", "BASH_ENV": "/unavailable/startup",
+                                     "PYTHONPATH": "/unavailable/python"}):
+            env = self.shell_env()
+        self.assertNotIn("NEXUS_API_KEY", env)
+        self.assertNotIn("BASH_ENV", env)
+        self.assertNotIn("PYTHONPATH", env)
+        result = subprocess.run(
+            ["bash", "-c", ('source core/lib/config_loader.sh; igor_load_config >/dev/null; '
+                           'printf "%s\\n" "$ai_mode" "$IGOR_DIR"')],
+            cwd=self.checkout, env=env, capture_output=True, text=True, check=True,
+        )
+        self.assertEqual(result.stdout.splitlines(), ["assist", str(self.checkout)])
+        self.assertEqual(list((self.checkout / "secrets").iterdir()), [])
 
     def config(self):
         return {"owner": "user", "proposal_id": "system.host.memory.once", "trigger": copy.deepcopy(TRIGGER)}
@@ -111,9 +175,8 @@ class AutomationRegistryTests(unittest.TestCase):
             [ ! -s "$IGOR_AUTOMATION_EVENT_QUEUE" ]
         """
         run = subprocess.run(
-            ["bash", "-c", script], cwd=ROOT,
-            env={**os.environ, "IGOR_DATA_DIR": str(self.root),
-                 "MARKER": str(marker), "EVENT_JSON": event},
+            ["bash", "-c", script], cwd=self.checkout,
+            env=self.shell_env(MARKER=marker, EVENT_JSON=event),
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(run.returncode, 0, run.stderr + run.stdout)
@@ -183,9 +246,8 @@ class AutomationRegistryTests(unittest.TestCase):
             source core/lib/automation.sh
             igor_automation_run_due Assist
         '''
-        run = subprocess.run(["bash", "-c", script], cwd=ROOT,
-                             env={**os.environ, "IGOR_DATA_DIR": str(self.root),
-                                  "CAPABILITIES_FILE": str(capabilities), "MARKER": str(marker)},
+        run = subprocess.run(["bash", "-c", script], cwd=self.checkout,
+                             env=self.shell_env(CAPABILITIES_FILE=capabilities, MARKER=marker),
                              capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(run.stdout), {"admitted": 0})
         self.assertFalse(marker.exists())
@@ -242,10 +304,9 @@ class AutomationRegistryTests(unittest.TestCase):
             source core/lib/automation.sh
             igor_automation_run_due Assist
         '''
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root),
-               "CAPABILITIES_FILE": str(capabilities), "DISPATCH_MARKER": str(marker),
-               "MODEL_FACTS": facts}
-        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        env = self.shell_env(CAPABILITIES_FILE=capabilities, DISPATCH_MARKER=marker,
+                             MODEL_FACTS=facts)
+        run = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                              capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(run.stdout), {"admitted": 1})
         self.assertEqual(json.loads(marker.read_text()),
@@ -258,7 +319,7 @@ class AutomationRegistryTests(unittest.TestCase):
         trigger = {**CONDITION, "anchor": "2020-01-01T00:00:00Z"}
         row = self.create_condition(trigger)
         self.registry.mutate("enable", row["id"], "operator")
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        env = self.shell_env()
         script = '''
             export IGOR_DIR="$PWD"
             source core/lib/config_loader.sh
@@ -286,7 +347,7 @@ PY
             igor_automation_run_due Assist
             igor_domain_event_recent '{"event_type":"capability.completed"}'
         '''
-        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        run = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                              capture_output=True, text=True, check=True)
         admitted, events = map(json.loads, run.stdout.strip().splitlines())
         self.assertEqual(admitted, {"admitted": 1})
@@ -378,9 +439,9 @@ PY
             exec {held}<&-
             igor_automation_drain_events Assist
         '''
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPABILITIES_FILE": str(capabilities),
-               "DISPATCH_MARKER": str(marker), "EVENT_JSON": event}
-        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        env = self.shell_env(CAPABILITIES_FILE=capabilities, DISPATCH_MARKER=marker,
+                             EVENT_JSON=event)
+        run = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                              capture_output=True, text=True, check=True)
         overlap, admitted = map(json.loads, run.stdout.strip().splitlines())
         self.assertEqual(overlap, {"admitted": 0, "reason": "overlap_skipped"})
@@ -408,8 +469,8 @@ PY
             igor_automation_drain_events Assist
             igor_domain_event_recent '{"event_type":"capability.completed"}'
         '''
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
-        first = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        env = self.shell_env()
+        first = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                                capture_output=True, text=True, check=True)
         admitted, events = map(json.loads, first.stdout.strip().splitlines())
         self.assertEqual(admitted, {"admitted": 1})
@@ -422,7 +483,7 @@ PY
         self.assertEqual(episode["references"]["causation_id"], events[0]["event_id"])
         self.assertEqual(episode["references"]["automation_slot"], state["last_attempt"]["slot"])
         restart = subprocess.run(["bash", "-c", script.split("            ai_execute_tool")[0]
-                                  + "igor_automation_drain_events Assist"], cwd=ROOT, env=env,
+                                  + "igor_automation_drain_events Assist"], cwd=self.checkout, env=env,
                                  capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(restart.stdout), {"admitted": 0})
 
@@ -518,9 +579,8 @@ PY
             }
             igor_automation_run_due Assist
         '''
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPABILITIES_FILE": str(capabilities),
-               "DISPATCH_MARKER": str(marker)}
-        first = subprocess.Popen(["bash", "-c", script], cwd=ROOT,
+        env = self.shell_env(CAPABILITIES_FILE=capabilities, DISPATCH_MARKER=marker)
+        first = subprocess.Popen(["bash", "-c", script], cwd=self.checkout,
                                  env={**env, "AUTOMATION_TICK": "2030-01-01T00:00:00Z"},
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
@@ -528,7 +588,7 @@ PY
             while not marker.exists() and time.monotonic() < deadline:
                 time.sleep(0.05)
             self.assertTrue(marker.exists(), "first dispatch did not start")
-            second = subprocess.run(["bash", "-c", script], cwd=ROOT,
+            second = subprocess.run(["bash", "-c", script], cwd=self.checkout,
                                     env={**env, "AUTOMATION_TICK": "2030-01-01T00:01:00Z"},
                                     capture_output=True, text=True, check=True)
             self.assertEqual(json.loads(second.stdout), {"admitted": 0, "reason": "overlap_skipped"})
@@ -541,7 +601,7 @@ PY
                 first.communicate()
         self.assertEqual(self.registry.inspect(row["id"])["instances"][0]["schedule_cursor"],
                          "2030-01-01T00:00:00Z")
-        third = subprocess.run(["bash", "-c", script], cwd=ROOT,
+        third = subprocess.run(["bash", "-c", script], cwd=self.checkout,
                                env={**env, "AUTOMATION_TICK": "2030-01-01T00:01:00Z"},
                                capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(third.stdout)["admitted"], 1)
@@ -668,10 +728,10 @@ PY
         self.registry.path.write_bytes(original)
 
     def test_cli_fresh_process_no_capability_invocation(self):
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        env = self.shell_env()
         def cli(*args):
             result = subprocess.run(["bash", "igor.sh", "--automations", *args],
-                                    cwd=ROOT, env=env, capture_output=True, text=True, check=True)
+                                    cwd=self.checkout, env=env, capture_output=True, text=True, check=True)
             return json.loads(result.stdout)
 
         created = cli("create", json.dumps(self.config()))
@@ -754,9 +814,9 @@ PY
 
     def test_real_one_time_memory_dispatch_modes_and_restart(self):
         due = {**TRIGGER, "once_at": "2020-01-01T00:00:00Z"}
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        env = self.shell_env()
         def cli(*args):
-            return subprocess.run(["bash", "igor.sh", "--automations", *args], cwd=ROOT,
+            return subprocess.run(["bash", "igor.sh", "--automations", *args], cwd=self.checkout,
                                   env=env, capture_output=True, text=True, check=True)
         created = json.loads(cli("create", json.dumps({"owner": "user", "proposal_id": "system.host.memory.once",
                                                      "trigger": due})).stdout)
@@ -776,7 +836,7 @@ PY
             igor_automation_run_due Assist
             igor_domain_event_recent '{"event_type":"capability.completed"}'
         '''
-        dispatched = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        dispatched = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                                     capture_output=True, text=True, check=True)
         lines = dispatched.stdout.strip().splitlines()
         self.assertEqual(json.loads(lines[0])["admitted"], 1)
@@ -809,7 +869,7 @@ PY
                    "anchor": "2020-01-01T00:00:00Z", "interval_seconds": 86400}
         row = self.create_periodic(trigger)
         self.registry.mutate("enable", row["id"], "operator")
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
+        env = self.shell_env()
         script = '''
             export IGOR_DIR="$PWD"
             source core/lib/config_loader.sh
@@ -822,7 +882,7 @@ PY
             igor_automation_run_due Assist
             igor_domain_event_recent '{"event_type":"capability.completed"}'
         '''
-        first = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        first = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                                capture_output=True, text=True, check=True)
         admitted, events = map(json.loads, first.stdout.strip().splitlines())
         self.assertEqual(admitted["admitted"], 1)
@@ -834,7 +894,7 @@ PY
         self.assertEqual(state["next_due_at"],
                          (datetime.fromisoformat(state["schedule_cursor"].replace("Z", "+00:00"))
                           + timedelta(days=1)).isoformat().replace("+00:00", "Z"))
-        second = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        second = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                                 capture_output=True, text=True, check=True)
         admitted, events = map(json.loads, second.stdout.strip().splitlines())
         self.assertEqual(admitted["admitted"], 0)
@@ -869,9 +929,8 @@ PY
         '''
         capability_file = self.root / "capability.json"
         capability_file.write_text(json.dumps([capability]))
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root), "CAPTURE_FILE": str(capture),
-               "CAPABILITIES_FILE": str(capability_file)}
-        run = subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        env = self.shell_env(CAPTURE_FILE=capture, CAPABILITIES_FILE=capability_file)
+        run = subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                              capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(run.stdout)["admitted"], 1)
         request = json.loads(capture.read_text())
@@ -896,8 +955,8 @@ PY
             _igor_capability_preconditions() { return 1; }
             igor_automation_run_due Assist
         '''
-        env = {**os.environ, "IGOR_DATA_DIR": str(self.root)}
-        subprocess.run(["bash", "-c", script], cwd=ROOT, env=env,
+        env = self.shell_env()
+        subprocess.run(["bash", "-c", script], cwd=self.checkout, env=env,
                        capture_output=True, text=True, check=False)
         attempt = self.registry.inspect(row["id"])["instances"][0]["last_attempt"]
         self.assertEqual(attempt["outcome"], "precondition_failed")

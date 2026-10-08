@@ -1,0 +1,1512 @@
+{
+  "schema_version": 1,
+  "source_revision": "79e6f732ff9ae8223e293fd768a7c7bb2f01b778",
+  "source_archive_sha256": "6cdc67e889cf644b624af1fb466cd66b399a3e333a05187c7a1766b59e8d0136",
+  "baseline_sha256": "e005dcede097017611bcf56df845054538643932519d29bbb35c0aa0c680f1d9",
+  "original": {
+    "source_revision": "79e6f732ff9ae8223e293fd768a7c7bb2f01b778",
+    "wall_seconds": 2900.1388107460225,
+    "child_user_seconds": 2493.978671,
+    "child_system_seconds": 390.850983,
+    "exit_code": 1,
+    "counts": {
+      "PASS": 1802,
+      "FAIL_NEW": 2,
+      "FAIL_BASELINE": 6,
+      "BASELINE_FIXED": 4,
+      "TIMEOUT_NEW": 0,
+      "TIMEOUT_BASELINE": 0,
+      "ENV_SKIP": 2,
+      "TOOL_UNAVAILABLE": 0,
+      "ERROR": 0
+    },
+    "unexercised_baseline": 0,
+    "group_count": 121,
+    "groups": [
+      {
+        "id": "structure",
+        "seconds": 0.0,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:bash",
+        "seconds": 1.268,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:rendering",
+        "seconds": 2.222,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_approval.bats",
+        "seconds": 26.151,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_architecture.bats",
+        "seconds": 2.12,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_context_refresh.bats",
+        "seconds": 1.369,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_control_paths.bats",
+        "seconds": 14.77,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_event_integration.bats",
+        "seconds": 3.376,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_events.bats",
+        "seconds": 2.973,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_host_context.bats",
+        "seconds": 1.369,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_keys.bats",
+        "seconds": 1.374,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_modes.bats",
+        "seconds": 48.861,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_pending_choice.bats",
+        "seconds": 9.963,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_privilege.bats",
+        "seconds": 8.299,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_safety_events.bats",
+        "seconds": 30.23,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_scrub_regressions.bats",
+        "seconds": 0.871,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_transactions.bats",
+        "seconds": 15.734,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_tui_backend.bats",
+        "seconds": 8.964,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_encryption.bats",
+        "seconds": 2.11,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_p2.bats",
+        "seconds": 4.699,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_regressions.bats",
+        "seconds": 9.281,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_config.bats",
+        "seconds": 3.578,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_health_runner.bats",
+        "seconds": 1.368,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_host_runtime_query.bats",
+        "seconds": 0.667,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_mailcmd_unavailable.bats",
+        "seconds": 0.567,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_network_query.bats",
+        "seconds": 0.521,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_platform_helpers.bats",
+        "seconds": 3.476,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_safety.bats",
+        "seconds": 19.25,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_safety_dispatch.bats",
+        "seconds": 67.141,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_scrubbing.bats",
+        "seconds": 26.411,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_ai_composite_catalog.bats",
+        "seconds": 32.058,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_deployment_attachment.bats",
+        "seconds": 78.07,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_domain_event_bus.bats",
+        "seconds": 3.924,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_healing_activation.bats",
+        "seconds": 2.621,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_loader_regressions.bats",
+        "seconds": 4.326,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_cli.bats",
+        "seconds": 0.566,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_conf.bats",
+        "seconds": 1.72,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_contracts.bats",
+        "seconds": 4.327,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_handler.bats",
+        "seconds": 2.973,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_state.bats",
+        "seconds": 4.978,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_v2.bats",
+        "seconds": 75.978,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_operational_history_dispatch.bats",
+        "seconds": 222.732,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_s9_cross_module_reuse.bats",
+        "seconds": 50.863,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_step18_module_composition.bats",
+        "seconds": 91.826,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_step18_module_contract.bats",
+        "seconds": 85.663,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_subsystem_activation.bats",
+        "seconds": 1.218,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_admin_surface.bats",
+        "seconds": 258.67,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_network_read_model.bats",
+        "seconds": 126.386,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_network_wifi_admin.bats",
+        "seconds": 63.492,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_runtime_read_model.bats",
+        "seconds": 59.432,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage.bats",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage_admin.bats",
+        "seconds": 93.33,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage_read_model.bats",
+        "seconds": 63.05,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_wave_d_observation.bats",
+        "seconds": 58.983,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_wave_e_capability_dispatch.bats",
+        "seconds": 72.17,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:integration:tests/integration/test_diagnose_roles.bats",
+        "seconds": 2.723,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:integration:tests/integration/test_healing_patterns.bats",
+        "seconds": 5.881,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/core/test_system_model.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_access.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_account_query.py",
+        "seconds": 0.817,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_architecture.py",
+        "seconds": 2.17,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_ai_interaction_surface.py",
+        "seconds": 4.377,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_ai_interstitial.py",
+        "seconds": 2.371,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_menu_startup.py",
+        "seconds": 26.49,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_operator_backend.py",
+        "seconds": 7.184,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_privilege_pty.py",
+        "seconds": 2.673,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_render.py",
+        "seconds": 1.769,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_session_commands.py",
+        "seconds": 2.822,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_settings_backend.py",
+        "seconds": 3.425,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_transactions.py",
+        "seconds": 10.396,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui.py",
+        "seconds": 1.068,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_colors.py",
+        "seconds": 0.868,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_operator.py",
+        "seconds": 1.018,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_privilege.py",
+        "seconds": 1.068,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_pty.py",
+        "seconds": 1.92,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_settings.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_step7.py",
+        "seconds": 1.118,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_automation_registry.py",
+        "seconds": 145.637,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_baselines.py",
+        "seconds": 3.324,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_capability_runtime.py",
+        "seconds": 4.327,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_configuration.py",
+        "seconds": 28.355,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_context_engine.py",
+        "seconds": 1.268,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_context_routing_integration.py",
+        "seconds": 2.02,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_attachment.py",
+        "seconds": 4.338,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_history.py",
+        "seconds": 1.167,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_inspection.py",
+        "seconds": 4.378,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_prerequisites.py",
+        "seconds": 1.318,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployments.py",
+        "seconds": 5.129,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_docker_module.py",
+        "seconds": 0.817,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_documentation_health.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_domain_event.py",
+        "seconds": 1.368,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_host_runtime_query.py",
+        "seconds": 0.817,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_input_candidates.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_investigation_inspection.py",
+        "seconds": 5.733,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_investigations.py",
+        "seconds": 17.815,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_judgment.py",
+        "seconds": 1.218,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_knowledge_artifacts.py",
+        "seconds": 44.491,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_knowledge_artifacts_integration.py",
+        "seconds": 3.022,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_local_learning.py",
+        "seconds": 412.489,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_local_learning_integration.py",
+        "seconds": 88.609,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_model_roles.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_contract.py",
+        "seconds": 1.519,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_module_inspection.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_registration_timing.py",
+        "seconds": 1.168,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_registry.py",
+        "seconds": 0.918,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_network_query.py",
+        "seconds": 0.967,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_networkmanager_wifi.py",
+        "seconds": 0.968,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_nextcloud_attachment_provider.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operational_history.py",
+        "seconds": 14.456,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operator_cli.py",
+        "seconds": 1.369,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operator_surface.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_secret_refs.py",
+        "seconds": 0.817,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_startup_privilege.py",
+        "seconds": 28.295,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_storage_admin.py",
+        "seconds": 0.818,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_storage_query.py",
+        "seconds": 0.817,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_system_configuration_workflow.py",
+        "seconds": 188.247,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_system_network_surface.py",
+        "seconds": 0.918,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_domains.py",
+        "seconds": 1.119,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_reports.py",
+        "seconds": 4.527,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_results.py",
+        "seconds": 0.867,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_runner.py",
+        "seconds": 6.786,
+        "status": "PASS"
+      }
+    ]
+  },
+  "optimized": {
+    "source_revision": "79e6f732ff9ae8223e293fd768a7c7bb2f01b778",
+    "wall_seconds": 2523.5723798149847,
+    "child_user_seconds": 2821.892333,
+    "child_system_seconds": 414.170308,
+    "exit_code": 1,
+    "counts": {
+      "PASS": 1802,
+      "FAIL_NEW": 2,
+      "FAIL_BASELINE": 6,
+      "BASELINE_FIXED": 4,
+      "TIMEOUT_NEW": 0,
+      "TIMEOUT_BASELINE": 0,
+      "ENV_SKIP": 2,
+      "TOOL_UNAVAILABLE": 0,
+      "ERROR": 0
+    },
+    "unexercised_baseline": 0,
+    "group_count": 120,
+    "groups": [
+      {
+        "id": "structure",
+        "seconds": 0.001,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:bash",
+        "seconds": 1.203,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:rendering",
+        "seconds": 1.837,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_approval.bats",
+        "seconds": 31.608,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_architecture.bats",
+        "seconds": 2.668,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_context_refresh.bats",
+        "seconds": 1.668,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_control_paths.bats",
+        "seconds": 16.053,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_event_integration.bats",
+        "seconds": 4.369,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_events.bats",
+        "seconds": 3.722,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_host_context.bats",
+        "seconds": 1.569,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_keys.bats",
+        "seconds": 1.435,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_modes.bats",
+        "seconds": 36.472,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_pending_choice.bats",
+        "seconds": 11.587,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_privilege.bats",
+        "seconds": 7.413,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_safety_events.bats",
+        "seconds": 31.041,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_scrub_regressions.bats",
+        "seconds": 0.602,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_transactions.bats",
+        "seconds": 17.694,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_ai_tui_backend.bats",
+        "seconds": 8.128,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_encryption.bats",
+        "seconds": 0.972,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_p2.bats",
+        "seconds": 3.806,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_backup_regressions.bats",
+        "seconds": 7.524,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_config.bats",
+        "seconds": 3.725,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_health_runner.bats",
+        "seconds": 1.61,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_host_runtime_query.bats",
+        "seconds": 0.566,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_mailcmd_unavailable.bats",
+        "seconds": 0.566,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_network_query.bats",
+        "seconds": 0.465,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_platform_helpers.bats",
+        "seconds": 3.72,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_safety.bats",
+        "seconds": 22.405,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_safety_dispatch.bats",
+        "seconds": 72.047,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:core:tests/core/test_scrubbing.bats",
+        "seconds": 27.845,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_ai_composite_catalog.bats",
+        "seconds": 39.31,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_deployment_attachment.bats",
+        "seconds": 101.214,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_domain_event_bus.bats",
+        "seconds": 5.379,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_healing_activation.bats",
+        "seconds": 3.269,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_loader_regressions.bats",
+        "seconds": 5.639,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_cli.bats",
+        "seconds": 0.716,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_conf.bats",
+        "seconds": 2.118,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_contracts.bats",
+        "seconds": 5.382,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_handler.bats",
+        "seconds": 3.269,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_state.bats",
+        "seconds": 6.209,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_module_v2.bats",
+        "seconds": 91.816,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_operational_history_dispatch.bats",
+        "seconds": 254.578,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_s9_cross_module_reuse.bats",
+        "seconds": 60.653,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_step18_module_composition.bats",
+        "seconds": 101.589,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_step18_module_contract.bats",
+        "seconds": 93.767,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_subsystem_activation.bats",
+        "seconds": 1.21,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_admin_surface.bats",
+        "seconds": 298.586,
+        "status": "FAIL"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_network_read_model.bats",
+        "seconds": 130.555,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_network_wifi_admin.bats",
+        "seconds": 65.935,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_runtime_read_model.bats",
+        "seconds": 64.083,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage.bats",
+        "seconds": 0.966,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage_admin.bats",
+        "seconds": 115.054,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_system_storage_read_model.bats",
+        "seconds": 71.751,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_wave_d_observation.bats",
+        "seconds": 60.53,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:modules:tests/modules/test_wave_e_capability_dispatch.bats",
+        "seconds": 73.609,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:integration:tests/integration/test_diagnose_roles.bats",
+        "seconds": 2.668,
+        "status": "PASS"
+      },
+      {
+        "id": "canonical:integration:tests/integration/test_healing_patterns.bats",
+        "seconds": 5.573,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/core/test_system_model.py",
+        "seconds": 1.267,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_access.py",
+        "seconds": 0.966,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_account_query.py",
+        "seconds": 0.802,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_architecture.py",
+        "seconds": 2.404,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_ai_interaction_surface.py",
+        "seconds": 4.271,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_ai_interstitial.py",
+        "seconds": 2.317,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_menu_startup.py",
+        "seconds": 27.446,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_operator_backend.py",
+        "seconds": 7.724,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_privilege_pty.py",
+        "seconds": 2.517,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_session_commands.py",
+        "seconds": 2.768,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_settings_backend.py",
+        "seconds": 3.469,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_transactions.py",
+        "seconds": 10.38,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui.py",
+        "seconds": 1.117,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_colors.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_operator.py",
+        "seconds": 1.034,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_privilege.py",
+        "seconds": 1.166,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_pty.py",
+        "seconds": 1.967,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_settings.py",
+        "seconds": 1.034,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_ai_tui_step7.py",
+        "seconds": 1.172,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_automation_registry.py",
+        "seconds": 156.18,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_baselines.py",
+        "seconds": 3.623,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_capability_runtime.py",
+        "seconds": 5.179,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_configuration.py",
+        "seconds": 29.944,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_context_engine.py",
+        "seconds": 1.167,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_context_routing_integration.py",
+        "seconds": 2.405,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_attachment.py",
+        "seconds": 4.922,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_history.py",
+        "seconds": 1.168,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_inspection.py",
+        "seconds": 5.375,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployment_prerequisites.py",
+        "seconds": 1.919,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_deployments.py",
+        "seconds": 6.072,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_docker_module.py",
+        "seconds": 0.966,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_documentation_health.py",
+        "seconds": 0.811,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_domain_event.py",
+        "seconds": 1.717,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_host_runtime_query.py",
+        "seconds": 0.834,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_input_candidates.py",
+        "seconds": 1.067,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_investigation_inspection.py",
+        "seconds": 6.642,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_investigations.py",
+        "seconds": 18.458,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_judgment.py",
+        "seconds": 1.316,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_knowledge_artifacts.py",
+        "seconds": 53.374,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_knowledge_artifacts_integration.py",
+        "seconds": 4.12,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_local_learning.py",
+        "seconds": 494.772,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_local_learning_integration.py",
+        "seconds": 98.445,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_model_roles.py",
+        "seconds": 1.068,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_contract.py",
+        "seconds": 1.968,
+        "status": "FAIL"
+      },
+      {
+        "id": "pytest:tests/test_module_inspection.py",
+        "seconds": 1.167,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_registration_timing.py",
+        "seconds": 1.367,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_module_registry.py",
+        "seconds": 1.002,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_network_query.py",
+        "seconds": 1.002,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_networkmanager_wifi.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_nextcloud_attachment_provider.py",
+        "seconds": 0.916,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operational_history.py",
+        "seconds": 17.229,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operator_cli.py",
+        "seconds": 1.869,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_operator_surface.py",
+        "seconds": 1.166,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_secret_refs.py",
+        "seconds": 0.968,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_startup_privilege.py",
+        "seconds": 30.801,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_storage_admin.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_storage_query.py",
+        "seconds": 0.869,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_system_configuration_workflow.py",
+        "seconds": 215.67,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_system_network_surface.py",
+        "seconds": 0.917,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_domains.py",
+        "seconds": 1.003,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_reports.py",
+        "seconds": 4.721,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_results.py",
+        "seconds": 0.916,
+        "status": "PASS"
+      },
+      {
+        "id": "pytest:tests/test_validation_runner.py",
+        "seconds": 6.733,
+        "status": "PASS"
+      }
+    ]
+  },
+  "optimized_original_counts": {
+    "PASS": 1802,
+    "FAIL_NEW": 2,
+    "FAIL_BASELINE": 6,
+    "BASELINE_FIXED": 4,
+    "TIMEOUT_NEW": 0,
+    "TIMEOUT_BASELINE": 0,
+    "ENV_SKIP": 0,
+    "TOOL_UNAVAILABLE": 0,
+    "ERROR": 2
+  },
+  "diagnostic_reparse": {
+    "reason": "timing preceding BATS skip directive; no execution or timing changes",
+    "adapter_sha256": "b84299aeb2f53c37c7a613fd9af02b6c9b6782d58e213d6f870a4a8d5a309693",
+    "original_summary_sha256": "56f0f7af6c377ba608266f8002890519be9ee136a355da092e52158b2b85a359"
+  },
+  "coverage": {
+    "pytest_native_nodes": 892,
+    "pytest_native_nodes_equal": true,
+    "bats_identities": 623,
+    "bats_identities_equal": true,
+    "removed_groups": [
+      "pytest:tests/test_ai_render.py"
+    ],
+    "added_groups": [],
+    "original_raw_identities": 1816,
+    "optimized_raw_identities": 1816,
+    "passing_subtest_counts_per_parent_equal": true,
+    "exact_baseline_outcomes_equal": true
+  },
+  "raw_identity_changes": {
+    "removed": [
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_export_restore_same_installation_is_idempotent_and_conflicts_refused::subtest[{\"msg\":null,\"params\":{\"altered\":{\"contract\":\"igor.investigations.export\",\"investigations\":[],\"scope_id\":\"scope:2ff4a2a6239740a5b6e845fa8958ab50\",\"version\":2}}}]",
+        "classification": "PASS"
+      },
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_unknown_corrupt_duplicate_and_nonfinite_store_fail_closed_untouched::subtest[{\"msg\":null,\"params\":{\"text\":\"{\\\"contract\\\": \\\"igor.investigations.store\\\", \\\"investigations\\\": [{\\\"closure_reason\\\": null, \\\"contract\\\": \\\"igor.investigation...: [], \\\"unresolved_questions\\\": [], \\\"version\\\": 2}], \\\"scope_id\\\": \\\"scope:0ac5c838091d4d2990fe01fed1f55295\\\", \\\"version\\\": 99}\"}}]",
+        "classification": "PASS"
+      },
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_unknown_corrupt_duplicate_and_nonfinite_store_fail_closed_untouched::subtest[{\"msg\":null,\"params\":{\"text\":\"{\\\"contract\\\": \\\"igor.investigations.store\\\", \\\"investigations\\\": [{\\\"closure_reason\\\": null, \\\"contract\\\": \\\"igor.investigation...: [], \\\"unresolved_questions\\\": [], \\\"version\\\": 99}], \\\"scope_id\\\": \\\"scope:0ac5c838091d4d2990fe01fed1f55295\\\", \\\"version\\\": 2}\"}}]",
+        "classification": "PASS"
+      }
+    ],
+    "added": [
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_export_restore_same_installation_is_idempotent_and_conflicts_refused::subtest[{\"msg\":null,\"params\":{\"altered\":{\"contract\":\"igor.investigations.export\",\"investigations\":[],\"scope_id\":\"scope:621e5d56c3644c09a238c714a4e9550f\",\"version\":2}}}]",
+        "classification": "PASS"
+      },
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_unknown_corrupt_duplicate_and_nonfinite_store_fail_closed_untouched::subtest[{\"msg\":null,\"params\":{\"text\":\"{\\\"contract\\\": \\\"igor.investigations.store\\\", \\\"investigations\\\": [{\\\"closure_reason\\\": null, \\\"contract\\\": \\\"igor.investigation...: [], \\\"unresolved_questions\\\": [], \\\"version\\\": 2}], \\\"scope_id\\\": \\\"scope:62337e9268704f5e8890a94aee248169\\\", \\\"version\\\": 99}\"}}]",
+        "classification": "PASS"
+      },
+      {
+        "suite": "pytest",
+        "identity": "tests/test_investigations.py::InvestigationTests::test_unknown_corrupt_duplicate_and_nonfinite_store_fail_closed_untouched::subtest[{\"msg\":null,\"params\":{\"text\":\"{\\\"contract\\\": \\\"igor.investigations.store\\\", \\\"investigations\\\": [{\\\"closure_reason\\\": null, \\\"contract\\\": \\\"igor.investigation...: [], \\\"unresolved_questions\\\": [], \\\"version\\\": 99}], \\\"scope_id\\\": \\\"scope:62337e9268704f5e8890a94aee248169\\\", \\\"version\\\": 2}\"}}]",
+        "classification": "PASS"
+      }
+    ],
+    "classifications_changed": []
+  },
+  "original_nonpassing": [
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_architecture.bats::AI architecture Python boundary tests pass",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_events.bats::events have stable envelope fields and preserve order",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_backup_regressions.bats::encrypted secrets snapshot contains only the GPG payload",
+      "classification": "ENV_SKIP"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_scrubbing.bats::scrub_outbound replaces LAN IP with [IGOR:LAN_IP]",
+      "classification": "ENV_SKIP"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_step18_module_contract.bats::static CLI never initializes runtime or migrates omitted system policy",
+      "classification": "FAIL_NEW"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_step18_module_contract.bats::v2 privileged declarations remain unavailable without typed Core adapter",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::system administration contracts project into the generic operator namespace",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::package upgrade freezes distro-specific argv and verifies the Debian result",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_architecture.py::AiArchitectureTests::test_cli_status_tools_and_last_without_api_key_or_active_modules",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_interaction_surface.py::InspectionAuthorityTests::test_typed_invoke_is_operator_activity_not_conversation",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_module_contract.py::ModuleContractTests::test_system_package_reproduces_from_tracked_content_and_declared_asset",
+      "classification": "FAIL_NEW"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_operator_surface.py::OperatorSurfaceTests::test_surface_projects_existing_contracts_without_execution_data",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"s\"}}]",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"f\"}}]",
+      "classification": "BASELINE_FIXED"
+    }
+  ],
+  "optimized_nonpassing": [
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_architecture.bats::AI architecture Python boundary tests pass",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_ai_events.bats::events have stable envelope fields and preserve order",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_backup_regressions.bats::encrypted secrets snapshot contains only the GPG payload",
+      "classification": "ENV_SKIP"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/core/test_scrubbing.bats::scrub_outbound replaces LAN IP with [IGOR:LAN_IP]",
+      "classification": "ENV_SKIP"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_step18_module_contract.bats::static CLI never initializes runtime or migrates omitted system policy",
+      "classification": "FAIL_NEW"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_step18_module_contract.bats::v2 privileged declarations remain unavailable without typed Core adapter",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::system administration contracts project into the generic operator namespace",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "bats",
+      "identity": "tests/modules/test_system_admin_surface.bats::package upgrade freezes distro-specific argv and verifies the Debian result",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_architecture.py::AiArchitectureTests::test_cli_status_tools_and_last_without_api_key_or_active_modules",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_ai_interaction_surface.py::InspectionAuthorityTests::test_typed_invoke_is_operator_activity_not_conversation",
+      "classification": "FAIL_BASELINE"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_module_contract.py::ModuleContractTests::test_system_package_reproduces_from_tracked_content_and_declared_asset",
+      "classification": "FAIL_NEW"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_operator_surface.py::OperatorSurfaceTests::test_surface_projects_existing_contracts_without_execution_data",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"s\"}}]",
+      "classification": "BASELINE_FIXED"
+    },
+    {
+      "suite": "pytest",
+      "identity": "tests/test_startup_privilege.py::StartupPrivilegeTests::test_start_and_fast_enter_after_normal_user_startup::subtest[{\"msg\":null,\"params\":{\"choice\":\"f\"}}]",
+      "classification": "BASELINE_FIXED"
+    }
+  ],
+  "environment": {
+    "python": "3.14.7",
+    "pytest": "9.1.1",
+    "bats": "1.13.0",
+    "logical_cpus": 8,
+    "host_cpu": "Intel i7-1065G7",
+    "temporary_filesystem": "tmpfs",
+    "workers": {
+      "original": 1,
+      "optimized": 2
+    },
+    "completed_full_runs_per_runner": 1,
+    "excluded_interrupted_attempts": 1
+  },
+  "focused_validation": {
+    "affected": {
+      "PASS": 123,
+      "exit_code": 0
+    },
+    "recovery": {
+      "PASS": 124,
+      "FAIL_BASELINE": 1,
+      "exit_code": 0
+    },
+    "final_selftests": {
+      "passed": 68,
+      "signal_subtests": 2,
+      "suites": [
+        "runner",
+        "reports",
+        "domains",
+        "baseline_results"
+      ]
+    }
+  },
+  "lint": {
+    "base_diagnostics": 137,
+    "final_diagnostics": 136,
+    "introduced": 0
+  },
+  "post_benchmark_selection_correction": {
+    "condition": "checkout-local initial checkpoint incorrectly became a changed input",
+    "fix": "capture changed-file selection before first evidence write",
+    "regression_test": "test_repository_checkpoint_does_not_expand_affected_selection",
+    "benchmark_effect": "none; controlled changed-file provider returns a fixed empty list"
+  }
+}

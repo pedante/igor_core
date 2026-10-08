@@ -23,6 +23,10 @@ def pytest_runtest_logfinish(nodeid, location):
     emit({"event": "finish", "identity": nodeid})
 
 
+def pytest_collection_finish(session):
+    emit({"event": "collection", "identities": [item.nodeid for item in session.items]})
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
@@ -31,6 +35,8 @@ def pytest_runtest_makereport(item, call):
 
 
 def pytest_runtest_logreport(report):
+    emit({"event": "duration", "identity": report.nodeid, "phase": report.when,
+          "elapsed_seconds": report.duration})
     if report.when != "call" and not (report.failed or report.skipped):
         return
     identity = report.nodeid
@@ -51,6 +57,7 @@ def pytest_runtest_logreport(report):
             # suffix or turn a healthy negative-input test into a runner error.
             emit({"event": "result", "identity": identity,
                   "status": "PASS" if report.passed else "ERROR",
+                  "elapsed_seconds": report.duration,
                   "detail": "Subtest parameters are not stable JSON values; reported under parent node"})
             return
         identity += f"::subtest[{suffix}]"
@@ -60,7 +67,7 @@ def pytest_runtest_logreport(report):
     elif report.skipped:
         status = "SKIP"
     record = {"event": "result", "identity": identity, "status": status,
-              "phase": report.when}
+              "phase": report.when, "elapsed_seconds": report.duration}
     if report.failed:
         record["detail"] = str(report.longrepr)
     if report.skipped:

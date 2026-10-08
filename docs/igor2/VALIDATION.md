@@ -24,8 +24,8 @@ release freeze
 
 ```bash
 tests/validate.sh focused --base igor2 --test tests/test_capability_runtime.py
-tests/validate.sh affected --base igor2
-tests/validate.sh full --base igor2
+tests/validate.sh affected --base igor2 --jobs 2
+tests/validate.sh full --base igor2 --jobs 2
 ```
 
 Choose a local comparison ref appropriate to the branch. `--base` defaults to
@@ -78,8 +78,9 @@ or legacy tests. The mapping is a small reviewed list, not a dependency graph.
 `full` is the explicit expensive release/integration gate. It preserves the
 existing [run_all.sh](../../tests/run_all.sh) canonical legacy Bash, rendering,
 Core BATS, module BATS and integration BATS groups, and adds **every**
-`tests/**/test_*.py` file, including nested Python suites. Rendering therefore
-also appears in complete Python discovery; counts deduplicate identities.
+`tests/**/test_*.py` file, including nested Python suites. Counts deduplicate
+identities. The canonical rendering invocation supplies that coverage once; complete
+Python discovery excludes this already scheduled file.
 Missing/empty canonical directories fail closed. Focused/affected never
 schedule full automatically. Run full once after stabilization; rerun only
 when a concrete correction makes release evidence ambiguous. This is not a
@@ -87,15 +88,44 @@ promise that existing product suites pass.
 
 ## Tools, bounds and evidence
 
-Install Python with pytest 9.x (native subtest reports), Ruff, ShellCheck and
-BATS 1.13.0. Tool executables can be selected with `--python`, `--ruff`,
+Use an existing virtual environment, or create the ignored `.venv` with
+`python3 -m venv .venv` and `source .venv/bin/activate`. Install the pinned
+Python tools with `python -m pip install -r tests/validation-requirements.txt`, plus ShellCheck,
+ripgrep and BATS 1.13.0 (`npm install -g bats@1.13.0`). The pins match the
+historical reference run; upgrades are explicit reviewed changes.
+Tool executables can be selected with `--python`, `--ruff`,
 `--shellcheck` and `--bats`; `IGOR_VALIDATE_PYTHON` selects the launcher Python.
 Missing required tooling is `TOOL_UNAVAILABLE` and nonzero, never a passing
 skip. Tests whose fixtures mock Docker/systemd continue to run regardless of
 host availability.
 
 Each test file runs in its own process session, with output written directly
-to a log. Default outer bounds are 600 seconds per file and 1200 seconds for
+to a log. `--jobs 1` is the default and preserves plan-order execution.
+`--jobs 2` overlaps reviewed private-state Python service and BATS files with
+one serial lane for every other group. Structural, lint, syntax and module
+contract preflight finish before concurrent behavior tests begin. New tests
+remain serial until their fixtures have been reviewed. The reviewed list lives
+in the existing runner, with Local Learning dispatched first because it is the
+measured longest isolated group; final results retain deterministic plan order.
+More workers do not enable concurrent host-facing or unreviewed groups.
+The five reviewed BATS files retain whole-file serial test execution, private
+fixtures and mocked host executables; their source chains do not reach shared
+loader/configuration scratch files. Approval, privilege, scrubbing and filesystem
+assertions remain intact. Changes to those fixtures or source chains require
+rechecking their parallel eligibility.
+
+Every group gets private HOME, TMPDIR, XDG, Igor data/runtime and pytest
+temporary/cache paths. Ambient Igor/provider settings, Python/pytest options,
+shell startup hooks and credential-like environment variables are removed.
+Pytest plugin autoload is disabled; the runner loads its reporting adapter
+explicitly. Tests set their own synthetic credentials and approval modes.
+These controls isolate fixtures; they are not a security sandbox for arbitrary
+test code. Code paths with fixed `/tmp` diagnostics remain in the serial lane.
+The Automation Registry fixture additionally supplies private configuration
+and an empty secrets directory, so ignored personal settings cannot select its
+approval mode. Native test processes still execute real safety policy.
+
+Default outer bounds are 600 seconds per file and 1200 seconds for
 the System configuration and administration vertical slices (`--group-timeout`, `--slow-timeout`).
 Those process-group bounds are the default timeout authority for BATS as well as
 Python. BATS' native `BATS_TEST_TIMEOUT` watchdog is **disabled by default**;
@@ -126,6 +156,28 @@ references, classified test results, counts, unexercised baseline entries and
 exit code. Counts combine unique test identities and structural/tool groups,
 not just test cases. Raw group failures remain visible even if accepted by the
 baseline. Human output shows classifications, identities and evidence paths.
+
+Changed-file selection is captured before the first evidence write, so a new
+checkout-local output directory cannot broaden its own plan. Existing untracked
+files retain their normal selection semantics.
+
+The summary is atomically checkpointed after planning, dispatch, completion
+and each heartbeat (`--progress-interval`, default 15 seconds, maximum 30).
+`run_state`, the complete plan, active groups and pending groups distinguish
+partial evidence from a completed run. Running, fail-fast incomplete and
+interrupted evidence always has a nonzero exit code. SIGINT/SIGTERM stop
+dispatch, cancel active process groups and preserve completed test results,
+native logs and partial reports. SIGKILL cannot run cleanup; the last atomic
+checkpoint and logs remain explicitly unfinished, never a passing gate.
+Checkpoints support diagnosis, not resuming or caching passing results.
+
+Pytest reports a collection manifest and setup/call/teardown durations;
+missing execution/result evidence for a collected node fails closed. Valid
+completed records survive a malformed or truncated later JSONL record, with
+an explicit ERROR. BATS native durations are retained separately from stable
+identities. `slow_groups` and `slow_tests` contain the twenty longest entries;
+the console shows five. Run-wide child user/system CPU is recorded, without
+misattributing concurrent CPU use to individual groups.
 
 ### BATS watchdog economics
 
@@ -223,6 +275,16 @@ Manual `workflow_dispatch` also selects focused/affected/full validation and a
 comparison ref; full is an explicit operator choice. Logs and JSON are uploaded
 even on failure. A first-ever branch push with no valid prior SHA needs a manual
 comparison ref.
+
+CI uses the same `--jobs 2` scheduling and result adapter as local validation.
+Python downloads are cached against the pinned requirements; BATS downloads
+use an npm cache keyed by version. BATS installs into the runner's temporary
+tool prefix without sudo. Existing ShellCheck/ripgrep are reused; apt refresh
+and installation run only for missing tools. Cache hits never replace test
+execution or change the baseline policy.
+
+Measured optimization evidence and rejected alternatives are recorded in
+[VALIDATION_PERFORMANCE.md](VALIDATION_PERFORMANCE.md).
 
 Local Markdown validation checks inline file links, not anchors, external URLs
 or reference-style links. YAML workflow parsing/review is separate. Per-file

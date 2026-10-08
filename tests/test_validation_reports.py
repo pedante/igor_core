@@ -80,7 +80,7 @@ class TestValues(unittest.TestCase):
     def test_bats_timing_failure_timeout_skip_names_are_stable(self):
         log = self.root / "bats.log"
         log.write_text("1..4\nok 1 passing in 42ms\nnot ok 2 assertion in 8ms\n"
-                       "not ok 3 slow # timeout after 180s\nok 4 optional # skip missing prerequisite\n")
+                       "not ok 3 slow in 180000ms # timeout after 180s\nok 4 optional in 136ms # skip missing prerequisite\n")
         group = {"id": "bats:fixture", "kind": "bats", "files": ["tests/fixture.bats"],
                  "log": str(log), "status": "FAIL", "returncode": 1}
         results = bats_observations(group)
@@ -88,6 +88,58 @@ class TestValues(unittest.TestCase):
                          ["tests/fixture.bats::passing", "tests/fixture.bats::assertion",
                           "tests/fixture.bats::slow", "tests/fixture.bats::optional"])
         self.assertEqual([row["status"] for row in results], ["PASS", "FAIL", "TIMEOUT", "SKIP"])
+        self.assertEqual([row.get("elapsed_seconds") for row in results], [0.042, 0.008, 180.0, 0.136])
+        self.assertEqual(compare_results(results, [], {
+            ("bats", "tests/fixture.bats::optional"): {"missing prerequisite"},
+        })["counts"]["ENV_SKIP"], 1)
+
+    def test_truncated_report_retains_completed_results_and_fails_closed(self):
+        report = self.root / "pytest.jsonl"
+        identity = "tests/test_fixture.py::test_complete"
+        records = [{"event": "collection", "identities": [identity]},
+                   {"event": "start", "identity": identity},
+                   {"event": "result", "identity": identity, "status": "PASS"},
+                   {"event": "finish", "identity": identity}]
+        report.write_text("".join(json.dumps(record) + "\n" for record in records) + '{"event":')
+        group = {"id": "fixture", "log": "fixture.log", "status": "ERROR", "returncode": None}
+        results = pytest_observations(group, report, require_collection=True)
+        self.assertEqual(results[0]["identity"], identity)
+        self.assertEqual(results[0]["status"], "PASS")
+        self.assertIn("Invalid pytest report line", results[1]["detail"])
+        self.assertEqual(compare_results(results, [], {})["exit_code"], 1)
+
+    def test_collection_manifest_catches_missing_nodes_and_missing_results(self):
+        report = self.root / "pytest.jsonl"
+        first, missing = "tests/test_fixture.py::test_first", "tests/test_fixture.py::test_missing"
+        group = {"id": "fixture", "log": "fixture.log", "status": "PASS", "returncode": 0}
+        records = [{"event": "collection", "identities": [first, missing]},
+                   {"event": "start", "identity": first},
+                   {"event": "result", "identity": first, "status": "PASS"},
+                   {"event": "finish", "identity": first}]
+        for finish_missing in (False, True):
+            current = records + ([{"event": "finish", "identity": missing}] if finish_missing else [])
+            report.write_text("".join(json.dumps(record) + "\n" for record in current))
+            results = pytest_observations(group, report, require_collection=True)
+            self.assertEqual(results[0]["status"], "PASS")
+            self.assertTrue(any(row["status"] == "ERROR" for row in results))
+            self.assertEqual(compare_results(results, [], {})["exit_code"], 1)
+
+    def test_phase_durations_are_retained_without_changing_identity(self):
+        report = self.root / "pytest.jsonl"
+        identity = "tests/test_fixture.py::test_first"
+        records = [{"event": "collection", "identities": [identity]},
+                   {"event": "start", "identity": identity},
+                   *[{"event": "duration", "identity": identity, "phase": phase, "elapsed_seconds": duration}
+                     for phase, duration in (("setup", .1), ("call", .2), ("teardown", .3))],
+                   {"event": "result", "identity": identity, "status": "PASS"},
+                   {"event": "finish", "identity": identity}]
+        report.write_text("".join(json.dumps(record) + "\n" for record in records))
+        group = {"id": "fixture", "log": "fixture.log", "status": "PASS", "returncode": 0}
+        results = pytest_observations(group, report, require_collection=True)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["identity"], identity)
+        self.assertEqual(results[0]["elapsed_seconds"], .6)
+        self.assertEqual(results[0]["phase_seconds"], {"setup": .1, "call": .2, "teardown": .3})
 
     def test_incomplete_or_duplicate_reports_fail_closed(self):
         log = self.root / "bats.log"
