@@ -25,6 +25,10 @@ contracts:
   separately before its configuration or stack mutations. `docker.install`
   continues to promise Engine setup only.
 
+The Boundary A recommendations accepted under [D069](DECISIONS.md) remain in
+force. This corrective slice does not advance the separate Ownership Foundation
+implementation.
+
 The focused classic fixture exercises real System/Docker declarations and
 canonical dispatch with mocked host commands: declined approval performs no
 host/setup mutation and preserves existing credentials. Readiness, unavailable
