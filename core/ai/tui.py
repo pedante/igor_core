@@ -2498,9 +2498,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
         dirty = inspection.poll() or dirty or bool(events)
         if investigations is not None:
             dirty = investigations.poll() or dirty
-        for reader in (modules, health, deployments):
-            if reader is not None:
-                dirty = reader.poll() or dirty
+        for inspector in (modules, health, deployments):
+            if inspector is not None:
+                dirty = inspector.poll() or dirty
         try:
             raw = os.read(master, 4096)
             if not raw:
@@ -2569,9 +2569,9 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.preserve_view(after_count - before_count, maximum)
                 if not focus.panel_open:
                     inspection.close()
-                    for reader in (investigations, modules, health, deployments):
-                        if reader is not None:
-                            reader.close()
+                    for inspector in (investigations, modules, health, deployments):
+                        if inspector is not None:
+                            inspector.close()
             continue
         if focus.region == "panel":
             sections = panel_sections(

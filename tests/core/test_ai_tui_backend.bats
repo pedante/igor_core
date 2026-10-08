@@ -23,7 +23,7 @@ teardown() {
     run bash "$REPO_DIR/igor.sh" --ai-tui
     [ "$status" -eq 2 ]
     [[ "$output" == *"needs an interactive terminal"* ]]
-    [[ "$output" == *"bash igor.sh for the classic UI"* ]]
+    [[ "$output" == *"bash igor.sh --classic for the classic UI"* ]]
 }
 
 @test "TUI backend skips the classic preflight and preserves its event stream" {

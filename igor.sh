@@ -39,8 +39,16 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         export IGOR_FORCE_CLASSIC_UI=true
         shift
     fi
-    # shellcheck source=core/lib/operator_cli.sh
-    source "${IGOR_DIR}/core/lib/operator_cli.sh"
+    # Old pre-startup flags remain usable in minimal recovery/test installs.
+    # The new public command router is needed only for the new CLI/TUI surface.
+    if [ -f "${IGOR_DIR}/core/lib/operator_cli.sh" ]; then
+        # shellcheck source=core/lib/operator_cli.sh
+        source "${IGOR_DIR}/core/lib/operator_cli.sh"
+    elif [[ "${1:-}" != --* ]]; then
+        printf 'Igor operator CLI router is unavailable. Restore core/lib/operator_cli.sh.\n' >&2
+        exit 2
+    fi
+    if declare -f igor_operator_cli_normalize >/dev/null 2>&1; then
     _igor_stdin_tty=false; _igor_stdout_tty=false
     [ -t 0 ] && _igor_stdin_tty=true
     [ -t 1 ] && _igor_stdout_tty=true
@@ -61,6 +69,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
         set -- "${_IGOR_OPERATOR_ARGS[@]}"
     fi
     unset _IGOR_OPERATOR_ARGS _igor_stdin_tty _igor_stdout_tty
+    fi
 fi
 
 # ── Directory layout exports ────────────────────────────────────────────────────────
