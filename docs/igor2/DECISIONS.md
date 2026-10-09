@@ -1128,6 +1128,27 @@ The first S9 proof is Nextcloud Docker runtime readiness: replace its direct
 Docker service enable/start fallback with canonical `docker.install`, which
 already composes System package/service capabilities.
 
+### D077 — Resource recognition first proves a private, read-only two-domain seam (Gate A)
+
+Accepted by the Project Owner on 2026-10-10: R1 and R2 in
+[RESOURCE_RECOGNITION_GATE_A.md](RESOURCE_RECOGNITION_GATE_A.md).
+
+Start with a **private stateless Core validation/coordination seam** supplied by
+reviewed, active, read-only domain adapters. No public Module API v2
+`kind=recognizer`, separate plugin runtime, inventory database, deployment
+identity, stored desired state or automatic authority is introduced. Existing
+Nextcloud attachment/discovery and its frozen deployment proposal retain their
+current semantics. A first second-domain proof will use exact-source **Samba
+share** interpretation in view-only mode; it grants no configuration or
+management responsibility.
+
+**Implementation authorization is limited to A1**: strict internal candidate
+normalization, explicitly trusted injected provider eligibility, bounded
+zero/one/many status and read-only tests. The Nextcloud/Samba adapters (A2) and
+shared CLI/TUI projection (A3) require a later explicit continuation after A1
+stops and reports evidence. No real Nextcloud application gate, Step 19 Boundary
+3, provisioning, system scan or Module API public extension is authorized.
+
 ## Open decisions
 
 ### Q019 — Initial S8 hardware/runtime identity
