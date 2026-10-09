@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -72,7 +71,7 @@ class StartupPrivilegeTests(unittest.TestCase):
                    "HOME": str(work / "home")}
             result = subprocess.run(
                 ["bash", str(work / "igor.sh")], input=input_text, text=True,
-                capture_output=True, env=env, timeout=20,
+                capture_output=True, env=env, timeout=20, check=False,
             )
             runtime = work / "data" / "runtime"
             state = runtime / "state.env"
@@ -141,7 +140,7 @@ IGOR_DISTRO_FAMILY=arch
 pkg_install vlc
 '''
         result = subprocess.run(["bash", "-c", script], cwd=ROOT,
-                                capture_output=True, text=True, timeout=10)
+                                capture_output=True, text=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0)
         self.assertIn("sudo pacman -S --noconfirm vlc", result.stdout)
 
@@ -161,7 +160,7 @@ mkdir -m 700 "$IGOR_RUNTIME_DIR"
 igor_detect_profile
 '''
             result = subprocess.run(["bash", "-c", script], env=env,
-                                    capture_output=True, text=True, timeout=10)
+                                    capture_output=True, text=True, timeout=10, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"path={runtime}/system_profile.json", result.stdout)
             cache = runtime / "system_profile.json"
@@ -179,7 +178,7 @@ _nc_check_http() { printf '200'; }
 nextcloud_docker__status_line
 '''
         result = subprocess.run(["bash", "-c", script], cwd=ROOT,
-                                capture_output=True, text=True, timeout=10)
+                                capture_output=True, text=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0)
         self.assertNotIn("sudo-called", result.stdout)
         self.assertIn("CONNECTED", result.stdout)
@@ -201,7 +200,7 @@ run_check
                 result = subprocess.run(
                     ["bash", "-c", script], cwd=ROOT,
                     env={**os.environ, "TEST_SERVICE_STATE": service_state},
-                    capture_output=True, text=True, timeout=10,
+                    capture_output=True, text=True, timeout=10, check=False,
                 )
                 self.assertEqual(result.returncode, 0)
                 self.assertNotIn("sudo-called", result.stdout)
@@ -218,7 +217,7 @@ igor_run_all_hooks status_line
 '''
         result = subprocess.run(["bash", "-c", script], cwd=ROOT,
                                 input="menu choice\n", capture_output=True,
-                                text=True, timeout=10)
+                                text=True, timeout=10, check=False)
         self.assertEqual(result.returncode, 0)
         self.assertIn("first", result.stdout)
         self.assertIn("second", result.stdout)
