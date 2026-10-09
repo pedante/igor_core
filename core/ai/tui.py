@@ -45,6 +45,7 @@ from interaction import (
     render_structured,
 )
 from operator_surface import children as operator_children
+from recognition_view import RecognitionViewError, text_lines as recognition_text_lines
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BACKEND = ("bash", str(REPO_ROOT / "igor.sh"), "--ai-tui-backend")
@@ -1013,11 +1014,23 @@ class DeploymentInspection(HistoryInspection):
     command = ("--deployments", "list")
 
 
+class RecognitionInspection(HistoryInspection):
+    """Read-only recognition snapshot view, via the same CLI projection.
+
+    The provider binder is intentionally not live in A3. An unavailable state
+    is explicit until a reviewed provider supplies a trusted A1 snapshot.
+    """
+
+    label = "Recognition"
+    command = ("--json", "recognition", "status")
+
+
 def panel_sections(state: EventState, inspection: HistoryInspection,
                    investigations: InvestigationInspection | None = None,
                    modules: ModuleInspection | None = None,
                    health: HealthInspection | None = None,
-                   deployments: DeploymentInspection | None = None) -> list[dict[str, Any]]:
+                   deployments: DeploymentInspection | None = None,
+                   recognition: RecognitionInspection | None = None) -> list[dict[str, Any]]:
     """Reusable section data, projected from backend-owned interfaces only."""
     sections = [
         {"id": "session", "label": "Session", "source": "frontend event stream",
@@ -1053,6 +1066,10 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
         sections.append({"id": "deployments", "label": "Deployments",
                          "source": "--deployments list", "data": deployments.data,
                          "hint": deployments.status})
+    if recognition is not None:
+        sections.append({"id": "recognition", "label": "Recognition",
+                         "source": "--json recognition status / reviewed A1 snapshot",
+                         "data": recognition.data, "hint": recognition.status})
     snapshot = state.operator_snapshot if isinstance(state.operator_snapshot, dict) else {}
     entries = snapshot.get("entries") if isinstance(snapshot.get("entries"), list) else []
     sections.append({"id": "capabilities", "label": "Capabilities",
@@ -1078,8 +1095,14 @@ def panel_rows(section: dict[str, Any]) -> list[str]:
     if not isinstance(section, dict):
         return ["Invalid inspection section"]
     rows = ["Source: " + display_text(section.get("source", "unavailable"))]
-    rows.extend(render_properties(section["properties"]) if "properties" in section
-                else render_structured(section.get("data")))
+    if section.get("id") == "recognition" and isinstance(section.get("data"), dict):
+        try:
+            rows.extend(recognition_text_lines(section["data"]))
+        except (RecognitionViewError, KeyError, TypeError):
+            rows.append("Recognition view unavailable/invalid response")
+    else:
+        rows.extend(render_properties(section["properties"]) if "properties" in section
+                    else render_structured(section.get("data")))
     if section.get("hint"):
         rows.append(display_text(section["hint"]))
     return rows
@@ -2439,13 +2462,14 @@ def _loop(screen: Any, pid: int, master: int, path: Path,
     modules = ModuleInspection()
     health = HealthInspection()
     deployments = DeploymentInspection()
+    recognition = RecognitionInspection()
     try:
         return _interaction_loop(
             screen, pid, master, path, state, inspection, investigations,
-            modules, health, deployments,
+            modules, health, deployments, recognition,
         )
     finally:
-        for reader in (inspection, investigations, modules, health, deployments):
+        for reader in (inspection, investigations, modules, health, deployments, recognition):
             reader.close()
 
 
@@ -2473,7 +2497,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                       investigations: InvestigationInspection | None = None,
                       modules: ModuleInspection | None = None,
                       health: HealthInspection | None = None,
-                      deployments: DeploymentInspection | None = None) -> int:
+                      deployments: DeploymentInspection | None = None,
+                      recognition: RecognitionInspection | None = None) -> int:
     screen.keypad(True)
     screen.timeout(100)
     state, buffer = state or EventState(), InputBuffer()
@@ -2498,7 +2523,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
         dirty = inspection.poll() or dirty or bool(events)
         if investigations is not None:
             dirty = investigations.poll() or dirty
-        for inspector in (modules, health, deployments):
+        for inspector in (modules, health, deployments, recognition):
             if inspector is not None:
                 dirty = inspector.poll() or dirty
         try:
@@ -2521,7 +2546,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 return _child_exit_code(pid, True) or 0
             raise
         if dirty:
-            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations, modules, health, deployments))
+            _draw(screen, state, buffer, navigator, focus, panel_sections(state, inspection, investigations, modules, health, deployments, recognition))
             dirty = False
         key = _next_key(screen)
         if key == -1:
@@ -2569,13 +2594,13 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 navigator.preserve_view(after_count - before_count, maximum)
                 if not focus.panel_open:
                     inspection.close()
-                    for inspector in (investigations, modules, health, deployments):
+                    for inspector in (investigations, modules, health, deployments, recognition):
                         if inspector is not None:
                             inspector.close()
             continue
         if focus.region == "panel":
             sections = panel_sections(
-                state, inspection, investigations, modules, health, deployments
+                state, inspection, investigations, modules, health, deployments, recognition
             )
             if key == curses.KEY_UP:
                 focus.select(-1, len(sections))
@@ -2605,6 +2630,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                     health.start()
                 elif section_id == "deployments" and deployments is not None:
                     deployments.start()
+                elif section_id == "recognition" and recognition is not None:
+                    recognition.start()
                 elif section_id == "properties" and not state.pending_action:
                     _settings_overlay(screen, master, reader, state)
                     focus.set_focus("input")
