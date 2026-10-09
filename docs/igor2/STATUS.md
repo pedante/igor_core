@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 ## How to read this file
 
@@ -9,6 +9,25 @@ sections are retained as scoped implementation/validation evidence and are not a
 linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
+
+## Resource Recognition Foundation — A1 internal contract candidate
+
+Approved D077 R1/R2 retain an **internal private** read-only normalization seam,
+with Nextcloud plus Samba adapters deferred to A2 and operator projection to A3.
+Gate A1 introduces `core/lib/resource_recognition.py` and isolated unit
+fixtures only: strict versioned candidate/reference shapes, provider-owner
+stamping and injected active flags, bounded evidence/time/freshness checks,
+zero/one/many handling, exact locator rejection, value-free provider failure
+and no persistence/adoption. Candidate IDs are local to one result.
+
+**Focused proof:** 20 isolated synthetic tests pass, plus Python compilation.
+The tested files' Git blob hashes match the A1 branch files. No live Docker or
+Samba inspection, real module activation path, approval/provisioning, user
+credentials, configuration write, History write, real-application gate or
+governed repository affected regression is claimed. This is a proposed A1
+merge candidate; A2/A3 are not authorized by its tests. Implementation and
+missing integration proof are recorded in
+[RESOURCE_RECOGNITION_GATE_A.md](RESOURCE_RECOGNITION_GATE_A.md).
 
 ## Ownership Foundation Boundary B — single OpenRouter lifecycle verified
 
