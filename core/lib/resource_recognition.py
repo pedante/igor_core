@@ -212,7 +212,7 @@ class RecognitionCoordinator:
                     "candidates": [], "selection_required": False}
         try:
             raw = binding.reader(exact_locator)
-        except Exception:
+        except Exception:  # noqa: BLE001 - sanitize all provider failures
             # Do not leak provider-returned exception strings (may contain secrets).
             return {"schema_version": SCHEMA_VERSION, "domain_kind": domain_kind,
                     "status": "error", "reason": "provider_read_failed",
