@@ -10,6 +10,29 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
+## Resource Recognition Foundation — A3 final integration candidate
+
+The Owner separately authorized A1, A2 and A3. A1 merged as `941c69d`
+(144 affected checks passed); A2 merged as `4772d59` (68 affected checks
+passed). The two legacy Start/Fast session fixtures were reconciled with
+the managed OpenRouter credential contract in `15459a2`, after isolated
+validation: both previously failing identities passed without modifying
+production credential authority or the baseline manifest.
+
+The D069 Ownership Foundation Boundary A recommendations accepted earlier
+remain settled. A3 now provides one reference-only candidate projection,
+`core/lib/recognition_view.py`, to an explicit-snapshot CLI and the TUI
+Recognition panel using shared presentation data. Without reviewed active
+provider wiring, the live inspection displays `unavailable`; it is not a
+host scan, module activation, adoption or execution interface.
+
+**Gate pending:** this A3 branch is reconciled on top of all three merged
+commits. Its affected CI at this final head remains to be evaluated. The
+prior A3 affected run passed new recognition suites but included two
+legacy startup-fixture failures (subsequently fixed and independently
+verified) and an existing AI architecture baseline failure. Do not claim
+A3 merged, a full repository pass or live Nextcloud/Samba discovery.
+
 ## Resource Recognition Foundation — A2 adapter candidate (stacked on A1)
 
 A2 is a separate dependent branch with reviewed, **read-only** Nextcloud and
@@ -18,7 +41,7 @@ share sections from one explicit, bounded source file, not a confirmed running
 SMB endpoint. A2 adds no automatic module activation/registration, application
 changes, deployment responsibility or installer. Fifteen adapter fixture cases
 pass locally; together with A1's 20, 35 focused cases pass. No live provider
-or repository-wide acceptance result is claimed. A1 is integrated into `igor2` as `941c69d` after 144 passing affected checks; A2 still needs its own CI review. A3 stays deferred.
+or repository-wide acceptance result is claimed. A1 and A2 are both integrated into `igor2` as `941c69d` and `4772d59`, respectively; A2's affected gate passed 68 checks. The A3 presentation remains under separate review.
 
 ## Resource Recognition Foundation — A1 internal contract candidate
 
