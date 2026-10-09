@@ -145,6 +145,26 @@ find Nextcloud
 
 A user's "this one" answer selects a candidate; it is not proof or authority.
 
+### A3 bounded recognition view (candidate)
+
+A3's `recognition` CLI only projects a separately supplied A1 result; it
+does not query the host. Examples:
+
+```bash
+# JSON produced by a trusted, reviewed recognition caller:
+cat candidate.json | bash igor.sh --json recognition view
+cat candidate.json | bash igor.sh recognition view
+bash igor.sh --json recognition status  # unavailable until provider integration
+```
+
+The control panel's Recognition inspector consumes the same read-only model
+and returns `unavailable` until A2 active-provider binding is implemented.
+Nothing in this view selects a deployment or submits a proposal. A future
+domain-discovery CLI and a live panel require separately verified active
+module/provider eligibility and exact target inspection, without accepting
+candidate data as authorization. This partial A3 view is not Step 20 CLI/TUI
+completion.
+
 ## Proof gate
 
 Before Step 20 completion, prove:
