@@ -1,6 +1,6 @@
 # Resource Recognition Foundation — Gate A discovery and decision proposal
 
-**Status:** the Project Owner confirmed R1 and R2 on 2026-10-10 (D077). **Only A1 implementation is authorized now**. A2/A3 and any public Module API v2 recognizer contribution need separate continuation. This document remains the design record, not proof that runtime recognition exists.
+**Status:** the Project Owner confirmed R1 and R2 on 2026-10-10 (D077). **A1 was merged after scoped CI, and the Owner separately authorized A2 and A3**. A public Module API v2 recognizer contribution and live provider binding remain deferred. This document remains the design record, not proof that runtime recognition exists.
 
 ## Goal and authority
 
@@ -154,6 +154,36 @@ provider protocol, not a running Docker deployment. No real Samba service,
 actual Core loader eligibility, domain recognition in the operator UI, native
 application adoption or Step 19 real Nextcloud evidence is claimed. The
 repository-governed affected/CI gate must still be reviewed; A1 affected CI passed before integration. A3 is not started.
+
+## A3 shared presentation — stacked implementation candidate (2026-10-10)
+
+A3 is a **read-only presentation** on top of the unchanged A1 candidate result,
+not a new host scanner, live provider binder or adoption workflow.
+
+- `core/lib/recognition_view.py` validates a closed, bounded A1 result and
+  projects identical reference-only candidate metadata to both interfaces.
+  A candidate is never marked approved/adopted, no capability action is
+  emitted, and empty, unavailable, error, ambiguous, stale and incomplete
+  states are not displayed as successful discovery.
+- `igor recognition view` accepts **one explicitly supplied snapshot on
+  stdin** and renders bounded text; `igor --json recognition view` returns
+  the same model as JSON. `igor --json recognition status` returns an honest
+  unavailable state until the separately reviewed active-provider binding
+  exists. No startup scan, default-path lookup or module loading occurs.
+- The existing TUI control panel gains a read-only **Recognition** inspector,
+  using that same CLI/backend model and text renderer. Its live default
+  displays unavailable, not empty success. A3 has no runtime mechanism for
+  feeding live A2 provider results into the frontend; that integration and
+  the full live CLI/TUI domain-discovery acceptance gate remain open.
+
+The first A3 fixture tests cover the shared projection, no executability,
+zero/one/many and ambiguous/stale/unavailable states, unsupported fields,
+invalid/oversized input, CLI text/JSON agreement and TUI panel agreement.
+The normal affected CI gate must still be evaluated at the A3 review head;
+no live Nextcloud/Samba detection or Step 19 application proof is claimed.
+The CLI view is for controlled candidate snapshots, **not** a new
+`igor discover` production command or a replacement for
+`core.deployments.propose`/approval.
 
 ## Exclusions and handoff
 
