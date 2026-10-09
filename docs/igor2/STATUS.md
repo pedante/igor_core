@@ -10,6 +10,26 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
+## Resource Recognition Foundation — A3 shared projection candidate
+
+The Owner separately requested A3 after A1's scoped CI review and the A2 adapter
+candidate.
+The D069 Ownership Foundation Boundary A recommendations accepted earlier remain
+settled; the presentation work does not reopen their authority. The stacked A3 branch adds a single closed, reference-only read
+model in `core/lib/recognition_view.py`, an opt-in read-only snapshot CLI,
+and a TUI Recognition panel consuming the same projected lines. Unsupported
+or unprovided snapshots fail closed; the default live inspection is explicitly
+`unavailable`, never an invented scan or silent empty result.
+
+This is **not live resource discovery**. A2's adapters are still unregistered
+with the authoritative module activation/observer path, so no actual
+Nextcloud/Samba discovery is automatically served to the UI. Read-only
+candidate projection and contract tests do not constitute active-provider
+eligibility, adoption, a frozen deployment proposal, provisioning or
+application configuration. A1/PR #74 passed its scoped affected CI gate;
+PR #75 A2 remains separate, and the A3 branch is a dependent review
+candidate. A3 CI acceptance evidence is not yet established.
+
 ## Resource Recognition Foundation — A2 adapter candidate (stacked on A1)
 
 A2 is a separate dependent branch with reviewed, **read-only** Nextcloud and
