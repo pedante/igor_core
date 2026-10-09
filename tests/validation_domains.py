@@ -75,6 +75,14 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
         "tests/modules/test_module_state.bats",
         "tests/modules/test_subsystem_activation.bats",
     ),
+    "recognition": (
+        "tests/test_resource_recognition.py",
+        "tests/test_resource_recognition_adapters.py",
+        "tests/test_deployment_attachment.py",
+        "tests/test_input_candidates.py",
+        "tests/test_module_registry.py",
+        "tests/modules/test_deployment_attachment.bats",
+    ),
     "configuration": (
         "tests/test_documentation_health.py",
         "tests/test_configuration.py",
@@ -179,6 +187,12 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+_RECOGNITION_PATHS = frozenset({
+    "core/lib/resource_recognition.py",
+    "modules/nextcloud_docker/lib/nextcloud_recognition.py",
+    "modules/samba/lib/samba_recognition.py",
+})
+
 _PATH_DOMAINS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("openrouter", "secret_refs", "core/ai/keys.sh", "core/ai/api.sh", "core/ai/core.sh",
       "core/ai/ai_engine.py", "core/ai/privacy.py", "core/ai/request_boundary.py", "core/ai/control.sh", "core/ai/safety.sh",
@@ -262,6 +276,15 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
             root_entrypoint_seen = True
             domains.add("entrypoint")
             selected.update(_DOMAIN_TESTS["entrypoint"])
+            continue
+
+        # This private read-only seam has a reviewed, bounded coverage map.
+        # In particular, dormant domain adapters are not a new module loader
+        # or public Module API change. Preserve "all" for every unknown path.
+        if relative in _RECOGNITION_PATHS:
+            mapped_implementation_seen = True
+            domains.add("recognition")
+            selected.update(_DOMAIN_TESTS["recognition"])
             continue
 
         matches = [domain for tokens, domain in _PATH_DOMAINS if any(token in relative.lower() for token in tokens)]
