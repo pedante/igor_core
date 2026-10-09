@@ -78,8 +78,10 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
     "recognition": (
         "tests/test_resource_recognition.py",
         "tests/test_resource_recognition_adapters.py",
+        "tests/test_recognition_view.py",
         "tests/test_deployment_attachment.py",
         "tests/test_input_candidates.py",
+        "tests/test_ai_tui_operator.py",
         "tests/test_module_registry.py",
         "tests/modules/test_deployment_attachment.bats",
     ),
@@ -189,6 +191,7 @@ _DOMAIN_TESTS: dict[str, tuple[str, ...]] = {
 
 _RECOGNITION_PATHS = frozenset({
     "core/lib/resource_recognition.py",
+    "core/lib/recognition_view.py",
     "modules/nextcloud_docker/lib/nextcloud_recognition.py",
     "modules/samba/lib/samba_recognition.py",
 })
@@ -278,13 +281,21 @@ def affected_tests(paths: list[str], root: Path) -> tuple[list[str], list[str]]:
             selected.update(_DOMAIN_TESTS["entrypoint"])
             continue
 
-        # This private read-only seam has a reviewed, bounded coverage map.
-        # In particular, dormant domain adapters are not a new module loader
-        # or public Module API change. Preserve "all" for every unknown path.
+        # Private candidate paths are reviewed, stateless READ-only contracts.
+        # The default unknown-implementation fallback remains broad.
         if relative in _RECOGNITION_PATHS:
             mapped_implementation_seen = True
             domains.add("recognition")
             selected.update(_DOMAIN_TESTS["recognition"])
+            continue
+
+        # CLI normalization is a shared entrypoint and operator contract, not
+        # an unknown Core implementation requiring every unrelated suite.
+        if relative == "core/lib/operator_cli.sh":
+            mapped_implementation_seen = True
+            for domain in ("entrypoint", "operator"):
+                domains.add(domain)
+                selected.update(_DOMAIN_TESTS[domain])
             continue
 
         matches = [domain for tokens, domain in _PATH_DOMAINS if any(token in relative.lower() for token in tokens)]
