@@ -9,13 +9,13 @@ Use this workflow:
 ```text
 implementation
     ↓
-focused
+focused (target changed behavior)
     ↓
-affected
+affected (once per final candidate)
     ↓
-stabilization
+stabilization (classify failures; fix and retest only invalidated proof)
     ↓
-full ONCE
+explicitly required full/CI release gate (at most once)
     ↓
 release freeze
 ```
@@ -82,9 +82,32 @@ Core BATS, module BATS and integration BATS groups, and adds **every**
 identities. The canonical rendering invocation supplies that coverage once; complete
 Python discovery excludes this already scheduled file.
 Missing/empty canonical directories fail closed. Focused/affected never
-schedule full automatically. Run full once after stabilization; rerun only
-when a concrete correction makes release evidence ambiguous. This is not a
+schedule full automatically. Run full only when the release contract explicitly requires it or the change's
+impact cannot be bounded by the affected selection and specific vertical-slice,
+security and recovery checks. Prefer its established CI governor when the
+local development budget cannot cover the full gate. Run it at most once per
+final candidate; rerun only when a concrete correction invalidates relevant
+release evidence. Never claim an unexecuted gate as passing. This is not a
 promise that existing product suites pass.
+
+## Stabilization failure triage
+
+Use the existing `summary.json` and failing raw logs before selecting more
+tests. Categorize each failure as a product/security defect, over-specific
+assertion, fixture or runner problem, reviewed baseline, or unresolved. Inspect
+the contract before changing code. For example, a generic safe provider error
+can satisfy a confidentiality requirement without displaying a particular
+redaction marker, but a separate sentinel scan must still prove that no
+credential escaped into environment, body, output, events or History.
+
+After correcting a demonstrated defect, run the previously failing identity
+and any directly invalidated neighboring checks. Reuse complete equivalent
+passing evidence under the development governor; recognized security tests
+retain their fresh-execution requirements. Split necessary checks into
+supported bounded groups before invoking a command likely to exceed the
+240-second local subprocess ceiling. Preserve the complete required coverage
+and report unverified checks on budget exhaustion. Avoid a second broad
+validation pass merely to rediscover already recorded failures.
 
 ## Tools, bounds and evidence
 
