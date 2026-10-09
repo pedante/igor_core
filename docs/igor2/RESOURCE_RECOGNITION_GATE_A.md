@@ -98,7 +98,19 @@ and controlled UTC time; changed Python files compile. New source/test GitHub
 blob identities were compared with the locally exercised bytes. Repository
 governed affected checks, remote CI and real provider integration are
 **not claimed**; approval and integration review are pending on the A1 PR.
-No legacy writer or persistent state was migrated. A2/A3 remain out of scope,
+No legacy writer or persistent state was migrated.
+
+**CI and planner triage:** Initial hosted CI was blocked by three
+Ruff-only issues; those were corrected without changing behavior. Its next
+affected run marked `core/lib/resource_recognition.py` an *unknown* Core path,
+selected 125 groups and exhausted the shared CI command budget, including
+unrelated approval/System/learning failures. This is incomplete evidence, not
+a green A1 gate or proof those failures were introduced by recognition.
+A reviewed exact-path `recognition` selection was added to
+`tests/validation_domains.py`, with `tests/test_validation_domains.py`
+coverage. It retains the all-tests fallback for unmapped implementation. A
+fresh CI result for the mapped candidate remains outstanding; no baseline
+manifest was changed. A2/A3 remain out of scope,
 and neither the Nextcloud real-application gate nor the two-domain proof is
 closed by A1.
 
