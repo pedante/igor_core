@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "core/lib"))
-from resource_recognition import (RecognitionCoordinator, RecognitionError,
+from resource_recognition import (RecognitionCoordinator, RecognitionError,  # noqa: E402
                                   Recognizer, normalize_candidates)
 
 NOW = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
