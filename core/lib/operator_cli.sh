@@ -40,6 +40,13 @@ igor_operator_cli_normalize() {
                     _IGOR_OPERATOR_ARGS=(--capability-run "$1" "${2:-{}}" "${3:-}") ;;
                 *) return 2 ;;
             esac ;;
+        recognition)
+            shift
+            [ "$#" -eq 0 ] || [ "$#" -eq 1 ] || return 2
+            case "${1:-status}" in
+                status|view) _IGOR_OPERATOR_ARGS=(--recognition "${1:-status}") ;;
+                *) return 2 ;;
+            esac ;;
         deployments) shift; _IGOR_OPERATOR_ARGS=(--deployments "${@:-list}") ;;
         history) shift; _IGOR_OPERATOR_ARGS=(--history "${@:-recent}") ;;
         investigations) shift; _IGOR_OPERATOR_ARGS=(--investigations "${@:-list}") ;;
