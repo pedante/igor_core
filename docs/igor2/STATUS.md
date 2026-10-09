@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 ## How to read this file
 
@@ -9,6 +9,40 @@ sections are retained as scoped implementation/validation evidence and are not a
 linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
+
+## Resource Recognition Foundation — A1 internal contract candidate
+
+Approved D077 R1/R2 retain an **internal private** read-only normalization seam,
+with Nextcloud plus Samba adapters deferred to A2 and operator projection to A3.
+Gate A1 introduces `core/lib/resource_recognition.py` and isolated unit
+fixtures only: strict versioned candidate/reference shapes, provider-owner
+stamping and injected active flags, bounded evidence/time/freshness checks,
+zero/one/many handling, exact locator rejection, value-free provider failure
+and no persistence/adoption. Candidate IDs are local to one result.
+
+The earlier Ownership Foundation Boundary A recommendations accepted under
+D069 remain settled; resource recognition does not reopen those decisions.
+
+**Focused proof:** 20 isolated synthetic tests pass, plus Python compilation.
+The tested files' Git blob hashes match the A1 branch files.
+
+**A1 CI triage:** the first CI attempt was Ruff preflight only, now
+fixed. The follow-up selected 125 groups via the unknown-Core-path fallback
+and ended `budget_exhausted`; unrelated approval, System BATS and learning
+cases were reported before completion. They are not waived or accepted as
+baseline. A1 now has an explicit recognition test-domain mapping with one
+planner regression test and still preserves broad fallback for unknown paths.
+The mapped CI run completed 13 groups in 71.953 seconds: 143 PASS and one
+new documentation-health assertion failure. That assertion expects the accepted
+Boundary A recommendation acknowledgment in the first 80 lines; the statement
+above restores its current-focus visibility without weakening the test. A
+post-correction affected gate is not yet verified. No completion/merge claim is made. No live Docker or
+Samba inspection, real module activation path, approval/provisioning, user
+credentials, configuration write, History write, real-application gate or
+governed repository affected regression is claimed. This is a proposed A1
+merge candidate; A2/A3 are not authorized by its tests. Implementation and
+missing integration proof are recorded in
+[RESOURCE_RECOGNITION_GATE_A.md](RESOURCE_RECOGNITION_GATE_A.md).
 
 ## Ownership Foundation Boundary B — single OpenRouter lifecycle verified
 

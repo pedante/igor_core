@@ -63,6 +63,57 @@ Do **not** reuse `candidate_id` as a durable deployment or resource ID; do not p
 
 **Validation economics:** run new pure/unit tests first, existing `tests/test_deployment_attachment.py`, Nextcloud provider and operator/selector regressions impacted by the diff. Inspect `tests/validate.sh affected --dry-run` before invoking the governed affected selection once against the final candidate. Group test invocations below the active 240-second subprocess ceiling. Reuse valid pre-existing evidence in accordance with the development governor; security tests retain required-fresh behavior. No broad full suite solely because Core changes. Report unverified gates instead of renewing validation loops.
 
+## A1 bounded implementation candidate (2026-10-10)
+
+The first **internal** contract is `core/lib/resource_recognition.py`, with
+focused fixture tests in `tests/test_resource_recognition.py`. It has no
+entrypoint registration, module discovery, deployment import or state store.
+
+One trusted Core caller explicitly injects a frozen `Recognizer` binding:
+owner-stamped provider identity/version, domain kind, currently admitted
+active state, and a reviewed read-only reader function. A provider does not
+become active because it appears on disk or because model/UI data declares it.
+The coordinator neither loads packages nor determines ownership; A2 must bind
+this field to the existing real module activation runtime.
+
+The provider's **private, version-1 candidate input** is a closed object:
+`candidate_version=1`, `selector`, `matched_objects` (identifiers),
+`evidence` (closed `source_kind/source_ref/observed_at` records),
+`observed_at`, `expires_at`, `ambiguities`, and `missing_evidence`.
+No arbitrary body, configuration values, commands, approval flags or
+nested interpretation objects are admitted. Current bounds: 128 candidates,
+16 evidence records, 16 matched objects and 16 issue codes per candidate.
+All times are timezone-aware. Provider output is copied, validated and sorted
+by exact selector; duplicate or foreign hinted selectors fail closed.
+`candidate-N` identifies a row only within that result, never a deployment.
+
+Results distinguish `empty`, `ready`, `ambiguous`, `stale`,
+`incomplete`, `unavailable` and `error`; disabled/absent providers never
+run. Exceptions are projected as value-free failures. The normalization
+contract does **not** certify arbitrary text as secret-free: reviewed A2
+adapters must only emit allowed nonsecret locators and evidence references.
+
+A1's 20 isolated unit cases pass in 0.04 seconds using a synthetic reader
+and controlled UTC time; changed Python files compile. New source/test GitHub
+blob identities were compared with the locally exercised bytes. Repository
+governed affected checks, remote CI and real provider integration are
+**not claimed**; approval and integration review are pending on the A1 PR.
+No legacy writer or persistent state was migrated.
+
+**CI and planner triage:** Initial hosted CI was blocked by three
+Ruff-only issues; those were corrected without changing behavior. Its next
+affected run marked `core/lib/resource_recognition.py` an *unknown* Core path,
+selected 125 groups and exhausted the shared CI command budget, including
+unrelated approval/System/learning failures. This is incomplete evidence, not
+a green A1 gate or proof those failures were introduced by recognition.
+A reviewed exact-path `recognition` selection was added to
+`tests/validation_domains.py`, with `tests/test_validation_domains.py`
+coverage. It retains the all-tests fallback for unmapped implementation. A
+fresh CI result for the mapped candidate remains outstanding; no baseline
+manifest was changed. A2/A3 remain out of scope,
+and neither the Nextcloud real-application gate nor the two-domain proof is
+closed by A1.
+
 ## Exclusions and handoff
 
 Not included: a public `kind=recognizer`, generic module auto-loading, discovery background jobs, network-wide scanning, a persistent candidate database, AI-only identification, application provisioning, implicit adoption, Docker installation, Samba installation/config changes, Step 19 real-application gate or Boundary 3 loglevel writer cutover, secrets migration, Step 20 default TUI cutover, agents or self-healing.

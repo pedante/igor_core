@@ -106,6 +106,22 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertEqual(domains, ["module"])
         self.assertIn("tests/modules/test_module_contracts.bats", tests)
 
+    def test_recognition_private_contract_selects_small_related_gate(self):
+        for path in (
+            "core/lib/resource_recognition.py",
+            "modules/nextcloud_docker/lib/nextcloud_recognition.py",
+            "modules/samba/lib/samba_recognition.py",
+        ):
+            with self.subTest(path=path):
+                domains, tests = affected_tests([path], ROOT)
+                self.assertEqual(domains, ["recognition"])
+                self.assertIn("tests/test_resource_recognition.py", tests)
+                self.assertIn("tests/test_deployment_attachment.py", tests)
+                self.assertIn("tests/test_input_candidates.py", tests)
+                self.assertNotIn("tests/test_ai_tui.py", tests)
+                self.assertNotIn("tests/core/test_ai_approval.bats", tests)
+                self.assertNotIn("tests/test_local_learning.py", tests)
+
     def test_unknown_implementation_change_falls_back_to_all_tests(self):
         domains, tests = affected_tests(["core/unmapped/new_boundary.py"], ROOT)
         self.assertEqual(domains, ["all"])
