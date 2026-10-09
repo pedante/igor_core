@@ -5,6 +5,37 @@ This map records the v1 compatibility surfaces that remain live alongside the
 typed host model and canonical capability path. The Wave E contract is in
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+## OpenRouter ownership cutover — Boundary B, D069
+
+The single selected OpenRouter credential uses the existing secret-reference
+owner and an opaque Configuration Service handle. Existing setup/API KEY/`apikey`
+become canonical private-input CHANGE adapters. Protected import is explicit;
+inherited environment, `secrets/openrouter.key`, the home key and literal known
+env assignments are candidate sources, not post-cutover request authority.
+Original personal sources are never automatically edited or deleted.
+
+After cutover, selected chat, roles, follow-up/summary, hybrid, direct engine,
+validation, balance, sanitization and effective caches use the managed owner.
+Missing/corrupt state or access-audit failure denies use; retained legacy sources
+cannot revive it. Trusted Core bindings cannot be invented by catalog metadata or
+serialized authorization. Anthropic/Ollama, unrelated secret families and legacy
+AI preferences remain outside this cutover.
+
+Ordinary new snapshots omit managed material and selected retained legacy
+copies/assignments, with an omission notice. Mixed selected env components are
+omitted/refused as a whole, preserving unrelated components. Restore preview does
+not disclose selected live assignments; direct legacy restore cannot overwrite
+managed authority. Full-backup composition preserves the core omission boundary;
+existing archives and unrelated module hooks remain unchanged.
+
+Recovery is approved activation of one protected previous generation as a new
+revision, or protected re-import/new-key replacement. Configuration handles alone
+do not back up material or clear cutover. Damaged artifacts are retained; no
+automatic startup repair, fallback, portable value export or provider revocation
+rollback is promised. See [CONFIGURATION.md](CONFIGURATION.md) and the current
+[STATUS.md](STATUS.md) for actual proof and remaining limitations. Historical
+adapter-only/proposed statements below describe earlier boundaries.
+
 ## Step 19 Boundary 2 compatibility boundary
 
 The bounded read-only provider in `modules/nextcloud_docker/lib/attachment.py`

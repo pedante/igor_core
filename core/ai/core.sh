@@ -37,44 +37,25 @@ source "${IGOR_DIR}/core/lib/input_candidates.sh"
 _ai_frontend_event() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local _kind="$1" _display="${2:-}" _status="${3:-}" _payload
-    # The frontend stream is a private local presentation boundary (0600).
-    # Provider/audit payloads are scrubbed separately; re-scrubbing here both
-    # costs time and corrupts legitimate host identifiers such as systemd units.
-    _payload=$(AI_EVENT_DISPLAY="$_display" AI_EVENT_STATUS="$_status" \
-        AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" \
-        AI_EVENT_MODE="$(ai_get_mode)" AI_EVENT_PROVIDER="${provider:-}" \
-        AI_EVENT_MODEL="${model:-}" python3 - <<'PY'
-import json
-import os
+    _payload=$(printf '%s' "$_display" | python3 -c 'import json, sys
 print(json.dumps({key: value for key, value in {
-    "session_id": os.environ["AI_EVENT_SESSION_ID"],
-    "mode": os.environ["AI_EVENT_MODE"],
-    "provider": os.environ["AI_EVENT_PROVIDER"],
-    "model": os.environ["AI_EVENT_MODEL"],
-    "status": os.environ["AI_EVENT_STATUS"],
-    "display": os.environ["AI_EVENT_DISPLAY"],
-}.items() if value}, ensure_ascii=True))
-PY
-    ) || return 0
+    "session_id": sys.argv[1], "mode": sys.argv[2],
+    "provider": sys.argv[3], "model": sys.argv[4],
+    "status": sys.argv[5], "display": sys.stdin.read(),
+}.items() if value}, ensure_ascii=True))' \
+        "${IGOR_AI_EVENT_SESSION_ID:-}" "$(ai_get_mode)" "${provider:-}" "${model:-}" "$_status") || return 0
     _ai_event_emit "$_kind" "$_payload" >/dev/null 2>&1 || true
 }
 
 _ai_frontend_action_result() {
     [ -n "${IGOR_AI_EVENT_STREAM:-}" ] || return 0
     local _payload
-    _payload=$(AI_EVENT_RESULT="$1" \
-        AI_EVENT_SESSION_ID="${IGOR_AI_EVENT_SESSION_ID:-}" python3 - <<'PY'
-import json
-import os
+    _payload=$(printf '%s' "$1" | python3 -c 'import json, sys
 try:
-    result = json.loads(os.environ["AI_EVENT_RESULT"])
-except (ValueError, KeyError):
+    result = json.load(sys.stdin)
+except ValueError:
     raise SystemExit(1)
-print(json.dumps({"session_id": os.environ["AI_EVENT_SESSION_ID"],
-                  "action_id": result.get("tool_call_id", ""),
-                  "result": result}, ensure_ascii=True))
-PY
-    ) || return 0
+print(json.dumps({"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""), "result": result}, ensure_ascii=True))' "${IGOR_AI_EVENT_SESSION_ID:-}") || return 0
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
 }
 
@@ -687,7 +668,7 @@ _ai_apply_session_setting() {
         return 1
     fi
     _ai_emit_settings_snapshot
-    if [ "$_key" = provider ] && [ "$provider" = openrouter ] && [ -z "${or_api_key:-}" ]; then
+    if [ "$_key" = provider ] && [ "$provider" = openrouter ] && [ -z "${or_api_key:-}" ] && [ "${_ai_openrouter_available:-false}" != true ]; then
         _ai_frontend_event warning 'OpenRouter key unavailable; use apikey before the next request.'
     elif [ "$_key" = provider ] && [ "$provider" = anthropic ] && [ -z "${api_key:-}" ]; then
         _ai_frontend_event warning 'Anthropic key unavailable; use apikey before the next request.'
@@ -757,6 +738,26 @@ _ai_provider_preflight() {
     _or_balance=""
     case "${provider:-openrouter}" in
         openrouter)
+            if _ai_openrouter_cutover; then
+                local _current_or_status
+                _current_or_status="$(_ai_openrouter_status 2>/dev/null)" || _current_or_status='{}'
+                if ! printf '%s' "$_current_or_status" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("availability") == "available" else 1)'; then
+                    _key_status="✘ unavailable"
+                    return 1
+                fi
+                local _or_root="$IGOR_DIR" _or_data="${IGOR_DATA_DIR:-${IGOR_DIR}/data}"
+                if IGOR_DIR="$_or_root" IGOR_DATA_DIR="$_or_data" \
+                    python3 "${_or_root}/core/ai/openrouter_transport.py" validate >/dev/null 2>&1; then
+                    _key_status="✔ valid"
+                    if [ "$_include_balance" = true ]; then
+                        _or_balance=$(IGOR_DIR="$_or_root" IGOR_DATA_DIR="$_or_data" \
+                            python3 "${_or_root}/core/ai/openrouter_transport.py" balance 2>/dev/null || echo unavailable)
+                    fi
+                    return 0
+                fi
+                _key_status="✘ invalid or unreachable"
+                return 1
+            fi
             if [ -z "${or_api_key:-}" ]; then
                 _key_status="✘ not set"
                 return 1
@@ -1499,7 +1500,7 @@ _ai_handle_ipc_command() {
                     "${_turns:-0}" "${_session_outcome:-unknown}" "$_rb_name_es" "${session_file:-}" "${_session_start_time:-0}"
             fi
             local _ek
-            case "$provider" in openrouter) _ek="$or_api_key";; ollama) _ek="";; *) _ek="$api_key";; esac
+            case "$provider" in openrouter) _ek="$(_ai_openrouter_cached_key)";; ollama) _ek="";; *) _ek="$api_key";; esac
             _ai_clear_session_active
             # Restore layout without clearing screen (knowledge session prompts follow).
             if declare -f igor_layout_restore &>/dev/null; then
@@ -1595,7 +1596,7 @@ print('\n'.join(lines))
 
     # Existing foreground compaction uses the administrator-owned summarizer role.
     local _sum_key
-    case "${provider:-}" in openrouter) _sum_key="${or_api_key:-}";; ollama) _sum_key="";; *) _sum_key="${api_key:-}";; esac
+    case "${provider:-}" in openrouter) _sum_key="$(_ai_openrouter_cached_key)";; ollama) _sum_key="";; *) _sum_key="${api_key:-}";; esac
     local _sum_model="${model:-claude-haiku-4-5-20251001}"
 
     ai_begin_request || return 1
@@ -2445,19 +2446,28 @@ menu_ai() {
     [ -z "$api_key" ] && [ -f "$HOME/.nexus_api_key" ] \
         && api_key=$(cat "$HOME/.nexus_api_key" 2>/dev/null)
 
-    local or_api_key="${OPENROUTER_API_KEY:-}"
-    [ -z "$or_api_key" ] && [ -f "${_sec}/openrouter.key" ] \
-        && or_api_key=$(tr -d '[:space:]' < "${_sec}/openrouter.key" 2>/dev/null)
-    [ -z "$or_api_key" ] && [ -f "$HOME/.nexus_or_key" ] \
-        && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    local or_api_key="" _ai_openrouter_available=false _or_managed_status=""
+    if _ai_openrouter_cutover; then
+        unset OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY
+        _or_managed_status="$(_ai_openrouter_status 2>/dev/null)" || _or_managed_status='{}'
+        if printf '%s' "$_or_managed_status" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("availability") == "available" else 1)' 2>/dev/null; then
+            _ai_openrouter_available=true
+        fi
+    else
+        or_api_key="${OPENROUTER_API_KEY:-}"
+        [ -z "$or_api_key" ] && [ -f "${_sec}/openrouter.key" ] \
+            && or_api_key=$(tr -d '[:space:]' < "${_sec}/openrouter.key" 2>/dev/null)
+        [ -z "$or_api_key" ] && [ -f "$HOME/.nexus_or_key" ] \
+            && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    fi
 
     # ── First-run key setup ────────────────────────────────────────────────────
-    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ] &&
+    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ] && ! $_ai_openrouter_available &&
        [ "${IGOR_TUI_MODE:-false}" = true ]; then
         _ai_frontend_event error 'No provider key configured. Run bash igor.sh for initial setup.' configuration_error
         return 2
     fi
-    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ]; then
+    if [ "${provider:-}" != "ollama" ] && [ -z "$api_key" ] && [ -z "$or_api_key" ] && ! $_ai_openrouter_available; then
         echo -e "  ${MAG}${BOLD}╔══ IGOR AI ASSISTANT — SETUP ══╗${NC}"
         echo ""
         echo "  No API key found."
@@ -2471,9 +2481,10 @@ menu_ai() {
                 local _or_new; _or_new=$(_ai_prompt_key openrouter)
                 [ -z "$_or_new" ] && { warn "No key entered — exiting."; pause; return; }
                 _ai_write_key openrouter "$_or_new" || { fail "API key could not be saved."; return 1; }
-                or_api_key="$_or_new"
+                unset _or_new OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY or_api_key
+                _ai_openrouter_available=true
                 provider="openrouter"
-                ok "OpenRouter key saved to secrets/openrouter.key"
+                ok "OpenRouter credential approved and activated."
                 ;;
             *)
                 local key; key=$(_ai_prompt_key anthropic)
@@ -2514,11 +2525,22 @@ menu_ai() {
     IGOR_VERBOSE="${verbose:-true}"
     NEXUS_TEMPERATURE="${temperature:-0.7}"
 
-    or_api_key="${OPENROUTER_API_KEY:-}"
-    [ -z "$or_api_key" ] && [ -f "${_sec}/openrouter.key" ] \
-        && or_api_key=$(tr -d '[:space:]' < "${_sec}/openrouter.key" 2>/dev/null)
-    [ -z "$or_api_key" ] && [ -f "$HOME/.nexus_or_key" ] \
-        && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    or_api_key=""
+    if ! _ai_openrouter_cutover; then
+        or_api_key="${OPENROUTER_API_KEY:-}"
+        [ -z "$or_api_key" ] && [ -f "${_sec}/openrouter.key" ] \
+            && or_api_key=$(tr -d '[:space:]' < "${_sec}/openrouter.key" 2>/dev/null)
+        [ -z "$or_api_key" ] && [ -f "$HOME/.nexus_or_key" ] \
+            && or_api_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    else
+        unset OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY
+        _or_managed_status="$(_ai_openrouter_status 2>/dev/null)" || _or_managed_status='{}'
+        if printf '%s' "$_or_managed_status" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("availability") == "available" else 1)' 2>/dev/null; then
+            _ai_openrouter_available=true
+        else
+            _ai_openrouter_available=false
+        fi
+    fi
 
     # Normal startup already applied defaults, saved settings and private
     # overrides. Re-reading this file would silently undo that precedence.
@@ -2591,7 +2613,7 @@ menu_ai() {
     if [ "${IGOR_TUI_MODE:-false}" = true ]; then
         case "$provider" in
             openrouter)
-                if [ -n "$or_api_key" ]; then
+                if [ -n "$or_api_key" ] || [ "${_ai_openrouter_available:-false}" = true ]; then
                     _key_status="… validate on first request"
                     _provider_preflight_deferred=true
                 else
@@ -2656,26 +2678,30 @@ menu_ai() {
         echo ""
     fi
     local _key_missing=false
-    if [ "$provider" = "openrouter" ] && [ -z "$or_api_key" ]; then
+    if [ "$provider" = "openrouter" ] && [ -z "$or_api_key" ] && [ "${_ai_openrouter_available:-false}" != true ]; then
         _key_missing=true
     elif [ "$provider" = "anthropic" ] && [ -z "$api_key" ]; then
         _key_missing=true
     fi
     # Ollama needs no key — never flag as missing
     if $_key_missing; then
+        if [ "$provider" = "openrouter" ] && _ai_openrouter_cutover; then
+            warn 'Managed OpenRouter transport is unavailable; inspect the credential status.'
+            return 1
+        fi
         echo -e "  ${YEL}⚠  No API key for ${provider}. Enter one now to start a session.${NC}"
         echo -e "  ${CYAN}Press Enter to skip (session startup will be blocked).${NC}"
         echo ""
         if [ "$provider" = "openrouter" ]; then
             local _inline_key; _inline_key=$(_ai_prompt_key openrouter)
             if [ -n "$_inline_key" ]; then
-                if _nexus_validate_or_key "$_inline_key"; then
-                    or_api_key="$_inline_key"
-                    _ai_write_key openrouter "$or_api_key" || { fail "API key could not be saved."; return 1; }
+                if _ai_write_key openrouter "$_inline_key"; then
+                    unset _inline_key OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY or_api_key
+                    _ai_openrouter_available=true
                     _key_status="✔ valid"
-                    ok "OpenRouter key valid and saved to secrets/openrouter.key"
+                    ok "OpenRouter credential approved, validated, and activated."
                 else
-                    warn "Key invalid — not saved. Session startup will be blocked."
+                    warn "Key was not activated; approval, validation, or storage failed."
                 fi
             fi
         else
@@ -3835,7 +3861,7 @@ except: pass
                     "$_turns" "$_session_outcome" "$_rb_name" "$session_file" "$_session_start_time"
                 # P3-4: Offer runbook generation if fix was confirmed
                 [ "$_session_outcome" = "fixed" ] && _ai_offer_runbook_gen "$_pm_json"
-                local _active_key_exit; [ "$provider" = "openrouter" ] && _active_key_exit="$or_api_key" || _active_key_exit="$api_key"
+                local _active_key_exit; [ "$provider" = "openrouter" ] && _active_key_exit="$(_ai_openrouter_cached_key)" || _active_key_exit="$api_key"
                 _ai_set_session_state user_exited
                 _ai_session_cleanup
                 # Restore layout (remove yellow border) but do NOT clear screen yet —
@@ -4251,7 +4277,7 @@ Do NOT repeat these failed approaches. Try a different method."
                 fi
                 local _cmd_key
                 case "$provider" in
-                    openrouter) _cmd_key="$or_api_key" ;;
+                    openrouter) _cmd_key="$(_ai_openrouter_cached_key)" ;;
                     ollama)     _cmd_key="" ;;
                     *)          _cmd_key="$api_key" ;;
                 esac
@@ -4362,7 +4388,7 @@ User message: ${scrubbed_input}"
         local _asst_msg="" _tconv_fmt=""
         local _active_key
         case "$provider" in
-            openrouter) _active_key="$or_api_key" ;;
+            openrouter) _active_key="$(_ai_openrouter_cached_key)" ;;
             ollama)     _active_key="" ;;
             *)          _active_key="$api_key" ;;
         esac
@@ -4801,7 +4827,7 @@ except: pass
             local _fu_asst_msg="" _fu_tconv_fmt=""
             local _trunc_recovery_loop=false _trunc_sp_content=""
             local _fu_key
-            case "$provider" in openrouter) _fu_key="$or_api_key";; ollama) _fu_key="";; *) _fu_key="$api_key";; esac
+            case "$provider" in openrouter) _fu_key="$(_ai_openrouter_cached_key)";; ollama) _fu_key="";; *) _fu_key="$api_key";; esac
             export NEXUS_API_KEY="$_fu_key"
             export NEXUS_PROVIDER="$provider"
             export NEXUS_MODEL="$model"

@@ -94,12 +94,12 @@ class AffectedDomainTests(unittest.TestCase):
 
     def test_shared_ai_and_module_boundaries_are_explicitly_mapped(self):
         domains, tests = affected_tests(["core/ai/core.sh"], ROOT)
-        self.assertEqual(domains, ["capability", "operator", "tui"])
+        self.assertEqual(domains, ["capability", "openrouter", "operator", "tui"])
         self.assertIn("tests/test_ai_tui.py", tests)
         self.assertIn("tests/test_ai_operator_backend.py", tests)
 
         domains, tests = affected_tests(["core/ai/events.sh"], ROOT)
-        self.assertEqual(domains, ["events"])
+        self.assertEqual(domains, ["events", "openrouter"])
         self.assertIn("tests/core/test_ai_events.bats", tests)
 
         domains, tests = affected_tests(["core/lib/module_registry.py"], ROOT)
@@ -111,6 +111,26 @@ class AffectedDomainTests(unittest.TestCase):
         self.assertEqual(domains, ["all"])
         self.assertIn("tests/test_ai_tui.py", tests)
         self.assertIn("tests/modules/test_loader_regressions.bats", tests)
+
+    def test_openrouter_consumers_and_backup_keep_lifecycle_and_authority_coverage(self):
+        for path in ("core/ai/ai_engine.py", "core/ai/keys.sh", "core/ai/api.sh",
+                     "core/ai/providers/openrouter.sh", "core/lib/ai_hybrid.sh",
+                     "core/ai/privacy.py", "core/lib/openrouter_import.py",
+                     "core/recovery/config_backup.sh", "core/recovery/full_backup.sh"):
+            with self.subTest(path=path):
+                domains, tests = affected_tests([path], ROOT)
+                self.assertIn("openrouter", domains)
+                self.assertNotIn("all", domains)
+                self.assertTrue({
+                    "tests/test_configuration.py",
+                    "tests/test_secret_refs.py",
+                    "tests/test_ai_architecture.py",
+                    "tests/core/test_ai_keys.bats",
+                    "tests/core/test_ai_approval.bats",
+                    "tests/core/test_ai_privilege.bats",
+                    "tests/core/test_backup_p2.bats",
+                    "tests/core/test_backup_regressions.bats",
+                }.issubset(tests))
 
     def test_root_entrypoint_alone_remains_broad_but_mapped_feature_bounds_it(self):
         domains, tests = affected_tests(["igor.sh"], ROOT)

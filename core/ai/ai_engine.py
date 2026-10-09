@@ -528,7 +528,10 @@ def _extract_xml_tools(reply_text):
 
 def _emit_error(msg, kind="provider"):
     from privacy import scrub_text
-    msg = " ".join(scrub_text(msg).splitlines())
+    try:
+        msg = " ".join(scrub_text(msg).splitlines())
+    except (OSError, ValueError):
+        msg = "Credential sanitization unavailable"
     _audit_response("failed")
     sys.stdout.write(f"REPLY_START\nERROR: {msg}\nREPLY_END\nPROVIDER_ERROR: true\nERROR_KIND: {kind}\nTOKENS_IN: 0\nTOKENS_OUT: 0\n")
     sys.stdout.flush()
@@ -615,8 +618,6 @@ def mode_call():
         return
     original_provider = os.environ.get("NEXUS_PROVIDER", "anthropic")
     provider = route["provider"]
-    if provider != original_provider:
-        os.environ["NEXUS_API_KEY"] = os.environ.get(provider.upper() + "_API_KEY", "") if provider != "ollama" else ""
     os.environ["NEXUS_PROVIDER"] = provider
     os.environ["NEXUS_MODEL"] = route["model"]
     if route["selected_role"] != "reasoner":
@@ -627,6 +628,22 @@ def mode_call():
     if provider not in {"anthropic", "openrouter", "ollama"}:
         _emit_error("Unsupported AI provider", "configuration_error")
         return
+    managed_openrouter = False
+    if provider == "openrouter":
+        from openrouter_transport import binding
+        try:
+            _, _, managed_openrouter = binding()
+        except (OSError, ValueError):
+            _emit_error("Managed OpenRouter credential unavailable", "configuration_error")
+            return
+        if managed_openrouter:
+            # Selected credentials never enter the process environment, even
+            # when a stale current session/inherited alias still contains one.
+            for alias in ("NEXUS_API_KEY", "OPENROUTER_API_KEY", "OR_API_KEY"):
+                os.environ.pop(alias, None)
+    if provider != original_provider and not managed_openrouter:
+        os.environ["NEXUS_API_KEY"] = (
+            "" if provider == "ollama" else os.environ.get(provider.upper() + "_API_KEY", ""))
     api_key    = os.environ.get("NEXUS_API_KEY",      "").strip()
     model      = os.environ.get("NEXUS_MODEL",        "claude-haiku-4-5-20251001")
     max_tokens = int(os.environ.get("NEXUS_MAX_TOKENS", "2048"))
@@ -639,7 +656,7 @@ def mode_call():
     except (ValueError, TypeError):
         temperature = 0.7
 
-    if not api_key and provider != "ollama":
+    if not api_key and provider != "ollama" and not managed_openrouter:
         _emit_error("No API key set. Add key with: menu A → settings", "configuration_error")
         return
 
@@ -804,22 +821,22 @@ def mode_call():
             payload_dict["tool_choice"] = "auto"
         payload = json.dumps(payload_dict).encode()
 
-        conn = http.client.HTTPSConnection("openrouter.ai", context=ctx, timeout=90)
+        from openrouter_transport import request as openrouter_request
         try:
-            conn.request("POST", "/api/v1/chat/completions", body=payload, headers={
+            conn, resp = openrouter_request("POST", "/api/v1/chat/completions", body=payload, headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
                 "HTTP-Referer": os.environ.get("IGOR_GITHUB_URL", "https://github.com/yourusername/igor"),
                 "X-Title": os.environ.get("IGOR_APP_TITLE", "IGOR"),
                 "Accept": "text/event-stream",
-            })
-            resp = conn.getresponse()
+            }, legacy_key=api_key)
         except Exception as e:
-             _emit_error(f"connection failed: {e}")
-             return
+            _emit_error(f"OpenRouter request unavailable: {type(e).__name__}", "configuration_error")
+            return
 
         if resp.status != 200:
-            _emit_error(f"HTTP {resp.status}: {resp.read().decode()[:300]}"); return
+            _emit_error(f"OpenRouter HTTP {resp.status}")
+            conn.close()
+            return
 
         _or_tcs = {}
         try:
@@ -859,7 +876,12 @@ def mode_call():
                         input_tok  = usage.get("prompt_tokens",     input_tok)
                         output_tok = usage.get("completion_tokens", output_tok)
         except Exception as e:
-            sys.stderr.write(f"\n  [stream error: {e}]\n")
+            from privacy import scrub_text
+            try:
+                error = scrub_text(str(e))
+            except ValueError:
+                error = "credential sanitization unavailable"
+            sys.stderr.write(f"\n  [stream error: {error}]\n")
         finally:
             conn.close()
 
@@ -968,6 +990,14 @@ def mode_call():
     sys.stderr.flush()
 
     reply_text = "".join(full_text)
+    from privacy import scrub_data, scrub_text
+    try:
+        reply_text = scrub_text(reply_text)
+        tools_to_run = scrub_data(tools_to_run)
+        asst_content_for_conv = scrub_data(asst_content_for_conv)
+    except (OSError, ValueError):
+        _emit_error("Credential sanitization unavailable", "configuration_error")
+        return
 
     # ── Strip <think> blocks ──────────────────────────────────────────────
     think_text = ""
@@ -1048,6 +1078,14 @@ def mode_call():
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "call"
+    if mode == "call":
+        from privacy import launch_private_transport
+        from role_transport import from_environment
+        try:
+            launch_private_transport(openrouter=from_environment().get("provider") == "openrouter")
+        except (OSError, ValueError):
+            _emit_error("Private transport launch unavailable", "configuration_error")
+            sys.exit(1)
     if   mode == "call":     mode_call()
     elif mode == "append":   mode_append()
     elif mode == "compress": mode_compress()

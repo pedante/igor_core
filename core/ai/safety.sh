@@ -155,6 +155,21 @@ _ai_validate_tool_call() {
     printf '%s\n' "$_raw"
 }
 
+_ai_sanitize_selected_output() {
+    local _privacy="${_AI_SAFETY_DIR}/privacy.py"
+    if [ -f "$_privacy" ]; then
+        printf '%s' "$1" | python3 "$_privacy" || {
+            printf '[OUTPUT WITHHELD: credential projection unavailable]'
+            return 1
+        }
+    elif [ -d "${IGOR_SECRETS_DIR:-${IGOR_DIR:-.}/secrets}/.managed" ]; then
+        printf '[OUTPUT WITHHELD: credential projection unavailable]'
+        return 1
+    else
+        printf '%s' "$1"
+    fi
+}
+
 _ai_audit_dispatch() {
     declare -f ai_audit_tool >/dev/null 2>&1 || return 0
     ai_audit_tool "$@" || warn "AI audit write failed" 2>/dev/null || true
@@ -177,9 +192,9 @@ _ai_event_payload() {
     local operation_id="$1" tool="$2" tier="$3" approval="$4" status="$5"
     local text_value="${6:-}" output_value="${7:-}" exit_value="${8:-}"
     local admin_required="${9:-false}" duration_value="${10:-}"
-    # Frontend events stay on the owner-only local stream. Scrub only when
-    # crossing provider/export boundaries; local scrubbing is both expensive
-    # for large output and can damage valid host identifiers.
+    # Exact selected-secret projection precedes all OS environment framing.
+    text_value="$(_ai_sanitize_selected_output "$text_value")" || true
+    output_value="$(_ai_sanitize_selected_output "$output_value")" || true
     AI_EVENT_OPERATION="$operation_id" AI_EVENT_NATIVE_ID="${AI_EVENT_NATIVE_ID:-}" \
         AI_EVENT_TOOL="$tool" \
         AI_EVENT_TIER="$tier" AI_EVENT_APPROVAL="$approval" \
@@ -776,6 +791,7 @@ ai_execute_tool() {
             fi
             output=$(_ai_run_read_command python3 "$_AI_FILE_READER" report "$IGOR_DIR" "$_rdir" "$T_FILENAME" 100 2>&1)
             local exit_code=$?
+            output="$(_ai_sanitize_selected_output "$output")" || true
             _ai_audit_dispatch RESULT "$T_TOOL" "$tier" "automatic-read" \
                 "$([ "$exit_code" -eq 0 ] && echo completed || echo failed)" "$exit_code" \
                 "" "$tool_json" "$output" "$_operation_id"
@@ -1291,7 +1307,8 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
             fi
         fi
 
-        # Truncate long output
+        output="$(_ai_sanitize_selected_output "$output")" || true
+        # Truncate only the safe projection; never retain a credential preview.
         if [ "$_raw_shell" = true ]; then
             # Raw shell has no capability-level verifier or recovery contract.
             # Keep this status visible to callers and in the transcript; a

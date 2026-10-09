@@ -644,6 +644,15 @@ _igor_capability_verify() {
             _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
             [ "$_kind" = ai_verbose_session ] && _action=verify-session
             _igor_configuration_call "$_action" "$_inputs" ;;
+        openrouter_generation_revision)
+            local _inputs
+            case "$(_igor_capability_field "$_proposal" capability_id)" in
+                core.configuration.openrouter_credential.set|core.configuration.openrouter_credential.rotate|core.configuration.openrouter_credential.reimport|core.configuration.openrouter_credential.restore_previous) ;;
+                *) return 1 ;;
+            esac
+            _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
+            _inputs="$(python3 -c 'import json,sys; r=json.loads(sys.argv[1]); r["operation_id"]=sys.argv[2]; print(json.dumps(r))' "$_inputs" "${IGOR_HISTORY_OPERATION_ID:-}")" || return 1
+            _igor_configuration_call openrouter-verify "$_inputs" ;;
         system_memory_configuration_revision)
             local _inputs
             [ "$(_igor_capability_field "$_proposal" capability_id)" = core.configuration.system_memory_warning.set ] || return 1

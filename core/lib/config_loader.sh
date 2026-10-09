@@ -35,6 +35,24 @@ _cfg_log() {
     esac
 }
 
+_cfg_openrouter_cutover() {
+    local _root="${IGOR_DIR:-$_IGOR_CFG_DIR}" _data _state
+    _data="${IGOR_DATA_DIR:-${_root}/data}"
+    if [ ! -f "${_root}/core/lib/configuration.py" ]; then
+        [ -e "${_data}/secrets/catalog.db" ]
+        return $?
+    fi
+    _state=$(IGOR_CONFIGURATION_ROOT="$_root" IGOR_CONFIGURATION_DATA_DIR="$_data" \
+        env -u OPENROUTER_API_KEY -u OR_API_KEY -u NEXUS_API_KEY \
+        python3 "${_root}/core/lib/configuration.py" openrouter-cutover-guard 2>/dev/null) || return 0
+    [ "$_state" != legacy ]
+}
+
+_cfg_fence_openrouter_aliases() {
+    [ "${_IGOR_OPENROUTER_GUARD:-false}" = true ] || return 0
+    unset OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY
+}
+
 # ---------------------------------------------------------------------------
 # _cfg_check_permissions <file>
 #   Returns 0 if file has 600 permissions, 1 otherwise.
@@ -71,11 +89,28 @@ _cfg_source_env() {
         _cfg_check_permissions "$_file" || true   # warn but continue
     fi
 
-    set -a
-    # shellcheck disable=SC1090
-    source "$_file" 2>/tmp/_igor_cfg_src_err
-    local _rc=$?
+    local _projected="" _rc=0
+    if [ "${_IGOR_OPENROUTER_GUARD:-false}" = true ] &&
+       grep -aqE '(^|[^A-Za-z0-9_])(OPENROUTER_API_KEY|OR_API_KEY|NEXUS_API_KEY)[[:space:]]*=' "$_file"; then
+        # Parse the selected assignments as data BEFORE any Bash evaluation.
+        # Ambiguous/compound selected syntax refuses the whole source file.
+        _projected=$(env -u OPENROUTER_API_KEY -u OR_API_KEY -u NEXUS_API_KEY \
+            python3 "${_IGOR_CFG_DIR}/core/lib/openrouter_import.py" loader-projection "$_file") || {
+            _cfg_log warn "Selected credential assignments ignored; ambiguous source not evaluated"
+            return 1
+        }
+        set -a
+        # shellcheck disable=SC1090
+        source /dev/stdin <<< "$_projected" 2>/tmp/_igor_cfg_src_err
+        _rc=$?
+    else
+        set -a
+        # shellcheck disable=SC1090
+        source "$_file" 2>/tmp/_igor_cfg_src_err
+        _rc=$?
+    fi
     set +a
+    _cfg_fence_openrouter_aliases
 
     if [ $_rc -ne 0 ]; then
         _cfg_log error "Failed to source $_file: $(cat /tmp/_igor_cfg_src_err 2>/dev/null)"
@@ -139,9 +174,11 @@ _cfg_load_key_files() {
     local _file _stem _varname _value _count=0
     for _file in "${_sec_dir}"/*.key; do
         [ -f "$_file" ] || continue
-        _cfg_check_permissions "$_file" || true   # warn but continue
-
         _stem="$(basename "$_file" .key)"
+        if [ "${_IGOR_OPENROUTER_GUARD:-false}" = true ]; then
+            case "$_stem" in openrouter|or|nexus) continue ;; esac
+        fi
+        _cfg_check_permissions "$_file" || true   # warn but continue
         # Normalize stem to uppercase, replace non-alphanum with _
         _varname="$(printf '%s' "$_stem" | tr '[:lower:]' '[:upper:]' | tr -cs 'A-Z0-9' '_')_API_KEY"
 
@@ -171,7 +208,8 @@ _cfg_load_key_files() {
             (( _count++ )) || true
         fi
     fi
-    if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -f "$HOME/.nexus_or_key" ]; then
+    if [ "${_IGOR_OPENROUTER_GUARD:-false}" != true ] &&
+       [ -z "${OPENROUTER_API_KEY:-}" ] && [ -f "$HOME/.nexus_or_key" ]; then
         _value="$(tr -d '[:space:]' < "$HOME/.nexus_or_key" 2>/dev/null)"
         if [ -n "$_value" ]; then
             export OPENROUTER_API_KEY="$_value"
@@ -311,6 +349,7 @@ _cfg_load_defaults() {
     source "$_defaults_file" 2>/tmp/_igor_cfg_defaults_err
     local _rc=$?
     set +a
+    _cfg_fence_openrouter_aliases
 
     if [ $_rc -ne 0 ]; then
         _cfg_log error "Failed to load defaults: $(cat /tmp/_igor_cfg_defaults_err 2>/dev/null)"
@@ -327,6 +366,9 @@ _cfg_load_defaults() {
 #   Master entry point. Run all six loading steps in order.
 # ---------------------------------------------------------------------------
 igor_load_config() {
+    _IGOR_OPENROUTER_GUARD=false
+    _cfg_openrouter_cutover && _IGOR_OPENROUTER_GUARD=true
+    _cfg_fence_openrouter_aliases
     _cfg_load_defaults        # Load centralized defaults first
     _cfg_load_variables       # Then variables/*.env (overrides defaults)
     _cfg_load_secrets_env     # Then secrets/*.env — credentials + site overrides

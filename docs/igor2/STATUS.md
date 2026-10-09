@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## How to read this file
 
@@ -10,7 +10,165 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Post-merge module integration — bounded corrective slice
+## Ownership Foundation Boundary B — single OpenRouter lifecycle verified
+
+The Project Owner's D069 B1–B5 approval remains the contract. This task implements
+only the single OpenRouter credential lifecycle, using Configuration Service,
+the existing secret-reference owner and canonical capability/approval/History.
+The broader Ownership Foundation, application binding and other credential
+families remain open. The earlier closure claim was withdrawn: final synthetic
+verification found the selected credential in inherited `IGOR_AI_SCRUB_MAP`.
+The bounded correction and required focused regressions below now satisfy this
+single-credential boundary; broader Ownership Foundation closure is not implied.
+
+**Security correction and bounded continuation (2026-10-09):**
+
+`scrub.sh` owns the `SCRUB_FROM` / `SCRUB_TO` session arrays; `control.sh`'s
+`ai_export_privacy_map` serializes and exports them as `IGOR_AI_SCRUB_MAP`.
+`_ai_prepare_transport` normally filters selected material through the trusted
+Secret Service, but direct `ai_engine.py call` inherited an already-populated
+map without traversing that shell export. Engine shims/router fallback and
+chat/raw follow-up/hybrid paths ultimately enter the same Python engine; role
+selection does not make the inherited map safe.
+
+The HTTP launch preflight now projects inherited environment values and map
+entries through the existing Secret Service, preserves safe reversible pairs,
+and uses `execve` with the clean environment before any HTTP access. Staged
+Configuration validation/recovery strips import-only aliases even before first
+cutover and without consulting a damaged catalog. This grants no credential
+authority: private tickets, canonical approval, running-operation checks and
+mandatory access audits still govern actual authentication. Ordinary consumers
+continue to fail closed on unavailable/corrupt managed state.
+
+The original synthetic regression failed before the correction and passed
+afterward (`/tmp/igor-boundary-b-security-repro-scoped/summary.json` and
+`/tmp/igor-boundary-b-security-fixed-initial/summary.json`). The later regression
+attempt stopped at its unchanged 240-second command ceiling and exposed import
+startup aliases, blocked explicit recovery and three overly specific error
+expectations. That incomplete attempt remains recorded at
+`/tmp/igor-boundary-b-security-regressions/summary.json`; it is not a pass.
+
+The Owner authorized one further bounded pass. Completed correction evidence:
+
+- `/tmp/igor-boundary-b-continuation-blockers/summary.json`: all six groups pass,
+  61 test/check identities, 145.271 seconds. Configuration: 44 tests. Explicit
+  environment import and corrupt-catalog recovery pass. The new contaminated-map
+  case passes all 12 role/chat/raw/hybrid success/error subtests.
+- `/tmp/igor-boundary-b-continuation-remaining-scoped/summary.json`: all 21 groups
+  pass, 100 test/check identities, 513.474 seconds, no failures/timeouts/skips.
+  Managed owner: 11 tests plus 9 subtests; the five remaining production cases
+  plus 7 subtests pass. Startup, key management and Operational History pass;
+  History is 24 tests plus 16 subtests. The two unchanged source/parser tests
+  retain their completed passing evidence from the preceding run. All original
+  20 lifecycle tests and 16 subtests are covered; the new case adds 12 subtests.
+- Each remaining lifecycle case ran as an individual governed group; the
+  240-second per-command ceiling was unchanged. The longest continuation group
+  was 53.022 seconds. A temporary selection adapter narrowed the original staged
+  candidate to affected checks and supplied History with a private synthetic
+  secret root. It changed neither repository runner code nor baseline policy.
+
+Every captured HTTP request now checks the startup environment captured before
+production imports and Linux `/proc/self/environ`, as well as mutable environment,
+argv, request body and the exact Authorization header. Selected material reaches
+only that intended HTTP authentication field. Credential-echoing successful
+streams are redacted; generic HTTP 401 errors retain zero-exposure scans. An
+independent read of the actual private error-response wrapper proves its echoed
+credential is redacted too. Frontend events, context/audit data, History inputs
+and verification evidence are scanned for the synthetic literal. Guide refusal
+opens no socket and leaves the damaged catalog byte-identical; approved re-import
+retains those exact damaged bytes and the stable handle.
+
+Continuation changes to privacy, configuration and the fixture are Ruff-clean;
+the engine's 27 unchanged Ruff diagnostics match retained baseline fingerprints.
+The earlier CLI architecture failure remains a reviewed baseline failure, and
+the earlier hostname scrubber skip is environment-specific. No baseline manifest
+was changed. The
+initial selection-adapter error occurred before test dispatch, consumed no test
+evidence and was corrected without changing product code or runner policy.
+
+**Workspace reconciliation (2026-10-09):** active `igor2` at `64f6e46` matched
+freshly fetched `origin/igor2`; local and remote `master` remain `54782bd` and
+are not ancestors. The prior `4c8a0dd` TUI correction is already reconciled by
+`6ecb492` and was not repeated. Relevant unfinished code from the first historical
+stash was reconciled by scoped patches against current HEAD, preserving later
+changes. Both stashes and preexisting untracked `.agents/` and `.codex-plugins/`
+remain untouched; no blanket merge, stash application or personal-key read occurred.
+
+**Pinned pre-edit baseline:** isolated focused harness evidence at
+`/tmp/igor-openrouter-baseline-20261009b/summary.json`: 271 PASS identities/check
+groups, 1 reviewed baseline failure, 1 previously failing baseline identity now
+passing, 0 new failures/timeouts/skips/tool errors, 308.499 seconds. The failure is
+`AiArchitectureTests.test_cli_status_tools_and_last_without_api_key_or_active_modules`
+(partial copied CLI fixture stderr). System desired/apply/readback, configuration,
+History, routing, key, approval, privilege, event and scrubber groups passed.
+Unchanged HEAD `config_backup.sh` separately reproduces four CI-flag ShellCheck
+warnings (SC2024 three times and SC2120); the baseline manifest is unchanged.
+
+The approved implementation is present in the working tree: private immutable
+generations and durable metadata extend `secret_refs.py`; Configuration owns the
+stable handle; canonical CHANGE owns staged validation, activation, rotation and
+local recovery. Production chat/roles/follow-up/summary/hybrid/direct-engine and
+validation/balance use the reviewed transport, with value-free audit before access.
+Explicit import, old-source refusal and ordinary-backup/restore fences are covered
+by isolated synthetic workflow tests. Imported environment aliases are removed
+before staged validation or any managed HTTP consumer opens its socket.
+
+Earlier default whole-file CI-flag ShellCheck attempts were killed with exit 137
+on both current source and an isolated tracked `64f6e46` Core export, repeating
+the historical facade resource limitation below. After the final preflight
+compatibility correction, the complete current `core/ai/core.sh` passes
+ShellCheck 0.9 with default analysis and the exact CI flags. All changed Bash
+files parse; the seven edited facade functions also pass those flags. The
+separate `--extended-analysis=false` result is supplemental evidence only.
+The failed attempts remain recorded, and no lint exclusion or baseline manifest
+change replaces the passing default-analysis proof.
+
+**Earlier EXECUTION evidence (2026-10-09), supplemented by the correction above:**
+
+| Proof/check | Result |
+|---|---|
+| Contract/security | Managed owner: 11 tests plus 9 subtests pass. Invalid private input, concurrent stage CAS, owner/purpose/consumer denial, unknown schema/binding/scope, unsafe permissions/links, mandatory audit failure before release/socket and material/metadata publication failures are covered. |
+| Real workflow | Production: 7 tests plus 7 subtests pass with only final `http.client.HTTPSConnection` replaced. Existing hidden setup and explicit protected/environment import traverse canonical CHANGE and validation. Fresh processes, all selected roles, chat/follow-up, hybrid, direct engine, validation and balance serialize the managed authorization header. One live Bash session requests before rotation, rotates through existing `apikey` machinery, then requests/follows up/summarizes with the new generation; restarted processes agree. |
+| Inspection/non-exposure | Absent inspection creates no store, scope or socket. Desired handle, generation/access and observed HTTP status remain separate. Earlier sentinel checks covered body, argv, the mutable socket-process environment, Context, History, configuration/metadata, frontend/domain events, errors, exports and backups. They did not inject a credential-bearing inherited scrub map or inspect the kernel exec environment; the final synthetic failure invalidates launch-isolation closure. Exact streaming/provider/tool-output projection preserves systemd/protocol identifiers. Redaction audit failure denies projection. |
+| Migration/recovery | Explicit source/parser tests: 2 pass. No shell evaluation or automatic import occurs. Stale revisions, configuration races, a killed process after configuration commit, a killed process before old-generation retirement, exact approved replay and mismatched replay are exercised. Missing/corrupt state refuses old file/home/env/cache sources. Approved previous-generation activation and protected re-import retain stable reference; damaged artifacts remain. Metadata-only restore does not restore material or clear cutover; direct legacy restore and selected backup copies/assignments are fenced. |
+| Regression | All 75 affected groups finish: raw summary has 886 PASS identities/check groups, 4 reviewed baseline failures, 2 formerly failing baseline entries passing, 1 permitted skip, 27 additional flags and no timeout/tool error. Corrective reruns resolve all 25 runtime flags: startup 14 tests plus 12 subtests, Module contract 26 tests, runner 33 tests plus 2 subtests pass. The two lint flags are reviewed baseline findings, as detailed below. No introduced runtime failure remains. |
+| Static/docs | All 14 changed/new Python files compile; 12 are Ruff-clean. The remaining 31 diagnostics (27 engine, 4 History) match HEAD fingerprints, with zero new and one resolved. Whole-repository Ruff reports 135 findings; unaffected files remain baseline debt. All 15 changed Bash/BATS files pass parse/count checks. Final default ShellCheck 0.9 batch completes with only the four unchanged backup warnings. Local Markdown references and diff/whitespace checks pass. |
+
+The raw affected gate exits 1; it is not presented as an unconditionally green
+release run. Evidence is retained at
+`/tmp/igor-openrouter-affected-final-20261009/summary.json`, with corrective logs
+under `/tmp/igor-openrouter-startup-correction.log`,
+`/tmp/igor-openrouter-git-fixture-correction/pytest.log` and
+`/tmp/igor-openrouter-runner-env-correction/pytest.log`. Final lint JSON is in
+`/tmp/igor-openrouter-final-shellcheck.json` and
+`/tmp/igor-openrouter-final-changed-ruff.json`. The baseline manifest is unchanged.
+
+The startup correction restores the existing legacy validation/balance helpers
+before cutover; the new direct preflight route had bypassed those offline fixture
+mocks. Its initial fixture run reached an unmocked transport path with a synthetic
+key; that run is not counted as production HTTP proof. The actual lifecycle proof
+uses the final-socket fixture throughout. The Git fixture failures came from a
+process-only selection setting: the harness removed `GIT_CONFIG_KEY_0` while
+retaining `GIT_CONFIG_COUNT`. Corrective runs use `GIT_CONFIG_PARAMETERS`; no Git
+configuration or user file was changed. Initial 25-second lifecycle fixture
+timeouts were replaced by a 60-second ceiling after a diagnostic canonical setup
+completed successfully in 26.1 seconds; harness outer deadlines are unchanged.
+
+Remaining reviewed failures are the partial CLI architecture fixture, the v2
+privileged-declaration reason fixture and two System administration projection/
+verification fixtures. The encrypted-backup test skips for unavailable GPG agent.
+The four backup lint findings are SC2024 three times and SC2120; all reproduce on
+unchanged HEAD. Broader release validation remains separate.
+
+This closes only the approved single OpenRouter lifecycle. Personal credentials
+were not imported, original sources are not automatically deleted, and host
+settings/application provisioning are unchanged. Local recovery cannot promise
+provider acceptance/revocation reversal; ordinary backups intentionally omit
+selected material and require an independent protected re-import source. Current
+UID/root access is outside this protection. The broader Ownership Foundation,
+other credentials, application binding and Nextcloud migration remain open.
+
+## Post-merge module integration — retained bounded corrective-slice evidence
 
 This slice starts from PR #69's `igor2` merge `f4976d0` and corrects three
 integration defects without advancing a roadmap wave or changing Module API

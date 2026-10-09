@@ -21,6 +21,24 @@ _IGOR_HYBRID_SYSTEM_PROMPT=''
 _IGOR_HYBRID_INITIALIZED=false
 _IGOR_HYBRID_ACTIVE=false  # set true once a conversation is in progress
 
+_igor_hybrid_openrouter_cutover() {
+    if declare -f _ai_openrouter_cutover >/dev/null 2>&1; then
+        _ai_openrouter_cutover
+        return $?
+    fi
+    local _root="${IGOR_DIR:-}" _data _state
+    [ -n "$_root" ] || return 0
+    _data="${IGOR_DATA_DIR:-${_root}/data}"
+    if [ ! -f "${_root}/core/lib/configuration.py" ]; then
+        [ -e "${_data}/secrets/catalog.db" ]
+        return $?
+    fi
+    _state=$(IGOR_CONFIGURATION_ROOT="$_root" IGOR_CONFIGURATION_DATA_DIR="$_data" \
+        env -u OPENROUTER_API_KEY -u OR_API_KEY -u NEXUS_API_KEY \
+        python3 "${_root}/core/lib/configuration.py" openrouter-cutover-guard 2>/dev/null) || return 0
+    [ "$_state" != legacy ]
+}
+
 # ── _igor_hybrid_init ─────────────────────────────────────────────────────────
 # Load the AI subsystem (once) and gather server context for the system prompt.
 # Returns 1 if no API key is available.
@@ -29,11 +47,22 @@ _igor_hybrid_init() {
     [ "${_IGOR_HYBRID_INITIALIZED:-false}" = "true" ] && return 0
 
     # ── Check API key ─────────────────────────────────────────────────────────
-    local _hk="" _hor=""
+    local _hk="" _hor="" _or_available=false
     [ -f "$HOME/.nexus_api_key" ] && _hk=$(cat "$HOME/.nexus_api_key" 2>/dev/null)
-    [ -f "$HOME/.nexus_or_key"  ] && _hor=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    if _igor_hybrid_openrouter_cutover; then
+        local _or_state
+        _or_state=$(IGOR_CONFIGURATION_ROOT="$IGOR_DIR" \
+            IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+            python3 "${IGOR_DIR}/core/lib/configuration.py" secret-status 2>/dev/null) || _or_state='{}'
+        if printf '%s' "$_or_state" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("availability") == "available" else 1)' 2>/dev/null; then
+            _or_available=true
+        fi
+        unset OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY
+    else
+        [ -f "$HOME/.nexus_or_key" ] && _hor=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    fi
 
-    if [ -z "$_hk" ] && [ -z "$_hor" ]; then
+    if [ -z "$_hk" ] && [ -z "$_hor" ] && [ "$_or_available" != true ]; then
         return 1
     fi
 
@@ -103,12 +132,15 @@ _igor_hybrid_init() {
 _igor_hybrid_ask() {
     local _input="$1"
     [ -z "$_input" ] && return 0
-
     # Determine active API key
     local _active_key=""
-    [ "$provider" = "openrouter" ] \
-        && _active_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null) \
-        || _active_key=$(cat "$HOME/.nexus_api_key" 2>/dev/null)
+    if [ "$provider" = "openrouter" ] && _igor_hybrid_openrouter_cutover; then
+        unset OPENROUTER_API_KEY OR_API_KEY NEXUS_API_KEY
+    elif [ "$provider" = "openrouter" ]; then
+        _active_key=$(cat "$HOME/.nexus_or_key" 2>/dev/null)
+    else
+        _active_key=$(cat "$HOME/.nexus_api_key" 2>/dev/null)
+    fi
 
     # Scrub input
     local _scrubbed_input="$_input"

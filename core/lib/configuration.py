@@ -28,16 +28,36 @@ from configuration_schema import (
     validate_schema,
     validate_value,
 )
-from operational_history import OperationalHistory, object_ref
+from operational_history import SCOPE, OperationalHistory
 from privacy import scrub_text
+from secret_refs import ManagedOpenRouterSecret
 
 CORE_SCHEMA = {"schema_version": 1, "fields": [
     {"id": "ai.verbose", "type": "boolean", "scope": "installation", "default": True,
      "label": "Verbose", "help": "Show AI reasoning before a command.", "overrides": []},
+    {"id": "ai.openrouter.credential", "type": "secret_ref", "scope": "installation",
+     "secret_purpose": "auth", "sensitivity": "secret", "label": "OpenRouter credential",
+     "help": "Reference to the protected local OpenRouter credential.", "overrides": []},
 ]}
 
 MEMORY_WARNING = "system.memory.warning_threshold_mib"
 MEMORY_TARGET = "module:system"
+OPENROUTER_CREDENTIAL = "ai.openrouter.credential"
+OPENROUTER_TARGET = "installation:local"
+OPENROUTER_SET = "core.configuration.openrouter_credential.set"
+OPENROUTER_ROTATE = "core.configuration.openrouter_credential.rotate"
+OPENROUTER_RESTORE = "core.configuration.openrouter_credential.restore_previous"
+OPENROUTER_REIMPORT = "core.configuration.openrouter_credential.reimport"
+
+
+def openrouter_secret_root(root: Path) -> Path:
+    override = os.environ.get("IGOR_SECRETS_DIR")
+    if override:
+        path = Path(override)
+        if not path.is_absolute():
+            raise ConfigurationError("secret root override must be absolute")
+        return path
+    return root / "secrets"
 
 
 def installed_schemas(root: Path) -> list[tuple[str, dict]]:
@@ -285,7 +305,8 @@ class ConfigurationService:
                 metadata = dict(connection.execute("SELECT key,value FROM metadata"))
                 if set(metadata) != {"scope_id", "revision"} or not metadata["revision"].isdigit():
                     raise ConfigurationError("invalid configuration metadata")
-                object_ref(metadata["scope_id"], "installation:local")
+                if type(metadata["scope_id"]) is not str or not SCOPE.fullmatch(metadata["scope_id"]):
+                    raise ConfigurationError("invalid configuration scope identity")
                 try:
                     history_scope = self.history.status()["scope_id"]
                 except ValueError:
@@ -437,8 +458,8 @@ class ConfigurationService:
         if row:
             history_reference = {"operation_id": row["operation_id"], "availability": "unavailable"}
             try:
-                self.history.inspect(row["operation_id"])
-                history_reference["availability"] = "available"
+                if self.history.has_operation(row["operation_id"]):
+                    history_reference["availability"] = "available"
             except ValueError:
                 pass
         result = {"schema_version": 1, "scope_id": metadata["scope_id"], "target": target, "id": ident,
@@ -454,7 +475,95 @@ class ConfigurationService:
                 "compatibility": compatibility if row is None else None}
         if ident == MEMORY_WARNING:
             result["runtime_consumption"] = _memory_consumption(result) if self.owner_active("system") else {"status": "owner_inactive", "verification": "not_verified"}
+        if ident == OPENROUTER_CREDENTIAL:
+            try:
+                binding = self.secret_service.status() if self.secret_service else {
+                    "availability": "unavailable"}
+            except ValueError:
+                binding = {"availability": "corrupt"}
+            result["secret_binding"] = {
+                "reference": value["reference"] if value else None,
+                "registration": binding.get("availability", "unavailable"),
+                "cutover": binding.get("cutover"),
+                "owner": "core", "purpose": "auth", "scope_id": binding.get("scope_id"),
+                "binding_profile": binding.get("binding_profile"), "bindings": binding.get("bindings", []),
+                "source_kind": binding.get("source_kind"), "revision": binding.get("revision"),
+                "configured": value is not None, "available": binding.get("availability") == "available",
+                "unavailable_reason": None if binding.get("availability") == "available" else binding.get("availability", "unavailable"),
+                "generation": binding.get("generation"),
+                "last_external_acceptance": binding.get("last_external_acceptance"),
+                "last_access": binding.get("last_access"),
+            }
         return result
+
+    @contextlib.contextmanager
+    def openrouter_change_fence(self, *, revision, state, committed_operation=None):
+        """Hold the existing desired-store read lock across material activation.
+
+        Canonical CHANGE owns authority. This internal fence closes the interval
+        between configuration CAS/readback and the separate material-store CAS.
+        """
+        with self._store() as db:
+            current = int(self._metadata(db)["revision"])
+            if committed_operation is None:
+                if current != revision or self._state_token(db) != state:
+                    raise ConfigurationError("configuration revision conflict")
+            else:
+                row = next((row for row in self._records(db) if row["id"] == OPENROUTER_CREDENTIAL and row["target"] == OPENROUTER_TARGET), None)
+                if current != revision + 1 or row is None or row["operation_id"] != committed_operation:
+                    raise ConfigurationError("configuration cutover revision conflict")
+            yield
+
+    def openrouter_source_fence(self):
+        """Value-free refusal fence for sanitization/backup, never access authority.
+
+        Read a SQLite snapshot without entering History or locking another
+        owner's transaction. A saved handle or damaged existing intent retires
+        old sources; this projection cannot resolve or release material.
+        """
+        safe_path(self.path)
+        if not self.path.exists():
+            return False
+        fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or
+                    info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+                return True
+            db = sqlite3.connect(f"file:/proc/self/fd/{fd}?mode=ro", uri=True)
+            try:
+                if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                    return True
+                row = db.execute("SELECT record FROM desired WHERE target=? AND id=?",
+                    (OPENROUTER_TARGET, OPENROUTER_CREDENTIAL)).fetchone()
+                if row is None:
+                    return False
+                record = decode(row[0])
+                return bool(record.get("value")) or not record.get("unset", False)
+            finally:
+                db.close()
+        except (sqlite3.Error, ValueError, TypeError):
+            return True
+        finally:
+            os.close(fd)
+
+    def resolve_openrouter_credential(self):
+        """Read only the Core handle, without global settings or material."""
+        ident = "ai.openrouter.credential"
+        self._field(ident, "installation:local")
+        with self._store() as db:
+            metadata = self._metadata(db)
+            row = None
+            if db:
+                raw = db.execute("SELECT record FROM desired WHERE target=? AND id=?",
+                                 ("installation:local", ident)).fetchone()
+                if raw is not None:
+                    row = self._record(decode(raw[0]))
+        value = row["value"] if row and not row["unset"] else None
+        return {"scope_id": metadata["scope_id"],
+                "reference": value["reference"] if value else None,
+                "revision": int(metadata["revision"]),
+                "operation_id": row["operation_id"] if row else None}
 
     def resolve_ai_verbose(self, *, compatibility_loader=None):
         """Resolve the Core-owned startup setting without claiming global state.
@@ -582,7 +691,7 @@ class ConfigurationService:
             return {"configuration_export_version": 1, "scope_id": metadata["scope_id"],
                     "revision": int(metadata["revision"]), "records": self._records(db)}
 
-    def validate(self, changes):
+    def validate(self, changes, *, _handle_restore=False):
         if type(changes) is not list or not 1 <= len(changes) <= 64:
             raise ConfigurationError("changes must be bounded")
         normalized, seen = [], set()
@@ -595,13 +704,25 @@ class ConfigurationService:
             seen.add(identity)
             unset = change.get("unset", False)
             if unset:
+                if change["id"] == OPENROUTER_CREDENTIAL:
+                    raise ConfigurationError("OpenRouter source cutover cannot be cleared by ordinary configuration")
                 if "value" in change or field["required"] and "default" not in field:
                     raise ConfigurationError("required value cannot be unset")
                 value = None
             else:
                 if "value" not in change:
                     raise ConfigurationError("missing proposed value")
-                value = self._validate(field, change["value"])
+                if _handle_restore and change["id"] == OPENROUTER_CREDENTIAL:
+                    value = validate_value(field, change["value"])
+                    desired = self.resolve_openrouter_credential()["reference"]
+                    try:
+                        registered = self.secret_service.status()["reference"] if self.secret_service else None
+                    except ValueError:
+                        registered = None
+                    if any(ref is not None and ref != value["reference"] for ref in (desired, registered)):
+                        raise ConfigurationError("metadata restore cannot replace managed OpenRouter authority")
+                else:
+                    value = self._validate(field, change["value"])
             normalized.append({"id": change["id"], "target": change["target"], "value": value, "unset": unset})
         with self._store() as db:
             self._candidate(normalized, self._records(db))
@@ -646,8 +767,8 @@ class ConfigurationService:
             if os.path.exists(temporary):
                 os.unlink(temporary)
 
-    def commit(self, changes, *, expected_revision, expected_state, operation_id, source=None, legacy=None):
-        normalized = self.validate(changes)
+    def commit(self, changes, *, expected_revision, expected_state, operation_id, source=None, legacy=None, _handle_restore=False):
+        normalized = self.validate(changes, _handle_restore=_handle_restore)
         if type(expected_revision) is not int or expected_revision < 0 or not re.fullmatch(r"op-[0-9a-f]{32}", operation_id):
             raise ConfigurationError("invalid revision or operation identity")
         with self._store(write=True) as db:
@@ -658,7 +779,11 @@ class ConfigurationService:
             previous = self._records(db)
             for change in normalized:
                 if not change["unset"]:
-                    self._validate(self._field(change["id"], change["target"], active=True), change["value"])
+                    field = self._field(change["id"], change["target"], active=True)
+                    if _handle_restore and change["id"] == OPENROUTER_CREDENTIAL:
+                        validate_value(field, change["value"])
+                    else:
+                        self._validate(field, change["value"])
             self._candidate(normalized, previous)
             backup = {"configuration_export_version": 1, "scope_id": metadata["scope_id"], "revision": current, "records": previous}
             if legacy is not None:
@@ -704,12 +829,12 @@ class ConfigurationService:
             changes = [{"target": baseline["target"], "id": baseline["id"], "value": baseline["value"]}]
         if not changes:
             raise ConfigurationError("empty recovery has no settings to restore")
-        return self.validate(changes)
+        return self.validate(changes, _handle_restore=True)
 
     def restore(self, document, *, expected_revision, expected_state, operation_id):
         changes = self.prepare_restore(document)
         proposals = [{"target": c["target"], "id": c["id"], **({"unset": True} if c["unset"] else {"value": c["value"]})} for c in changes]
-        return self.commit(proposals, expected_revision=expected_revision, expected_state=expected_state, operation_id=operation_id, source={"kind": "restore"})
+        return self.commit(proposals, expected_revision=expected_revision, expected_state=expected_state, operation_id=operation_id, source={"kind": "restore"}, _handle_restore=True)
 
 
 def capability_records(system_active=False):
@@ -721,14 +846,40 @@ def capability_records(system_active=False):
          "ai_verbose_session", "Verify this AI session consumed the desired ai.verbose revision"),
         ("core.configuration.restore", "CHANGE", {"document": {"type": "string", "maxLength": 262144}, "revision": {"type": "integer", "minimum": 0}, "state": {"type": "string", "minLength": 64, "maxLength": 64}},
          "configuration_restore", "Restore validated desired configuration; application is separate"),
+        (OPENROUTER_SET, "CHANGE",
+         {"ticket": {"type": "string", "pattern": "^[0-9a-f]{48}$"},
+          "source_kind": {"type": "enum", "enum": ["private_input", "environment_import", "file_import", "home_import", "env_file_import"]},
+          "generation_revision": {"type": "integer", "minimum": 0},
+          "revision": {"type": "integer", "minimum": 0},
+          "state": {"type": "string", "minLength": 64, "maxLength": 64}},
+         "openrouter_generation_revision", "Commit the staged OpenRouter credential reference and activate its protected generation"),
+        (OPENROUTER_ROTATE, "CHANGE",
+         {"ticket": {"type": "string", "pattern": "^[0-9a-f]{48}$"},
+          "source_kind": {"type": "enum", "enum": ["private_input", "environment_import", "file_import", "home_import", "env_file_import"]},
+          "generation_revision": {"type": "integer", "minimum": 1},
+          "revision": {"type": "integer", "minimum": 0},
+          "state": {"type": "string", "minLength": 64, "maxLength": 64}},
+         "openrouter_generation_revision", "Replace the protected OpenRouter credential under revision control"),
+        (OPENROUTER_RESTORE, "CHANGE",
+         {"generation_revision": {"type": "integer", "minimum": 1},
+          "revision": {"type": "integer", "minimum": 0},
+          "state": {"type": "string", "minLength": 64, "maxLength": 64}},
+         "openrouter_generation_revision", "Reactivate the retained previous OpenRouter generation as a new revision"),
     ]:
         descriptor = {"kind": "capability", "id": ident, "handler": "core_configuration_adapter", "capability_version": 1,
                       "description": description, "inputs": {"properties": properties, "required": list(properties), "additionalProperties": False},
                       "safety": {"tier": tier}, "privilege": "none", "preconditions": [],
-                      "verification": {"kind": verification, "required": True}, "recovery": {"class": "reversible" if tier == "CHANGE" else "not_applicable"},
+                      "verification": {"kind": verification, "required": True},
+                      "recovery": {"class": ("best_effort" if ident in {OPENROUTER_SET, OPENROUTER_ROTATE, OPENROUTER_RESTORE}
+                                             else "reversible" if tier == "CHANGE" else "not_applicable")},
                       "affects": ["installation:local"]}
         records.append({"id": ident, "owner": "core", "provider": "core", "source": "core.configuration.v1",
                         "availability": "active", "unavailable_reason": None, "descriptor": descriptor})
+    template = next(row for row in records if row["id"] == OPENROUTER_SET)
+    reimport = json.loads(json.dumps(template))
+    reimport["id"] = reimport["descriptor"]["id"] = OPENROUTER_REIMPORT
+    reimport["descriptor"]["description"] = "Explicit protected re-import for unavailable local OpenRouter state; retain damaged material"
+    records.append(reimport)
     properties = {"value": {"type": "integer"}, "revision": {"type": "integer", "minimum": 0},
                   "state": {"type": "string", "minLength": 64, "maxLength": 64}}
     records.append({"id": "core.configuration.system_memory_warning.set", "owner": "core", "provider": "core",
@@ -747,6 +898,32 @@ def capability_records(system_active=False):
 def cli():
     try:
         action = sys.argv[1]
+        if action in {"stage-openrouter", "stage-openrouter-recovery"}:
+            root = Path(os.environ["IGOR_CONFIGURATION_ROOT"])
+            data = Path(os.environ["IGOR_CONFIGURATION_DATA_DIR"])
+            source_kind = os.environ["IGOR_SECRET_SOURCE_KIND"]
+            expected_revision = int(os.environ["IGOR_SECRET_EXPECTED_REVISION"])
+            material = sys.stdin.buffer.read(16385)
+            if len(material) > 16384:
+                raise ConfigurationError("private credential exceeds limit")
+            secret_service = ManagedOpenRouterSecret(openrouter_secret_root(root), data)
+            if action == "stage-openrouter-recovery":
+                desired = ConfigurationService(data, secret_service=secret_service).resolve_openrouter_credential()
+                ticket = secret_service.stage_recovery(material, source_kind=source_kind, handle=desired["reference"])
+            else:
+                ticket = secret_service.stage(material, source_kind=source_kind, expected_revision=expected_revision)
+            print(ticket)
+            return 0
+        if action in {"openrouter-backup-guard", "openrouter-cutover-guard"}:
+            root = Path(os.environ["IGOR_CONFIGURATION_ROOT"])
+            data = Path(os.environ["IGOR_CONFIGURATION_DATA_DIR"])
+            status = ManagedOpenRouterSecret(openrouter_secret_root(root), data).status()
+            desired = ConfigurationService(data, secret_service=ManagedOpenRouterSecret(openrouter_secret_root(root), data)).resolve_openrouter_credential()
+            selected = status["cutover"] or desired["reference"] is not None
+            if action == "openrouter-backup-guard":
+                selected = selected or status["pending"]
+            print("omit" if selected else "legacy")
+            return 0
         if action == "resolve-ai-verbose":
             # Dedicated startup consumer: arguments arrive as environment data
             # rather than paying for a separate Python JSON-builder process.
@@ -784,8 +961,12 @@ def cli():
             # Standalone inspection admits no module writes without that snapshot.
             active = set(request.get("active_owners", ["core"]))
             schemas = installed_schemas(root)
+        secret_service = (ManagedOpenRouterSecret(openrouter_secret_root(root), Path(request["data_dir"]),
+                                                   pending_operation=request.get("operation_id"))
+                          if root is not None else None)
         service = ConfigurationService(Path(request["data_dir"]), schemas=schemas,
-                                       owner_active=lambda owner: owner == "core" or owner in active)
+                                       owner_active=lambda owner: owner == "core" or owner in active,
+                                       secret_service=secret_service)
         if action == "resolve-ai-verbose":
             result = service.resolve_ai_verbose(
                 compatibility_loader=lambda: legacy_verbose(
@@ -819,6 +1000,33 @@ def cli():
             result = service.export()
         elif action == "managed":
             result = {"ai_verbose": service.inspect()["last_change"] is not None}
+        elif action == "secret-status":
+            try:
+                result = secret_service.status()
+            except ValueError:
+                result = {"reference": None, "availability": "corrupt", "cutover": None,
+                          "revision": 0, "generation": None, "pending": False, "previous_available": False}
+        elif action == "secret-sources":
+            from openrouter_import import candidates
+            result = candidates(root, home=Path.home(), secret_root=openrouter_secret_root(root),
+                                environment=os.environ)
+        elif action in {"stage-openrouter-source", "stage-openrouter-recovery-source"}:
+            from openrouter_import import selected
+            material, kind = selected(root, home=Path.home(), secret_root=openrouter_secret_root(root),
+                                      environment=os.environ, source=request["source"])
+            if action == "stage-openrouter-recovery-source":
+                desired = service.resolve_openrouter_credential()
+                ticket = secret_service.stage_recovery(material, source_kind=kind, handle=desired["reference"])
+            else:
+                ticket = secret_service.stage(material, source_kind=kind, expected_revision=request["generation_revision"])
+            result = {"ticket": ticket, "source_kind": kind}
+        elif action == "secret-discard":
+            recovery = secret_service.metadata_dir / "recovery" / (request["ticket"] + ".json")
+            if recovery.exists():
+                secret_service.discard_recovery(request["ticket"])
+            else:
+                secret_service.discard_pending(request["ticket"])
+            result = {"discarded": True}
         elif action in {"inspect", "list", "resolve"}:
             ident = request.get("id", "ai.verbose")
             target = request.get("target", "installation:local")
@@ -826,18 +1034,46 @@ def cli():
             if ident == "ai.verbose" and state["last_change"] is None:
                 compatibility = legacy_verbose(Path(request["igor_dir"]), request.get("inherited_verbose"))
                 state = service.inspect(compatibility=compatibility)
-            result = [state if field["id"] == "ai.verbose" else service.inspect(field["id"], "module:" + field["owner"]) for field in service.fields.values()] if action == "list" else state
+            result = [service.inspect(field["id"], "installation:local" if field["scope"] == "installation" else "module:" + field["owner"]) for field in service.fields.values()] if action == "list" else state
         elif action == "validate":
             result = service.validate(request["changes"] if "changes" in request else decode(request["changes_document"]))
         elif action == "prepare":
             memory = request["capability_id"] == "core.configuration.system_memory_warning.set"
-            state = service.inspect(MEMORY_WARNING, MEMORY_TARGET) if memory else service.inspect()
+            capability = request["capability_id"]
+            secret_change = capability in {OPENROUTER_SET, OPENROUTER_ROTATE, OPENROUTER_RESTORE, OPENROUTER_REIMPORT}
+            state = service.inspect(MEMORY_WARNING, MEMORY_TARGET) if memory else (
+                service.inspect(OPENROUTER_CREDENTIAL, OPENROUTER_TARGET) if secret_change else service.inspect())
             if (state["revision"] != request["revision"] or
                     (request["capability_id"] != "core.configuration.ai_verbose.verify" and state["state_token"] != request["state"])):
                 raise ConfigurationError("configuration revision conflict")
-            capability = request["capability_id"]
             if memory:
                 result = service.validate([{"id": MEMORY_WARNING, "target": MEMORY_TARGET, "value": request["value"]}])
+            elif secret_change and capability == OPENROUTER_REIMPORT:
+                stage = secret_service.recovery_stage(request["ticket"])
+                desired = service.resolve_openrouter_credential()
+                if (request["generation_revision"] != 0 or request["source_kind"] != stage["source_kind"] or
+                        desired["reference"] not in {None, stage["handle"]}):
+                    raise ConfigurationError("recovery stage revision conflict")
+                result = {"reference": stage["handle"], "source_kind": stage["source_kind"]}
+            elif secret_change:
+                secret_state = secret_service.status()
+                desired = state["desired"]
+                if secret_state.get("revision") != request["generation_revision"]:
+                    raise ConfigurationError("secret revision conflict")
+                if capability == OPENROUTER_SET:
+                    if secret_state["cutover"] or desired["status"] not in {"absent", "value"} or (
+                            desired["status"] == "value" and desired["value"] != {"reference": secret_state["reference"]}):
+                        raise ConfigurationError("secret cutover conflict")
+                elif (not secret_state["cutover"] or
+                      desired != {"status": "value", "value": {"reference": secret_state["reference"]}}):
+                    raise ConfigurationError("secret reference unavailable")
+                if capability == OPENROUTER_RESTORE:
+                    if not secret_state["previous_available"] or secret_state["pending"]:
+                        raise ConfigurationError("previous secret unavailable")
+                    result = {"reference": secret_state["reference"], "revision": request["generation_revision"]}
+                else:
+                    result = secret_service.staged(request["ticket"], expected_revision=request["generation_revision"],
+                                                   source_kind=request["source_kind"])
             elif capability == "core.configuration.ai_verbose.set":
                 result = service.validate([{"id": "ai.verbose", "target": "installation:local", "value": request["value"]}])
                 if state["last_change"] is None:
@@ -855,6 +1091,79 @@ def cli():
         elif action == "memory-set":
             result = service.commit([{"id": MEMORY_WARNING, "target": MEMORY_TARGET, "value": request["value"]}],
                                     expected_revision=request["revision"], expected_state=request["state"], operation_id=request["operation_id"])
+        elif action in {"openrouter-set", "openrouter-rotate", "openrouter-restore", "openrouter-reimport"}:
+            capability = {"openrouter-set": OPENROUTER_SET, "openrouter-rotate": OPENROUTER_ROTATE,
+                          "openrouter-restore": OPENROUTER_RESTORE, "openrouter-reimport": OPENROUTER_REIMPORT}[action]
+            try:
+                secret_state = secret_service.status()
+            except ValueError:
+                if action != "openrouter-reimport":
+                    raise
+                secret_state = {}
+            if (secret_state.get("last_operation_id") == request["operation_id"] and
+                    secret_state.get("revision") == request["generation_revision"] + 1):
+                from operational_history import OperationalHistory
+                original = OperationalHistory(secret_service.data_root).inspect(request["operation_id"])
+                expected_inputs = {key: request[key] for key in ("generation_revision", "revision", "state")}
+                if "ticket" in request:
+                    expected_inputs.update(ticket=request["ticket"], source_kind=request["source_kind"])
+                if original["capability"]["id"] != capability or original["inputs"] != expected_inputs:
+                    raise ConfigurationError("credential replay differs from approved operation")
+                if secret_state.get("retirement_pending"):
+                    secret_service._finish_retirement(request["operation_id"])
+                    secret_state = secret_service.status()
+                print(compact(secret_state))
+                return 0
+            current = service.inspect(OPENROUTER_CREDENTIAL, OPENROUTER_TARGET)
+            if current["revision"] != request["revision"] or current["state_token"] != request["state"]:
+                raise ConfigurationError("configuration revision conflict")
+            if action == "openrouter-restore":
+                result = secret_service.restore_previous(operation_id=request["operation_id"],
+                    expected_revision=request["generation_revision"], revision=request["revision"],
+                    state=request["state"], configuration=service)
+            elif action == "openrouter-reimport":
+                inputs = {key: request[key] for key in ("ticket", "source_kind", "generation_revision", "revision", "state")}
+                secret_service._running(request["operation_id"], capability, inputs)
+                stage = secret_service.recovery_stage(request["ticket"])
+                if service.resolve_openrouter_credential()["reference"] not in {None, stage["handle"]}:
+                    raise ConfigurationError("recovery handle conflict")
+                from openrouter_transport import validate_staged
+                if not validate_staged(secret_service, request["ticket"], request["operation_id"], recovering=True):
+                    raise ConfigurationError("OpenRouter credential validation failed; damaged state retained")
+                current = service.inspect(OPENROUTER_CREDENTIAL, OPENROUTER_TARGET)
+                if current["revision"] != request["revision"] or current["state_token"] != request["state"]:
+                    raise ConfigurationError("configuration revision conflict")
+                secret_service.rebuild_registration(request["ticket"], operation_id=request["operation_id"], frozen_inputs=inputs)
+                service.commit([{"id": OPENROUTER_CREDENTIAL, "target": OPENROUTER_TARGET,
+                                 "value": {"reference": stage["handle"]}}],
+                               expected_revision=request["revision"], expected_state=request["state"], operation_id=request["operation_id"])
+                result = secret_service.activate(request["ticket"], request["operation_id"], expected_revision=0,
+                                                 configuration=service, recovering=True)
+            else:
+                secret_service.bind(request["ticket"], request["operation_id"], capability=capability,
+                    source_kind=request["source_kind"], expected_revision=request["generation_revision"],
+                    revision=request["revision"], state=request["state"])
+                from openrouter_transport import validate_staged
+                if not validate_staged(secret_service, request["ticket"], request["operation_id"]):
+                    raise ConfigurationError("OpenRouter credential validation failed; prior authority retained")
+                if action == "openrouter-set":
+                    service.commit([{"id": OPENROUTER_CREDENTIAL, "target": OPENROUTER_TARGET,
+                                     "value": {"reference": secret_service.status()["reference"]}}],
+                                   expected_revision=request["revision"], expected_state=request["state"],
+                                   operation_id=request["operation_id"])
+                result = secret_service.activate(request["ticket"], request["operation_id"],
+                    expected_revision=request["generation_revision"], configuration=service,
+                    rotation=action == "openrouter-rotate")
+        elif action == "openrouter-verify":
+            secret_state = secret_service.status()
+            desired = service.inspect(OPENROUTER_CREDENTIAL, OPENROUTER_TARGET)["desired"]
+            if (secret_state.get("revision") != request["generation_revision"] + 1 or
+                    secret_state.get("last_operation_id") != request["operation_id"] or
+                    secret_state["availability"] != "available" or secret_state.get("retirement_pending") or
+                    desired != {"status": "value", "value": {"reference": secret_state["reference"]}}):
+                raise ConfigurationError("secret generation verification failed")
+            result = {"source": "secret_service", "revision": secret_state["revision"],
+                      "availability": "available", "reference": secret_state["reference"]}
         elif action == "memory-prepare":
             state = service.inspect(MEMORY_WARNING, MEMORY_TARGET)
             if (state["availability"] != "available" or state["revision"] != request["revision"] or
@@ -901,4 +1210,12 @@ def cli():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in {
+            "openrouter-set", "openrouter-rotate", "openrouter-restore", "openrouter-reimport"}:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ai"))
+        from privacy import launch_private_transport
+        try:
+            launch_private_transport(openrouter=True, staged=True)
+        except (OSError, ValueError):
+            raise SystemExit(1) from None
     raise SystemExit(cli())

@@ -94,6 +94,9 @@ full_backup_take() {
         echo "TIMESTAMP: $(date '+%Y-%m-%d %H:%M:%S')"
         echo "HOST:      $(hostname 2>/dev/null || echo unknown)"
         echo "IGOR_VER:  $(cat "${IGOR_DIR}/VERSION" 2>/dev/null || echo unknown)"
+        if declare -f _mod_cb_openrouter_guard >/dev/null && _mod_cb_openrouter_guard; then
+            echo "OPENROUTER: Managed material and selected legacy sources omitted from core snapshot; approved local recovery/re-import required."
+        fi
         echo ""
         echo "CONTENTS:"
         ls -lh "$dest" 2>/dev/null

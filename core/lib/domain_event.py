@@ -11,9 +11,12 @@ import stat
 import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ai"))
 from capability_runtime import CapabilityError, _validate_result, validate_inputs
+from privacy import sanitize_selected_data
 
 
 class EventError(ValueError):
@@ -69,6 +72,11 @@ def _safe(value: Any, key: str = "") -> None:
         for item in value:
             _safe(item)
     elif isinstance(value, str):
+        try:
+            if sanitize_selected_data(value) != value:
+                raise EventError("selected credential cannot enter domain events")
+        except (OSError, ValueError) as exc:
+            raise EventError("event private projection unavailable") from exc
         if len(value) > 256 or any(ord(c) < 32 for c in value) or SECRET.search(value):
             raise EventError("unsafe scalar")
     elif isinstance(value, float) and not math.isfinite(value):

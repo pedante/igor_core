@@ -32,7 +32,30 @@ _provider_get_name() {
 }
 
 # ── Get API key ───────────────────────────────────────────────────────────────
+_provider_managed_cutover() {
+    if declare -f _ai_openrouter_cutover >/dev/null 2>&1; then
+        _ai_openrouter_cutover
+        return $?
+    fi
+    if declare -f _nexus_openrouter_cutover >/dev/null 2>&1; then
+        _nexus_openrouter_cutover
+        return $?
+    fi
+    local _root="${IGOR_DIR:-}" _data _state
+    [ -n "$_root" ] || return 0
+    _data="${IGOR_DATA_DIR:-${_root}/data}"
+    if [ ! -f "${_root}/core/lib/configuration.py" ]; then
+        [ -e "${_data}/secrets/catalog.db" ]
+        return $?
+    fi
+    _state=$(IGOR_CONFIGURATION_ROOT="$_root" IGOR_CONFIGURATION_DATA_DIR="$_data" \
+        env -u OPENROUTER_API_KEY -u OR_API_KEY -u NEXUS_API_KEY \
+        python3 "${_root}/core/lib/configuration.py" openrouter-cutover-guard 2>/dev/null) || return 0
+    [ "$_state" != legacy ]
+}
+
 _provider_get_key() {
+    _provider_managed_cutover && return 1
     local key="${OPENROUTER_API_KEY:-}"
     [ -z "$key" ] && [ -f "$_PROVIDER_KEY_FILE" ] && key=$(cat "$_PROVIDER_KEY_FILE" 2>/dev/null)
     echo "${key}"
@@ -46,6 +69,7 @@ _provider_get_endpoint() {
 # ── Get request headers ───────────────────────────────────────────────────────
 _provider_get_headers() {
     local api_key="$1"
+    _provider_managed_cutover && return 1
     echo "Content-Type: application/json"
     echo "Authorization: Bearer ${api_key}"
     echo "HTTP-Referer: ${IGOR_GITHUB_URL:-https://github.com/yourusername/igor}"
@@ -97,13 +121,17 @@ except: pass
 
 # ── Check availability (validate key) ─────────────────────────────────────────
 _provider_check_available() {
+    if _provider_managed_cutover; then
+        local _root="${IGOR_DIR:-}" _data="${IGOR_DATA_DIR:-${IGOR_DIR:-}/data}"
+        IGOR_DIR="$_root" IGOR_DATA_DIR="$_data" \
+            python3 "${_root}/core/ai/openrouter_transport.py" validate >/dev/null 2>&1
+        return $?
+    fi
     local key; key=$(_provider_get_key)
     [ -z "$key" ] && return 1
-    local code
-    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
-        -H "Authorization: Bearer ${key}" \
-        "https://openrouter.ai/api/v1/auth/key" 2>/dev/null)
-    [ "$code" = "200" ]
+    local _root="${IGOR_DIR:-}" _data="${IGOR_DATA_DIR:-${IGOR_DIR:-}/data}"
+    printf '%s' "$key" | IGOR_DIR="$_root" IGOR_DATA_DIR="$_data" \
+        python3 "${_root}/core/ai/openrouter_transport.py" validate-private >/dev/null 2>&1
 }
 
 # ── Get available models ──────────────────────────────────────────────────────

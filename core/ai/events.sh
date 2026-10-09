@@ -9,6 +9,8 @@
 # identifiers or command output. It is owner-only (0600) and must never be
 # reused as provider/export payload without the outbound scrub boundary.
 
+_AI_EVENT_SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 AI_EVENT_TYPES='session_started model_status context_routing assistant_message action_proposed approval_waiting explanation action_started action_output action_result action_skipped action_declined action_stopped privilege_waiting privilege_result continuation warning error mode_changed settings_snapshot operator_snapshot operator_candidates session_finished'
 
 _ai_event_stream_path() {
@@ -35,23 +37,34 @@ _ai_event_emit() {
     local parent
     parent=${path%/*}
     [ "$parent" != "$path" ] && [ -d "$parent" ] && [ ! -L "$parent" ] && [ -O "$parent" ] || return 2
-    EVENT_TYPE="$event_type" EVENT_PAYLOAD="$payload" EVENT_PATH="$path" \
-        python3 - <<'PY'
-import fcntl
+    printf '%s' "$payload" | EVENT_TYPE="$event_type" EVENT_PATH="$path" \
+        IGOR_AI_PRIVACY_DIR="${_AI_EVENT_SOURCE_DIR}" python3 -c 'import fcntl
 import json
 import os
 import stat
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 event_type = os.environ["EVENT_TYPE"]
 try:
-    payload = json.loads(os.environ.get("EVENT_PAYLOAD", "{}"))
+    payload = json.load(sys.stdin)
 except json.JSONDecodeError:
     raise SystemExit(2)
 if not isinstance(payload, dict):
     raise SystemExit(2)
 
+# Exact selected-secret projection preserves host/protocol identifiers.
+privacy_dir = Path(os.environ["IGOR_AI_PRIVACY_DIR"])
+if (privacy_dir / "privacy.py").is_file():
+    sys.path.insert(0, str(privacy_dir))
+    from privacy import sanitize_selected_data
+    try:
+        payload = sanitize_selected_data(payload)
+    except (OSError, ValueError):
+        raise SystemExit(2) from None
+elif Path(os.environ.get("IGOR_SECRETS_DIR", str(Path(os.environ.get("IGOR_DIR", ".")) / "secrets")), ".managed").exists():
+    raise SystemExit(2)
 path = Path(os.environ["EVENT_PATH"])
 sequence_path = Path(str(path) + ".seq")
 flags = os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW
@@ -155,21 +168,29 @@ with os.fdopen(fd, "r+", encoding="utf-8") as handle:
     handle.write(json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n")
     handle.flush()
     os.fchmod(handle.fileno(), 0o600)
-    update_cache(sequence + 1, os.fstat(handle.fileno()))
-PY
+    update_cache(sequence + 1, os.fstat(handle.fileno()))'
 }
 
 # Render one structured event to stderr. Rendering never invokes an action.
 _ai_event_render() {
     [ "${IGOR_AI_EVENT_RENDER:-true}" = true ] || return 0
-    EVENT_JSON="${1-}" python3 - <<'PY' >&2
-import json
+    printf '%s' "${1-}" | IGOR_AI_PRIVACY_DIR="$_AI_EVENT_SOURCE_DIR" python3 -c 'import json
 import os
+import sys
+from pathlib import Path
 
 try:
-    event = json.loads(os.environ.get("EVENT_JSON", "{}"))
+    event = json.load(sys.stdin)
 except json.JSONDecodeError:
     raise SystemExit(0)
+privacy_dir = Path(os.environ["IGOR_AI_PRIVACY_DIR"])
+if (privacy_dir / "privacy.py").is_file():
+    sys.path.insert(0, str(privacy_dir))
+    from privacy import sanitize_selected_data
+    try:
+        event = sanitize_selected_data(event)
+    except (OSError, ValueError):
+        raise SystemExit(0) from None
 kind = event.get("event_type", "")
 text = event.get("display", "")
 labels = {
@@ -196,11 +217,10 @@ labels = {
 if text:
     if kind == "action_proposed":
         tier = event.get("classification", "")
-        label = "DESTRUCTIVE — DATA LOSS POSSIBLE" if tier == "DESTROY" else f"{tier or 'Unknown'} action"
+        label = "DESTRUCTIVE — DATA LOSS POSSIBLE" if tier == "DESTROY" else f"{tier or '"'"'Unknown'"'"'} action"
         print(f"{label}: {text}")
     else:
-        print(f"{labels.get(kind, kind)}: {text}" if labels.get(kind, kind) else text)
-PY
+        print(f"{labels.get(kind, kind)}: {text}" if labels.get(kind, kind) else text)' >&2
 }
 
 # Render an already emitted payload, without appending or invoking a tool.
@@ -208,12 +228,8 @@ _ai_event_render_payload() {
     local event_type="${1:-}" payload="${2-}" event_json
     [ -n "$payload" ] || payload='{}'
     [ "${IGOR_AI_EVENT_RENDER:-true}" = true ] || return 0
-    event_json=$(EVENT_TYPE="$event_type" EVENT_PAYLOAD="$payload" python3 - <<'PY'
-import json
-import os
-print(json.dumps({"event_type": os.environ["EVENT_TYPE"], **json.loads(os.environ["EVENT_PAYLOAD"])}))
-PY
-) || return 0
+    event_json=$(printf '%s' "$payload" | EVENT_TYPE="$event_type" python3 -c 'import json, os, sys
+print(json.dumps({"event_type": os.environ["EVENT_TYPE"], **json.load(sys.stdin)}))') || return 0
     _ai_event_render "$event_json"
 }
 

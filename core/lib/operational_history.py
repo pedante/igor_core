@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ai"))
-from privacy import redactions, scrub_text  # noqa: E402
+from privacy import managed_openrouter_cutover, redactions, scrub_text
 
 VERSION = 1
 # Backend layout may evolve independently of public episode/export contracts.
@@ -99,12 +99,21 @@ def object_ref(scope_id: str, object_id: str) -> dict[str, str]:
 
 def _redactions() -> list[tuple[str, str]]:
     pairs = dict(redactions())
+    try:
+        cutover = managed_openrouter_cutover()
+    except ValueError:
+        cutover = True
     for key, value in os.environ.items():
+        if cutover and key in {"OPENROUTER_API_KEY", "OR_API_KEY", "NEXUS_API_KEY"}:
+            continue
         if re.search(r"(?:PASSWORD|PASSWD|SECRET|TOKEN|API_KEY)$", key) and value:
             pairs[value] = "[REDACTED]"
-    root = Path(os.environ.get("IGOR_DIR", ".")) / "secrets"
+    root = Path(os.environ.get("IGOR_SECRETS_DIR",
+                               str(Path(os.environ.get("IGOR_DIR", ".")) / "secrets")))
     for path in root.glob("*"):
         if path.suffix not in {".env", ".key"} or path.is_symlink() or not path.is_file():
+            continue
+        if cutover and path.name in {"openrouter.key", "or.key", "nexus.key"}:
             continue
         for line in path.read_text(errors="replace").splitlines():
             if path.suffix == ".key":
@@ -112,6 +121,8 @@ def _redactions() -> list[tuple[str, str]]:
             else:
                 match = re.match(r"(?:export\s+)?([A-Za-z_]\w*)\s*=\s*(.*)", line.strip())
                 if not match or not SECRET.search(match.group(1)):
+                    continue
+                if cutover and match.group(1) in {"OPENROUTER_API_KEY", "OR_API_KEY", "NEXUS_API_KEY"}:
                     continue
                 value = match.group(2).strip().strip("\"'")
             if value and not value.startswith("[IGOR:"):
@@ -438,7 +449,8 @@ class OperationalHistory:
                 scope_rows = connection.execute("SELECT key,value FROM metadata").fetchall()
                 if len(scope_rows) != 1 or scope_rows[0][0] != "scope_id":
                     raise HistoryError("invalid local scope metadata")
-                object_ref(scope_rows[0][1], "host:local")
+                if type(scope_rows[0][1]) is not str or not SCOPE.fullmatch(scope_rows[0][1]):
+                    raise HistoryError("invalid local scope identity")
                 connection.execute("PRAGMA synchronous=FULL")
                 if write:
                     connection.execute("PRAGMA secure_delete=ON")
@@ -656,6 +668,13 @@ class OperationalHistory:
         """
         with self._store(write=True) as db:
             return self._scope(db)
+
+    def has_operation(self, ident: str) -> bool:
+        """Value-free reference availability without decoding or projecting data."""
+        if type(ident) is not str or not OPERATION.fullmatch(ident):
+            raise HistoryError("invalid operation identity")
+        with self._store() as db:
+            return bool(db and db.execute("SELECT 1 FROM episodes WHERE id=?", (ident,)).fetchone())
 
     def status(self) -> dict[str, Any]:
         with self._store() as db:

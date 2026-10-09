@@ -9,8 +9,11 @@ _ai_prepare_transport() {
         anthropic|openrouter|ollama) ;;
         *) printf 'ERROR: Unsupported AI provider\n'; return 1 ;;
     esac
+    if _nexus_openrouter_cutover; then
+        unset OPENROUTER_API_KEY OR_API_KEY
+        [ "${NEXUS_PROVIDER:-anthropic}" != openrouter ] || unset NEXUS_API_KEY
+    fi
     [ -n "${IGOR_AI_REQUEST_ID:-}" ] || ai_begin_request || return 1
-    ai_export_privacy_map || return 1
     export IGOR_AI_ROLE_BINDINGS IGOR_AI_REQUEST_TYPE IGOR_AI_TEXT_ONLY
     IGOR_AI_ROUTING=$(python3 "${_AI_CONTROL_DIR}/role_transport.py") || return 1
     local -a _route_fields
@@ -32,10 +35,24 @@ publish({"request_id": os.environ.get("IGOR_AI_REQUEST_ID", ""), "routing": json
     if [ "${_route_fields[1]}" != "${NEXUS_PROVIDER:-anthropic}" ]; then
         case "${_route_fields[1]}" in
             anthropic) NEXUS_API_KEY="${ANTHROPIC_API_KEY:-}" ;;
-            openrouter) NEXUS_API_KEY="${OPENROUTER_API_KEY:-}" ;;
+            openrouter)
+                if _nexus_openrouter_cutover; then
+                    NEXUS_API_KEY=''
+                    unset OPENROUTER_API_KEY OR_API_KEY
+                else
+                    NEXUS_API_KEY="${OPENROUTER_API_KEY:-}"
+                fi ;;
             ollama) NEXUS_API_KEY='' ;;
         esac
     fi
+    if [ "${_route_fields[1]}" = openrouter ] && _nexus_openrouter_cutover; then
+        # OpenRouter's protected transport resolves the configured reference
+        # in Python after final provider/role selection. Never inherit an old
+        # shell value or export it to the engine process.
+        NEXUS_API_KEY=''
+        unset OPENROUTER_API_KEY OR_API_KEY
+    fi
+    ai_export_privacy_map || return 1
     NEXUS_PROVIDER="${_route_fields[1]}"
     NEXUS_MODEL="${_route_fields[2]}"
     [ "${_route_fields[3]}" = reasoner ] || IGOR_AI_TEXT_ONLY=true
@@ -120,40 +137,45 @@ _nexus_validate_ant_key() {
 }
 
 # ── Validate an OpenRouter API key ─────────────────────────────────────────────
+_nexus_openrouter_cutover() {
+    if declare -f _ai_openrouter_cutover >/dev/null 2>&1; then
+        _ai_openrouter_cutover
+        return $?
+    fi
+    local _root="${IGOR_DIR:-}" _data _state
+    [ -n "$_root" ] || return 0
+    _data="${IGOR_DATA_DIR:-${_root}/data}"
+    if [ ! -f "${_root}/core/lib/configuration.py" ]; then
+        [ -e "${_data}/secrets/catalog.db" ]
+        return $?
+    fi
+    _state=$(IGOR_CONFIGURATION_ROOT="$_root" IGOR_CONFIGURATION_DATA_DIR="$_data" \
+        env -u OPENROUTER_API_KEY -u OR_API_KEY -u NEXUS_API_KEY \
+        python3 "${_root}/core/lib/configuration.py" openrouter-cutover-guard 2>/dev/null) || return 0
+    [ "$_state" != legacy ]
+}
+
 _nexus_validate_or_key() {
-    local _key="$1"
-    local _code
-    _code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 \
-        -H "Authorization: Bearer ${_key}" \
-        "https://openrouter.ai/api/v1/auth/key" 2>/dev/null)
-    [ "$_code" = "200" ]
+    if _nexus_openrouter_cutover; then
+        return 1
+    fi
+    local _root="${IGOR_DIR:-}" _data="${IGOR_DATA_DIR:-${IGOR_DIR:-}/data}"
+    printf '%s' "$1" | IGOR_DIR="$_root" IGOR_DATA_DIR="$_data" \
+        python3 "${_root}/core/ai/openrouter_transport.py" validate-private >/dev/null 2>&1
 }
 
 # ── Fetch OpenRouter account balance ────────────────────────────────────────────
 # IDEA-05: Returns a human-readable balance string, or "unavailable" on error.
 # Prints: "$X.XX remaining" or "unlimited" or "unavailable"
 _nexus_get_or_balance() {
-    local _key="$1"
-    [ -z "$_key" ] && { echo "unavailable"; return; }
-    local _body
-    _body=$(curl -s --max-time 8 \
-        -H "Authorization: Bearer ${_key}" \
-        "https://openrouter.ai/api/v1/auth/key" 2>/dev/null)
-    # Parse usage and limit from JSON
-    printf '%s' "$_body" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin).get('data', {})
-    limit = d.get('limit')        # None means unlimited
-    usage = d.get('usage', 0)
-    if limit is None:
-        print('unlimited')
-    else:
-        remaining = float(limit) - float(usage)
-        print(f'\${remaining:.2f} remaining (of \${float(limit):.2f})')
-except Exception:
-    print('unavailable')
-" 2>/dev/null || echo "unavailable"
+    if _nexus_openrouter_cutover; then
+        echo "unavailable"
+        return
+    fi
+    [ -z "${1:-}" ] && { echo "unavailable"; return; }
+    local _root="${IGOR_DIR:-}" _data="${IGOR_DATA_DIR:-${IGOR_DIR:-}/data}"
+    printf '%s' "$1" | IGOR_DIR="$_root" IGOR_DATA_DIR="$_data" \
+        python3 "${_root}/core/ai/openrouter_transport.py" balance-private 2>/dev/null || echo "unavailable"
 }
 
 # ── List installed providers ─────────────────────────────────────────────────

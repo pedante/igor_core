@@ -45,6 +45,42 @@ _mod_cb_secret_files() {
         \( -name '*.env' -o -name '*.key' \) -print 2>/dev/null | sort
 }
 
+# Once the selected OpenRouter credential has cut over, ordinary snapshots and
+# restores must not recreate its legacy material authority. A damaged status
+# also omits these candidates; it cannot be treated as a fresh installation.
+_mod_cb_openrouter_guard() {
+    local _state
+    _state=$(IGOR_CONFIGURATION_ROOT="$IGOR_DIR" \
+        IGOR_CONFIGURATION_DATA_DIR="${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+        python3 "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib/configuration.py" openrouter-backup-guard 2>/dev/null) || return 0
+    [ "$_state" != legacy ]
+}
+
+_mod_cb_selected_key_bearing() {
+    local _path="$1" _name
+    _name=$(basename -- "$_path")
+    case "$_name" in
+        openrouter.key|or.key|nexus.key) return 0 ;;
+        *.env)
+            [ -r "$_path" ] || return 0
+            grep -aEq '(^|[^A-Za-z0-9_])(OPENROUTER_API_KEY|OR_API_KEY|NEXUS_API_KEY)([^A-Za-z0-9_]|$)' "$_path"
+            return $? ;;
+    esac
+    return 1
+}
+
+# The managed-key restore fence still restores unrelated nested variables. Do
+# not let an existing destination link redirect that copy into private material.
+_mod_cb_variable_destination_safe() {
+    local _path="$1" _root="${IGOR_DIR}/config/variables"
+    while [[ "$_path" == "$_root" || "$_path" == "$_root/"* ]]; do
+        [ ! -L "$_path" ] || return 1
+        [ "$_path" != "$_root" ] || return 0
+        _path=$(dirname -- "$_path")
+    done
+    return 1
+}
+
 _mod_cb_docker_available() {
     if declare -f igor_has_capability >/dev/null 2>&1; then
         igor_has_capability docker
@@ -84,14 +120,31 @@ _mod_cb_take() {
     trap "rm -rf -- $(printf '%q' "$workdir")" EXIT
 
     local components=()
+    local _or_guard=false
+    _mod_cb_openrouter_guard && _or_guard=true
 
     # ── 1. Igor state — config/variables/ ────────────────────────────────────
     step "Igor state"
     local _vars_dir="${IGOR_DIR}/config/variables"
     if [ -d "$_vars_dir" ] && [ "$(ls -A "$_vars_dir" 2>/dev/null)" ]; then
         mkdir -p "${workdir}/igor-state/variables"
-        cp -r "${_vars_dir}/." "${workdir}/igor-state/variables/" 2>/dev/null && \
+        if "$_or_guard"; then
+            local _var_file _var_relative _var_dest
+            while IFS= read -r _var_file; do
+                if _mod_cb_selected_key_bearing "$_var_file"; then
+                    warn "Omitted selected credential source from variables snapshot"
+                    continue
+                fi
+                _var_relative="${_var_file#${_vars_dir}/}"
+                _var_dest="${workdir}/igor-state/variables/${_var_relative}"
+                mkdir -p -- "$(dirname -- "$_var_dest")"
+                cp -- "$_var_file" "$_var_dest" 2>/dev/null || return 1
+            done < <(find -P "$_vars_dir" -type f -print 2>/dev/null)
             components+=("igor-state/variables/")
+        else
+            cp -r "${_vars_dir}/." "${workdir}/igor-state/variables/" 2>/dev/null && \
+                components+=("igor-state/variables/")
+        fi
         local _var_count; _var_count=$(ls "${workdir}/igor-state/variables/" 2>/dev/null | wc -l)
         ok "config/variables/  (${_var_count} files)"
     else
@@ -114,6 +167,10 @@ _mod_cb_take() {
         mkdir -p "${workdir}/igor-state/secrets-plain"
         while IFS= read -r _sf_path; do
             [ -n "$_sf_path" ] || continue
+            if "$_or_guard" && _mod_cb_selected_key_bearing "$_sf_path"; then
+                warn "Omitted selected credential source from secrets snapshot"
+                continue
+            fi
             local _sf; _sf=$(basename -- "$_sf_path")
             cp -- "$_sf_path" "${workdir}/igor-state/secrets-plain/${_sf}" 2>/dev/null && \
                 _secrets_captured+=("$_sf")
@@ -126,6 +183,11 @@ _mod_cb_take() {
             rmdir "${workdir}/igor-state/secrets-plain" 2>/dev/null || true
             info "secrets/ — no env or key files found, skipped"
         fi
+    fi
+    if "$_or_guard"; then
+        printf '%s\n' 'Managed OpenRouter material and selected legacy credential sources are omitted from this ordinary snapshot. Recover through approved local re-import or retained generation.' \
+            > "${workdir}/igor-state/openrouter-credential-omitted.txt"
+        components+=("igor-state/openrouter-credential-omitted.txt")
     fi
 
     # ── 3. Igor version + git hash ────────────────────────────────────────────
@@ -529,6 +591,8 @@ config_backup_restore() {
     local CYAN='\033[0;36m' BOLD='\033[1m' NC='\033[0m'
 
     BACKUP_DIR="$(_cb_backup_dir)"
+    local _or_guard=false
+    _mod_cb_openrouter_guard && _or_guard=true
 
     # Archive picker
     if [ -z "$archive" ]; then
@@ -600,8 +664,14 @@ config_backup_restore() {
             if [ -d "${workdir}/igor-state/variables" ]; then
                 echo -e "  ${CYAN}Diff — config/variables/:${NC}"
                 for f in "${workdir}/igor-state/variables/"*; do
+                    [ -e "$f" ] || continue
                     local fname; fname=$(basename "$f")
                     local live="${IGOR_DIR}/config/variables/${fname}"
+                    if "$_or_guard" && { _mod_cb_selected_key_bearing "$f" ||
+                        { [ -f "$live" ] && _mod_cb_selected_key_bearing "$live"; }; }; then
+                        warn "Selected credential source omitted from variables preview"
+                        continue
+                    fi
                     if [ -f "$live" ]; then
                         diff --color=always -u "$live" "$f" 2>/dev/null | head -30 || true
                     else
@@ -610,7 +680,26 @@ config_backup_restore() {
                 done
                 if confirm "Apply config/variables/ from snapshot?"; then
                     mkdir -p "${IGOR_DIR}/config/variables"
-                    cp -r "${workdir}/igor-state/variables/." "${IGOR_DIR}/config/variables/" 2>/dev/null
+                    if "$_or_guard"; then
+                        local _var_restore _var_relative _var_live
+                        while IFS= read -r _var_restore; do
+                            _var_relative="${_var_restore#${workdir}/igor-state/variables/}"
+                            _var_live="${IGOR_DIR}/config/variables/${_var_relative}"
+                            if _mod_cb_selected_key_bearing "$_var_restore" ||
+                               { [ -f "$_var_live" ] && _mod_cb_selected_key_bearing "$_var_live"; }; then
+                                warn "Refusing selected credential source from variables restore"
+                                continue
+                            fi
+                            if ! _mod_cb_variable_destination_safe "$_var_live"; then
+                                warn "Refusing linked variables destination during managed credential restore"
+                                continue
+                            fi
+                            mkdir -p -- "$(dirname -- "$_var_live")"
+                            cp -- "$_var_restore" "$_var_live" 2>/dev/null || true
+                        done < <(find -P "${workdir}/igor-state/variables" -type f -print 2>/dev/null)
+                    else
+                        cp -r "${workdir}/igor-state/variables/." "${IGOR_DIR}/config/variables/" 2>/dev/null
+                    fi
                     ok "config/variables/ restored"
                 fi
             fi
@@ -634,6 +723,10 @@ config_backup_restore() {
                     elif mkdir -p "${IGOR_DIR}/secrets"; then
                         while IFS= read -r _sf_path; do
                             [ -n "$_sf_path" ] || continue
+                            if "$_or_guard" && _mod_cb_selected_key_bearing "$_sf_path"; then
+                                warn "Refusing selected credential source from secrets restore"
+                                continue
+                            fi
                             local _sf_name; _sf_name=$(basename -- "$_sf_path")
                             local _sf_dest="${IGOR_DIR}/secrets/${_sf_name}"
                             if [ -L "$_sf_dest" ]; then
@@ -798,6 +891,13 @@ config_backup_secrets() {
     trap 'rm -rf "$_workdir"' RETURN
 
     local _secrets_components=()
+    local _or_guard=false
+    _mod_cb_openrouter_guard && _or_guard=true
+    if "$_or_guard"; then
+        printf '%s\n' 'Managed OpenRouter material and selected legacy credential sources are omitted. Recover through approved local re-import or retained generation.' \
+            > "${_workdir}/openrouter-credential-omitted.txt"
+        _secrets_components+=("openrouter-credential-omitted.txt")
+    fi
     step "Backing up secrets (sudo required)"
 
     # GPG private key export
@@ -836,6 +936,10 @@ config_backup_secrets() {
         "${IGOR_DIR}/secrets/notifications.env" \
         "${IGOR_DIR}/secrets/db.env"; do
         local _ef_name; _ef_name=$(basename "$_ef_src")
+        if "$_or_guard" && [ -f "$_ef_src" ] && _mod_cb_selected_key_bearing "$_ef_src"; then
+            warn "Omitted selected credential source from secrets export"
+            continue
+        fi
         [ -f "$_ef_src" ] && cp "$_ef_src" "${_workdir}/${_ef_name}" 2>/dev/null && \
             _secrets_components+=("$_ef_name") || true
     done

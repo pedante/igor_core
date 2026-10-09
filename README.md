@@ -319,11 +319,13 @@ The bounded Configuration Service owns validated desired values for
 configuration, resolved input and observed runtime state. Existing verbose
 commands submit changes through the backend capability/approval boundary.
 Read-only inspection does not migrate files; an explicit write performs the
-single-key cutover. Other settings retain the legacy loading rules below.
+selected-setting cutover. Other settings retain the legacy loading rules below.
 
 The service uses private installation-local storage and readable export/recovery.
-Secret material remains separate; no module, Nextcloud, secret or host-threshold
-configuration migrates in this foundation.
+Secret material remains separate. The later approved OpenRouter lifecycle stores
+only `ai.openrouter.credential` in Configuration Service; System's memory warning
+setting has its own bounded desired/apply/readback path. Nextcloud and other
+credential families remain separate migration work.
 
 ### Legacy two-layer layout
 
@@ -348,7 +350,7 @@ every password and API key. They live entirely in `secrets/` which is gitignored
 | `mailcmd.env` | Legacy mail-control template (current `core/mailcmd/` implementation is unavailable) |
 | `onlyoffice.env` | JWT secret for OnlyOffice integration |
 | `anthropic.key` | Anthropic API key (single line) |
-| `openrouter.key` | OpenRouter API key (single line) |
+| `openrouter.key` | Legacy OpenRouter import source; managed lifecycle described below |
 
 All `secrets/*.env` files must be `chmod 600`. Igor warns at startup if permissions
 are wrong. The loader reads `secrets/` in step 2 of the config sequence — after
@@ -365,6 +367,10 @@ override those values; migrate them into the standard directories.
 5. root-level *.env               — legacy fallback (deprecated, warns)
 ```
 
+After OpenRouter cutover, its selected aliases, legacy files and effective key
+caches cannot override the managed credential. Environment credentials are
+explicit import inputs only; startup does not migrate them.
+
 ---
 
 ## AI providers
@@ -372,7 +378,7 @@ override those values; migrate them into the standard directories.
 | Provider | Key file | Notes |
 |----------|----------|-------|
 | Anthropic | `secrets/anthropic.key` | Claude Sonnet / Haiku / Opus |
-| OpenRouter | `secrets/openrouter.key` | Any model; DeepSeek, Gemini, etc. |
+| OpenRouter | Managed secret reference after explicit import/setup | Any model; DeepSeek, Gemini, etc. |
 | Ollama | no key | Local models, no data leaves the machine |
 
 Configure in `config/variables/ai.env`: `provider=`, `model=`, `ai_mode=`.
@@ -380,10 +386,12 @@ An existing `executive_mode=true` setting migrates to Executive, and `false`
 migrates to Assist. New settings use the canonical `ai_mode` value.
 
 To replace a key inside Igor, open **AI Assistant → API KEY**, or select a
-provider in **SETTINGS**. Key entry is visible so you can check your paste;
-Enter without a key keeps the existing value. Igor validates replacements,
-saves them in `secrets/<provider>.key` with mode `600`, and updates the active
-session immediately. Saved `config/variables/ai_settings.env` preferences take
+provider in **SETTINGS**. Enter without a key keeps the existing value.
+OpenRouter uses private staged input, validation and the canonical CHANGE approval
+boundary. Its material stays in protected generations; Configuration stores an
+opaque reference. A successful replacement changes the next request in the
+current session and after restart. Anthropic retains its legacy key file behavior.
+Saved `config/variables/ai_settings.env` preferences take
 precedence over `ai.env` when opening chat for unmigrated settings. After
 `ai.verbose` cutover, verbosity comes from Configuration Service rather than
 these files; saving other preferences no longer writes a competing verbose key.
@@ -391,6 +399,15 @@ these files; saving other preferences no longer writes a competing verbose key.
 If chat reports HTTP 401, type `apikey` to replace the active provider's key,
 then resend your message. Enter the key at the separate prompt, not in a chat
 message. Saving other AI settings does not rewrite credentials.
+
+OpenRouter recovery requires an approved local re-import/new key or activation of
+the one retained previous generation as a new revision. Missing or corrupt managed
+state blocks requests; it never reactivates old env/home/key-file credentials.
+Ordinary exports contain references only. New backups omit managed material and
+selected retained legacy credential sources, with visible omission status. Keep
+an independent protected recovery source; config restoration alone cannot recover
+credential material or reverse provider-side revocation. Existing archives remain
+unchanged. See [the lifecycle and recovery contract](docs/igor2/CONFIGURATION.md).
 
 ---
 
@@ -425,7 +442,9 @@ chmod 600 secrets/site.env secrets/notifications.env
 # Add an API key if using a hosted provider. Create/edit with your editor:
 ${EDITOR:-vi} secrets/anthropic.key
 chmod 600 secrets/anthropic.key
-# For OpenRouter use secrets/openrouter.key instead; Ollama needs no key.
+# For OpenRouter use AI Assistant setup/API KEY to validate and approve private
+# managed storage. Existing openrouter.key/env/home files are explicit import
+# sources, not a managed credential backup. Ollama needs no key.
 
 # Run
 bash igor.sh

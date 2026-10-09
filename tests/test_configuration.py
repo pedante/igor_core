@@ -45,7 +45,7 @@ def test_declarations_are_read_only_owner_stamped_schemas(tmp_path):
     service = ConfigurationService(tmp_path, schemas=[("fixture", schema)])
     declarations = service.declarations()
     by_owner = {row["owner"]: row["schema"] for row in declarations}
-    assert by_owner["core"]["fields"][0]["id"] == "ai.verbose"
+    assert {field["id"] for field in by_owner["core"]["fields"]} == {"ai.verbose", "ai.openrouter.credential"}
     assert by_owner["fixture"]["owner"] == "fixture"
     assert by_owner["fixture"]["fields"][0]["id"] == "fixture.value"
     assert list(tmp_path.iterdir()) == []

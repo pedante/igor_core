@@ -100,6 +100,10 @@ _igor_configuration_invoke() {
         core.configuration.ai_verbose.set) _action="set" ;;
         core.configuration.ai_verbose.verify) _action=verify-session ;;
         core.configuration.system_memory_warning.set) _action=memory-set ;;
+        core.configuration.openrouter_credential.set) _action=openrouter-set ;;
+        core.configuration.openrouter_credential.rotate) _action=openrouter-rotate ;;
+        core.configuration.openrouter_credential.reimport) _action=openrouter-reimport ;;
+        core.configuration.openrouter_credential.restore_previous) _action=openrouter-restore ;;
         core.configuration.restore) _action=restore ;;
         *) return 1 ;;
     esac
@@ -111,9 +115,50 @@ igor_configuration_cli() {
     local _action="${1:-status}" _argument="${2:-}" _fields
     case "$_action" in
         status|list|export) [ -z "$_argument" ] || return 2; _igor_configuration_call "$_action" ;;
+        import-openrouter)
+            [ -n "$_argument" ] || { printf 'Usage: --configuration import-openrouter SOURCE\n' >&2; return 2; }
+            # Keep the private staging and approved CHANGE path shared with
+            # interactive `apikey`; this command selects a source by name only.
+            # keys.sh is linted directly; this is a lazy runtime import.
+            # shellcheck source=/dev/null
+            source "${IGOR_DIR}/core/ai/keys.sh" || return 1
+            if [ "$_argument" = private_input ]; then
+                _ai_openrouter_import_private_stdin normal
+                return $?
+            fi
+            _ai_openrouter_import_source "$_argument" ;;
+        reimport-openrouter)
+            [ -n "$_argument" ] || { printf 'Usage: --configuration reimport-openrouter SOURCE\n' >&2; return 2; }
+            # keys.sh is linted directly; this is a lazy runtime import.
+            # shellcheck source=/dev/null
+            source "${IGOR_DIR}/core/ai/keys.sh" || return 1
+            if [ "$_argument" = private_input ]; then
+                _ai_openrouter_import_private_stdin reimport
+                return $?
+            fi
+            _ai_openrouter_import_source "$_argument" reimport ;;
+        resume-openrouter)
+            [ -z "$_argument" ] || return 2
+            # keys.sh is linted directly; this is a lazy runtime import.
+            # shellcheck source=/dev/null
+            source "${IGOR_DIR}/core/ai/keys.sh" || return 1
+            _ai_openrouter_resume_pending ;;
+        recover-openrouter)
+            [ -z "$_argument" ] || return 2
+            # keys.sh is linted directly; this is a lazy runtime import.
+            # shellcheck source=/dev/null
+            source "${IGOR_DIR}/core/ai/keys.sh" || return 1
+            _ai_openrouter_recover_previous ;;
+        discard-openrouter-stage)
+            [ -n "$_argument" ] || { printf 'Usage: --configuration discard-openrouter-stage TICKET\n' >&2; return 2; }
+            _igor_configuration_call secret-discard "$(python3 -c 'import json,sys; print(json.dumps({"ticket":sys.argv[1]}))' "$_argument")" ;;
+        openrouter-sources)
+            [ -z "$_argument" ] || return 2
+            _igor_configuration_call secret-sources ;;
         inspect)
             case "${_argument:-ai.verbose}" in
                 ai.verbose) _igor_configuration_call inspect ;;
+                ai.openrouter.credential) _igor_configuration_call inspect '{"id":"ai.openrouter.credential","target":"installation:local"}' ;;
                 system.memory.warning_threshold_mib)
                     _igor_configuration_call inspect '{"id":"system.memory.warning_threshold_mib","target":"module:system"}' ;;
                 *) return 2 ;;
@@ -121,7 +166,7 @@ igor_configuration_cli() {
         validate)
             _fields="$(python3 -c 'import json,sys; print(json.dumps({"changes_document":sys.argv[1]}))' "$_argument")" || return 2
             _igor_configuration_call validate "$_fields" ;;
-        *) printf 'Usage: --configuration [status|list|inspect SETTING|export|validate CHANGES_JSON]\n' >&2; return 2 ;;
+        *) printf 'Usage: --configuration [status|list|inspect SETTING|export|validate CHANGES_JSON|openrouter-sources|import-openrouter SOURCE|reimport-openrouter SOURCE|recover-openrouter|resume-openrouter|discard-openrouter-stage TICKET]\n' >&2; return 2 ;;
     esac
 }
 

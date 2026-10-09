@@ -894,6 +894,15 @@ re-entry and recovery proof; no generic distributed transaction or workflow
 engine is introduced. Approval accepts the contract, not implementation closure.
 The broader Ownership Foundation and real application-binding gates remain open.
 
+Concrete B record identities under this accepted contract: Core setting
+`ai.openrouter.credential` stores `secret:<installation-local random handle>`;
+the reviewed consumer profile is `core.openrouter.v1`. Canonical CHANGE records
+are `core.configuration.openrouter_credential.set`, `.rotate`,
+`.restore_previous` and `.reimport` (each suffix uses that full prefix).
+Material `generation:<opaque ID>` is distinct from the monotonically changing
+material revision. These identities implement B1–B5 and do not create another
+credential family, authority store or generic credentials UI.
+
 ### D070 — System operator semantic selectors and candidate-resolution boundary
 
 Accepted by the Project Owner on 2026-10-06 after the System / `:sys`

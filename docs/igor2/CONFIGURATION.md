@@ -1,6 +1,7 @@
 # Step 17 — Configuration Ownership and Schema Foundation
 
-Status: **accepted bounded architecture (D059)**. The implementation boundary is
+Status: **accepted bounded architecture (D059), extended by the single OpenRouter
+credential lifecycle (D069)**. The initial implementation boundary was
 the foundation and one Core preference, `ai.verbose`. Current implementation,
 validation results and limitations are recorded in [STATUS.md](STATUS.md).
 Deployment/relationship work under the roadmap's original Step 17 now proceeds
@@ -274,6 +275,121 @@ Only reviewed consumers resolve material; subprocess exposure is explicit.
 Ordinary exports do not back up material. Secret recovery is a separate
 sensitive operation. An unresolved restored handle remains unavailable and
 blocks a required consumer. External secret managers are deferred.
+
+## OpenRouter credential lifecycle — D069
+
+This boundary extends the existing secret-reference owner for one credential.
+`ai.openrouter.credential` is an installation-scoped `secret_ref`, owned by Core,
+with no literal default or environment override. The desired handle, actual
+consumed material generation and observed provider response are separate facts.
+Private metadata and transport/validation/balance access records use the secret
+owner's versioned SQLite catalog. Sanitization and corrupt-store recovery use
+that same owner's protected, value-free append-only access log, so damaged
+registration cannot disable private projection. Immutable material generations
+remain in separately protected files. Configuration, Operational History and runtime keep their existing owners.
+Material, previews, lengths and value-derived hashes have no ordinary export or
+recording path.
+
+The existing setup, API KEY and `apikey` entry points submit privately staged
+input through canonical CHANGE policy, approval, revision checks and History.
+Only source metadata, reference intent and expected revisions enter the public
+proposal. Trusted staging binds material to that operation; a serialized
+`authorized` field cannot admit it. Decline/cancellation/failed validation preserves
+the prior usable authority. No sudo is needed for user-owned credential storage.
+
+Import is explicit and source-selected. Supported legacy inputs include inherited
+`OPENROUTER_API_KEY`, the canonical legacy key, the home key and known literal env
+assignments. Import parses data without evaluating shell. Multiple candidates
+require selection; startup never guesses or migrates. Personal originals remain
+untouched. After committed cutover, all selected OpenRouter readers, writers,
+role-bound calls and effective caches use managed authority. Selected environment
+credentials are import-only. Anthropic, Ollama and unrelated settings retain their
+own behavior.
+
+Reviewed Core transport, validation and balance consumers resolve material after
+final routing and policy admission, through protected in-process/FD access. A
+private value-free access record must commit before release; audit failure denies
+access. Core sanitization returns sanitized content, covering staged, active and
+retained generations, rather than exposing raw values to record producers. Safe
+inspection creates no absent store/scope, probes no provider and asks for no sudo.
+It distinguishes configuration intent, owner/scope/purpose/binding/source/cutover,
+generation/revision, availability/reason and consumption/response evidence.
+
+Local recovery activates at most one retained previous generation as a new
+approved revision, or accepts a protected re-import/new key through the same
+CHANGE boundary. Missing/corrupt state fails closed; recovery preserves damaged
+artifacts and never automatically retries a write or reactivates fallback.
+Configuration restore contains handles only and cannot restore material, clear
+cutover or overwrite generations. Ordinary configuration cannot unset or replace the selected handle after
+cutover. Resetting History does not change the retained material or scope.
+
+The narrow headless entry points are:
+
+- `bash igor.sh --configuration openrouter-sources`: list value-free candidate
+  identities and safety status, without selecting one.
+- `bash igor.sh --configuration import-openrouter private_input`: read private
+  material from stdin, then use the normal CHANGE approval policy. Do not put a
+  key in a command argument or exported variable.
+- `import-openrouter file:secrets/openrouter.key`,
+  `import-openrouter home:.nexus_or_key`,
+  `import-openrouter environment:OPENROUTER_API_KEY` or
+  `import-openrouter env_file:secrets/NAME.env`: explicitly select one candidate.
+  Environment is used only by that selected import; selected aliases are removed
+  before managed validation, balance or transport accesses material. Compound, executable,
+  multiple-assignment or unsafe source candidates require protected input.
+- `bash igor.sh --configuration inspect ai.openrouter.credential`: inspect the
+  desired handle separately from availability, actual consumption and observed
+  HTTP status. No network request or sudo occurs.
+- `bash igor.sh --configuration recover-openrouter`: approve activation of the
+  protected previous generation as a new material revision. Provider acceptance
+  is not promised by local activation; the next request observes it.
+- `bash igor.sh --configuration reimport-openrouter private_input` (or a selected
+  candidate): recover missing/corrupt state through approved validation and
+  local replacement. Damaged metadata/material are retained privately.
+
+The stores have explicit crash fences. Private material is fsynced before stage
+metadata commits. A ticket cannot be rebound while its canonical operation is
+running. Validation is audited before its socket opens. Configuration CAS commits
+before first material activation; its read lock remains held across the material
+CAS, including rotation and previous-generation recovery. A killed process between
+configuration commit and activation leaves the desired handle fenced and the
+private stage retained. `bash igor.sh --configuration resume-openrouter` submits
+that stage under a new canonical approval and fresh revisions/validation after
+History recognizes the old operation as terminal/interrupted. It never silently
+retries on startup. `discard-openrouter-stage TICKET` explicitly discards an
+uncommitted terminal stage; it does not clear a saved handle or restore fallback.
+
+A rotation records retirement before deleting an older unreachable generation.
+Inspection can show `retirement_pending` after a crash; that generation cannot be
+activated as the previous credential. Identical approved-operation re-entry, or
+explicit new private staging, completes its recorded retirement under the original
+approved authority. No inspection performs cleanup. Normal completed rotations
+retain the active generation and at most one previous generation. Streaming
+projection withholds only suffixes that could begin a credential and handles echoes
+split across chunks, including a generation pruned while its request was in flight.
+The transport caps a projected response at 8 MiB and reports unavailable on overflow.
+
+After cutover, the startup loader removes selected literal assignments before
+Bash evaluates an env source. An ambiguous selected assignment refuses that
+source file; other files and unrelated literal assignments remain usable. Generic
+frontend output keeps systemd/protocol identifiers intact while replacing exact
+selected credential literals. Private staging, material and intended HTTPS headers
+are the only value-bearing boundaries; audit, History, events, Context and ordinary
+backups/exports receive safe projections.
+
+New ordinary backups omit both managed material and selected retained legacy
+copies/assignments. Omission is visible in the core snapshot and full-backup
+manifest. A mixed env component bearing selected aliases is omitted/refused as a
+whole; unrelated components and nested variables still restore. Restore preview
+also withholds live selected assignments, and linked destinations are refused.
+Older archives remain unchanged sensitive artifacts. Keep an independent protected
+import source for disaster recovery: no portable secret-value export, at-rest
+encryption product or provider-side revocation reversal is promised. Current UID
+protection does not protect material against that UID or root.
+
+The five execution proofs and actual check results belong in [STATUS.md](STATUS.md).
+This single credential does not close the broader Ownership Foundation or migrate
+Nextcloud/application credentials.
 
 ## Paths and environment
 

@@ -181,8 +181,12 @@ ai_export_privacy_map() {
     IGOR_AI_SCRUB_MAP=$(
         for i in "${!SCRUB_FROM[@]}"; do
             printf '%s\0%s\0' "${SCRUB_FROM[$i]}" "${SCRUB_TO[$i]}"
-        done | python3 -c 'import sys,json; a=sys.stdin.read().split("\0"); print(json.dumps(dict(zip(a[::2],a[1::2]))))'
-    ) || return 1
+        done | IGOR_AI_PRIVACY_DIR="$_AI_CONTROL_DIR" python3 -c 'import sys,json,os
+sys.path.insert(0,os.environ["IGOR_AI_PRIVACY_DIR"])
+from privacy import sanitize_selected_text
+a=sys.stdin.read().split("\0")
+print(json.dumps({key:value for key,value in zip(a[::2],a[1::2]) if key and sanitize_selected_text(key)==key}))'
+    ) || { unset IGOR_AI_SCRUB_MAP; return 1; }
     export IGOR_AI_SCRUB_MAP
 }
 
