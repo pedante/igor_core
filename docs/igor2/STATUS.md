@@ -21,7 +21,15 @@ zero/one/many handling, exact locator rejection, value-free provider failure
 and no persistence/adoption. Candidate IDs are local to one result.
 
 **Focused proof:** 20 isolated synthetic tests pass, plus Python compilation.
-The tested files' Git blob hashes match the A1 branch files. No live Docker or
+The tested files' Git blob hashes match the A1 branch files.
+
+**A1 CI triage:** the first CI attempt was Ruff preflight only, now
+fixed. The follow-up selected 125 groups via the unknown-Core-path fallback
+and ended `budget_exhausted`; unrelated approval, System BATS and learning
+cases were reported before completion. They are not waived or accepted as
+baseline. A1 now has an explicit recognition test-domain mapping with one
+planner regression test and still preserves broad fallback for unknown paths.
+The new affected check remains unverified. No completion/merge claim is made. No live Docker or
 Samba inspection, real module activation path, approval/provisioning, user
 credentials, configuration write, History write, real-application gate or
 governed repository affected regression is claimed. This is a proposed A1
