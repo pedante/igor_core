@@ -114,6 +114,47 @@ manifest was changed. A2/A3 remain out of scope,
 and neither the Nextcloud real-application gate nor the two-domain proof is
 closed by A1.
 
+## A2 two-domain adapters — dependent candidate, not yet integrated (2026-10-10)
+
+After the Owner's separate instruction to continue, A2 is prepared on a
+**branch based on the A1 feature branch**, not merged into `igor2`.
+
+- `modules/nextcloud_docker/lib/nextcloud_recognition.py` converts the
+  existing read-only `NextcloudAttachmentProvider.discover` records into
+  closed A1 candidates. It requires exact full container IDs and bounded
+  daemon, image and Compose identity; `inspect_exact` delegates only to the
+  provider's existing deterministic selection and inspection, never adoption.
+  This adapter does **not** replace `core.deployments.discover`, initialize
+  Deployment Service or register an executable action.
+- `modules/samba/lib/samba_recognition.py` recognizes **literal configured
+  share sections** from one explicitly trusted source file, not a claim that
+  an SMB service is running or shares are remotely accessible. The bounded
+  open is non-blocking and refuses symlinks/nonregular files, oversized or
+  invalid UTF-8, dynamic `[homes]`/`[printers]`, include/config-file indirection
+  and duplicate/unsupported sections. It does not publish directive values,
+  raw configuration, pathname, contents digest or any credential. Exact
+  reinspection verifies source identity, metadata and selected literal share.
+  The `modules/samba/lib` adapter does not register or activate a Samba
+  module, and no module manifest or package configuration is added.
+- Both adapters construct only a **trusted injected A1 reader**. There is
+  no Core automatic provider-loading, host-wide scan, on-start probing,
+  persistent inventory, System Model writes, Configuration writes,
+  Deployment Service adoption or real user-facing CLI/TUI integration.
+
+**Current validation:** 15 isolated A2 synthetic adapter/temporary-file cases
+pass locally (0.06 s); they exercise both adapters in one A1 coordinator,
+zero/one/many and exact hints, disabled provider, stale-source rejection,
+unsupported Samba syntax, non-secret projection, symlink, FIFO, large/invalid
+file and read-only behavior. Combined with A1's 20 cases, 35 focused tests
+passed locally (0.07 s) and Python compilation succeeded. GitHub blob hashes
+were matched against locally tested file bytes.
+
+**Important limits:** the Nextcloud fixture is a test double of the existing
+provider protocol, not a running Docker deployment. No real Samba service,
+actual Core loader eligibility, domain recognition in the operator UI, native
+application adoption or Step 19 real Nextcloud evidence is claimed. The
+repository-governed affected/CI gate must still be reviewed; A1 affected CI passed before integration. A3 is not started.
+
 ## Exclusions and handoff
 
 Not included: a public `kind=recognizer`, generic module auto-loading, discovery background jobs, network-wide scanning, a persistent candidate database, AI-only identification, application provisioning, implicit adoption, Docker installation, Samba installation/config changes, Step 19 real-application gate or Boundary 3 loglevel writer cutover, secrets migration, Step 20 default TUI cutover, agents or self-healing.
