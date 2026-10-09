@@ -24,6 +24,14 @@ class StartupPrivilegeTests(unittest.TestCase):
             (work / "config" / "variables" / "igor.env").write_text(
                 "IGOR_USE_TMUX=false\nIGOR_FZF_ALREADY_ASKED=true\n"
             )
+            if ai_mode:
+                # These cases test classic Start/Fast input and session lifecycle,
+                # not OpenRouter credential import. Boundary B deliberately
+                # rejects inherited OPENROUTER_API_KEY after managed cutover.
+                # Use a local provider with a synthetic curl health response.
+                (work / "config" / "variables" / "ai.env").write_text(
+                    "provider=ollama\nmodel=llama3.2:3b\n"
+                )
             (work / "secrets").mkdir()
             (work / "data").mkdir()
             (work / "home").mkdir()
@@ -58,8 +66,10 @@ class StartupPrivilegeTests(unittest.TestCase):
                    "TEST_SUDO_LOG": str(sudo_log), "IGOR_USE_TMUX": "false",
                    "IGOR_FZF_ALREADY_ASKED": "true", "TERM": "dumb",
                    "AI_AUTOSTART": "false", "AI_SKIP_INTERSTITIAL": "true",
-                   "OPENROUTER_API_KEY": "fixture-key" if ai_mode else "",
-                   "ANTHROPIC_API_KEY": "", "HOME": str(work / "home")}
+                   "OPENROUTER_API_KEY": "", "OR_API_KEY": "",
+                   "NEXUS_API_KEY": "", "ANTHROPIC_API_KEY": "",
+                   "IGOR_OLLAMA_HOST": "http://127.0.0.1:11434",
+                   "HOME": str(work / "home")}
             result = subprocess.run(
                 ["bash", str(work / "igor.sh")], input=input_text, text=True,
                 capture_output=True, env=env, timeout=20,
@@ -112,6 +122,7 @@ class StartupPrivilegeTests(unittest.TestCase):
                     f"\na\n{choice}\nq\n", ai_mode=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr[-1000:])
+                self.assertIn("Ollama (local)", result.stdout)
                 self.assertIn("Session ended.", result.stdout)
                 self.assertIn("AI_SESSION_STATE=user_exited", state)
                 self.assertTrue(runtime[0])
