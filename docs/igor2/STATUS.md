@@ -10,6 +10,16 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
+## Resource Recognition Foundation — A2 adapter candidate (stacked on A1)
+
+A2 is a separate dependent branch with reviewed, **read-only** Nextcloud and
+Samba adapters into the private A1 result. Samba means configured literal
+share sections from one explicit, bounded source file, not a confirmed running
+SMB endpoint. A2 adds no automatic module activation/registration, application
+changes, deployment responsibility or installer. Fifteen adapter fixture cases
+pass locally; together with A1's 20, 35 focused cases pass. No live provider
+or repository-wide acceptance result is claimed. A1 is integrated into `igor2` as `941c69d` after 144 passing affected checks; A2 still needs its own CI review. A3 stays deferred.
+
 ## Resource Recognition Foundation — A1 internal contract candidate
 
 Approved D077 R1/R2 retain an **internal private** read-only normalization seam,
