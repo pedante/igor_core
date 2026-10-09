@@ -191,6 +191,47 @@ is not permission to repair unrelated code; record its baseline and impact.
 Passing tests alone cannot waive another required gate. A check may be marked
 not applicable with a concrete scope reason, never just to reach completion.
 
+### Failure-first STABILIZATION: a bounded decision procedure
+
+When an acceptance check fails, do not launch another broad validation run
+as the first response. Inspect the existing `summary.json`, the smallest raw
+failure log and the exact test assertion. Create a brief failure ledger:
+
+1. **Classify:** actual product/security violation; contract-mismatched test
+   expectation; fixture/environment/runner failure; reviewed baseline; or
+   unresolved. Record the required observable invariant, not merely the
+   assertion's current wording.
+2. **Fix the demonstrated cause only.** Correct an over-specific assertion
+   when a generic safe error satisfies the accepted contract, but retain an
+   independent sentinel/side-effect test. Never conceal or downgrade a real
+   credential leak, forbidden access, failed recovery or missing History record.
+3. **Target the invalidated proof.** Run the previously failing node or small
+   fixture first, followed by affected neighboring cases. Reuse complete
+   previously passing evidence only under the governor's exact
+   source/environment equivalence rules; security checks still follow the
+   governor's required-fresh policy. Do not reschedule unrelated tests to
+   obtain a larger pass count.
+4. **One closing gate.** Once fixes are integrated, run the required affected
+   selection against the final candidate, plus any distinct mandatory
+   security/vertical-slice/recovery proof not covered by that selection.
+   Full-repository validation is a separate explicit release/CI requirement,
+   not an automatic loop after every STABILIZATION fix. If broad checks are
+   required, prefer CI within its established governor instead of burning
+   through the smaller local budget.
+5. **Budget before execution.** Check prior group durations and
+   `--dry-run` selection. The local 240-second subprocess ceiling overrides
+   longer generic group defaults; break work into runner-supported bounded
+   groups without changing that ceiling or silently dropping selected tests.
+   If equivalent partitioning is unavailable, report the specific unverified
+   gate and stop. Budget exhaustion is not a reason to repeat already valid
+   proof, reset ledgers, spawn more agents or ask for routine renewal.
+
+Maintain an evidence ledger recording candidate fingerprint, covered contract,
+pass/fail/skip, provenance and invalidation reason. Stop once all mandatory
+evidence has been established; do not open new exploratory validation after
+RELEASE_FREEZE. These economics do not reduce the five proof classes in
+`EXECUTION.md` or the secret and authorization acceptance requirements.
+
 Before completion, the root must:
 
 1. Inspect git status and the final diff, including staged changes, to verify
