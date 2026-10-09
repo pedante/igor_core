@@ -124,14 +124,39 @@ Preserve scrubbing and safety gates. Resolve paths through `IGOR_DIR`, `_igor_re
 
 Before completing code changes, run the tests relevant to the affected area and report failures/skips.
 
+For a failed STABILIZATION gate, **inspect before rerunning**. Classify the
+specific failure as a product/security defect, a test assertion that exceeds
+the accepted contract, a fixture/environment defect, reviewed baseline debt,
+or unknown. Use existing `summary.json` and raw failing logs first; inspect
+the exact assertion and call path. Do not alter correct production behavior
+to satisfy incidental error wording. Change an over-specific test only after
+the actual invariant (especially secret non-exposure) is independently checked.
+
+Track a concise evidence ledger by scenario, candidate revision/diff,
+environment and invalidating changes. Keep completed proof when inputs remain
+equivalent; a modification invalidates only relevant proof, not the entire
+test history. First rerun the previously failing node(s) and directly affected
+neighbors. Perform one required affected validation against the final candidate,
+not a new broad sweep after every correction. The expensive full gate is
+separate and requires an explicit release need; prefer governed CI when broad
+coverage cannot fit the local budget. Preserve all EXECUTION proof classes.
+
+The active governor and Owner-granted budget are hard limits. Plan groups from
+prior durations or a dry run before spending the allowance; split into
+runner-supported bounded groups when coverage is equivalent. On exhaustion,
+report the exact unverified gate without retrying previously passing work or
+requesting renewal merely to repeat it. Required secret, approval, History,
+migration/recovery and real-consumer evidence must never be waived.
+
 Common checks:
 
 - `bash -n <changed-script>`
 - ShellCheck with the flags used by `.github/workflows/ci.yml`
 - `bats tests/modules/` for module changes
-- `bash tests/run_all.sh` for the full suite
+- `tests/validate.sh affected` for relevant subsystem regression after focused checks
+- `tests/validate.sh full` or `bash tests/run_all.sh` only for an explicitly required full release gate
 - `bash tests/run_all.sh --fast` when the task explicitly permits the fast suite
-- `ruff check .` for Python changes
+- `ruff check <changed-python-files>` for Python changes (whole-tree lint only when explicitly required)
 - Python compile/unit tests relevant to changed Python modules
 - `git diff --check`
 
