@@ -1,6 +1,6 @@
 # Resource Recognition Foundation — Gate A discovery and decision proposal
 
-**Status:** proposal only. No new runtime/API contract is accepted by publishing this file; no implementation or host discovery was performed. This is a proposed first small boundary after the completed OpenRouter Boundary B.
+**Status:** the Project Owner confirmed R1 and R2 on 2026-10-10 (D077). **Only A1 implementation is authorized now**. A2/A3 and any public Module API v2 recognizer contribution need separate continuation. This document remains the design record, not proof that runtime recognition exists.
 
 ## Goal and authority
 
@@ -24,11 +24,11 @@ Authoritative rules: [ARCHITECTURE.md](ARCHITECTURE.md) (resource-recognition se
 | **B. Recommended: private stateless Core normalization with reviewed provider adapters** | Proves shared shape with Nextcloud and Samba before a public module kind; preserves existing module activation, attachment and capability authorities | An intentionally temporary adapter must be revisited before general third-party registrations |
 | C. Add Samba branches inside existing deployment discover | Small initial patch | Hard-codes domains into Core, couples recognition to adoption and defeats the foundation |
 
-**Request owner confirmation of B.** Keep provider implementations in their domain packages; Core only validates/coordinates. This is a narrow implementation contract, not a new state owner, database, plugin runner, `kind=recognizer` contribution or permanent public API.
+**Owner accepted B (D077).** Keep provider implementations in their domain packages; Core only validates/coordinates. This is a narrow implementation contract, not a new state owner, database, plugin runner, `kind=recognizer` contribution or permanent public API.
 
 ## Decision R2: second domain and evidence level
 
-**Recommended: Samba shares** as a materially different, non-application resource. For the first slice, accept a trusted explicitly selected configuration source in isolated fixtures and a bounded local read-only adapter. Recognize share section names and only allowlisted nonsecret locator metadata; do not execute or interpret configuration directives, follow recursive includes, enumerate arbitrary files, call management commands or infer external connectivity. Ambiguous/unsupported directives and duplicate names must be visibly unavailable/ambiguous, not guessed as complete truth. Do not add an SMB installer, service setup, write capability or Samba management responsibility.
+**Owner accepted: Samba shares** as a materially different, non-application resource. For the first slice, accept a trusted explicitly selected configuration source in isolated fixtures and a bounded local read-only adapter. Recognize share section names and only allowlisted nonsecret locator metadata; do not execute or interpret configuration directives, follow recursive includes, enumerate arbitrary files, call management commands or infer external connectivity. Ambiguous/unsupported directives and duplicate names must be visibly unavailable/ambiguous, not guessed as complete truth. Do not add an SMB installer, service setup, write capability or Samba management responsibility.
 
 The Nextcloud provider remains a real reviewed adapter using its already implemented Docker read-only evidence. Existing fixtures prove integration without requiring a live Docker daemon. A **real Nextcloud application gate is still not proven** by these fixtures.
 
@@ -67,4 +67,4 @@ Do **not** reuse `candidate_id` as a durable deployment or resource ID; do not p
 
 Not included: a public `kind=recognizer`, generic module auto-loading, discovery background jobs, network-wide scanning, a persistent candidate database, AI-only identification, application provisioning, implicit adoption, Docker installation, Samba installation/config changes, Step 19 real-application gate or Boundary 3 loglevel writer cutover, secrets migration, Step 20 default TUI cutover, agents or self-healing.
 
-**Gate A exit:** owner accepts R1/R2 (or selects bounded alternatives), active checkout and affected callers are reconciled, A1–A3 tests are planned and the explicit stop/evidence requirements are accepted. Only then start A1 implementation. Do not mark Gate A as runtime implemented because the proposal was committed.
+**Gate A approval:** R1 and R2 are confirmed by the Owner under D077. Implement A1 only, publish its focused proof and stop. A2 and A3 are not automatically authorized. Do not mark recognition implemented by publishing or merging this design record.
