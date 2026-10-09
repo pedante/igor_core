@@ -434,9 +434,10 @@ def test_timeout(): raise TimeoutError("inner fixture timeout")
         self.init_git()
         outcomes = []
         for jobs in (1, 2):
+            rerun = ["--rerun-reason", "synthetic serial/parallel parity comparison"] if jobs == 2 else []
             code, summary = self.run_main("focused", "--jobs", str(jobs),
                                           "--test", "tests/test_serial.py",
-                                          "--test", "tests/test_local_learning.py", output_name=f"jobs-{jobs}")
+                                          "--test", "tests/test_local_learning.py", *rerun, output_name=f"jobs-{jobs}")
             self.assertEqual(code, 1)
             self.assertEqual(summary["counts"]["FAIL_BASELINE"], 1)
             self.assertEqual(summary["counts"]["FAIL_NEW"], 1)

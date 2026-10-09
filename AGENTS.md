@@ -188,36 +188,22 @@ Before completion: inspect git status and final diff (including staged changes),
 run required scoped validation, commit only task files, verify commit/status,
 report completion and stop. Honor explicit owner instructions such as no commit.
 
-For non-trivial work, the root agent is the coordinator, scope/alignment owner, integrator and final reviewer. The root must preserve the Igor 2 authority order and task-mode boundaries above; delegation does not transfer responsibility for architecture, roadmap scope or migration decisions.
+## Development execution budget
 
-Use the named `Lead_Eng` role for substantial engineering that benefits from a dedicated technical owner, especially architecture-sensitive implementation, difficult debugging, cross-cutting changes and important integration work. During DISCOVERY and IMPLEMENTATION, `Lead_Eng` may delegate bounded support work to Luna helpers but remains responsible for the engineering result it owns.
+Single agent is the default; `.codex/config.toml` disables delegation. Only
+explicit Project Owner authorization may enable it for a session. Retained
+role files do not authorize delegation. The lifecycle and repository constraints
+above still apply.
 
-Use default Luna helpers for bounded repository search, call-site discovery, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, mechanical edits and independent checks. Ordinary Luna helpers must not recursively delegate unless explicitly assigned a coordination role.
+Use `tests/validate.sh` for validation. One relevant pass per unchanged code and
+environment; reuse its evidence. After a correction, run affected checks once
+with a justification. Broad regression runs once per candidate, preferably in
+CI. Do not run new tests because context was compacted, expand into unrelated
+infrastructure or repair unrelated baseline debt.
 
-Delegate when independent expertise is useful, separate context improves quality,
-or verification is valuable. Do not create parallel workers merely because they
-are available. Keep small, tightly coupled or sequential work in the current
-agent. Prefer fresh helpers for new bounded tasks unless context is useful.
-
-Each assignment states phase, scope/file ownership, allowed actions, required
-evidence and stopping condition. Communicate phase changes; finish or stop
-discovery/implementation workers before STABILIZATION. During STABILIZATION and
-RELEASE_FREEZE, allow at most one active delegated worker across the entire task
-tree, solely for validation. Root owns integration/fixes; Lead_Eng cannot spawn
-helpers in those phases. Freeze validation confirms agreed final evidence only.
-Workers report results and stop after their assigned checks. Available concurrency
-does not override phase limits.
-
-The root remains responsible for:
-
-- repository and product alignment;
-- applying the Igor 2 authority and execution contracts;
-- task decomposition and scope control;
-- deciding when `Lead_Eng` is warranted;
-- reviewing delegated results and resolving contradictions;
-- integration decisions and final validation;
-- updating Igor 2 status, legacy and evidence documentation when the task requires it.
-
-Prefer the cheapest capable model and reasoning effort. Do not repeat routine work with stronger models without a concrete reason. If the active root model/effort is materially mismatched to a substantial task, flag the cheaper or stronger appropriate tier before doing expensive repository-wide work.
-
-Do not assume delegated output is correct merely because it completed successfully. Validate it against the repository state, the relevant Igor 2 contracts and the evidence requirements in `docs/igor2/EXECUTION.md`.
+Validation has persistent total and per-command budgets. On exhaustion, stop
+and report failed/unverified evidence. Never claim missing checks passed.
+Only the Owner may authorize `--new-budget REASON`; the model must not renew
+its own budget. Start bounded sessions with the external
+[supervised launcher](tools/codex_supervised.py). See
+[governor usage and limits](.codex/README.md#development-governor).

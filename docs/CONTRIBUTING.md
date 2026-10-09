@@ -22,9 +22,9 @@ before implementing new or revised architecture; existing accepted decisions
 within authorized scope do not need repeat approval.
 
 Work directly on the active feature branch by default. Isolated copies are only
-for destructive testing, risky migrations or uncertain experiments. Delegate
-when expertise, separate context or verification helps; stabilization and release
-freeze allow at most one active validation worker across the whole task tree.
+for destructive testing, risky migrations or uncertain experiments. Use a single agent by default; delegation requires explicit Owner authorization.
+Follow the [development governor](../.codex/README.md#development-governor) for
+validation budgets and supervised sessions.
 
 - Keep changes scoped and preserve unrelated work.
 - Add or update tests for behavior changes.
@@ -80,8 +80,9 @@ git diff --check
 Use the shared [validation harness](igor2/VALIDATION.md) for focused, affected
 and full evidence. `--dry-run` shows selection; `--jobs 1` preserves serial
 execution for diagnosis. Only reviewed Python and BATS groups with private
-state can overlap; host-facing and unknown groups use one serial lane. Run full once after
-stabilization. Logs, partial checkpoints, slow tests and exact baseline
+state can overlap; host-facing and unknown groups use one serial lane. Run broad
+regression once per candidate, preferably in CI; tooling changes need focused
+governor validation. Logs, partial checkpoints, slow tests and exact baseline
 classifications remain available in the reported evidence directory.
 
 `bash tests/run_all.sh` remains the legacy Bash/rendering/BATS convenience

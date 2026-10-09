@@ -13,8 +13,11 @@ tests. Rendering identities execute once. Each test file is a bounded subprocess
 --jobs defaults to 1; higher values overlap reviewed private-state files
 with one serial lane for remaining tests, after a serial preflight barrier.
 Every subprocess has private home/temp/data/cache directories and controlled
-Igor/Python configuration. No test's timeout or baseline policy changes.
-Limits default to 600s/file, 60s for interactive TUI Python files, and 1200s
+Igor/Python configuration. Baseline classification policy is unchanged.
+Persistent development budgets default to 900s total and 240s/command;
+CI defaults to 10800s total and 1200s/command and executes gates freshly.
+Unchanged local non-security evidence is reused with its original exit code.
+File limits are 600s/file, 60s for interactive TUI Python files, and 1200s
 for System configuration/administration vertical slices. BATS' native per-test
 watchdog is disabled by default because
 released BATS 1.13.0 can hold a fast-failing runner open until the watchdog
@@ -55,6 +58,14 @@ from pathlib import Path
 
 from validation_domains import affected_tests
 from validation_environment import PERMITTED_SKIPS
+from validation_governor import (
+    Governor,
+    ProcessTree,
+    digest,
+    enable_subreaper,
+    fingerprint,
+    requires_fresh_security,
+)
 from validation_reports import bats_observations, group_observation, pytest_observations
 from validation_results import compare_results, load_baseline
 
@@ -79,14 +90,19 @@ PARALLEL_BATS_FILES = frozenset({
 })
 
 
-def execute(command, root, log, seconds, env=None, cancel_event=None):
+def execute(command, root, log, seconds, env=None, cancel_event=None, tree_root=None):
     """Write directly to disk (no pipe deadlocks); bound and clean the process group."""
     started = time.monotonic()
+    enable_subreaper()
     status = "ERROR"
     returncode = None
     with log.open("w", encoding="utf-8") as output:
         output.write(f"Command: {command!r}\n")
         output.flush()
+        if seconds <= 0:
+            output.write("TIMEOUT: budget exhausted before dispatch; command not executed\n")
+            return {"status": "TIMEOUT", "returncode": None,
+                    "elapsed_seconds": round(time.monotonic() - started, 3), "log": str(log)}
         try:
             process = subprocess.Popen(command, cwd=root, stdout=output, stderr=subprocess.STDOUT,
                                        env=env, start_new_session=True)
@@ -96,8 +112,10 @@ def execute(command, root, log, seconds, env=None, cancel_event=None):
         except OSError as error:
             output.write(f"Runner error: {error}\n")
         else:
+            tree = ProcessTree(tree_root or process.pid)
             try:
                 while True:
+                    tree.capture()
                     if cancel_event is not None and cancel_event.is_set():
                         output.write("\nINTERRUPTED: validation cancelled\n")
                         break
@@ -105,7 +123,7 @@ def execute(command, root, log, seconds, env=None, cancel_event=None):
                     if remaining <= 0:
                         raise subprocess.TimeoutExpired(command, seconds)
                     try:
-                        returncode = process.wait(timeout=min(remaining, 0.2))
+                        returncode = process.wait(timeout=min(remaining, 0.05))
                         status = "PASS" if returncode == 0 else "FAIL"
                         break
                     except subprocess.TimeoutExpired:
@@ -114,6 +132,11 @@ def execute(command, root, log, seconds, env=None, cancel_event=None):
                 output.write(f"\nTIMEOUT: process group exceeded {seconds}s\n")
                 status = "TIMEOUT"
             finally:
+                tree.cleanup()
+                if status == "TIMEOUT" or cancel_event is not None and cancel_event.is_set():
+                    # The governor stops the complete run on timeout. Include
+                    # adopted double-forked descendants, across parallel lanes.
+                    ProcessTree(os.getpid()).cleanup()
                 # Also remove children left behind by successful/failed fixtures.
                 try:
                     os.killpg(process.pid, signal.SIGTERM)
@@ -319,6 +342,10 @@ def run_group(group, root, output_dir, index, args):
     if any(Path(name.split("::", 1)[0]).name in ("test_system_configuration_workflow.py",
                                                    "test_system_admin_surface.bats") for name in files):
         seconds = args.slow_timeout
+    seconds = min(seconds, getattr(args, "command_timeout", seconds))
+    deadline = getattr(args, "deadline", None)
+    if deadline is not None:
+        seconds = min(seconds, max(0, deadline - time.monotonic()))
     cancellation = getattr(args, "cancel_event", None)
     result = (execute(commands[kind], root, log, seconds, env, cancellation) if cancellation is not None
               else execute(commands[kind], root, log, seconds, env))
@@ -408,6 +435,9 @@ def run_plan(plan, root, output_dir, args, checkpoint):
     publish()
     try:
         while pending or futures:
+            if time.monotonic() >= getattr(args, "deadline", float("inf")):
+                args.budget_exhausted = True
+                args.cancel_event.set()
             if args.cancel_event.is_set():
                 stopped = True
             if not stopped:
@@ -445,6 +475,10 @@ def run_plan(plan, root, output_dir, args, checkpoint):
                         and result["status"] != "PASS"):
                     print("  stopping after preflight failure", flush=True)
                     stopped = True
+                if result["status"] == "TIMEOUT":
+                    # A command ceiling is a governor stop, even for a reviewed timeout.
+                    args.budget_exhausted = True
+                    args.cancel_event.set()
                 publish()
             if time.monotonic() >= next_progress:
                 running = ", ".join(f"{plan[index]['id']} ({time.monotonic() - active[index]:.1f}s)"
@@ -453,7 +487,8 @@ def run_plan(plan, root, output_dir, args, checkpoint):
                       f"{len(pending)} pending; active: {running or 'none'}", flush=True)
                 publish()
                 next_progress = time.monotonic() + args.progress_interval
-        state = "interrupted" if args.cancel_event.is_set() else "incomplete" if pending else "complete"
+        state = ("budget_exhausted" if getattr(args, "budget_exhausted", False) else
+                 "interrupted" if args.cancel_event.is_set() else "incomplete" if pending else "complete")
         publish(state)
         return state
     finally:
@@ -499,6 +534,16 @@ def main(argv=None):
     parser.add_argument("--progress-interval", type=progress_seconds, default=15,
                         help="active-group heartbeat, at most 30 seconds (default: 15)")
     parser.add_argument("--group-timeout", type=positive_seconds, default=600)
+    parser.add_argument("--total-timeout", type=positive_seconds,
+                        default=10800 if os.environ.get("CI") else 900,
+                        help="persistent cumulative validation budget (development: 900s; CI: 10800s)")
+    parser.add_argument("--command-timeout", type=positive_seconds,
+                        default=1200 if os.environ.get("CI") else 240,
+                        help="hard ceiling for every subprocess (development: 240s; CI: 1200s)")
+    parser.add_argument("--new-budget", metavar="REASON", help="owner-authorized fresh budget; retain evidence")
+    parser.add_argument("--rerun-reason", help="justify one additional targeted attempt on unchanged inputs")
+    parser.add_argument("--environment-key", default="local-isolated-v1",
+                        help="additional environment identity for external fixture dependencies")
     parser.add_argument("--interactive-timeout", type=positive_seconds, default=60,
                         help="timeout for interactive TUI Python files (default: 60s)")
     parser.add_argument("--slow-timeout", type=positive_seconds, default=1200)
@@ -511,6 +556,10 @@ def main(argv=None):
     parser.add_argument("--shellcheck", default=shutil.which("shellcheck") or "shellcheck")
     parser.add_argument("--bats", default=shutil.which("bats") or "bats")
     args = parser.parse_args(argv)
+    if args.new_budget is not None and not args.new_budget.strip():
+        parser.error("--new-budget requires an owner authorization reason")
+    if args.rerun_reason is not None and not args.rerun_reason.strip():
+        parser.error("--rerun-reason requires a justification")
     args.cancel_event = threading.Event()
     started = time.monotonic()
     child_cpu = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -524,6 +573,8 @@ def main(argv=None):
     baseline = []
     interruption = {}
     previous_handlers = {}
+    governor = None
+    cache_key = None
 
     def interrupt(signum, _frame):
         interruption["signal"] = signum
@@ -563,6 +614,12 @@ def main(argv=None):
     try:
         # Select before our first write: CI may place evidence inside the checkout.
         changed = sorted(set(changed_files(ROOT, args.base)) | set(args.changed_file))
+        if not args.dry_run:
+            governor = Governor(ROOT / ".igor-governor", args.total_timeout, args.new_budget)
+            governor.note_evidence(output_dir)
+            exclusions = [*governor.exclusions(), output_dir]
+            changed = [name for name in changed if not any(
+                (ROOT / name).absolute().is_relative_to(directory) for directory in exclusions)]
         checkpoint("running", {}, {}, set())
         baseline = load_baseline(args.baseline, ROOT)
         for name in changed:
@@ -574,13 +631,47 @@ def main(argv=None):
             write_summary(output_dir, summary)
             print(json.dumps(summary, indent=2))
             return 0
+        names = [os.fsdecode(name) for name in git(ROOT, "ls-files", "-z", "--cached", "--others",
+                                                  "--exclude-standard").split(b"\0") if name]
+        env, _ = group_environment(ROOT, output_dir, len(plan), args.python)
+        candidate, cache_key = fingerprint(ROOT, names, plan, args, env, exclusions)
+        # CI always exercises gates anew; local evidence never omits a selected identity.
+        reusable = not os.environ.get("CI") and not requires_fresh_security(plan)
+        # The current interpreter's installed files are fingerprinted. Alternate
+        # interpreters must execute rather than inherit that environment evidence.
+        reusable = reusable and os.path.realpath(shutil.which(args.python) or args.python) == os.path.realpath(sys.executable)
+        cached = governor.reuse(cache_key) if reusable else None
+        if cached is not None:
+            summary = {**cached, "reused": True, "reused_from": cached.get("evidence_dir"),
+                       "reuse_elapsed_seconds": round(time.monotonic() - started, 3)}
+            write_summary(output_dir, summary)
+            print(f"Reused unchanged validation: {summary['reused_from']} (exit {summary['exit_code']})")
+            return summary["exit_code"]
+        # Changing timeout/scheduling knobs cannot silently authorize another attempt.
+        attempt_key = digest({"candidate": candidate, "mode": args.mode, "plan": plan})
+        args.deadline = min(started + args.total_timeout,
+                            governor.begin(attempt_key, candidate, args.mode, output_dir, args.rerun_reason, started))
+        summary.update(evidence_dir=str(output_dir), reused=False,
+                       budget={"total_seconds": args.total_timeout, "command_seconds": args.command_timeout,
+                               "authorization": governor.state["authorization"]})
         run_plan(plan, ROOT, output_dir, args, checkpoint)
+        if reusable:
+            # Refuse to retain evidence if tests mutated any source input.
+            final_names = [os.fsdecode(name) for name in git(ROOT, "ls-files", "-z", "--cached", "--others",
+                                                            "--exclude-standard").split(b"\0") if name]
+            _, final_key = fingerprint(ROOT, final_names, plan, args, env, exclusions)
+            if final_key == cache_key:
+                governor.remember(cache_key, output_dir, summary)
     except (ValueError, OSError, subprocess.SubprocessError, KeyboardInterrupt) as error:
+        print(f"Runner stopped: {error}", flush=True)
         summary["groups"].append({"id": "runner", "status": "ERROR", "detail": str(error),
                                   "elapsed_seconds": 0})
         checkpoint("interrupted" if isinstance(error, KeyboardInterrupt) else "incomplete",
                    dict(enumerate(summary["groups"])), {}, set())
     finally:
+        if governor is not None:
+            governor.finish(getattr(args, "budget_exhausted", False))
+            governor.close()
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
     print(f"\nValidation: {args.mode} (test identities and check groups)")

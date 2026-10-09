@@ -19,8 +19,8 @@ in AGENTS.md; their IMPLEMENTATION phase permits only authorized deliverables.
 | Phase | Allowed actions | Exit condition |
 |---|---|---|
 | `DISCOVERY` | Inspect the active branch and relevant repository evidence; bound scope; define acceptance checks and required validation; prepare any architecture proposal for owner confirmation. No implementation. | Scope, applicable checks and owner decisions are settled. |
-| `IMPLEMENTATION` | Implement authorized scope under confirmed architecture; add relevant tests and documentation; use bounded delegates where useful. | Requested implementation and initial focused checks are ready for integration. |
-| `STABILIZATION` | Integrate results, fix concrete in-scope failures, run focused and required regression checks, finish documentation and completion evidence. No new features or speculative improvements. Root owns edits; at most one delegated validation worker. | Implementation, focused tests, required regressions and documentation are complete; all applicable evidence gates are satisfied. |
+| `IMPLEMENTATION` | Implement authorized scope under confirmed architecture; add relevant tests and documentation; work as a single agent unless the Owner explicitly authorizes delegation. | Requested implementation and initial focused checks are ready for integration. |
+| `STABILIZATION` | Integrate results, fix concrete in-scope failures, run focused and required regression checks, finish documentation and completion evidence. No new features or speculative improvements. Root owns edits; single agent by default; an explicitly authorized validator is the only permitted delegate. | Implementation, focused tests, required regressions and documentation are complete; all applicable evidence gates are satisfied. |
 | `RELEASE_FREEZE` | STOP development. Inspect final git status/diff, confirm agreed validation evidence, stage and commit the scoped result, verify commit/status and report completion. | Scoped change is committed, required evidence is satisfied and completion is reported. |
 | `COMPLETE` | Stop. No further autonomous work or next roadmap item. | Terminal for this task; new work needs owner instruction. |
 
@@ -89,61 +89,92 @@ In an interactive Codex session, use `/model` to choose the model and reasoning 
 
 The project instructions ask the root to flag a meaningful model mismatch before it starts substantial work. Example: `Model fit: Sol Medium is sufficient for this task.` This is meant to prevent doing an ordinary task on Astra by accident.
 
-## Agent hierarchy
+## Development governor
 
-```text
-Project Owner
-    |
-    v
-Root / orchestrator (chosen per task)
-    |\
-    | +--> Luna helpers (default: Medium)
-    |      search, tests, builds, reproduction, docs, mechanical work
-    |
-    +----> Lead_Eng (Sol 6.1 XHigh)
-            difficult engineering, architecture-sensitive implementation,
-            hard debugging, cross-cutting integration
-                |
-                +--> Luna helpers (bounded support work)
+Default development is single agent. Project configuration disables both
+multi-agent feature generations and agent availability; retained role files
+are inert. Restart Codex after changing configuration. Trusted project config
+can be overridden by a human's session/global settings; it is not an admin
+security boundary. See the [official configuration](https://learn.chatgpt.com/docs/config-file/config-reference)
+and [hook contracts](https://learn.chatgpt.com/docs/hooks).
+
+Use `tests/validate.sh focused|affected|full`. Existing selection, raw logs,
+pytest/BATS adapters, baseline classification and required CI gates remain.
+Local default ceilings are **900 seconds cumulative validation** and **240
+seconds per subprocess**. Existing file timeouts can tighten these ceilings.
+A command timeout or total exhaustion stops dispatch, cancels active trees,
+leaves pending checks unverified and exits nonzero. Linux `/proc` tracking
+supplements process-group termination for children that create new sessions.
+
+`.igor-governor/` is ignored development state, outside production runtime. A
+locked ledger serializes governed runs and charges elapsed wall time across
+invocations and compaction. A crash reserves the remaining allowance, so later
+invocations cannot replenish it. Increasing `--total-timeout` alone does not
+renew the ledger. `--dry-run` executes no tests and consumes no allowance.
+
+Exact local result reuse compares the entire tracked/nonignored source tree,
+selected plan, baseline, tools, local Python package file metadata, sanitized
+environment, platform and `--environment-key`. It over-invalidates rather than
+guesses dependencies. Logs/reports must exist and match their hashes. Complete
+failures keep their failure exit code; partial, missing-tool, timeout or
+malformed evidence cannot be reused as a pass. Alternate Python interpreters
+execute freshly. CI executes all selected gates freshly, with 10800-second
+total and 1200-second command ceilings matching existing CI/full limits;
+shorter file limits still apply. Recognized security suites (safety, privilege, approvals, secrets, scrubbing,
+request boundaries, capabilities and transactions) are never reused. Their
+unchanged repeats require a justified targeted rerun or Owner renewal; no
+cached pass can waive these gates. New security suites must be included in
+`requires_fresh_security` when named outside these categories. External fixture/service state is not inferred: change
+`--environment-key` when it changes; local reuse is not proof of live host or
+service security. Evidence is trusted local state, not a signed attestation.
+
+One unchanged attempt is allowed; exact complete evidence is reused.
+`--rerun-reason REASON` permits one additional targeted attempt when evidence
+cannot be reused. A correction changes the fingerprint and permits one new
+relevant pass. `full` is limited to one attempt per source/environment candidate
+even if selection/options differ. Prefer CI for broad regression. Compaction
+does not justify another run. On exhaustion **stop and report**.
+
+Only the Owner may explicitly renew a budget from their terminal:
+
+```bash
+tests/validate.sh focused --base HEAD --test tests/test_validation_governor.py \
+    --new-budget "Owner approved governor correction" --total-timeout 900
 ```
 
-`Lead_Eng` is a named Codex role declared in `config.toml` and implemented by
-`Lead_Eng.config.toml`. Ordinary Luna helpers may not recursively delegate.
-`Lead_Eng` may delegate bounded helper work during DISCOVERY and IMPLEMENTATION.
+This records the reason, resets attempt/time allowances and retains evidence.
+It cannot convert a failed gate into a pass. Do not delete the ledger or invent
+authorization to continue. Budgets control model use; they cannot prevent a
+developer deliberately editing local state.
 
-## Delegation policy
+The supplementary `PreToolUse` hook denies delegation tools, recognized direct
+broad-suite/lint commands, and model commands that renew a budget or start a
+nested supervised session. Route broad validation through the governed runner.
+Coverage depends on Codex version/tool paths; hooks cannot parse arbitrary
+programs or enforce a complete session deadline. They change no credential,
+approval, privilege or sandbox logic.
 
-Delegate when independent expertise is useful, separate context improves
-quality, or verification is valuable. Do not create parallel workers merely
-because they are available. Keep short, tightly coupled or sequential work
-with its current owner; serial delegation is valid.
+For an independent complete-session deadline, use noninteractive Codex:
 
-Every assignment includes current phase, scope/file ownership, allowed actions,
-required evidence and a stopping condition. Tell workers they share the
-checkout, must preserve others' edits and must report adjacent issues instead
-of acting on them. The root communicates phase changes and finishes or stops
-discovery/implementation workers before STABILIZATION.
+```bash
+python3 tools/codex_supervised.py --seconds 1800 -- exec "Implement the bounded task"
+```
 
-During STABILIZATION and RELEASE_FREEZE, allow **at most one active delegated
-worker across the entire task tree**, solely for validation. The root owns
-integration and fixes. If Lead_Eng is that validator, it may neither edit nor
-spawn helpers. Release-freeze validation confirms only agreed final evidence;
-it cannot become another investigation or open-ended review. Once assigned
-checks finish, workers report results and stop. Root owns final commits and the
-completion report unless explicitly delegated.
+The Linux supervisor runs outside the model, forces single-agent settings,
+acts as a child subreaper, terminates descendants (including detached/double
+forked children), and writes `session.log` plus `session.json`. Deadline exit
+is 124; unfinished evidence is unverified. Output is logged; use `tail -f` on
+the reported log if desired. `codex exec` retains its normal approval/sandbox
+settings. The launcher is intentionally noninteractive and enforces wall
+time, not token/dollar quotas or sessions launched elsewhere. A human may
+start a fresh bounded session, or add
+`--new-budget "Owner approved next correction" --validation-seconds 900` to
+renew validation before launch. The model may not relaunch itself to escape
+the deadline.
 
-The root remains accountable for scope, accepted contracts, integrating results
-and reviewing final evidence. Trust well-evidenced routine findings; recheck
-only when impact, surprises, weak evidence or contradictions warrant it.
-
-## Cost discipline
-
-The design is intentionally asymmetric: cheap agents consume disposable exploration/test context; stronger models keep their context for work where continuity and judgment matter. Multi-agent is not automatically cheaper if it is used unnecessarily, so the instructions explicitly avoid duplicate checks and manufactured parallelism.
-
-The configured Multi-Agent V2 concurrency ceiling remains four. It is available
-capacity, not a worker target; the phase limits above are stricter. Long
-`wait_agent` timeouts let agents finish without routine polling. A wait returns
-early when the agent completes.
+Scope discipline, rerun justification and preferring CI remain advisory.
+Runner budgets/reuse/attempts, configured single-agent availability and
+supervised process lifetime are mechanically enforced.
 
 ## Validation and completion criteria
 

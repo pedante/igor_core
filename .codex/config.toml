@@ -35,56 +35,37 @@ Use this as a practical, non-rigid guide:
 - Sol 6.1 High/XHigh: difficult debugging, subtle cross-cutting implementation, migrations, or technically risky integration.
 - Astra XHigh/Max: genuinely difficult new architecture, foundational product/technical decisions, or unusually high uncertainty where generative system-level reasoning matters.
 
-DELEGATION
-Delegation is useful when independent expertise helps, separate context improves quality, or verification is valuable. Do not create parallel workers merely because they are available. Use fresh agents for well-bounded tasks; keep short, tightly coupled, or sequential work in the current agent.
-
-Use default Luna subagents for bounded exploration, repository searches, tests, builds, linting, profiling, reproduction, documentation lookup, straightforward tests, small mechanical edits, and independent checks when the phase permits them.
-
-Each assignment states phase, scope/file ownership, allowed actions, required evidence and stopping condition. Notify delegates when the phase changes. Before STABILIZATION, finish or stop implementation/discovery workers. During STABILIZATION and RELEASE_FREEZE, allow at most one active delegated worker across the entire task tree, solely for validation; the root owns integration/fixes. Lead_Eng must not spawn helpers in these phases. RELEASE_FREEZE validation only confirms the agreed final evidence, with no exploratory reviews. The configured concurrency ceiling is capacity, not a worker target or an override of these phase limits.
-
-Use the named Lead_Eng role for substantial engineering that benefits from a stronger technical owner: architecture-sensitive implementation, difficult debugging, cross-cutting changes, important integration, or work where continuity and deep technical judgment matter. Do not invoke Lead_Eng automatically for routine work that the current root can handle efficiently.
-
-The root remains responsible for task decomposition, scope and product alignment, reviewing delegated results, resolving conflicts, integration decisions, and final validation. Trust well-evidenced routine worker findings; re-check when the result is high-impact, surprising, weakly evidenced, or conflicts with the repository state.
+DEVELOPMENT GOVERNOR
+Single agent by default. Do not spawn agents without explicit Project Owner authorization for this session. Delegation is disabled in project configuration.
+Use tests/validate.sh for governed validation. One relevant pass per unchanged revision; reuse recorded evidence. After a correction, run only affected checks once with a justification. Broad regression runs once per candidate, preferably in CI. Do not run new checks because context was compacted. Do not expand into unrelated infrastructure or repair unrelated baseline debt.
+On budget exhaustion stop and report incomplete evidence. Never claim unverified work passed. Only the Project Owner may authorize --new-budget or start another supervised session; do not manufacture authorization reasons.
 
 COST DISCIPLINE
 Prefer the cheapest model/effort that can reliably do the job. Stronger models are escalation tools, not status symbols. Do not duplicate the same work across stronger models without a concrete reason. Parallelize naturally independent work only when the expected benefit exceeds coordination and token cost.
 """
 
+[features]
+multi_agent = false
+hooks = true
+
 [agents]
-enabled = true
+enabled = false
 default_subagent_model = "gpt-6-luna"
 default_subagent_reasoning_effort = "medium"
 
+# Retained role is inert unless the Owner explicitly enables delegation.
 [agents.Lead_Eng]
-description = "Primary engineering owner for substantial Igor architecture-sensitive implementation, difficult debugging, cross-cutting changes, and integration. This role uses Sol 6.1 XHigh and is explicitly authorized to delegate bounded helper work to Luna agents."
+description = "Optional engineering role; requires explicit Owner delegation authorization."
 config_file = "Lead_Eng.config.toml"
 
 [features.multi_agent_v2]
-enabled = true
-max_concurrent_threads_per_session = 4
-expose_spawn_agent_model_overrides = false
-wait_agent_enabled = true
+enabled = false
+max_concurrent_threads_per_session = 1
 
-# Long waits are allowed so agents can finish without routine polling. wait_agent
-# still returns early when an agent completes.
-min_wait_timeout_ms = 600000
-default_wait_timeout_ms = 600000
-max_wait_timeout_ms = 1800000
+[[hooks.PreToolUse]]
+matcher = "*"
 
-usage_hint_text = """
-Delegation does not require parallelism. Delegate a bounded task when independent expertise, separate context or verification is useful. Do not create workers merely because capacity is available. During STABILIZATION and RELEASE_FREEZE, at most one active validation worker is allowed across the whole task tree; no implementation/discovery workers or recursive helpers. Follow the root's phase and stopping condition.
-"""
-
-multi_agent_mode_hint_text = """
-If you are the root agent for the user's session, proactive delegation is authorized when it materially improves quality, context efficiency, or speed within the current lifecycle phase. STABILIZATION and RELEASE_FREEZE permit at most one active validation worker across the whole task tree.
-
-If you are a spawned sub-agent, recursive delegation is not authorized by default. Do not spawn further agents unless your role-specific developer instructions explicitly authorize coordination/delegation and the phase allows it. The named Lead_Eng role may delegate during DISCOVERY and IMPLEMENTATION only; ordinary Luna workers may not.
-"""
-
-subagent_developer_instructions = """
-You are a delegated worker or consultant. Own the bounded task you were assigned, use the repository as evidence, and report concrete findings/results back to your parent. Do not broaden scope or assume responsibility for the overall project.
-
-Follow the parent's declared phase and .codex/README.md lifecycle. Work in the active feature checkout and preserve others' edits. Use isolated copies only for destructive tests, risky migrations or uncertain experiments agreed with the parent. STABILIZATION and RELEASE_FREEZE assignments are validation-only: no edits or recursive delegation. Report agreed evidence and stop; do not search for additional improvements after the assigned checks. Leave commits and finalization to the root unless explicitly assigned.
-
-Do not delegate to further sub-agents unless your role-specific instructions explicitly authorize it. If you notice a valuable adjacent issue while doing your assigned work, flag it clearly to the parent instead of taking it on proactively.
-"""
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/development_policy.py"'
+timeout = 5

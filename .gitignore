@@ -108,3 +108,6 @@ audit_secrets.md
 /correct.md
 /correction.md
 /task_ai_1.txt
+
+# Development-only execution ledger and validation evidence cache
+/.igor-governor/

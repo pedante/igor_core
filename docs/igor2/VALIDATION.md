@@ -169,7 +169,9 @@ interrupted evidence always has a nonzero exit code. SIGINT/SIGTERM stop
 dispatch, cancel active process groups and preserve completed test results,
 native logs and partial reports. SIGKILL cannot run cleanup; the last atomic
 checkpoint and logs remain explicitly unfinished, never a passing gate.
-Checkpoints support diagnosis, not resuming or caching passing results.
+Checkpoints remain diagnostic; complete local results can be reused by the
+[development governor](../../.codex/README.md#development-governor) only for
+unchanged inputs and equivalent environments. Partial evidence cannot pass.
 
 Pytest reports a collection manifest and setup/call/teardown durations;
 missing execution/result evidence for a collected node fails closed. Valid
@@ -287,7 +289,7 @@ Measured optimization evidence and rejected alternatives are recorded in
 [VALIDATION_PERFORMANCE.md](VALIDATION_PERFORMANCE.md).
 
 Local Markdown validation checks inline file links, not anchors, external URLs
-or reference-style links. YAML workflow parsing/review is separate. Per-file
-outer bounds are not a total-session duration guarantee; the CI job has a
-180-minute overall ceiling. There is no test dependency database, automatic
-baseline generation or runtime persistence service.
+or reference-style links. YAML workflow parsing/review is separate. The runner also enforces persistent total and per-command budgets; the
+external supervised launcher bounds complete Codex sessions. CI retains its
+180-minute overall ceiling and executes gates freshly. There is no guessed test
+dependency database, automatic baseline generation or runtime persistence service.
