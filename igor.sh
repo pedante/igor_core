@@ -96,6 +96,18 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
             igor_learning_cli "${2:-status}" "${3:-}"
             exit $?
             ;;
+        --recognition)
+            # A3 is a projection of a supplied reference snapshot, NOT a host
+            # discoverer. No module/config/AI startup or authority side effects.
+            [ "$#" -eq 2 ] || { printf 'Usage: igor recognition [status|view]\\n' >&2; exit 2; }
+            case "$2" in status|view) ;; *) exit 2 ;; esac
+            _igor_recognition_view_mode="$2"
+            if [ "${IGOR_CLI_JSON:-false}" != true ]; then
+                _igor_recognition_view_mode="${_igor_recognition_view_mode}-text"
+            fi
+            python3 "${IGOR_DIR}/core/lib/recognition_view.py" "$_igor_recognition_view_mode"
+            exit $?
+            ;;
         --deployments)
             # Query the owning registry before any module/config startup.
             source "${IGOR_DIR}/core/lib/deployments.sh"
