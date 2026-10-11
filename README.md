@@ -13,7 +13,10 @@ Check `modules/` for the modules available in your checkout.
 The included `system` module monitors the host (CPU, RAM, disk, temperature).
 New modules can be added without touching core code.
 
-> **Igor 2 development:** this README documents the current implementation. The target architecture, migration rules, and current Igor 2 status live in [docs/igor2/](docs/igor2/README.md). Igor 2 evolves the recent TUI, module activation, safety, capability, and platform work rather than rebuilding those foundations.
+> **Igor 2 development:** `igor2` is the sole independent unreleased development
+> baseline; `master` is the separate original Igor program. Follow the
+> [development policy](docs/igor2/DEVELOPMENT_POLICY.md) for complete internal
+> contract migration without unnecessary compatibility adapters. This README documents the current implementation. The target architecture, migration rules, and current Igor 2 status live in [docs/igor2/](docs/igor2/README.md). Igor 2 evolves the recent TUI, module activation, safety, capability, and platform work rather than rebuilding those foundations.
 
 Modules can stay installed while disabled. Use `bash igor.sh --modules` to inspect
 API version, activation state, unavailable reasons and owned contributions.

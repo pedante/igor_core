@@ -1,5 +1,10 @@
 # Module activation and architecture
 
+Igor 2 follows [Development Policy / D078](igor2/DEVELOPMENT_POLICY.md).
+The live compatibility mechanisms described here are migration inputs, not
+mandatory Igor 1 compatibility or perpetual internal coexistence. Preserve
+platform/dependency support, lifecycle isolation, data recovery and safety.
+
 > **Current implementation.** This document describes the activation/runtime model that exists today and is the starting point for Igor 2 Module Runtime work. The target architecture is in [igor2/ARCHITECTURE.md](igor2/ARCHITECTURE.md) and [igor2/MODULE_API.md](igor2/MODULE_API.md). Igor 2 should evolve this runtime rather than create a parallel loader.
 
 ## Assessment

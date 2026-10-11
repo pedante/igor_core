@@ -7,6 +7,11 @@ host-management product.
 
 ## Why this extends `system`
 
+Follow [Development Policy / D078](DEVELOPMENT_POLICY.md). Current scalar list
+results are live contracts, not permanent pre-release formats. Their proposed
+typed evolution is in [COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md),
+kept in DISCOVERY; this pass adds no service operation or renderer.
+
 Igor already has a first-class `system` module whose responsibility is
 host-domain meaning. Creating a second `sysadmin` module would split one
 ownership domain and create ambiguous providers for ordinary host operations.

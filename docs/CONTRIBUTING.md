@@ -11,6 +11,12 @@ Before editing:
 3. For module work, read [module_creation.md](module_creation.md) and [module_lifecycle.md](module_lifecycle.md).
 4. For Igor 2 architecture/migration work, read [igor2/README.md](igor2/README.md) and [igor2/STATUS.md](igor2/STATUS.md).
 
+Igor 2 follows the authoritative [development policy](igor2/DEVELOPMENT_POLICY.md):
+`igor2` is independent of original Igor on `master`, with no reconciliation gate.
+Authorized pre-release contract changes migrate implementation, all consumers,
+fixtures and tests together and retire obsolete paths; platform/dependency,
+third-party, data-integrity and safety contracts remain.
+
 Current code/docs describe how Igor works today. `docs/igor2/` describes the target architecture and migration constraints.
 
 ## Development workflow
@@ -54,7 +60,9 @@ Do not search for more improvements after final validation.
 
 ## Modules
 
-The current Module API is v1 and is documented in [module_creation.md](module_creation.md).
+Module API v1 remains live for unmigrated consumers and is documented in
+[module_creation.md](module_creation.md); v2 is the canonical extension direction
+in [igor2/MODULE_API.md](igor2/MODULE_API.md).
 
 Current activation semantics are documented in [module_lifecycle.md](module_lifecycle.md).
 

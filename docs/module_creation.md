@@ -1,5 +1,10 @@
 # Igor Module Development Guide
 
+Igor 2 follows [Development Policy / D078](igor2/DEVELOPMENT_POLICY.md).
+The live compatibility mechanisms described here are migration inputs, not
+mandatory Igor 1 compatibility or perpetual internal coexistence. Preserve
+platform/dependency support, lifecycle isolation, data recovery and safety.
+
 > **Current contract (Module API v1).** This guide documents the v1 compatibility implementation. Igor 2's v2 contract and the first migrated `system` slice are documented separately in [igor2/MODULE_API.md](igor2/MODULE_API.md). New v2 packages use strict `module.conf` metadata and explicit JSON contract files; do not extend v1 with speculative hooks to imitate v2.
 
 Step 18A confirms that first-class modules extend that v2 contract. Portable

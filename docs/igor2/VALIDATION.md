@@ -1,5 +1,10 @@
 # Developer validation
 
+[Development Policy / D078](DEVELOPMENT_POLICY.md) governs candidate selection
+and contract migrations. `igor2` is the independent baseline; no `master`
+ancestry/comparison/reconciliation is required. Version/platform/dependency,
+third-party, data-integrity and security checks retain their supported scope.
+
 The validation harness is test infrastructure. It does not change Igor runtime
 policy, state, capabilities or roadmap boundaries. It reuses Bash, BATS and
 pytest rather than replacing their test frameworks.
@@ -20,6 +25,17 @@ explicitly required full/CI release gate (at most once)
 release freeze
 ```
 
+## Contract and evidence policy
+
+An accepted canonical contract change updates implementation, internal consumers,
+fixtures and affected tests together. Replace obsolete expectations with coverage
+of intended behavior; keep safety, lifecycle, authorization, privilege, secrets,
+History and verification regressions. Tests for a live legacy contract remain
+until its authorized runtime cutover. Documentation-only changes cannot mark
+that migration complete or count as runtime validation. Report actual execution,
+permitted skips and unverified behavior separately. Retain all five formal
+[EXECUTION proof classes](EXECUTION.md#completion-model).
+
 ## Modes and local comparison
 
 ```bash
@@ -28,7 +44,7 @@ tests/validate.sh affected --base igor2 --jobs 2
 tests/validate.sh full --base igor2 --jobs 2
 ```
 
-Choose a local comparison ref appropriate to the branch. `--base` defaults to
+Choose a local **Igor 2** comparison ref appropriate to the branch. `--base` defaults to
 `igor2`; on `igor2` itself, supply the pre-task commit to include committed task
 changes. Selection unions changes since `BASE...HEAD` with staged, unstaged and
 untracked files. It requires neither network access nor GitHub. Renames are
@@ -289,7 +305,8 @@ until a separate reviewed metadata change removes it.
 ## CI and limitations
 
 [CI](../../.github/workflows/ci.yml) covers PRs targeting `master`, `main` and
-`igor2`, and pushes to those branches. Ordinary events run the shared
+`igor2`, and pushes to those branches. These independent event subscriptions
+do not require branch equivalence or inheritance from original Igor. Ordinary events run the shared
 `affected` entry point. PR selection uses the base SHA; pushes use the previous
 SHA. Checkout fetches local history. The affected harness already runs Ruff and
 ShellCheck on every changed Python/shell/BATS file, so ordinary PRs do not also

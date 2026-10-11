@@ -58,6 +58,16 @@ last-mile redaction boundary are the transport authority to preserve.
 journal records actions separately. Neither is currently a typed,
 automatically selected operational-history context source.
 
+## Development-policy amendment (D078, 2026-10-10)
+
+[Development Policy](DEVELOPMENT_POLICY.md) supersedes any inference below that
+Igor 1 ancestry, old scalar formats, v1 coexistence or internal pre-release
+aliases must be preserved indefinitely. Dated baseline statements are historical.
+Current adapters remain for named live consumers until an authorized complete
+migration; safety, dependency, provider and retained-data contracts remain.
+[Collection results](COLLECTION_OPERATOR_RFC.md) extend the same dispatcher and
+result boundary, currently in DISCOVERY.
+
 ## Step 11: canonical capability contract
 
 ### Identity, provider and availability
@@ -69,7 +79,8 @@ with at least two dot-separated semantic segments for new capabilities.
 `legacy.<owner>.<action>` remains the transient v1 namespace and is never
 silently treated as a substitutable canonical ID. ID denotes the operation's
 observable contract, not its Bash function, OS command, provider or menu
-label. A material input/outcome change requires a new contract version or ID;
+label. A material input/outcome change requires a new contract version; use a
+new ID only for a different operation, not obsolete pre-release output;
 the initial descriptor records `capability_version: 1`.
 
 Step 18 Boundary 1 additionally supports capability version 2 with mandatory

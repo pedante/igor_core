@@ -1,5 +1,9 @@
 # Igor 2 execution discipline
 
+Follow [Development Policy / D078](DEVELOPMENT_POLICY.md). Proof compares Igor 2
+with its accepted current contract and relevant prior Igor 2 revision, never
+with `master`. The five proof classes below are unchanged.
+
 ## Why this document exists
 
 Igor's broad architecture is now clearer than its completion gates. The main
@@ -20,9 +24,12 @@ deterministically.
 
 ### 2. Regression proof
 
-The previously green baseline remains green. A new architecture layer does not
-earn completion by breaking established interaction, approval, privilege,
-module-activation or frontend behavior.
+The previously green baseline remains green for retained contracts. An
+authorized pre-release redesign updates implementation, all consumers, fixtures
+and affected tests together; replace obsolete expectations with equivalent
+coverage of the accepted replacement. This is not permission to weaken approval,
+privilege, module activation, isolation, privacy, History or verification. A
+proposal or documentation-only edit cannot supersede a live runtime contract.
 
 ### 3. Vertical-slice proof
 
@@ -40,6 +47,12 @@ recovery semantics.
 
 A wave may contain more checks, but it should not omit one of these proof
 classes without an explicit reason recorded in STATUS.md.
+
+Documentation-only governance changes provide policy, parsing, reference and
+diff evidence; they do not establish runtime contract/regression/vertical-slice
+proof or close a roadmap feature. Report tested, inspected, skipped and
+unverified behavior separately. The collection extension remains DISCOVERY in
+[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md).
 
 ## Acceptance-check style
 
@@ -68,9 +81,10 @@ Use the smallest real implementation that crosses the new boundary.
 
 Use a small part of system to prove Module Platform v2.
 
-Keep nextcloud_docker on v1 throughout Wave C to prove compatibility. Do not
-pull its migration into the Wave C implementation just because it is a richer
-example.
+The completed Wave C boundary kept nextcloud_docker on v1 to prove the
+then-live migration path and bound its scope. This historical proof is retained;
+it does not require permanent v1 coexistence or restart the completed wave.
+Later authorized migrations follow D078 and their real consumer/data boundaries.
 
 ### After Wave C
 
@@ -203,6 +217,9 @@ identity. Reject speculative machinery that has no current need; preserve the
 identity/reference seam that would allow the future implementation.
 
 ## Compatibility discipline
+
+This is platform/module/capability dependency validation, not preservation of
+Igor 1 or deliberately superseded internal formats (D078).
 
 Design metadata rich enough for later growth, but implement the minimum
 deterministic evaluator required now.

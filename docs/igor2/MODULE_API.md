@@ -13,6 +13,12 @@ capability output/version and inspection contracts below; composition
 prerequisites and the reversible application proof remain separate boundaries.
 Current validation and migration evidence belongs in [STATUS.md](STATUS.md).
 
+Follow [Development Policy / D078](DEVELOPMENT_POLICY.md): live v1 and scalar
+output support below describe current consumers, not perpetual compatibility
+obligations. The [collection RFC](COLLECTION_OPERATOR_RFC.md) proposes evolving
+the existing output validator and `system.service.list` contract; it remains
+DISCOVERY and changes no current executable schema.
+
 ## First-class module boundary (Step 18A)
 
 A module is a portable reviewed package that teaches and operates a coherent
@@ -119,14 +125,13 @@ bounded candidate list, source identity and freshness semantics. A stale System
 Model result is not presented as current. A malformed source result fails
 closed rather than being hidden by fallback.
 
-S1 provides the generic contract and read-only inspection/resolution API only.
-No bundled capability declares a selector yet; the existing System service
-capabilities are the S2 proof slice. `:sys` is likewise deferred: D070 permits
-it only as a future presentation alias while `:system` and all `system.*`
-identities remain canonical.
+S1 introduced the generic contract and read-only inspection/resolution API.
+S2 now declares service selectors and S3 implements the collision-safe `:sys`
+presentation alias; `:system` and all `system.*` identities remain canonical.
+[OPERATOR_SURFACE.md](OPERATOR_SURFACE.md) records the later selector slices.
 
 
-## Capability output and compatibility contract (Boundary 1)
+## Capability output and version contract (Boundary 1)
 
 Package version, Module API version, contribution-envelope version, capability
 version and configuration schema version have independent meanings. Updating
@@ -156,7 +161,10 @@ Requests/plans may pin an exact supported `capability_version`. A mismatch fails
 before handler effects; pending approval must retain and recheck the selected
 version/provider/descriptor. Unpinned compatibility callers use the currently
 resolved supported contract. A breaking input/output change requires a new
-supported capability version or ID, with explicit consumer migration. There is
+capability contract version and explicit migration of all affected internal
+consumers. A new ID is for a different operation, not for preserving superseded
+pre-release output. [D078](DEVELOPMENT_POLICY.md) removes mandatory simultaneous
+obsolete versions; current versions remain live until their authorized migration. There is
 no version-range solver, silent provider substitution or reinterpretation of
 historical operation references.
 

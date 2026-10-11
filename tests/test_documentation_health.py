@@ -1,7 +1,7 @@
 """Regression guards for Igor 2 documentation and ownership clarity."""
 
-from pathlib import Path
 import re
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,3 +75,37 @@ def test_legacy_configuration_comments_match_current_ownership_contracts():
     mail = defaults.split("MAILCMD_ENABLED=false", 1)[0][-900:]
     assert "legacy/unavailable compatibility defaults" in mail
     assert "historical core/mailcmd implementation is absent" in mail
+
+
+def test_active_igor2_guidance_uses_independent_policy_not_master_gate():
+    for relative in (
+        "AGENTS.md", ".codex/README.md", ".codex/config.toml",
+        "docs/igor2/README.md", "docs/igor2/ARCHITECTURE.md",
+        "docs/igor2/MIGRATION.md", "docs/igor2/ROADMAP.md",
+        "docs/igor2/VALIDATION.md",
+    ):
+        document = read(relative)
+        assert "DEVELOPMENT_POLICY.md" in document, relative
+        assert "verify the working branch contains the intended current `master`" not in document
+        assert "owner confirmation and intended-master reconciliation before implementation" not in document
+
+
+def test_collection_proposal_keeps_existing_execution_proofs_and_discovery_gate():
+    execution = read("docs/igor2/EXECUTION.md")
+    proofs = re.findall(r"^### [1-5]\. (.+)$", execution, flags=re.MULTILINE)
+    assert proofs == [
+        "Contract proof", "Regression proof", "Vertical-slice proof",
+        "Inspection proof", "Migration/recovery proof",
+    ]
+
+    rfc = read("docs/igor2/COLLECTION_OPERATOR_RFC.md")
+    assert "Status: **proposed extension in DISCOVERY" in rfc
+    for proof in proofs:
+        assert f"| {proof} |" in rfc
+    roadmap = read("docs/igor2/ROADMAP.md")
+    for step, following in (("18", "19"), ("20", "21")):
+        section = roadmap.split(f"## Step {step} —", 1)[1].split(
+            f"## Step {following} —", 1
+        )[0]
+        assert "COLLECTION_OPERATOR_RFC.md" in section
+    assert "### D078" in read("docs/igor2/DECISIONS.md")

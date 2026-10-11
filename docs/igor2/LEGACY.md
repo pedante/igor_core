@@ -5,6 +5,25 @@ This map records the v1 compatibility surfaces that remain live alongside the
 typed host model and canonical capability path. The Wave E contract is in
 [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
+## D078 amendment: migration inputs, not compatibility targets
+
+[Development Policy](DEVELOPMENT_POLICY.md) makes `igor2` independent of original
+Igor on `master`. Dated ancestry comparisons below are historical evidence, not
+gates. This map inventories live migration dependencies within Igor 2.
+
+An authorized complete internal migration may retire obsolete formats/adapters
+immediately; Step 23 and a deprecation period are not mandatory waiting points.
+Preserve supported third-party contracts, platform/dependency checks, retained
+data/recovery and all safety invariants. KEEP means reuse what remains correct,
+not prohibit deliberate redesign. Historical table entries are qualified by
+this amendment and later current status.
+
+The scalar `system.service.list` output is a live Step 18 contract pending the
+[collection RFC](COLLECTION_OPERATOR_RFC.md), in DISCOVERY. Its old format and
+fixtures retire together with all internal consumers once Q022–Q024 are accepted
+and implementation proof passes. No second capability ID or indefinite scalar
+adapter is required; the existing canonical result/dispatcher remains.
+
 ## OpenRouter ownership cutover — Boundary B, D069
 
 The single selected OpenRouter credential uses the existing secret-reference
@@ -95,7 +114,7 @@ give a removal condition.
 | Healing check activation | `core/healing/core.sh:43-65` now uses `igor_has_module` for module identity. `tests/modules/test_healing_activation.bats` guards active, disabled, unavailable and installed-only discovery against Diagnose's active set. | KEEP/ADAPT | Step 10 can unify result/discovery contracts without regressing active-owner filtering. |
 | Diagnose and healing checks | `core/lib/health_runner.sh` now owns active check execution and structured v2 results with v1 line adapters. Diagnose and Healing project the shared results into their distinct UI/cache flows. | KEEP/ADAPT | Retire v1 line adapters only after all active modules migrate and equivalent workflow coverage passes. |
 | System memory duplicate checks | `host.memory` and `host.memory.health` are now the canonical RAM fact/check. Legacy RAM emissions in `system__diagnose`, `system__health` and `checks/hardware.sh` are retired; other hardware findings remain. The critical boundary remains 80 MiB. D062 makes the warning threshold a System schema contribution with Core-owned desired state, default 150 MiB and explicit process-local application/readback. `SYSTEM_RAM_WARN_MB` remains ineffective and is not imported. | ADAPT | Boundary 3 replaces only the hardcoded warning value; other host thresholds and legacy names require their own bounded migration. |
-| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the permissive manifest, hook and isolated check contracts. `nextcloud_docker` remains v1; `system` retains explicit v1 hooks while adding disjoint v2 contributions. | TEMPORARY COMPATIBILITY | V2 declarations and necessary v1 registrations feed the owner-aware model while old hook views remain for current consumers. Remove v1 in Step 23 after bundled/external migration, equivalent tests, consumer retirement and a deprecation period. |
+| Module API v1 | `docs/module_creation.md` and `module_loader.sh` define the permissive manifest, hook and isolated check contracts. `nextcloud_docker` remains v1; `system` retains explicit v1 hooks while adding disjoint v2 contributions. | TEMPORARY COMPATIBILITY | V2 declarations and necessary v1 registrations feed the owner-aware model while old hook views remain for current consumers. Retire v1 after authorized bundled/internal migration, equivalent tests and consumer retirement; honor explicit supported external contracts/data recovery. No internal pre-release deprecation period or Step 23 wait is mandatory (D078). |
 | Legacy menu loader | `core/lib/module_loader.sh:766-789` has owner-aware dispatch plus `_igor_load_module` fallback for old menu-file arguments. | TEMPORARY COMPATIBILITY | Remove after menus use the active registry/shared backend (Steps 5/20/23); meanwhile test disabled owners cannot be loaded. |
 | Combined Nextcloud deployment | `modules/nextcloud_docker/` owns a working combined deployment, context and actions. | KEEP / TEMPORARY COMPATIBILITY | Preserve through reusable recognition, Step 19 brownfield/adopted-setting proof and later provisioning decisions. Do not split merely for purity; retire/reshape only after equivalent domain contracts and compatibility evidence exist. |
 | AI request trust boundary | `core/ai/request_boundary.py:12-19,50-106` separates policy from `IGOR_REFERENCE_V1`; `core/ai/privacy.py:9-58` redacts before transport. | KEEP | Step 12 composes better reference material into this boundary. Reference material never authorizes. |
@@ -120,7 +139,7 @@ give a removal condition.
 | AI operation audit | `core/ai/operations.py` and `control.sh` retain bounded tool classification/request traces and canonical operation references. They cannot describe the complete capability lifecycle. | TEMPORARY COMPATIBILITY PROJECTION | Step 15B records canonical episodes directly at execution; AI traces remain diagnostic projections/references. Never import partial tool events as authoritative episodes. Retire only after `--ai last` and audit consumers have an equivalent supported view. |
 | Recovery journal and rollback | `core/recovery/journal.sh` retains command-oriented pipe records and an optional SQLite mirror for raw/v1 AI actions, Diagnose fixes, recovery menus, backups and rollback. | TEMPORARY LEGACY SOURCE | Canonical capabilities cut over to Operational History; preserve noncanonical callers and existing rollback/UI until their exact capabilities and recovery semantics replace them. No command-text import or generic history replay/undo. |
 | Backup/recovery artifacts | Full-backup manifests, module-hook snapshots and configuration archives remain recovery artifacts with their existing retention/restore behavior. | KEEP | Operational episodes may reference real artifacts; history does not own archive contents or backup configuration. Preserve legacy journal records for these noncanonical workflows until an explicit cutover. |
-| Chat `history` / `replay` | `core/ai/core.sh` and `session_commands.py` display session postmortems/transcripts. | TEMPORARY SESSION COMPATIBILITY | Preserve existing command names/behavior; Operational History has separate CLI inspection. Never reconstruct omitted episodes, approval, privilege or execution state from chat. Retire only after equivalent session-view consumers migrate. |
+| Chat `history` / `replay` | `core/ai/core.sh` and `session_commands.py` display session postmortems/transcripts. | TEMPORARY SESSION COMPATIBILITY | Migrate named session-view consumers before retirement; Operational History has separate CLI inspection. Never reconstruct omitted episodes, approval, privilege or execution state from chat. Retire only after equivalent session-view consumers migrate. |
 | Scheduling and long waits | Step 14 now has an Igor-owned automation registry plus one-time, periodic, event and typed condition READ admission, while older cron/scripts still serve real compatibility purposes such as backups. Long-running setup/install flows still lack a generic durable wait/resume contract. | ADAPT / REPLACE where authoritative replacements exist | Step 14 owns automation scheduling; `RESUMABLE_WORK.md` proposes separate durable `WAITING_USER` / `WAITING_EXTERNAL` plan state so OAuth, DNS, reboot and other dependencies do not become sleeping processes or subsystem-specific marker files. Retire cron/resume paths only after their exact consumer has an authoritative replacement. |
 | Duplicate module tooling | `tests/test module scripts depreciated?/validate_module*.sh` contains overlapping experimental validators; CI lints them. | REMOVE / TEMPORARY COMPATIBILITY | Step 22 selects one v2 create/validate/test path, checks external use, then removes duplicates. These files must not define another module contract. |
 

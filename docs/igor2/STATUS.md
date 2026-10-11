@@ -10,7 +10,87 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Resource Recognition Foundation — A3 final integration candidate
+## Independent Igor 2 baseline and collection extension — governance pass
+
+The Owner accepted [Development Policy / D078](DEVELOPMENT_POLICY.md) on
+2026-10-10: `igor2` is the sole independent unreleased development baseline;
+`master` is original Igor, with no comparison/ancestry/reconciliation gate.
+Internal contracts may change through complete tested consumer/data migration;
+platform/dependency/third-party, safety, privacy and identity obligations remain.
+Older branch-reconciliation statements below are historical, not current gates.
+Original test outcomes and incomplete evidence are unchanged.
+
+This pass inspects local `igor2` at `5b80740` and changes policy/documentation
+plus policy regression coverage only. A3 is integrated by the local merge commit
+`5b80740`; the earlier pending/stacked entries below retain their historical
+meaning. No fresh A3 CI or live provider acceptance is claimed by this pass.
+The D069 Boundary A recommendations accepted earlier remain settled.
+
+[Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
+is the canonical proposed Step 18 output / Step 20 rendering extension, in
+**DISCOVERY**. Source inspection confirms service list/status v2, restart v1,
+canonical registry/dispatch/results, explorer aliases, CLI `capability run` and
+D049 scope identity. Collection runtime is not implemented or tested here.
+Q022–Q024 (schema/version, pagination/retention, READ detail binding) and comparison
+with the unavailable original RFC remain before EXECUTION. No wave is reopened.
+
+### Governance evidence and scope ledger (2026-10-10)
+
+Candidate: local `5b80740` plus this uncommitted policy/proposal diff. Environment:
+isolated governed runner, cached pytest 9.1.1/Ruff tooling, no live service or
+provider calls. The affected dry run selected 127 groups because instruction
+configuration and pre-existing untracked plugin files trigger broader domains;
+those groups were **not executed**. Documentation-only scope uses the governed
+focused plan: structure, changed-file Ruff, documentation health.
+
+- Initial `/tmp/igor2-policy-governed-20261010/summary.json`: structure passed;
+  Ruff found the edited test file's existing unsorted imports. Fail-fast left
+  pytest unexecuted. Classified as a local static test-file defect; imports
+  reordered without changing assertions or production behavior.
+- Corrected `/tmp/igor2-policy-governed-corrected-20261010/summary.json`:
+  **9 documentation tests + structure + Ruff pass** (11 reported identities,
+  exit 0), no failures, skips, unavailable tools or timeouts. Ten historical
+  baseline entries were unexercised, not fixed or reclassified.
+- Both `.codex` TOML files parse and all operating configuration keys match
+  HEAD; only instruction strings changed. The 68 introduced local file links
+  and anchors pass the supplemental check recorded in
+  `/tmp/igor2-policy-static-20261010.json`. Final evidence-only STATUS edits and
+  the RFC depth-bound clarification receive targeted structural/reference
+  review; they do not invalidate the unchanged policy-test implementation.
+- Policy consistency retains all five formal EXECUTION proof classes, safety,
+  scope/provider/operation identity and data-recovery requirements. Runtime
+  contract, regression, vertical-slice, inspection and migration/recovery proof
+  are **not established by this documentation pass**. No runtime implementation
+  or persistent format changed; the future RFC acceptance table retains all
+  five classes. Runtime/full release suites are out of scope, not passing skips.
+
+Architectural review: one registry/dispatcher/result envelope remains canonical;
+domain modules own typed row meaning, Core owns admission/provenance and scoped
+selection revalidation, and frontends own disposable navigation only. Future
+CLI/TUI/GUI/AI and configuration/memory/plan consumers use the same typed semantics
+without automatically treating rows as facts or authority. Minimal READ detail
+bindings avoid a general action language. Exact structured schema/version,
+snapshot/retention/transport bounds and bindings remain Q022–Q024; Raspberry Pi
+performance and original-RFC fidelity are unverified.
+
+| Changed paths | Reason |
+|---|---|
+| `docs/igor2/DEVELOPMENT_POLICY.md` | One authoritative policy plus classified audit/deferred runtime-test migrations. |
+| `docs/igor2/COLLECTION_OPERATOR_RFC.md` | One proposed Step 18/20 extension, options, bounds and formal acceptance checks; missing-source limitation explicit. |
+| `AGENTS.md`, `.codex/README.md`, `.codex/config.toml`, `.codex/Lead_Eng.config.toml` | Remove old branch gate and propagate policy into project instructions; operating settings unchanged. |
+| `README.md`, `docs/README.md`, `docs/CONTRIBUTING.md`, `.github/CONTRIBUTING.md`, `.github/PULL_REQUEST_TEMPLATE.md` | Entry points and development/test/migration review procedures reference canonical policy. |
+| `docs/igor2/README.md`, `docs/igor2/ARCHITECTURE.md`, `docs/igor2/DECISIONS.md`, `docs/igor2/MIGRATION.md`, `docs/igor2/EXECUTION.md` | Authority, D078 amendments, complete internal cutover and unchanged proof/safety obligations. |
+| `docs/igor2/ROADMAP.md`, `docs/igor2/STATUS.md`, `docs/igor2/LEGACY.md`, `docs/igor2/OWNERSHIP_FOUNDATION_PROPOSAL.md` | Supersede reconciliation/coexistence gates, preserve history and completed work, link proposed extension/evidence. |
+| `docs/igor2/MODULE_API.md`, `docs/igor2/AGENT_ARCHITECTURE.md`, `docs/igor2/OPERATOR_SURFACE.md`, `docs/igor2/OPERATOR_INTERFACES.md`, `docs/igor2/SYSTEM_ADMIN_EXPERIMENT.md`, `docs/module_creation.md`, `docs/module_lifecycle.md` | Contract/migration guidance and verified current source state, without runtime collection implementation. |
+| `tests/test_documentation_health.py` | Two policy/proposal regression guards, existing seven guards preserved; import ordering corrected. |
+
+No executable validator, CI workflow, runtime behavior, service/data, baseline
+manifest, branch/ref or remote setting was changed. Existing untracked plugin
+work is preserved. Owner instructed **no commit or push**. Policy/proposal checks
+pass; source-faithful original RFC integration remains blocked on the missing
+attachment, and collection work remains DISCOVERY.
+
+## Resource Recognition Foundation — A3 final integration candidate (historical)
 
 The Owner separately authorized A1, A2 and A3. A1 merged as `941c69d`
 (144 affected checks passed); A2 merged as `4772d59` (68 affected checks

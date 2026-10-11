@@ -7,6 +7,16 @@ and role configurations carry its operational rules; [AGENTS.md](../AGENTS.md)
 provides repository constraints. These phases govern Codex engineering work,
 not Igor runtime state, AI roles or roadmap architecture.
 
+## Igor 2 development baseline
+
+Follow [Development Policy / D078](../docs/igor2/DEVELOPMENT_POLICY.md). `igor2`
+is independent of original Igor on `master`; no comparison, ancestry, merge or
+reconciliation gate applies. Authorized internal pre-release contract changes
+migrate all consumers/tests/data coherently and retire obsolete paths without
+mandatory compatibility adapters. Platform/dependency/third-party support,
+private data, approval, privilege, ownership, History and verification remain
+mandatory. Proposed collection/TUI work remains DISCOVERY until confirmed.
+
 ## Task lifecycle
 
 At task start, every phase transition and each handoff, the root states the

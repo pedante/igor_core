@@ -119,6 +119,9 @@ by this decision alone.
 
 ### D021 — V2 evolves one activation runtime with explicit compatibility
 
+Amended by D078 for internal pre-release coexistence/retirement; historical
+accepted boundary below is retained.
+
 The current discovered/disabled/active/unavailable states and restart-based
 activation remain; no hot unload or new persistent state is needed. V2
 declarations join one owner-stamped contribution index under the current
@@ -574,6 +577,9 @@ roadmap work. Q007 and Q012 remain open; this bounded foundation does not close
 the entire Ownership Foundation gate.
 
 ### D060 — First-class modules extend v2 under Core-owned authority (Step 18A)
+
+Amended by D078 for internal version/output compatibility; ownership and safety
+boundaries below remain authoritative.
 
 The Project Owner approved the Step 18A discovery proposal and its three
 sequential boundaries: contract completion, composition prerequisites, then
@@ -1149,7 +1155,73 @@ shared CLI/TUI projection (A3) require a later explicit continuation after A1
 stops and reports evidence. No real Nextcloud application gate, Step 19 Boundary
 3, provisioning, system scan or Module API public extension is authorized.
 
+### D078 — Independent Igor 2 baseline and pre-release contract freedom
+
+Accepted by the Project Owner on 2026-10-10 in the governance/collection RFC task.
+[DEVELOPMENT_POLICY.md](DEVELOPMENT_POLICY.md) is the single authoritative policy.
+`igor2` is the sole Igor 2 development baseline; original Igor on `master` is
+independent. No ancestry, merge, cherry-pick, comparison, freshness or
+reconciliation gate applies. This decision authorizes no branch manipulation or
+remote default-branch change.
+
+Igor 2 is unreleased. Prefer the canonical architecture intended for release;
+authorized internal contracts may be redesigned with complete implementation,
+consumer, fixture, test and data migration. Do not retain obsolete output,
+parallel registries, duplicate capability IDs or indefinite adapters solely for
+internal pre-release backward compatibility. Version axes and retained
+operational identity/meaning remain explicit. Platform/software/dependency and
+explicit third-party contracts, deliberate data migrations and all approval,
+privilege, lifecycle, secrets, privacy, History and verification invariants remain.
+The five EXECUTION proof classes and DISCOVERY/Owner gates are unchanged.
+
+**Explicit amendments; original decisions above remain traceable:**
+
+- D012/D015/D021: one loader and owner-aware lifecycle remain. Internal v1
+  coexistence and waiting until Step 23 are not mandatory once an authorized
+  migration has retired all affected consumers. Explicit external contracts and
+  persistent recovery must still be handled deliberately.
+- D037/D060 and Step 18 Boundary 1: live v1/v2 and scalar output support describe
+  today's implementation, not permanent contracts. A revised operation keeps its
+  canonical ID and changes its contract version with complete consumer migration;
+  no simultaneously executable obsolete version is required. A different
+  operation may still warrant a different ID.
+- Historical master-baseline assumptions in Step 1/Wave C/E reviews, STATUS and
+  the Ownership Boundary A proposal are superseded as gates. Their observed
+  commits, failures, skips and test outcomes are unchanged.
+
+[Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md) is
+recorded as a **proposed** Step 18/20 extension, in DISCOVERY. Its direction
+reuses D049/D050 identity and existing capability/operator/result boundaries.
+D078 accepts the development policy, not the unconfirmed schema, pagination or
+inspection-binding details in Q022–Q024; no collection implementation begins here.
+
 ## Open decisions
+
+### Q022 — Structured collection schema and version cutover
+
+Approve the exact closed array/record/scoped-reference schema, canonical result
+projection and independent version increments proposed in
+[Collection RFC](COLLECTION_OPERATOR_RFC.md#options-and-owner-decisions-before-execution).
+Recommendation: evolve the same capability ID/shared validator; migrate all
+consumers and pins, without keeping obsolete scalar output executable.
+Decision target: before Step 18 collection contract implementation.
+
+### Q023 — Collection pagination, bounds and retention
+
+Approve the RFC's row/byte/depth/TTL ceilings, snapshot/cursor ownership,
+expiry/cleanup, stable paging and History/event retention. Recommendation:
+bounded frozen snapshots under existing backend runtime ownership, with explicit
+limit/expiry errors and refresh; no new inventory authority. Constrained-hardware
+performance remains to be measured in implementation.
+Decision target: before snapshot/transport contract implementation.
+
+### Q024 — Generic READ detail binding
+
+Approve the minimal registered READ capability target/input binding and scoped
+selection revalidation. Recommendation: backend validates metadata and selectors;
+TUI submits typed intent through the existing dispatcher, with no systemd-specific
+executor or general action language.
+Decision target: before collection row inspection metadata becomes a contract.
 
 ### Q019 — Initial S8 hardware/runtime identity
 

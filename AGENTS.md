@@ -17,11 +17,16 @@ For Igor 2 work, also read:
 4. [docs/igor2/INFLUENCES.md](docs/igor2/INFLUENCES.md) when changing discovery, memory, plans, learning or AI/system boundaries
 5. only the remaining Igor 2 documents relevant to the task
 
-Before a roadmap wave, verify the working branch contains the intended current `master` baseline. Do not audit or migrate from a stale branch.
+For Igor 2 work, use the actual local `igor2` tree or an intended Igor 2 feature
+branch baseline. `master` is the independent original Igor program: no ancestry,
+comparison or reconciliation gate applies. Follow the authoritative
+[development policy](docs/igor2/DEVELOPMENT_POLICY.md).
 
 ## Igor 2 authority
 
-For target architecture and migration decisions, use this order:
+The Owner's [Igor 2 development policy](docs/igor2/DEVELOPMENT_POLICY.md) governs
+branch independence and pre-release compatibility obligations. For target
+architecture and migration decisions, use this order:
 
 1. `docs/igor2/ARCHITECTURE.md`
 2. accepted decisions in `docs/igor2/DECISIONS.md`
@@ -79,7 +84,10 @@ A roadmap item may already be partly or substantially implemented. Inspect befor
 
 ## Architecture working rules
 
-- Preserve working behavior unless the migration plan explicitly replaces it.
+- Preserve correct foundations; authorized pre-release contract changes migrate
+  all internal consumers, fixtures and tests together and retire superseded paths.
+  No Igor 1 compatibility or obsolete internal coexistence is required. Preserve
+  platform/dependency/third-party contracts, data integrity and safety invariants.
 - Do not create a second permanent implementation of an existing responsibility.
 - Keep core application-agnostic.
 - Treat module presence on disk as different from activation.
@@ -159,6 +167,12 @@ Common checks:
 - `ruff check <changed-python-files>` for Python changes (whole-tree lint only when explicitly required)
 - Python compile/unit tests relevant to changed Python modules
 - `git diff --check`
+
+Tests prove the accepted current Igor 2 contract. Replace superseded internal
+expectations with equivalent intended-contract coverage during the runtime
+migration, not a documentation-only pass. Preserve safety/privilege/isolation,
+secrets, History and verification regressions; use DEVELOPMENT_POLICY.md to
+distinguish internal compatibility from supported platforms and data recovery.
 
 For documentation-only edits, verify links/references and inspect the final diff.
 For Codex configuration/documentation-only edits, also parse TOML and check

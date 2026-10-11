@@ -24,18 +24,30 @@ evidence for the five proof classes in [EXECUTION.md](EXECUTION.md):
 5. migration/recovery proof where persistent data or contracts change.
 
 Exit conditions should be scriptable/falsifiable wherever practical. The
-existing green baseline remains part of every later wave's regression gate.
+existing green baseline for retained contracts remains part of every later
+wave's regression gate; authorized replacements migrate expectations and preserve
+equivalent safety/behavior coverage under D078.
+
+[Development Policy / D078](DEVELOPMENT_POLICY.md) establishes the actual `igor2`
+tree as the independent unreleased baseline. No `master` reconciliation gate
+applies. Complete authorized internal consumer migrations replace mandatory
+obsolete coexistence; all five proof classes and safety/data obligations remain.
 
 ## Development waves
 
 - **Wave A — Foundation:** Steps 1–2
 - **Wave B — Runtime & Safety:** Steps 3–4
-- **Wave C — Module Platform:** Steps 5–6
-- **Wave D — Host Intelligence:** Steps 7–10
-- **Wave E — Agent Architecture:** Steps 11–12
-- **Wave F — Reactive Igor:** Steps 13–16 and 19
+- **Wave C — Extensible Module and Capability Foundation:** Steps 5–6
+- **Wave D — Machine Memory, Discovery and Desired State:** Steps 7–10
+- **Wave E — Plans, Configuration, Installation and Verification:** Steps 11–12
+- **Wave F — Durable Investigations and Operational Learning:** Steps 13–16 and 19
 - **Wave G — Composable Igor:** Steps 17–18 and 20–22
 - **Wave H — Consolidation:** Step 23
+- **Later — Packs, Adapters and Ecosystem:** post-2.0 distribution/integration.
+
+These Owner-aligned direction labels preserve the established numbered steps,
+completed boundaries and cross-cutting gates. Older wave labels in dated
+evidence remain historical; no completed wave is restarted or renumbered.
 
 Recent work means Waves B and parts of C/D/E already have substantial foundations. The roadmap must preserve and generalize them rather than create parallel systems.
 
@@ -211,7 +223,9 @@ The initial Bash adapter, strict validator and JSON contribution path are now
 implemented. The `system` slice proves knowledge and observer declarations;
 kind-specific consumers and broader migration remain future work.
 
-Contracts are optional. Keep API v1 working through an explicit migration/compatibility path until real v2 modules prove the contract.
+The initial optional-contract/v1 path is implemented evidence. Live v1 consumers
+remain until their authorized migration; D078 does not require indefinite
+coexistence or internal deprecation periods once all consumers/data migrate.
 
 Implementation follows D017–D022: one loader, strict v2 validation, one
 owner-aware contribution index and Bash as the first handler adapter.
@@ -629,7 +643,7 @@ external condition. Neither proposal is runtime implementation yet.
 The Project Owner approved Step 18A discovery (D060). Execution proceeds through
 three boundaries, stopping with evidence after each:
 
-1. **Contract completion:** versioned capability outputs/compatibility,
+1. **Contract completion:** versioned capability outputs and consumer migration,
    structured module inspection, reproducible package knowledge and explicit
    read-only detach accounting.
 2. **Composition prerequisites:** the owner-authorized integration proof uses
@@ -655,6 +669,13 @@ three boundaries, stopping with evidence after each:
 Contract completion does not certify real detach, migrate module settings,
 implement instance/deployment authority or authorize broad splitting. The
 implementation/evidence status is recorded in [STATUS.md](STATUS.md).
+
+The [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
+is a proposed **Step 18 output-contract extension**, kept in DISCOVERY. It evolves
+`system.service.list` under its existing ID/shared validator into bounded typed
+collections; all internal consumers/pins/fixtures migrate together. D078 removes
+indefinite scalar coexistence. Q022–Q024 and the missing original-RFC comparison
+must resolve before EXECUTION; existing Step 18 proof is not reopened.
 
 The initial [contract-driven Operator Surface](OPERATOR_SURFACE.md) is an
 interaction/composition aid over those same registries: active v2 contributions,
@@ -796,12 +817,12 @@ Before Igor 2 consolidation, close the Ownership Foundation with evidence for:
 External secret-manager integrations are not required for Igor 2. The core
 requirement is one authoritative local contract and safe migration.
 
-[Ownership Foundation Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) now records
-the implementation inventory and proposes an OpenRouter credential lifecycle
-that can be proved without Nextcloud or Docker. Its storage, registration,
-consumer, precedence and recovery choices remain unaccepted; Boundary B requires
-owner confirmation and intended-master reconciliation before implementation.
-The proposal does not close this completion gate or start application work.
+[Ownership Foundation Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) retains the
+implementation inventory. Its B1–B5 choices were accepted as D069, and the
+OpenRouter lifecycle implementation/evidence is recorded in STATUS. The whole
+Ownership Foundation still requires its scoped completion evidence; the original
+proposal alone does not close it. D078 supersedes the former intended-master
+reconciliation prerequisite. No broader application work is authorized here.
 
 ## Resumable Work — FUTURE IMPLEMENTATION GATE
 
@@ -844,6 +865,14 @@ finish the operator experience rather than merely flip the default launcher.
 [OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md) defines one backend contract
 shared by CLI, TUI, automation and later APIs.
 
+The current source already provides structured CLI `capability run`, the
+operator explorer, `:system`/`:sys`, provider ambiguity and default-TUI routing.
+These foundations do not by themselves close Step 20's representative workflow
+acceptance. The [collection RFC](COLLECTION_OPERATOR_RFC.md) is the proposed
+**Step 20 generic renderer and identical typed/explorer invocation extension**,
+in DISCOVERY, with read-only list/select/details/back/refresh and a second
+unrelated synthetic provider. Mutation is a separate later approved-action proof.
+
 ### Step 20A — First-class CLI
 
 Make Igor usable directly from the command line without creating a parallel
@@ -860,7 +889,8 @@ igor capability inspect docker.install
 igor --json deployments list
 ```
 
-Exact syntax is implementation work. Interactive CLI may enter the normal
+Structured `capability run` syntax already exists; further CLI work extends
+that canonical route. Interactive CLI may enter the normal
 approval/PTY privilege flow; noninteractive use must return approval-required
 rather than answer approval/authentication on the user's behalf. CLI/headless
 paths remain available after the TUI becomes default.
@@ -891,7 +921,9 @@ states must be visibly different.
 Only once representative system/module/application workflows use those shared
 backend contracts should `./igor.sh` launch the full-screen TUI by default.
 
-Preserve `--ai-tui` as a migration alias until safe removal. Keep CLI/headless
+The current source has an interactive default-TUI route. Keep explicit frontend
+selection while needed by current consumers; D078 permits alias retirement with
+a complete internal migration, rather than indefinite pre-release compatibility. Keep CLI/headless
 paths for scripting, recovery, tests and automation.
 
 ## Step 21 — Integration Rules — FUTURE
@@ -938,7 +970,8 @@ Step 22 design work.
 
 Before declaring Igor 2 complete:
 
-- remove obsolete v1 compatibility paths;
+- remove remaining obsolete v1 migration paths (retire proven replacements
+  during their own migration; do not defer them solely until Step 23);
 - remove dead hooks/helpers and duplicate validators;
 - remove deprecated configuration paths only after the Configuration Service
   migration has an explicit source/target cutover and recovery proof;

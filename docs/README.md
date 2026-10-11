@@ -17,9 +17,10 @@ The target architecture and migration authority live under [igor2/](igor2/README
 
 Start with:
 
-1. [igor2/STATUS.md](igor2/STATUS.md)
-2. [igor2/ARCHITECTURE.md](igor2/ARCHITECTURE.md)
-3. the task-relevant roadmap/decision/module document
+1. [igor2/DEVELOPMENT_POLICY.md](igor2/DEVELOPMENT_POLICY.md) — independent baseline and pre-release obligations
+2. [igor2/STATUS.md](igor2/STATUS.md)
+3. [igor2/ARCHITECTURE.md](igor2/ARCHITECTURE.md)
+4. the task-relevant roadmap/decision/module document
 
 Current docs describe how Igor works today. Igor 2 docs describe the target and how to migrate without rebuilding correct recent foundations.
 

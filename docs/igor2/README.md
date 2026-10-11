@@ -1,6 +1,10 @@
 # Igor 2 architecture package
 
-This directory is the repository-resident design authority for the Igor 2 migration.
+This directory is the repository-resident design authority for Igor 2 on the
+independent `igor2` development baseline. `master` is the separate original Igor
+program. [DEVELOPMENT_POLICY.md](DEVELOPMENT_POLICY.md) is the single authoritative
+branch/pre-release policy; it supersedes older reconciliation and internal
+backward-compatibility obligations.
 
 It exists so maintainers and coding agents can work from durable repository context instead of reconstructing the architecture from chat history.
 
@@ -8,7 +12,8 @@ It exists so maintainers and coding agents can work from durable repository cont
 
 For most Igor 2 work:
 
-1. `ARCHITECTURE.md` — stable target principles and authority boundaries.
+1. `DEVELOPMENT_POLICY.md` and `ARCHITECTURE.md` — development obligations,
+   stable target principles and authority boundaries.
 2. Read the **current-focus section at the top of `STATUS.md`**. Older sections are retained implementation evidence, not a required linear read.
 3. Read only the task-relevant contract, review or exploration document.
 4. Before implementation/closure, read `EXECUTION.md`; before migration or ownership changes, also read `MIGRATION.md`.
@@ -18,6 +23,8 @@ Do not treat every file in this directory as equal authority. The lifecycle rule
 Task-relevant documents:
 - `ROADMAP.md` — stable step names, development waves and current implementation status.
 - `MODULE_API.md` — target Module API v2.
+- `COLLECTION_OPERATOR_RFC.md` — proposed Step 18 typed collections and Step 20
+  generic renderer/direct invocation extension; DISCOVERY, not runtime authority.
 - `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
 - `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
 - `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.
@@ -78,7 +85,7 @@ implement parallel operating logic.
 
 These documents have different jobs:
 
-- **Normative authority** — `ARCHITECTURE.md`, accepted decisions in `DECISIONS.md`, `MIGRATION.md` and `EXECUTION.md`. These define durable architecture, migration and proof rules.
+- **Normative authority** — `DEVELOPMENT_POLICY.md` for development obligations; `ARCHITECTURE.md`, accepted decisions in `DECISIONS.md`, `MIGRATION.md` and `EXECUTION.md`. These define durable architecture, migration and proof rules.
 - **Current coordination** — the current-focus section of `STATUS.md`, plus `ROADMAP.md` and `LEGACY.md`. These describe what is active, complete, deferred or still compatible; they do not override normative authority.
 - **Implemented/accepted subsystem contracts** — task-specific contracts such as `MODULE_API.md`, `CONFIGURATION.md` or `PERSISTENT_MEMORY.md`. Their stated boundary is authoritative only within the accepted decision/architecture order above.
 - **Proposal / future / exploration** — documents explicitly labeled proposal, future, direction or exploration are design input, not implementation authority.
@@ -90,6 +97,7 @@ A document that uses a top-level `Status:` marker must have exactly one current 
 
 These files are architectural memory, not a second implementation.
 
+- Branch/pre-release obligations belong only in `DEVELOPMENT_POLICY.md`.
 - Stable principles belong in `ARCHITECTURE.md`.
 - Execution/completion rules belong in `EXECUTION.md`.
 - Adopted external design lessons belong in `INFLUENCES.md`; they do not override accepted Igor decisions.

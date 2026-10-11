@@ -6,6 +6,16 @@ alias. This extends the existing 15UI frontend foundation and Module API v2
 inspection contracts; it does not make the TUI authoritative or replace Step 18
 composition work.
 
+## Development policy and proposed extension
+
+[Development Policy / D078](DEVELOPMENT_POLICY.md) permits complete migration of
+internal pre-release consumers; v1 menus/selectors described below are live
+migration inputs, not indefinite obligations.
+[Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
+extends Step 18 outputs and Step 20 rendering through the same registry, result
+and invocation path. Direct pasted leaf invocation and generic collection
+navigation remain proposals in DISCOVERY, not implemented behavior.
+
 ## Purpose
 
 Igor must remain directly operable by a human even as Module API v2 removes

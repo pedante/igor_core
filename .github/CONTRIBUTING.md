@@ -5,6 +5,7 @@ The maintained contribution guide is [docs/CONTRIBUTING.md](../docs/CONTRIBUTING
 For Igor 2 architecture or migration work, also read:
 
 - [AGENTS.md](../AGENTS.md)
+- [docs/igor2/DEVELOPMENT_POLICY.md](../docs/igor2/DEVELOPMENT_POLICY.md)
 - [docs/igor2/README.md](../docs/igor2/README.md)
 - [docs/igor2/STATUS.md](../docs/igor2/STATUS.md)
 

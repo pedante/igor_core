@@ -1,5 +1,12 @@
 # Igor 2 architecture
 
+[Development Policy](DEVELOPMENT_POLICY.md), accepted as D078, establishes
+`igor2` as the independent unreleased baseline. Internal contracts may be
+deliberately replaced through complete tested consumer/data migration; the
+authority, identity, ownership, platform and safety invariants below remain
+mandatory. Proposed collections extend these contracts in
+[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md), currently DISCOVERY.
+
 ## Product definition
 
 Igor is a local AI-assisted operating layer for Linux.

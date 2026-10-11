@@ -1,6 +1,15 @@
 # Operator Interfaces: CLI and TUI
 
-Status: **Igor 2 roadmap direction; Step 20 completion contract not yet implemented**.
+Status: **Step 20 partially implemented; complete operator acceptance remains open**.
+
+The current source includes structured CLI normalization (`capability run`
+among other commands), the backend-driven explorer and an interactive default
+TUI selection path. These are inspected foundations, not a claim that all
+Step 20 application/workflow acceptance gates have passed. Follow
+[Development Policy / D078](DEVELOPMENT_POLICY.md); internal pre-release aliases
+may retire with complete consumer migration. The
+[collection RFC](COLLECTION_OPERATOR_RFC.md) is the proposed Step 18/20 extension
+for generic typed results and identical typed/explorer invocation, in DISCOVERY.
 
 Igor should expose one backend operating model through multiple frontends. The
 CLI and TUI must not become separate command/permission systems.
@@ -39,7 +48,9 @@ igor config get system.memory.warning_threshold_mib
 igor --json deployments list
 ```
 
-Exact command spelling is implementation work; the contract is:
+The current CLI already supports structured `capability run` through the
+existing dispatcher. Additional command spelling is bounded implementation
+work; the shared contract is:
 
 - natural-language one-shot use enters the normal Igor conversation/backend;
 - structured commands address the same canonical backend objects;

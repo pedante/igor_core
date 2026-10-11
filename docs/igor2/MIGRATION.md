@@ -1,10 +1,13 @@
 # Igor 2 migration policy
 
-Igor 2 is an incremental migration, not a flag-day rewrite.
+Follow [Development Policy / D078](DEVELOPMENT_POLICY.md): `igor2` is independent
+of original Igor on `master`. Internal pre-release contracts may change through
+complete tested migration without retaining obsolete parallel implementations.
+Migration is bounded work on Igor 2, not a requirement to reconcile Igor 1.
 
 ## Roadmap outcomes are not rebuild instructions
 
-Recent `master` work already implements substantial parts of the interaction runtime, privilege flow, module activation boundary, platform helpers, AI trust boundary and capability catalog.
+The current `igor2` tree already implements substantial parts of the interaction runtime, privilege flow, module activation boundary, platform helpers, AI trust boundary and capability catalog.
 
 Before implementing a roadmap step:
 
@@ -40,9 +43,12 @@ Configuration, secrets, state, machine memory, learned data, investigations and
 operational history must not be silently co-located merely because the current
 tree does so.
 
-## Compatibility lifecycle
+## Temporary internal migration paths
 
-A legacy path remains only when all are true:
+Platform/version/dependency and explicit third-party compatibility remain
+required within their supported scope. Internal backward compatibility is
+optional before release; no automatic deprecation period or coexistence rule
+applies. A legacy path remains temporarily only when all are true:
 
 1. working behavior still needs it;
 2. its replacement/target is named;
@@ -57,7 +63,10 @@ Identify contradictions, duplicates, stale docs and application-specific leakage
 
 ### During each roadmap step
 
-When a replacement is proven, retire the superseded path if compatibility no longer needs it.
+When an authorized replacement and all affected consumers are proven, retire
+the superseded internal path in that migration. Preserve data recovery and
+explicit supported third-party contracts; pre-release coexistence alone is not
+a reason to defer retirement to Step 23.
 
 Examples:
 
@@ -74,7 +83,8 @@ Step 23 removes compatibility shims and obsolete contracts intentionally retaine
 
 Do not migrate every domain at once.
 
-During Wave C:
+The completed Wave C boundary used this bounded scope (not a permanent
+compatibility obligation for later migrations):
 
 - extend the existing loader rather than create a second one;
 - use a small part of `system` as the mixed v1/v2 reference;
@@ -158,7 +168,7 @@ Stop and surface a decision when:
 
 - an open architectural question blocks a durable public contract;
 - repository reality contradicts an accepted invariant;
-- a change risks user data/resources or compatibility;
+- a change risks user data/resources, supported platforms or explicit third-party contracts;
 - plausible designs have materially different long-term API consequences.
 
 ## Documentation policy

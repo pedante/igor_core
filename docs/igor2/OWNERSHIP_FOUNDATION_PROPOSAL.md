@@ -9,6 +9,15 @@ are now accepted in [D069](DECISIONS.md); historical statements that approval
 was pending describe the audit state. Completion still requires the acceptance
 checks below and evidence in [STATUS.md](STATUS.md).
 
+## Superseding development policy (D078, 2026-10-10)
+
+[Development Policy](DEVELOPMENT_POLICY.md) supersedes the historical intended-
+master comparison/reconciliation prerequisite. The original audit observations
+below remain traceable; divergence is neither a defect nor a blocker. Boundary B
+choices are accepted under D069 and current implementation evidence is in STATUS.
+The task/acceptance guidance below uses only the actual Igor 2 baseline. Safety,
+consumer/data cutover, recovery and all five proof classes remain required.
+
 ## Recommendation
 
 Implement one **OpenRouter credential lifecycle through Igor's existing AI
@@ -41,6 +50,7 @@ The authority order is [ARCHITECTURE](ARCHITECTURE.md), accepted
 secret-reference and ownership seams. This proposal extends those seams; it
 does not introduce a replacement configuration, memory or execution service.
 
+**Historical audit observation (not a current gate under D078):**
 Local `master` and `origin/master` both resolve to `54782bd58c72fbeabae67fbbb99b671d3fb26c13`.
 Neither is an ancestor of this `igor2` revision (merge base `76f04e3`). Older
 STATUS reconciliation covers `852ce8f`, not this later master. `git cherry HEAD
@@ -51,9 +61,10 @@ private-event documentation in current code, with later modifications. However,
 master's `4c8a0dd` tool-envelope regex correction is absent from
 [current tui.py](../../core/ai/tui.py) at line 294. No remote freshness query or
 complete master content reconciliation is claimed. The audit describes the
-requested current branch; **before Boundary B, reconcile the intended current
-master baseline explicitly**. Do not use the historical two-commit reconciliation
-as today's proof or fold unrelated runtime repair into this documentation task.
+requested audit branch. The audit originally requested master reconciliation
+before Boundary B; D078 explicitly supersedes that requirement. Do not use
+historical branch comparison as a current development gate or fold unrelated
+runtime repair into this documentation task.
 
 STATUS is an append-oriented evidence record. Its earlier Step 17 exclusion of
 module settings/host thresholds describes that original boundary. Later D062 /
@@ -396,7 +407,7 @@ module secret-registration framework is justified by this slice.
 | Boundary | Can proceed without application installation? | Stop/evidence |
 |---|---|---|
 | A: this inventory/proposal | Yes, read-only implementation inspection and documentation | Referenced proposal, unaccepted choices explicit, scoped docs validation/commit. No runtime evidence newly claimed. |
-| B: one OpenRouter credential lifecycle | Yes, after B1–B5 and intended-master reconciliation | All acceptance checks below; offline real consumer path, restart/update/recovery and no competing writer. Stop before a second credential. |
+| B: one OpenRouter credential lifecycle | Yes, under accepted B1–B5 (D069), actual Igor 2 baseline (D078) | All acceptance checks below; offline real consumer path, restart/update/recovery and no competing writer. Stop before a second credential. |
 | Later Core migrations | Yes for individually selected AI model parameters/autostart, host thresholds with executed consumers, recovery preferences and notification source policy | Each key/family has schema, consumed snapshot/readback as appropriate, writer cutover, safe inspection and recovery. SMTP credentials/delivery are a separate real consumer, with optional live account proof. No blanket env conversion. |
 | Deployment/application desired settings and credentials | Contract/fixture work can precede installation; real proof requires a concrete bound application | Deployment identity and exact source/write/readback locators, independently observed native state, conflicts/ownership, restart and capability-specific recovery. Nextcloud/Compose/OCC/DB credentials cannot be certified from config rows. |
 
@@ -433,7 +444,7 @@ calls. No personal credential or installation is a test prerequisite.
 | Proof | Required checks |
 |---|---|
 | Contract | Unknown versions/fields, foreign scope, forged owner/purpose/consumer, malformed refs and serialized authorization fail before release/write. Configuration accepts only a handle for the proposed field, has no secret default and rejects unavailable bindings. Symlink/ancestor escape, wrong UID, loose perms, nonregular files and open-time replacement fail closed. Two stale concurrent imports/updates have one CAS winner. Reference remains stable across rotation; private filename is not identity. Audit write failure releases no material. |
-| Regression | Existing `ai.verbose` and System desired/apply/readback remain distinct and green within reviewed baseline; other provider credentials/settings, Ollama and role bindings still work. Guide/Assist/Executive, declined CHANGE, DESTROY, privilege and module activation cannot be bypassed by staging/ref input. Ordinary backup/restore of unrelated keys/settings remains supported; selected direct overwrite is refused/adapted. Master reconciliation and affected gate contain no unreviewed new failures/timeouts. |
+| Regression | Existing `ai.verbose` and System desired/apply/readback remain distinct and green within reviewed baseline; other provider credentials/settings, Ollama and role bindings still work. Guide/Assist/Executive, declined CHANGE, DESTROY, privilege and module activation cannot be bypassed by staging/ref input. Ordinary backup/restore of unrelated keys/settings remains supported; selected direct overwrite is refused/adapted. The affected Igor 2 gate contains no unreviewed new failures/timeouts; no master reconciliation applies (D078). |
 | Real workflow | Existing setup/API KEY/`apikey` creates reference+protected material; a fresh process resolves it and existing `_nexus_api_call`→`ai_engine.mode_call` emits a real POST through mocked `http.client.HTTPSConnection`. Capture the HTTP call: sentinel appears only in intended auth header, never body/context/normal env/argv. Follow-up, direct engine, hybrid and each selected-provider role use mediated access. Validation and balance use reviewed bindings/mocked endpoints. Replacement changes the next request in current and restarted processes without a stale cache. Other-provider selection never consumes this ref. |
 | Inspection | Public secret/config/status reads show owner/scope/purpose/binding/source/cutover, available/missing/unsafe/corrupt and actual generation/access metadata, no key/preview/hash. Absent inspection leaves full filesystem byte inventory and scope unchanged and makes no probe. Config desired handle and actual consumed generation are separate. Access records contain permitted metadata for success/denial, no raw paths/values/headers/input. |
 | Non-exposure | Search captured ordinary Context, conversation/session output, History including proposals/recovery, frontend/domain events, exceptions/provider error bodies, AI audit and configuration/metadata/legacy exports for active/staged/prior sentinel bytes: zero occurrences. Force provider to echo sentinel in error body and response/tool output; sanitize at owning projection. Force failed import/validation/rotation/recovery paths. Sanitization still works after env caches and legacy flat source are absent; unrelated systemd/protocol identifiers survive. Private material/staging/recovery files and intended HTTP auth are the only allowed sentinel locations. |
@@ -506,7 +517,7 @@ to hide failures. Broader release validation remains a separate gate.
 
 ## Effort and uncertainties
 
-Rough estimate after owner decisions/baseline reconciliation: **6–10 engineering
+Historical rough estimate after owner decisions/Igor 2 baseline inspection: **6–10 engineering
 days**, not a one-file adapter change. Approximately 2–3 days for protected
 storage/registration and failure recovery; 2–3 for real consumers/private-input
 cutover and backup fencing; 2–4 for integrated failure/redaction proofs,
@@ -516,7 +527,8 @@ cannot remove the five proof classes.
 Main uncertainty is the private-input/canonical-History seam and crash
 consistency across Configuration and secret metadata. Other uncertainties are
 hybrid startup assumptions, exact-value redaction without global env exposure,
-legacy restore composition and the stale master reconciliation. Portable
+legacy restore composition. The original master reconciliation prerequisite is
+superseded by D078. Portable
 encrypted export or multi-account/provider scopes would increase scope and need
 a revised estimate. No estimate assumes a Nextcloud deployment or live provider.
 
@@ -524,7 +536,7 @@ a revised estimate. No estimate assumes a Nextcloud deployment or live provider.
 
 > Work on current `igor2`. Implement only the owner-confirmed OpenRouter
 > credential lifecycle from this Boundary A proposal. First verify branch/status,
-> preserve unrelated work, reconcile the intended current master baseline and
+> preserve unrelated work, use the actual independent Igor 2 baseline (D078) and
 > record accepted B1–B5 choices/record identities. If a choice remains unresolved,
 > prepare its concrete contract/options for owner confirmation before code.
 >
