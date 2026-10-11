@@ -1195,33 +1195,41 @@ reuses D049/D050 identity and existing capability/operator/result boundaries.
 D078 accepts the development policy, not the unconfirmed schema, pagination or
 inspection-binding details in Q022–Q024; no collection implementation begins here.
 
+### D079 — Collection contract and READ inspection direction
+
+**Accepted by the Owner, 2026-10-11; documentation in DISCOVERY, no runtime
+implementation in this pass.** Resolves Q022–Q024 under D078. The exact minimal
+declaration grammar and acceptance details are maintained once in the
+[Collection RFC](COLLECTION_OPERATOR_RFC.md#minimal-declaration-grammar-step-1820).
+
+- Q022: evolve `system.service.list` in place to capability version 3/output
+  schema 2. Extend the shared Step 18 validator with bounded closed records,
+  row arrays and D049 scoped references; add one optional descriptor-owned
+  collection block for Step 20 presentation/detail metadata. Migrate every
+  internal consumer, version pin, fixture and test together; no obsolete-output
+  adapter, second capability ID, registry, dispatcher or identity system.
+- Q023: accept frozen pagination and the proposed limits **provisionally**.
+  Require global accounting across backend sessions/processes, deterministic
+  oversize/budget/expiry errors, absolute cursor expiry, measurable memory
+  ceilings and normal-navigation validation of the 30-second TTL. Numerical
+  global/RSS targets in the RFC are provisional engineering acceptance targets,
+  not measured claims; tune only from recorded evidence and Owner review.
+- Q024: one descriptor-owned READ inspect target/direct field-to-input map.
+  Backend derives inputs and revalidates scope, provider, membership, freshness,
+  target version and canonical selectors. No frontend execution authority or
+  general action language. Missing/ambiguous/incompatible bindings do not
+  disable the collection; inline details remain available without a fresh probe.
+
+The canonical envelope, safety/approval/privilege, module lifecycle, private
+runtime/events and outbound scrubbing remain authoritative. First proof is
+READ-only System plus an unrelated synthetic provider through the same generic
+renderer. Later mutation proof remains separate. The Owner's completed fidelity
+comparison reports no material omissions from the actual 170-line v2 RFC, which
+supersedes the 309-line first draft. The [RFC fidelity evidence](COLLECTION_OPERATOR_RFC.md#fidelity-evidence-2026-10-11)
+records the expected source hash and local candidate hash; independent integrity
+verification remains outstanding. Q022–Q024 are not reopened.
+
 ## Open decisions
-
-### Q022 — Structured collection schema and version cutover
-
-Approve the exact closed array/record/scoped-reference schema, canonical result
-projection and independent version increments proposed in
-[Collection RFC](COLLECTION_OPERATOR_RFC.md#options-and-owner-decisions-before-execution).
-Recommendation: evolve the same capability ID/shared validator; migrate all
-consumers and pins, without keeping obsolete scalar output executable.
-Decision target: before Step 18 collection contract implementation.
-
-### Q023 — Collection pagination, bounds and retention
-
-Approve the RFC's row/byte/depth/TTL ceilings, snapshot/cursor ownership,
-expiry/cleanup, stable paging and History/event retention. Recommendation:
-bounded frozen snapshots under existing backend runtime ownership, with explicit
-limit/expiry errors and refresh; no new inventory authority. Constrained-hardware
-performance remains to be measured in implementation.
-Decision target: before snapshot/transport contract implementation.
-
-### Q024 — Generic READ detail binding
-
-Approve the minimal registered READ capability target/input binding and scoped
-selection revalidation. Recommendation: backend validates metadata and selectors;
-TUI submits typed intent through the existing dispatcher, with no systemd-specific
-executor or general action language.
-Decision target: before collection row inspection metadata becomes a contract.
 
 ### Q019 — Initial S8 hardware/runtime identity
 
@@ -1299,6 +1307,22 @@ Decision target: Step 22.
 
 Resolved questions stay here only so older references to their Q-numbers remain
 understandable. Their accepted D-decisions, not this section, are authoritative.
+
+### Q022 — Structured collection schema/version — resolved by D079
+
+Same capability ID, capability version 3/output schema 2, shared validation
+and complete internal migration. The RFC specifies the closed declaration grammar.
+
+### Q023 — Collection pagination/resources — resolved provisionally by D079
+
+Frozen bounded snapshots, global budgeting, deterministic expiry/oversize errors
+and measurable memory/navigation acceptance. Numerical ceilings remain provisional
+until the bounded proof supplies evidence; no hidden automatic limit increases.
+
+### Q024 — Generic READ detail binding — resolved by D079
+
+One descriptor-owned target/map, backend-derived inputs and canonical scoped
+selector/provider validation; frontends submit intent without execution authority.
 
 ### Q007 — Relationship/deployment ownership — resolved by D063
 

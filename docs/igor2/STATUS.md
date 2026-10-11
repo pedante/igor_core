@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-10
+Last updated: 2026-10-11
 
 ## How to read this file
 
@@ -31,8 +31,18 @@ is the canonical proposed Step 18 output / Step 20 rendering extension, in
 **DISCOVERY**. Source inspection confirms service list/status v2, restart v1,
 canonical registry/dispatch/results, explorer aliases, CLI `capability run` and
 D049 scope identity. Collection runtime is not implemented or tested here.
-Q022–Q024 (schema/version, pagination/retention, READ detail binding) and comparison
-with the unavailable original RFC remain before EXECUTION. No wave is reopened.
+The Owner accepted Q022–Q024 under [D079](DECISIONS.md#d079--collection-contract-and-read-inspection-direction)
+on 2026-10-11: capability version 3/output schema 2, complete internal migration,
+provisional bounded pagination with global budgets/expiry/memory evidence, and
+one backend-derived descriptor-owned READ detail binding. The RFC now specifies
+its minimal Step 18/20 declaration grammar. The Owner supplied the completed
+170-line v2 fidelity comparison and reports no material omissions; D078/D079
+correctly supersede conflicting original obligations. The obsolete missing-
+comparison blocker is removed. Independent source-hash and reviewed-candidate
+verification remain outstanding because the source/comparison artifacts are
+not accessible here; formal DISCOVERY completion is not recorded.
+No runtime implementation or constrained-hardware/TTL evidence is claimed.
+No wave is reopened.
 
 ### Governance evidence and scope ledger (2026-10-10)
 
