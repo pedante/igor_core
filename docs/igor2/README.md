@@ -23,8 +23,9 @@ Do not treat every file in this directory as equal authority. The lifecycle rule
 Task-relevant documents:
 - `ROADMAP.md` — stable step names, development waves and current implementation status.
 - `MODULE_API.md` — target Module API v2.
-- `COLLECTION_OPERATOR_RFC.md` — proposed Step 18 typed collections and Step 20
-  generic renderer/direct invocation extension; DISCOVERY, not runtime authority.
+- `COLLECTION_OPERATOR_RFC.md` — D079-approved Step 18 typed collections and Step 20
+  generic renderer/direct invocation extension; DISCOVERY closed, first READ-only
+  EXECUTION milestone ready, runtime acceptance open.
 - `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
 - `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
 - `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.

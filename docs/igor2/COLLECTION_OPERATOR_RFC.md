@@ -1,6 +1,7 @@
 # Igor 2 Collection Results and Operator Interface RFC
 
-Status: **proposed extension in DISCOVERY; no runtime implementation authorized**.
+Status: **DISCOVERY closed; approved first READ-only EXECUTION milestone ready**.
+No collection runtime implementation or runtime acceptance is claimed here.
 
 Prepared 2026-10-10 against local `igor2` commit `5b80740`, under
 [Development Policy / D078](DEVELOPMENT_POLICY.md). This document extends
@@ -8,7 +9,7 @@ Step 18 output contracts and Step 20 operator rendering without reopening
 completed waves. It does not replace the capability runtime, registry,
 operator explorer, D049 identity or approval/execution machinery.
 
-## Fidelity evidence (2026-10-11)
+## Fidelity evidence (2026-10-12)
 
 The Owner supplied the completed comparison of the original 170-line
 `igor2_collection_operator_rfc_v2.md` with the integrated proposal: **no material
@@ -17,16 +18,27 @@ original compatibility, obsolete-output coexistence and master-reconciliation
 obligations. This is Owner-provided review evidence; the superseded 309-line
 `igor2_capability_tui_rfc.md` is not the source for that conclusion.
 
-Expected original SHA-256 supplied by the Owner:
-`e5ea31b14c8e0f3f9776485002742242442f7378b120d69a8052ee8c11a2dd35`.
-The integrated candidate before these evidence-only corrections has computed
-SHA-256 `4ac8c9a916fe748aaab2b2a8e1313beeaf06ae83d7f62d53df8fdbdc668e1286`.
-The v2 file and comparison artifact are still inaccessible to this checkout;
-therefore the original hash and its binding to this reviewed candidate have
-**not been independently verified**. The old missing-comparison blocker is
-superseded by the Owner's review, but the requested integrity verification
-remains necessary before declaring formal DISCOVERY closure. No architectural
-or acceptance contract is changed by this evidence update.
+The source, comparison and reviewed candidate are now retained in the
+[fidelity archive](../../.igor2-fidelity/README_IMPORT.md). Independent local
+`sha256sum -c SHA256SUMS` verification passed for all three supplied hashes:
+
+| Artifact | SHA-256 |
+|---|---|
+| Original 170-line v2 source | `e5ea31b14c8e0f3f9776485002742242442f7378b120d69a8052ee8c11a2dd35` |
+| Candidate-bound comparison report | `7fa84827e8d471401e848342a61ad412fd2f5ae479c0e6d8b982b6f953eb86c2` |
+| Reviewed 523-line candidate | `4ac8c9a916fe748aaab2b2a8e1313beeaf06ae83d7f62d53df8fdbdc668e1286` |
+
+The report explicitly identifies the original source and reviewed candidate by
+hash and finds no material gaps after D078/D079. The actual local baseline is
+`igor2` at `a65f43e2583305550259183b3105a2190158812a`, with no tracked changes
+and only the Owner-supplied evidence archive untracked at task start. Its committed
+RFC SHA-256 is `ecd8cbab33e6c7c87258a103f25b01626df2d8a0a980968d5a297e98e5c18a83`.
+Comparison against the reviewed candidate found exactly three evidence-only
+hunks: the opening fidelity record, the readiness paragraph before acceptance,
+and the DISCOVERY exit assessment. All intervening Step 18/20 contract, grammar,
+limits and acceptance text is identical. These legitimate subsequent edits do
+not invalidate the source-fidelity conclusion. This closure updates lifecycle
+and evidence only; no accepted architecture or executable contract changes.
 
 ## Inspected baseline
 
@@ -427,13 +439,13 @@ retain the bounded explicit-expiry behavior regardless of any approved tuning.
 | Q024 row inspection binding | Hard-code service actions in TUI: domain coupling. General workflow/action language: excess scope. Minimal declared READ target plus typed input binding: generic frontend with canonical backend revalidation. | One descriptor-owned inspect target/direct property-to-input map, backend scope/selector revalidation and canonical READ policy/dispatch; no row-owned provider or action language. |
 
 No decision here grants mutation authority. Q022–Q024 are resolved by the
-Owner's acceptance, and the Owner reports complete v2 fidelity. Independent
-source-hash/reviewed-candidate verification still prevents formal DISCOVERY exit
-in this checkout.
+Owner's acceptance, and independent source/candidate integrity and fidelity
+verification now close the source-evidence dependency. Only the first bounded
+READ-only milestone is authorized; mutation remains a separate Owner gate.
 
 ## Acceptance and bounded implementation sequence
 
-After source/candidate integrity verification closes DISCOVERY, the first bounded EXECUTION
+With DISCOVERY closed, the first bounded EXECUTION
 slice crosses Step 18 contracts/consumer migration and Step 20 generic rendering
 together: structured READ collection → selection → READ details → back → refresh,
 with System and the unrelated synthetic provider. Do not reopen
@@ -491,7 +503,7 @@ task cannot satisfy these runtime acceptance checks.
 There is no Gate 0 for the alleged 12 `master`-only commits: the baseline is the
 actual current `igor2` tree. No branch comparison or reconciliation is required.
 
-## DISCOVERY entry/exit assessment (2026-10-11)
+## DISCOVERY entry/exit assessment (2026-10-12)
 
 Entry evidence is satisfied: active independent `igor2` checkout inspected,
 existing Step 18/20 registry/validator/dispatcher/result/operator boundaries
@@ -499,17 +511,17 @@ identified, READ-only scope bounded, Owner Q022–Q024 direction accepted, and
 applicable documentation/current-contract checks selected. No runtime feature
 or test contract is superseded by this documentation pass.
 
-The Owner's completed v2 fidelity comparison settles architectural completeness:
-no material gaps remain under D078/D079. The remaining exit evidence is the
-requested independent original SHA-256 verification and confirmation that the
-local candidate is the one covered by that comparison. Neither source bytes nor
-a candidate-bound comparison artifact is accessible here, so formal DISCOVERY
-completion is not recorded. The grammar, five proof classes, migration
-obligations and bounded first slice remain unchanged. Hardware/RSS and
-30-second navigation measurements are acceptance work for EXECUTION, not
-DISCOVERY results.
+Source integrity and candidate binding are independently verified above; no
+material requirement is missing after D078/D079. Scoped documentation health,
+structure/reference checks and current System contract admission passed for this
+checkpoint, with evidence recorded in [STATUS.md](STATUS.md).
+Formal DISCOVERY is closed and readiness is recorded for the
+approved first READ-only EXECUTION milestone. The grammar, five proof classes,
+migration obligations and bounded first slice remain unchanged.
 
-Once integrity verification and scoped documentation/contract checks pass,
-recommend the first bounded EXECUTION slice described above; stop before any
-restart/configuration or later-wave implementation. Record actual runtime
-proof separately from documentation evidence.
+The Owner explicitly limits this pass to the separate closure commit: no runtime
+implementation or push. Subsequent EXECUTION may implement only the approved
+System/synthetic-provider list → select → inspect → back → refresh slice through
+the canonical runtime. Restart/configuration and later waves remain excluded.
+Runtime proof, hardware/RSS measurements and 30-second navigation/expiry evidence
+remain open EXECUTION acceptance gates, not DISCOVERY results or passing claims.

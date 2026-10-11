@@ -15,9 +15,10 @@ Current validation and migration evidence belongs in [STATUS.md](STATUS.md).
 
 Follow [Development Policy / D078](DEVELOPMENT_POLICY.md): live v1 and scalar
 output support below describe current consumers, not perpetual compatibility
-obligations. The [collection RFC](COLLECTION_OPERATOR_RFC.md) proposes evolving
-the existing output validator and `system.service.list` contract; it remains
-DISCOVERY and changes no current executable schema.
+obligations. The [collection RFC](COLLECTION_OPERATOR_RFC.md) is the D079-approved
+extension of the existing output validator and `system.service.list` contract.
+DISCOVERY is closed and the first READ-only EXECUTION milestone is ready;
+the closure checkpoint changes no current executable schema.
 
 ## First-class module boundary (Step 18A)
 

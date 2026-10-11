@@ -1225,9 +1225,11 @@ runtime/events and outbound scrubbing remain authoritative. First proof is
 READ-only System plus an unrelated synthetic provider through the same generic
 renderer. Later mutation proof remains separate. The Owner's completed fidelity
 comparison reports no material omissions from the actual 170-line v2 RFC, which
-supersedes the 309-line first draft. The [RFC fidelity evidence](COLLECTION_OPERATOR_RFC.md#fidelity-evidence-2026-10-11)
-records the expected source hash and local candidate hash; independent integrity
-verification remains outstanding. Q022–Q024 are not reopened.
+supersedes the 309-line first draft. The [RFC fidelity evidence](COLLECTION_OPERATOR_RFC.md#fidelity-evidence-2026-10-12)
+records independent verification of source/report/candidate integrity and the
+subsequent evidence-only edits. Formal DISCOVERY closure and first READ-only
+EXECUTION readiness are recorded in STATUS. No runtime implementation is part
+of the 2026-10-12 closure checkpoint. Q022–Q024 are not reopened.
 
 ## Open decisions
 

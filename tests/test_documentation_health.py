@@ -1,5 +1,6 @@
 """Regression guards for Igor 2 documentation and ownership clarity."""
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -90,7 +91,7 @@ def test_active_igor2_guidance_uses_independent_policy_not_master_gate():
         assert "owner confirmation and intended-master reconciliation before implementation" not in document
 
 
-def test_collection_proposal_keeps_existing_execution_proofs_and_discovery_gate():
+def test_collection_closure_keeps_existing_execution_proofs_and_read_only_gate():
     execution = read("docs/igor2/EXECUTION.md")
     proofs = re.findall(r"^### [1-5]\. (.+)$", execution, flags=re.MULTILINE)
     assert proofs == [
@@ -99,7 +100,9 @@ def test_collection_proposal_keeps_existing_execution_proofs_and_discovery_gate(
     ]
 
     rfc = read("docs/igor2/COLLECTION_OPERATOR_RFC.md")
-    assert "Status: **proposed extension in DISCOVERY" in rfc
+    assert "Status: **DISCOVERY closed; approved first READ-only EXECUTION milestone ready**" in rfc
+    assert "no runtime\nimplementation or push" in rfc
+    assert "remain open EXECUTION acceptance gates" in rfc
     for proof in proofs:
         assert f"| {proof} |" in rfc
     roadmap = read("docs/igor2/ROADMAP.md")
@@ -109,3 +112,24 @@ def test_collection_proposal_keeps_existing_execution_proofs_and_discovery_gate(
         )[0]
         assert "COLLECTION_OPERATOR_RFC.md" in section
     assert "### D078" in read("docs/igor2/DECISIONS.md")
+    assert "### D079" in read("docs/igor2/DECISIONS.md")
+
+
+def test_collection_fidelity_archive_matches_candidate_bound_review():
+    archive = ROOT / ".igor2-fidelity"
+    hashes = {}
+    for line in (archive / "SHA256SUMS").read_text().splitlines():
+        expected, name = line.split("  ", 1)
+        assert hashlib.sha256((archive / name).read_bytes()).hexdigest() == expected, name
+        hashes[name] = expected
+    assert len(hashes) == 3
+    report = (archive / "evidence/igor2_collection_rfc_v2_fidelity_review.md").read_text()
+    for name in (
+        "source/igor2_collection_operator_rfc_v2.md",
+        "reviewed_candidate/COLLECTION_OPERATOR_RFC.reviewed.md.txt",
+    ):
+        assert hashes[name] in report
+    assert "PASS" in report
+    rfc = read("docs/igor2/COLLECTION_OPERATOR_RFC.md")
+    for digest in hashes.values():
+        assert digest in rfc

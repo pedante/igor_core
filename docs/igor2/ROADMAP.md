@@ -671,11 +671,12 @@ implement instance/deployment authority or authorize broad splitting. The
 implementation/evidence status is recorded in [STATUS.md](STATUS.md).
 
 The [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
-is a proposed **Step 18 output-contract extension**, kept in DISCOVERY. It evolves
+is the D079-approved **Step 18 output-contract extension**. It evolves
 `system.service.list` under its existing ID/shared validator into bounded typed
 collections; all internal consumers/pins/fixtures migrate together. D078 removes
-indefinite scalar coexistence. Q022–Q024 and the missing original-RFC comparison
-must resolve before EXECUTION; existing Step 18 proof is not reopened.
+indefinite scalar coexistence. Q022–Q024 are settled and source-fidelity integrity
+is verified; DISCOVERY is closed and the first READ-only EXECUTION milestone is
+ready. Runtime acceptance remains open; existing Step 18 proof is not reopened.
 
 The initial [contract-driven Operator Surface](OPERATOR_SURFACE.md) is an
 interaction/composition aid over those same registries: active v2 contributions,
@@ -868,10 +869,12 @@ shared by CLI, TUI, automation and later APIs.
 The current source already provides structured CLI `capability run`, the
 operator explorer, `:system`/`:sys`, provider ambiguity and default-TUI routing.
 These foundations do not by themselves close Step 20's representative workflow
-acceptance. The [collection RFC](COLLECTION_OPERATOR_RFC.md) is the proposed
+acceptance. The [collection RFC](COLLECTION_OPERATOR_RFC.md) is the D079-approved
 **Step 20 generic renderer and identical typed/explorer invocation extension**,
-in DISCOVERY, with read-only list/select/details/back/refresh and a second
-unrelated synthetic provider. Mutation is a separate later approved-action proof.
+with DISCOVERY closed and first READ-only EXECUTION readiness recorded for
+list/select/details/back/refresh and a second unrelated synthetic provider.
+Neither is implemented by the closure checkpoint. Mutation is a separate later
+approved-action proof.
 
 ### Step 20A — First-class CLI
 

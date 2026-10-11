@@ -133,6 +133,8 @@ service inventory; `tests/test_capability_runtime.py` and
 rules. These checks must change together with the accepted runtime migration,
 while preserving rejection, identity, privacy and safety coverage.
 
-The proposed extension has one canonical document:
+The extension has one canonical document:
 [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md).
-It remains DISCOVERY and creates no runtime authorization.
+D079 subsequently accepted Q022–Q024. The verified 2026-10-12 DISCOVERY closure
+records readiness for the approved first READ-only EXECUTION milestone only;
+the closure checkpoint implements no runtime behavior or contract migration.

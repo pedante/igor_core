@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-11
+Last updated: 2026-10-12
 
 ## How to read this file
 
@@ -10,7 +10,61 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Independent Igor 2 baseline and collection extension — governance pass
+## Collection extension — verified DISCOVERY closure and EXECUTION readiness
+
+The Owner authorized this separate documentation/evidence checkpoint on
+2026-10-12, explicitly excluding runtime implementation and push. Inspected
+baseline: local `igor2` at `a65f43e2583305550259183b3105a2190158812a`; no tracked
+changes, only the supplied `.igor2-fidelity/` archive untracked at task start.
+The D069 Boundary A recommendations accepted earlier remain settled.
+
+The [RFC fidelity record](COLLECTION_OPERATOR_RFC.md#fidelity-evidence-2026-10-12)
+and [retained archive](../../.igor2-fidelity/README_IMPORT.md) establish independent
+integrity verification of the original 170-line source, its comparison report
+and the reviewed 523-line candidate. All three `SHA256SUMS` entries pass. The
+report binds the source and candidate by their exact hashes and finds no material
+omissions after authoritative D078/D079 supersessions. The candidate-to-baseline
+RFC diff has exactly three evidence/gate wording hunks; the contract, grammar,
+limits and acceptance requirements are unchanged. Byte identity of subsequent
+evidence edits is not a closure requirement. Supplied artifact bytes are retained;
+the extraction is flattened and the historical candidate is archived as text.
+
+Scope and Owner decisions are settled. Entry evidence remains satisfied; source
+fidelity is no longer blocked. Scoped documentation and current-contract gates
+below complete formal DISCOVERY closure and authorize the approved first
+READ-only EXECUTION milestone: canonical System list → select → inspect → back
+→ refresh, plus an unrelated synthetic provider using the same renderer. This
+pass stops at the closure commit. No new architecture, runtime implementation,
+service operation, consumer migration or persistent-data change is included.
+
+### Closure evidence ledger (2026-10-12)
+
+- Candidate: baseline above plus the scoped evidence/documentation/guard diff.
+  Environment: local governed runner, cached Python/pytest/Ruff, no live host,
+  AI/provider calls or privileged operations. Existing governor allowance is used;
+  no budget renewal or broad/full gate is requested.
+- `/tmp/igor2-discovery-closure-validation-20261012/summary.json`: structure/
+  reference checks, System module contract admission, changed-test Ruff and all
+  **10 documentation-health tests pass** (13 reported identities/groups, exit 0,
+  3.568 seconds). No failures, skips, timeouts, unavailable tools or runner errors;
+  10 historical baseline entries were unexercised, not fixed or reclassified.
+- `/tmp/igor2-discovery-closure-static-20261012.json`: all 13 introduced local
+  links/anchors pass, both `.codex` TOML files parse, and policy review retains
+  D078/D079 and all five proof classes. Runtime schemas still admit existing
+  capability versions 1/2 and output schema 1; capability v3/output schema 2
+  remain the approved implementation work. Final evidence-only ledger edits
+  receive diff/reference review; they do not invalidate the tested contract,
+  lifecycle guard or artifact hashes and require no repeated suite.
+- Formal DISCOVERY exit gates pass. First READ-only EXECUTION is authorized and
+  ready; runtime work is explicitly deferred beyond this closure checkpoint.
+  No accepted decision, operating configuration or executable contract changed.
+- All five EXECUTION proof classes remain mandatory and unestablished for the
+  collection feature. Contract migration, generic TUI/System/synthetic vertical
+  slices, lifecycle/security/History regression, inspection and recovery await
+  runtime implementation. Maximum-size memory/latency, real 30-second navigation
+  and expiry, concurrency/cleanup and Raspberry Pi-class measurements remain open.
+
+## Independent Igor 2 baseline and collection extension — governance pass (historical)
 
 The Owner accepted [Development Policy / D078](DEVELOPMENT_POLICY.md) on
 2026-10-10: `igor2` is the sole independent unreleased development baseline;

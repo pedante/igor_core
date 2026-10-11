@@ -1,0 +1,3 @@
+# Preserve supplied Markdown hard breaks without changing verified artifact bytes.
+source/igor2_collection_operator_rfc_v2.md whitespace=-blank-at-eol
+evidence/igor2_collection_rfc_v2_fidelity_review.md whitespace=-blank-at-eol

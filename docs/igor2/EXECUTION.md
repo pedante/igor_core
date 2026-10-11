@@ -51,8 +51,10 @@ classes without an explicit reason recorded in STATUS.md.
 Documentation-only governance changes provide policy, parsing, reference and
 diff evidence; they do not establish runtime contract/regression/vertical-slice
 proof or close a roadmap feature. Report tested, inspected, skipped and
-unverified behavior separately. The collection extension remains DISCOVERY in
-[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md).
+unverified behavior separately. The collection extension's verified DISCOVERY
+closure and approved first READ-only EXECUTION readiness are recorded in
+[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md) and STATUS. This
+documentation checkpoint supplies no runtime completion proof.
 
 ## Acceptance-check style
 

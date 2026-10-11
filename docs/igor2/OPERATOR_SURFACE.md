@@ -13,8 +13,9 @@ internal pre-release consumers; v1 menus/selectors described below are live
 migration inputs, not indefinite obligations.
 [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
 extends Step 18 outputs and Step 20 rendering through the same registry, result
-and invocation path. Direct pasted leaf invocation and generic collection
-navigation remain proposals in DISCOVERY, not implemented behavior.
+and invocation path. DISCOVERY is closed and the D079-approved first READ-only
+EXECUTION milestone is ready. Direct pasted leaf invocation and generic
+collection navigation are not yet implemented behavior.
 
 ## Purpose
 
