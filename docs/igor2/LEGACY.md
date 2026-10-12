@@ -18,11 +18,15 @@ data/recovery and all safety invariants. KEEP means reuse what remains correct,
 not prohibit deliberate redesign. Historical table entries are qualified by
 this amendment and later current status.
 
-The scalar `system.service.list` output is a live Step 18 contract pending the
-[collection RFC](COLLECTION_OPERATOR_RFC.md), in DISCOVERY. Its old format and
-fixtures retire together with all internal consumers once Q022–Q024 are accepted
-and implementation proof passes. No second capability ID or indefinite scalar
-adapter is required; the existing canonical result/dispatcher remains.
+The local Increment B candidate retires the scalar `system.service.list` output
+in place under accepted D079/Q022–Q024: capability 3/output schema 2, bounded
+temporary snapshots and pagination through the existing canonical dispatcher.
+Affected System consumers/pins/fixtures migrate together; there is no scalar
+adapter or second capability ID. Retained History versions keep their meaning,
+and unrelated v1/v2 contracts remain supported. See the
+[Increment B evidence](COLLECTION_INCREMENT_B.md) and [STATUS](STATUS.md) for
+actual passing proof, reviewed limitations and pending Owner acceptance. The
+complete collection renderer/inspection milestone remains open.
 
 ## OpenRouter ownership cutover — Boundary B, D069
 

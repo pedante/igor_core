@@ -164,8 +164,12 @@ with os.fdopen(fd, "r+", encoding="utf-8") as handle:
     event["event_type"] = event_type
     event["sequence"] = sequence + 1
     event["timestamp"] = timestamp
+    wire = json.dumps(event, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8", errors="strict")
+    if event_type == "action_result" and len(wire) > 98304:
+        print("collection_limit_exceeded", file=sys.stderr)
+        raise SystemExit(2)
     handle.seek(0, 2)
-    handle.write(json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n")
+    handle.write(wire.decode("utf-8") + "\n")
     handle.flush()
     os.fchmod(handle.fileno(), 0o600)
     update_cache(sequence + 1, os.fstat(handle.fileno()))'

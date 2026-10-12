@@ -88,7 +88,7 @@ class BudgetError(ValueError):
 def requires_fresh_security(plan):
     """Security suites may never be satisfied by cached execution evidence."""
     protected = re.compile(r"security|safety|privilege|approval|privacy|secret|scrubb|"
-                           r"request_boundary|capability|input_candidates|transactions|trust_boundary")
+                           r"request_boundary|capability|collection|input_candidates|transactions|trust_boundary")
     return any(protected.search(name) for group in plan if group["kind"] in ("pytest", "bats", "bash")
                for name in group["files"])
 

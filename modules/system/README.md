@@ -45,6 +45,14 @@ The implementation intentionally separates:
 
 A module handler must not bypass Igor's capability dispatcher.
 
+`system.service.list` now uses capability v3/output schema 2 for frozen, bounded
+loaded system-manager service pages. Optional limit defaults to 50 (maximum 128);
+continuation is valid only in its original live backend session for less than
+30 seconds. Refresh is explicit. See the
+[Increment B contract and evidence](../../docs/igor2/COLLECTION_INCREMENT_B.md).
+Other administration contracts retain their existing versions.
+
+
 ## Platform abstraction
 
 Examples:

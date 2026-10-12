@@ -82,11 +82,19 @@ PARALLEL_PYTEST_FILES = frozenset({
     "tests/test_deployments.py", "tests/test_deployment_attachment.py",
     "tests/test_domain_event.py", "tests/test_module_contract.py",
     "tests/test_context_engine.py", "tests/core/test_system_model.py",
+    "tests/test_collection_snapshots.py", "tests/test_collection_contract.py",
+    "tests/test_system_collections.py", "tests/test_collection_transport.py",
+    "tests/test_operational_history.py", "tests/test_operator_surface.py", "tests/test_secret_refs.py",
+    "tests/test_module_inspection.py", "tests/test_module_registry.py",
 })
 PARALLEL_BATS_FILES = frozenset({
     "tests/core/test_safety.bats", "tests/core/test_scrubbing.bats",
     "tests/core/test_ai_modes.bats", "tests/core/test_ai_privilege.bats",
     "tests/core/test_safety_dispatch.bats",
+    "tests/modules/test_system_admin_surface.bats",
+    "tests/modules/test_system_collection.bats", "tests/modules/test_system_admin_actions.bats",
+    "tests/core/test_ai_approval.bats", "tests/core/test_ai_events.bats",
+    "tests/modules/test_module_state.bats",
 })
 
 
@@ -266,6 +274,17 @@ def make_plan(root, mode, changed, supplied=()):
         kind = "bats" if name.endswith(".bats") else "pytest"
         plan.append({"id": f"{kind}:{name}", "kind": kind, "files": [name]})
     return domains, plan
+
+
+def select_groups(plan, selected, mode):
+    """Explicit bounded focused stages; excluded groups remain unverified."""
+    if not selected:
+        return plan, []
+    wanted = set(selected)
+    if mode != "focused" or wanted - {group["id"] for group in plan}:
+        raise ValueError("--only-group requires focused mode and exact planned group IDs")
+    return ([group for group in plan if group["id"] in wanted],
+            [group["id"] for group in plan if group["id"] not in wanted])
 
 
 def group_environment(root, output_dir, index, python):
@@ -524,6 +543,8 @@ def main(argv=None):
     parser.add_argument("mode", choices=("focused", "affected", "full"))
     parser.add_argument("--base", default="igor2", help="local comparison ref (default: igor2)")
     parser.add_argument("--test", action="append", default=[], help="explicit Python node/file or BATS file")
+    parser.add_argument("--only-group", action="append", default=[],
+                        help="focused stage: select exact dry-run group ID; excluded groups remain unverified")
     parser.add_argument("--changed-file", action="append", default=[], help="add paths to Git selection")
     parser.add_argument("--output-dir", type=Path, help="new directory for logs and summary.json")
     parser.add_argument("--baseline", type=Path, default=ROOT / "tests/validation_baseline.json",
@@ -625,6 +646,7 @@ def main(argv=None):
         for name in changed:
             local_path(ROOT, name)
         domains, plan = make_plan(ROOT, args.mode, changed, args.test)
+        plan, summary["excluded_groups"] = select_groups(plan, args.only_group, args.mode)
         summary.update(changed_files=changed, domains=domains, plan=plan)
         if args.dry_run:
             summary.update(run_state="planned", exit_code=0)

@@ -58,6 +58,22 @@ def finish_result(row, *, execution="succeeded", outcome="success", verification
 
 
 class OperationalHistoryTests(unittest.TestCase):
+    def test_collection_cursor_projection_does_not_change_other_metadata_flags(self):
+        candidate = proposal("READ")
+        candidate.update(capability_id="system.service.list", capability_version=3,
+                         descriptor={"collection": {"resource_kind": "service"}},
+                         inputs={"cursor": "private-navigation", "limit": 50})
+        row = prepare(self.history, source=candidate, tier="READ")
+        self.assertTrue(row["inputs_redacted"])
+        self.assertNotIn("private-navigation", json.dumps(row))
+        self.history.authority(row["operation_id"], "auto_approved", "not_required")
+        self.history.running(row["operation_id"], proposal=candidate)
+        candidate = proposal("READ")
+        candidate.update(capability_id="core.deployments.initialize",
+                         inputs={"proposal": '{"fixture":"metadata"}'})
+        row = prepare(self.history, source=candidate, tier="READ")
+        self.assertFalse(row["inputs_redacted"])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

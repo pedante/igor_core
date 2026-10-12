@@ -363,6 +363,23 @@ def validate_outputs(schema: Any, value: Any, *, collection: Any = None, scope_i
             _serialized_bound(result, COLLECTION_PAGE_BYTES)
             if collection is not None:
                 _validate_collection_value(result, scope_id=scope_id)
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ai"))
+            from privacy import sanitize_selected_text
+            def text_values(item):
+                if isinstance(item, str):
+                    yield item
+                elif isinstance(item, dict):
+                    for child in item.values():
+                        yield from text_values(child)
+                elif isinstance(item, list):
+                    for child in item:
+                        yield from text_values(child)
+            # One projector load/audit per page; no JSON escaping can hide a
+            # credential in a string. Managed material cannot contain NUL.
+            text = "\0".join(text_values(result))
+            if sanitize_selected_text(text) != text:
+                raise CapabilityError("invalid_domain_output")
             return result
         except (ValueError, TypeError, OverflowError, RecursionError) as exc:
             reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid_domain_output"
@@ -964,8 +981,12 @@ def _handler_output_cli(schema_raw: str, collection_raw: str = "null", scope_id:
                 not isinstance(error.get("code"), str) or not isinstance(error.get("message"), str)):
             print("module handler: invalid error response", file=sys.stderr)
             return 2
-        print("module handler: handler error" if schema["schema_version"] == 2 else
-              f"module handler: handler error {error['code']}: {error['message']}", file=sys.stderr)
+        if schema["schema_version"] == 2 and error["code"] in {
+                "collection_limit_exceeded", "collection_expired", "collection_budget_exhausted", "invalid_collection_cursor"}:
+            print("capability runtime: " + error["code"], file=sys.stderr)
+        else:
+            print("module handler: handler error" if schema["schema_version"] == 2 else
+                  f"module handler: handler error {error['code']}: {error['message']}", file=sys.stderr)
         return 2
     if status != "ok" or set(envelope) != {"status", "result"}:
         print("module handler: invalid output envelope", file=sys.stderr)

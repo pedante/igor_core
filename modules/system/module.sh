@@ -1001,33 +1001,18 @@ PY
 }
 
 system__service_list() {
-    local input rows count preview
+    local input package
     input="$(_mod_sys_admin_request system.service.list)" || {
-        _mod_sys_admin_error invalid_request "expected system.service.list v2 request"
-        return 0
-    }
-    [ "$input" = '{}' ] || {
-        _mod_sys_admin_error invalid_request "system.service.list takes no inputs"
+        _mod_sys_admin_error invalid_request "expected system.service.list request"
         return 0
     }
     _mod_sys_admin_platform || {
         _mod_sys_admin_error unsupported "service discovery supports Debian and Arch families"
         return 0
     }
-    rows="$(svc_list_query)" || {
-        _mod_sys_admin_error unavailable "systemd service query failed"
-        return 0
-    }
-    count="$(printf '%s\n' "$rows" | awk 'NF{n++} END{print n+0}')"
-    preview="$(printf '%s\n' "$rows" | awk 'NF' | head -80 | head -c 4096)"
-    ADMIN_COUNT="$count" ADMIN_TEXT="$preview" "${IGOR_PYTHON:-python3}" - <<'PY'
-import json,os
-print(json.dumps({"status":"ok","result":{
-    "count":int(os.environ["ADMIN_COUNT"]),
-    "services":os.environ.get("ADMIN_TEXT",""),
-    "source":"platform.systemd_services",
-}},separators=(",",":")))
-PY
+    package="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    printf '%s' "$input" | "${IGOR_PYTHON:-python3}" \
+        "$package/lib/service_collection.py" "${_IGOR_LOADER_DIR}/core/lib"
 }
 
 system__service_status() {

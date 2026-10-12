@@ -76,7 +76,7 @@
       "suite": "group",
       "identity": "ruff",
       "classification": "FAIL",
-      "reason": "Ruff SIM103 in unchanged _simple_command_is_read; historical-source reproduction reports this diagnostic only. Raw lint output must still be reviewed for additional diagnostics.",
+      "reason": "Inherited SIM103 in tool_input and four reproduced historical Operational History diagnostics (FURB167, B023, PLR0124, RUF059). Raw lint must be reviewed for additional/new diagnostics; no rules are suppressed.",
       "reference": "tests/validation_baseline_evidence.md#increment-a-inherited-lint"
     }
   ]

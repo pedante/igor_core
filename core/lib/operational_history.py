@@ -171,13 +171,17 @@ def _validate_safe(value: Any) -> None:
         raise HistoryError("unbounded or secret-bearing reference data")
 
 
-def project_inputs(capability_id: str, inputs: dict) -> dict:
+def project_inputs(capability_id: str, inputs: dict, *, collection: bool = False) -> dict:
     """Retain structured metadata evidence plus an exact input digest.
 
     Opaque serialized proposals exceed the ordinary transcript string bound.
     Decode this closed Core metadata input before normal privacy/bounds checks;
     History records evidence, never authorizes the proposal or owns its bindings.
     """
+    if collection and "cursor" in inputs:
+        result = {key: value for key, value in inputs.items() if key != "cursor"}
+        result["cursor_sha256"] = hashlib.sha256(inputs["cursor"].encode()).hexdigest()
+        return result
     if capability_id in {"core.deployments.initialize", "core.deployments.adopt", "core.deployments.release"}:
         document = inputs.get("proposal")
         if type(document) is not str or len(document.encode()) > 262144 or set(inputs) != {"proposal"}:
@@ -513,7 +517,8 @@ class OperationalHistory:
         with self._store(write=True) as db:
             scope = self._scope(db)
             stamp = now()
-            projected_inputs = project_inputs(proposal["capability_id"], proposal["inputs"])
+            projected_inputs = project_inputs(proposal["capability_id"], proposal["inputs"],
+                                             collection=bool(proposal.get("descriptor", {}).get("collection")))
             safe_inputs = _safe(projected_inputs)
             row = {"schema_version": VERSION, "operation_id": "op-" + uuid.uuid4().hex,
                    "correlation_id": correlation_id, "provenance": _safe(provenance),
@@ -521,7 +526,8 @@ class OperationalHistory:
                    "capability": {"id": proposal["capability_id"], "version": proposal["capability_version"]},
                    "provider": {"id": proposal["provider"], "owner": proposal["owner"],
                                 "source": {"kind": "core_contract" if proposal["owner"] == "core" else "module_contract", "contract_id": proposal["capability_id"]}},
-                   "inputs": safe_inputs, "inputs_redacted": safe_inputs != projected_inputs,
+                   "inputs": safe_inputs, "inputs_redacted": safe_inputs != projected_inputs or
+                   bool(proposal.get("descriptor", {}).get("collection")) and projected_inputs != proposal["inputs"],
                    "affected_objects": [object_ref(scope, ident) for ident in proposal["affected_objects"]],
                    "safety_tier": proposal["safety"]["tier"],
                    "approval": {"requirement": approval_requirement, "result": "pending"},
@@ -552,7 +558,8 @@ class OperationalHistory:
     def _assert_binding(row: dict[str, Any], proposal: dict[str, Any]) -> None:
         if (row["capability"] != {"id": proposal["capability_id"], "version": proposal["capability_version"]} or
                 row["provider"]["id"] != proposal["provider"] or row["provider"]["owner"] != proposal["owner"] or
-                row["inputs"] != _safe(project_inputs(proposal["capability_id"], proposal["inputs"])) or row["safety_tier"] != proposal["safety"]["tier"] or
+                row["inputs"] != _safe(project_inputs(proposal["capability_id"], proposal["inputs"],
+                                                    collection=bool(proposal.get("descriptor", {}).get("collection")))) or row["safety_tier"] != proposal["safety"]["tier"] or
                 row["privilege"]["requirement"] != proposal["privilege"] or
                 row["affected_objects"] != [object_ref(row["scope_id"], value) for value in proposal["affected_objects"]] or
                 row["verification"]["contract"] != _safe(proposal["verification"]) or row["recovery"] != _safe(proposal["recovery"]) or

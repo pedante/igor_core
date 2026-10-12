@@ -110,6 +110,10 @@ and [hook contracts](https://learn.chatgpt.com/docs/hooks).
 
 Use `tests/validate.sh focused|affected|full`. Existing selection, raw logs,
 pytest/BATS adapters, baseline classification and required CI gates remain.
+For a bounded focused stage, inspect `--dry-run`, then repeat exact planned
+IDs with `--only-group ID`. Unknown IDs and affected/full filtering fail closed.
+The report lists `excluded_groups`; these remain unverified until separately
+covered. This selects work under the same governor, never waives acceptance gates.
 Local default ceilings are **900 seconds cumulative validation** and **240
 seconds per subprocess**. Existing file timeouts can tighten these ceilings.
 A command timeout or total exhaustion stops dispatch, cancels active trees,

@@ -381,10 +381,10 @@ svc_list_query() {
     _pkg_wave_d_family || return 2
     command -v systemctl >/dev/null 2>&1 || return 2
     command -v timeout >/dev/null 2>&1 || return 2
-    local _timeout _output
+    local _timeout _adapter
     _timeout="$(_pkg_query_timeout)" || return 2
-    _output="$(LC_ALL=C timeout "$_timeout" systemctl list-units --type=service --all --plain --no-legend --no-pager 2>/dev/null)" || return 2
-    printf '%s\n' "$_output" | awk 'NF >= 4 { print $1 "\t" $3 "\t" $4 }'
+    _adapter="$(dirname -- "${BASH_SOURCE[0]}")/platform_services.py"
+    "${IGOR_PYTHON:-python3}" "$_adapter" "$_timeout"
 }
 
 # ── pkg_install_docker_post ───────────────────────────────────────────────────

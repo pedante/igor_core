@@ -10,7 +10,163 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Collection EXECUTION 1A — Owner-accepted contract foundation
+## Collection EXECUTION 1B — Owner accepted at backend scope
+
+Owner accepted Increment B on 2026-10-12: structured System collections, bounded
+producer transport, frozen snapshots, pagination, resource accounting, canonical
+backend integration and recovery. This accepts B's defined backend scope only;
+the complete Collection Operator milestone remains open.
+
+The accepted B implementation and stabilization are preserved.
+[Increment B implementation/evidence](COLLECTION_INCREMENT_B.md) records the
+System v3 cutover, bounded temporary snapshots, pagination, transport/privacy
+limits and cleanup. No architecture change, compatibility layer, new dispatcher,
+TUI presentation work, push, merge or live service operation. The Owner authorized
+one checkpoint commit covering the accepted implementation and stabilization.
+
+### Failure-first stabilization ledger (2026-10-12)
+
+- Owner-provided allowance was 691.896 s at this continuation's start; model
+  renewal was never used. Plans were inspected with --dry-run before execution.
+- Root cause: the System helper assumed IGOR_DIR/core existed even when Core was
+  supplied by the loader. It now takes the trusted loader root, and resolves its
+  own helper from the module source directory. The isolated real System output
+  succeeds with stdout/stderr separated, without weakening the assertion.
+- Five new Ruff diagnostics were corrected. Newer system Ruff introduced tool
+  drift, so governed acceptance uses the recorded pinned Ruff 0.16.10. Four
+  additionally exposed History diagnostics are reproduced on the accepted Git
+  blob; no historical function or lint rule was altered to hide them.
+- Timings showed a progressing oversized 25-case System group, not a hang.
+  Three governed groups retain every original body (11/7/7); longest measured
+  group 178.901 s. Focused exact-group selection is fail-closed, explicitly lists
+  exclusions and remains under the same governor. Harness/governor proof passes.
+- `/tmp/igor2-b-stabilization-focused/summary.json`: 146 PASS, two new snapshot
+  failures, three baseline groups/identities. Both new failures were classified:
+  ordering replay crossed actual TTL under load; the concurrency fixture used a
+  socket-based forkserver unavailable here. Deterministic ordering uses a fixed
+  clock with separate strict TTL proof; native Linux fork keeps actual processes
+  and locked-file concurrency without that irrelevant socket dependency.
+- `/tmp/igor2-b-snapshot-corrected/summary.json`: 84 PASS, one baseline fixed;
+  all original 49 snapshot cases and runner checks pass.
+- `/tmp/igor2-b-transport-focused/summary.json`: 57 PASS, one new fixture failure,
+  one inherited lint group. Exact event boundaries and canonical backend worked;
+  the fixture incorrectly used an environment value for the selected managed
+  secret projector. It now stages real managed material through the secret API.
+- `/tmp/igor2-b-acceptance-scoped/summary.json`: complete, 171.893 s; 368 PASS,
+  one new fixture failure, one baseline lint group, two baseline fixed, one
+  permitted environmental skip. All 54 snapshot cases, History, privacy/security,
+  lifecycle, operator and canonical System scenarios pass.
+- `/tmp/igor2-b-last-correction/summary.json`: complete exit 0, 85.153 s;
+  **21 PASS, one inherited Ruff group; zero new failures/skips/timeouts/errors.**
+  The managed-secret fixture, 96 KiB boundaries, TERM-ignoring deadline, canonical
+  System paging/refresh/History/dead-process cleanup, relevant A byte/runtime
+  scenarios and unrelated History metadata-flag protection all pass.
+- `/tmp/igor2-b-qualifying-ledger.json` combines qualifying evidence by identity,
+  superseding affected failures rather than summing repeated tests: **438 PASS,
+  3 FAIL_BASELINE, 2 BASELINE_FIXED, 1 ENV_SKIP; zero unresolved new failures,
+  cancellations or required B checks unexecuted.**
+  Excluded groups in each stage remain explicit; B-required coverage is supplied
+  by the ledger, not waived. Full suite, real service operations, frontend and
+  Raspberry Pi gates were not dispatched.
+- Retained current failures: inherited History Ruff diagnostics (FURB167, B023,
+  PLR0124, RUF059), reviewed System namespace fixture and reviewed Debian package
+  upgrade fixture. Original accepted A SIM103/AI CLI/Step 18 limitations remain
+  unchanged and are not represented as passing. Permitted skip remains LAN-IP
+  scrubbing when hostname -I is unavailable.
+- Actual x86_64 measurements, exact five-proof-class scope and deferred
+  Raspberry Pi/global peak RSS/human-navigation measurements are in the B report.
+  No transient-peak claim is inferred from inherited ru_maxrss high-water marks.
+- Performance follow-up: the controlled canonical first page took **11.261 s**
+  on x86_64 Linux 7.2.6 CachyOS/glibc 2.44. Owner acceptance retains this latency
+  as a follow-up for later authorized performance work. RSS samples increased
+  from 24948 to 28404 KiB; they do not establish measured transient peak memory.
+
+- Final evidence review identified a narrow invalidation: the oversized-output
+  capture case had passed before the new independent deadline/read loop. The
+  exact-node dry run was inspected, then `/tmp/igor2-b-final-capture/summary.json`
+  exhausted the last 3.982 s during runner setup/pytest startup (0.09 s subprocess
+  allowance). Counts: 0 PASS, 1 TIMEOUT_NEW; no completed test identity. That old
+  capture pass was removed from qualifying proof. That attempt exhausted the
+  governor; it did not establish a product failure.
+- Owner renewal subsequently provided 554.051 s available. All 33 candidate
+  hashes matched the preserved manifest. The Owner default-interpreter run
+  `/tmp/igor-validation-wmb7rwyw/summary.json` had eight TOOL_UNAVAILABLE pytest
+  groups; no unavailable attempt is counted as passing. Existing qualifying
+  proof was retained. After an inspected exact-node dry run, the recorded pytest
+  interpreter completed `/tmp/igor2-b-capture-resumed/summary.json`: **1 PASS,
+  zero failures/skips/timeouts/errors**, 5.127 s total, 0.303 s test body.
+  This proves the final read loop bounds oversized output and does not expose
+  rejected content. No production/test files changed in this final continuation.
+
+All required Increment B evidence is established at its defined backend scope,
+with the reviewed baseline failures and permitted skip retained as limitations.
+The checkpoint commit containing this acceptance record closes Increment B.
+Final documentation, ledger and candidate hashes preserve the completed proof;
+historical timeout and tool-unavailable attempts remain separate from passing
+evidence. No expensive qualifying tests were repeated for the checkpoint. Stop
+after the authorized commit; do not push, merge or begin Increment C.
+
+## Collection EXECUTION 1B — incomplete stabilization, governor exhausted (historical)
+
+Owner authorized Increment B on clean local `igor2` at
+`5a0121202f250612428db3f0f71bcf4753dab62a`. Increment A remains accepted.
+No DISCOVERY, master reconciliation, TUI work, commit, push, merge or live
+service operation was performed. Initial governor allowance was 523.551 seconds.
+
+The uncommitted candidate migrates the System list declaration/handler/consumer
+fixture to v3/schema 2 and adds bounded platform reads, temporary private snapshot
+leases, atomic reservation accounting, signed session-bound pagination and a
+bounded wrapper around the existing Module API handler process. These are
+implementation changes, **not established runtime guarantees**. Canonical
+failure propagation and large-result stdin transport have partial changes;
+frontend publication limits, final projection/privacy review and complete
+lifecycle integration remain unfinished.
+
+### Increment B interrupted evidence (2026-10-12)
+
+`/tmp/igor2-increment-b-stage1/summary.json` records the governed focused run;
+`candidate.json` in the same directory fingerprints every production/test change.
+This status handoff is the only subsequent edit. The runner automatically
+included the changed System administration BATS file, whose 240.073-second
+command timeout stopped dispatch after 293.609 seconds elapsed. The persistent
+governor now reports **zero remaining seconds**. No renewal or further validation
+was attempted.
+
+- Runner classifications: **51 PASS, 1 FAIL_NEW, 3 FAIL_BASELINE,
+  1 TIMEOUT_NEW, 0 BASELINE_FIXED, 0 ENV_SKIP, 0 ERROR/TOOL_UNAVAILABLE**.
+- Raw lint review overrides any inference from that broad baseline label:
+  this candidate's Ruff group contains **five new diagnostics** (two import-order
+  diagnostics, unused `signature`, unused `time`, missing explicit subprocess
+  `check`), not the inherited SIM103. They remain unfixed. The baseline group
+  mechanism must not be used to claim those diagnostics are reviewed debt.
+- The service inventory/status integration assertion failed; its captured output
+  was not decodable as the expected canonical JSON. Fixture Core path/runtime
+  setup and the exact handler/result call path need diagnosis before correction.
+- The two recorded BATS baseline failures are the existing generic operator
+  namespace fixture and Debian package-upgrade fixture. They remain failures.
+- Structure, System package admission, ShellCheck, six shell syntax/count groups
+  and all 22 retained capability-runtime identities pass. The System BATS group
+  is incomplete; its timeout is governor evidence, not a product failure or pass.
+- `tests/test_collection_snapshots.py` was **not dispatched**. Its pagination,
+  byte/row/TTL/concurrency/ownership/recovery tests establish no proof yet.
+  Increment A collection, approval/privilege, History, owner lifecycle, operator,
+  secret/private-data and transport regressions against this candidate remain
+  unverified. Earlier Increment A evidence does not prove these changed paths.
+
+At B scope, contract proof is partial (admission and retained runtime only),
+regression proof is incomplete, the real System vertical slice fails, snapshot
+inspection has no runtime proof, and migration/recovery is unexecuted. No memory,
+latency, human-navigation TTL or Raspberry Pi measurements were established.
+The three accepted Increment A baseline failures and permitted environmental
+skip retain their historical meanings; this run neither waives nor passes them.
+
+Phase: **STABILIZATION, stopped at the hard governor limit**. Next permitted work
+after an Owner-provided allowance is inspection/fix of the concrete lint and
+System integration failures, then focused snapshot tests, finishing canonical
+transport/lifecycle protections and the remaining affected acceptance checks.
+Increment B is **not ready for acceptance**. Do not begin C or commit this candidate.
+
+## Collection EXECUTION 1A — Owner-accepted contract foundation (historical)
 
 Increment A starts at `f6007a4b7fd8459daf17e7b63c821f2c03397e36` on local
 `igor2`. The implementation and stabilization are preserved in one checkpoint. DISCOVERY remains

@@ -456,6 +456,9 @@ igor_module_set_enabled() {
     if [ "$_state" = disabled ] && [ -n "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
         _IGOR_MODULE_STATUS["$_name"]="disabled"
     fi
+    if [ "$_state" = disabled ] && [ -d "${IGOR_RUNTIME_DIR:-${IGOR_DATA_DIR:-${IGOR_DIR}/data}/runtime}/collections" ]; then
+        "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/collection_runtime.py" release-owner "$_name" || return 1
+    fi
     _ml_log info "Module $_name set to $_state; restart Igor to apply registration changes"
 }
 

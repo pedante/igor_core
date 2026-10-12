@@ -624,8 +624,20 @@ PY
         fi
     fi
 
+    local _collection_context="" _invoke_rc
+    if [ "$(_igor_capability_field "$_proposal" capability_version)" = 3 ] &&
+       [ -n "$(_igor_capability_field "$_proposal" descriptor.collection.resource_kind 2>/dev/null)" ]; then
+        _collection_context="$(mktemp "${TMPDIR:-/tmp}/igor-collection-context.XXXXXXXX")" || return 1
+        chmod 600 -- "$_collection_context"
+        printf '%s' "$_proposal" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/collection_runtime.py" \
+            context "$IGOR_CAPABILITY_RESULT_OWNER" "$IGOR_CAPABILITY_RESULT_FILE" > "$_collection_context" || {
+            rm -f -- "$_collection_context"
+            return 1
+        }
+    fi
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
+    IGOR_COLLECTION_CONTEXT="$_collection_context" \
     V2_HANDLER_ENTRYPOINT="$_entrypoint" \
     V2_HANDLER_SYNTAX_VALIDATED=1 \
     V2_HANDLER_INPUT_CANONICAL=1 \
@@ -633,6 +645,9 @@ PY
     V2_HANDLER_DEFER_RESPONSE_VALIDATION="$_defer" \
         _ml_bash_handler_invoke \
         "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
+    _invoke_rc=$?
+    [ -z "$_collection_context" ] || rm -f -- "$_collection_context"
+    return "$_invoke_rc"
 }
 
 _igor_capability_verify() {
@@ -1037,6 +1052,10 @@ PY
                         # Malformed/error handler envelope: provider failed,
                         # matching the pre-Boundary-C handler validator.
                         _exec=failed
+                        case "$_domain_result" in
+                            'capability runtime: collection_limit_exceeded'|'capability runtime: collection_expired'|'capability runtime: collection_budget_exhausted'|'capability runtime: invalid_collection_cursor')
+                                _evidence="{\"source\":\"capability.output_validation\",\"reason\":\"${_domain_result#capability runtime: }\"}" ;;
+                        esac
                         _domain_result=null
                         _output_status=not_applicable
                         ;;
@@ -1097,7 +1116,7 @@ PY
         igor_observer_refresh storage.mounts >/dev/null 2>&1 || true
         igor_observer_refresh storage.filesystems >/dev/null 2>&1 || true
     fi
-    _result="$("$(_ml_python)" - "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" "$_output_status" "$_domain_result" <<'PY'
+    _result="$(printf '%s' "$_domain_result" | "$(_ml_python)" -c '
 import json, sys
 from datetime import datetime, timezone
 proposal = json.loads(sys.argv[1])
@@ -1119,9 +1138,17 @@ result = {"operation_id": sys.argv[7], "capability_id": proposal["capability_id"
           "recorded_at": datetime.now(timezone.utc).isoformat()}
 if proposal["capability_version"] >= 2:
     result["output_status"] = sys.argv[8]
-    result["result"] = json.loads(sys.argv[9])
+    result["result"] = json.load(sys.stdin)
+if proposal["capability_version"] == 3:
+    sys.path.insert(0, sys.argv[9])
+    from capability_runtime import _validate_result, CapabilityError
+    try:
+        _validate_result(result)
+    except CapabilityError as exc:
+        reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid_domain_output"
+        result.update(output_status="invalid", result=None, verification_status="unknown", outcome="invalid_output",
+                      verification_evidence=[{"source":"capability.output_validation","reason":reason}])
 print(json.dumps(result, ensure_ascii=proposal["capability_version"] != 3, sort_keys=True, separators=(",", ":")))
-PY
-    )" || return 1
+' "$_fresh" "$_exec" "$_verify" "$_outcome" "$_evidence" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "$IGOR_HISTORY_OPERATION_ID" "$_output_status" "${_IGOR_LOADER_DIR}/core/lib")" || return 1
     _igor_capability_publish_result "$_result"
 }

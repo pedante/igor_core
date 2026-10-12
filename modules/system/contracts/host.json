@@ -676,35 +676,134 @@
       "kind": "capability",
       "id": "system.service.list",
       "handler": "system__service_list",
-      "capability_version": 2,
+      "capability_version": 3,
       "description": "List local systemd services and their active/sub states.",
       "inputs": {
-        "properties": {},
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 128
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
         "required": [],
         "additionalProperties": false
       },
       "outputs": {
-        "schema_version": 1,
         "properties": {
-          "count": {
-            "type": "integer",
-            "minimum": 0
+          "resource_kind": {
+            "type": "enum",
+            "enum": [
+              "service"
+            ]
           },
-          "services": {
-            "type": "string",
-            "maxLength": 4096
+          "inventory": {
+            "type": "enum",
+            "enum": [
+              "loaded_system_services"
+            ]
           },
-          "source": {
-            "type": "string",
-            "maxLength": 160
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reference": {
+                  "type": "scoped_reference"
+                },
+                "unit": {
+                  "type": "string",
+                  "maxLength": 256,
+                  "validator": "systemd_unit"
+                },
+                "active_state": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "sub_state": {
+                  "type": "string",
+                  "maxLength": 80
+                }
+              },
+              "required": [
+                "reference",
+                "unit",
+                "active_state",
+                "sub_state"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 128
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "snapshot_revision": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "returned_count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 128
+              },
+              "total_count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1024
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "next_cursor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "snapshot_revision",
+              "returned_count",
+              "total_count",
+              "has_more"
+            ],
+            "additionalProperties": false
+          },
+          "freshness": {
+            "type": "object",
+            "properties": {
+              "observed_at": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "expires_at": {
+                "type": "string",
+                "maxLength": 32
+              }
+            },
+            "required": [
+              "observed_at",
+              "expires_at"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
-          "count",
-          "services",
-          "source"
+          "resource_kind",
+          "inventory",
+          "rows",
+          "page",
+          "freshness"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "schema_version": 2
       },
       "safety": {
         "tier": "READ"
@@ -736,6 +835,30 @@
         "bins": [
           "systemctl"
         ]
+      },
+      "collection": {
+        "resource_kind": "service",
+        "inventory": "loaded_system_services",
+        "columns": [
+          {
+            "field": "unit",
+            "label": "Unit"
+          },
+          {
+            "field": "active_state",
+            "label": "Active"
+          },
+          {
+            "field": "sub_state",
+            "label": "Substate"
+          }
+        ],
+        "inspect": {
+          "capability_id": "system.service.status",
+          "inputs_from_row": {
+            "unit": "unit"
+          }
+        }
       }
     },
     {

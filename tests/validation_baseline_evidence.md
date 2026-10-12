@@ -139,3 +139,20 @@ loading path. The loader's changed typed-privilege gate is not reached with zero
 modules; `tool_fields` is not invoked by the status/tools inspection path. Do not
 repair that unrelated fixture or reinterpret its failed CLI exit assertion as a
 collection regression.
+
+## Increment B inherited History lint
+
+Increment B's cursor privacy projection makes `core/lib/operational_history.py`
+an affected lint input. Pinned Ruff 0.16.10 reports FURB167 (`re.I`), B023
+(the immediate redaction callback), PLR0124 (the existing finite-float test),
+and RUF059 (unused `owner` in `finish`). The source-reproduction test compares
+the exact accepted `5a0121202f250612428db3f0f71bcf4753dab62a` Git blob and
+current source under the same Ruff/configuration; all four codes/messages must
+match, with no additional diagnostics. These unchanged lines are unrelated to
+collection cursor projection. Do not suppress rules or repair them as part of B.
+
+The existing Ruff group baseline now names these additional inherited diagnostics;
+its broad identity still requires raw-log review on every candidate. The original
+SIM103 remains separately reproduced. Five new Increment B diagnostics were
+corrected, not classified as baseline. Newer system Ruff's UP017/FURB162 results
+are tool-version drift; acceptance uses the recorded pinned version.

@@ -21,6 +21,17 @@ import validation_runner as runner
 
 
 class ValidationRunnerTests(unittest.TestCase):
+    def test_bounded_group_selection_is_explicit_and_fail_closed(self):
+        plan = [{"id": "structure"}, {"id": "pytest:tests/test_private.py"}]
+        selected, excluded = runner.select_groups(plan, [plan[1]["id"]], "focused")
+        self.assertEqual(selected, [plan[1]])
+        self.assertEqual(excluded, ["structure"])
+        self.assertEqual(runner.select_groups(plan, [], "affected"), (plan, []))
+        for mode, names in (("full", ["structure"]), ("affected", ["structure"]),
+                            ("focused", ["missing"])):
+            with self.assertRaises(ValueError):
+                runner.select_groups(plan, names, mode)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

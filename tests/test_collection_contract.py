@@ -515,6 +515,21 @@ def test_inherited_ruff_diagnostic_reproduces_on_reviewed_source():
     assert [(item["code"], item["location"]["row"]) for item in diagnostics] == [("SIM103", 221)]
 
 
+def test_increment_b_history_lint_is_inherited_from_accepted_checkpoint():
+    source = subprocess.run(["git", "show", "5a0121202f250612428db3f0f71bcf4753dab62a:core/lib/operational_history.py"],
+                            cwd=ROOT, text=True, capture_output=True, check=True).stdout
+    ruff = str(Path(sys.executable).with_name("ruff"))
+    command = [ruff, "check", "--output-format=json", "--stdin-filename", str(ROOT / "core/lib/operational_history.py"), "-"]
+    historical = subprocess.run(command, cwd=ROOT, input=source, text=True, capture_output=True, check=False)
+    current = subprocess.run(command, cwd=ROOT, input=(ROOT / "core/lib/operational_history.py").read_text(),
+                             text=True, capture_output=True, check=False)
+    assert historical.returncode == current.returncode == 1
+    expected = ["FURB167", "B023", "PLR0124", "RUF059"]
+    assert [x["code"] for x in json.loads(historical.stdout)] == expected
+    assert [(x["code"], x["message"]) for x in json.loads(current.stdout)] == [
+        (x["code"], x["message"]) for x in json.loads(historical.stdout)]
+
+
 @pytest.mark.parametrize("mutate", [
     lambda v: v["rows"].extend([v["rows"][0]] * 128),
     lambda v: v["rows"][0].update(sub_state="x" * 81),
