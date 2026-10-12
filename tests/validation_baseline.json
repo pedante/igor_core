@@ -71,6 +71,13 @@
       "classification": "TIMEOUT",
       "reason": "Startup choice f exceeded the test's internal 20-second subprocess deadline in two isolated runs.",
       "reference": "tests/validation_baseline_evidence.md#startup-timeouts"
+    },
+    {
+      "suite": "group",
+      "identity": "ruff",
+      "classification": "FAIL",
+      "reason": "Ruff SIM103 in unchanged _simple_command_is_read; historical-source reproduction reports this diagnostic only. Raw lint output must still be reviewed for additional diagnostics.",
+      "reference": "tests/validation_baseline_evidence.md#increment-a-inherited-lint"
     }
   ]
 }

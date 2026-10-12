@@ -135,6 +135,8 @@ def _capability_entry(row: dict[str, Any]) -> dict[str, Any]:
         "inputs": projected_inputs,
         "verification": copy.deepcopy(descriptor.get("verification")) if isinstance(descriptor.get("verification"), dict) else None,
         "recovery": copy.deepcopy(descriptor.get("recovery")) if isinstance(descriptor.get("recovery"), dict) else None,
+        **({"collection": copy.deepcopy(descriptor["collection"]),
+            "outputs": copy.deepcopy(descriptor["outputs"])} if "collection" in descriptor else {}),
     }
 
 

@@ -10,7 +10,102 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Collection extension — verified DISCOVERY closure and EXECUTION readiness
+## Collection EXECUTION 1A — Owner-accepted contract foundation
+
+Increment A starts at `f6007a4b7fd8459daf17e7b63c821f2c03397e36` on local
+`igor2`. The implementation and stabilization are preserved in one checkpoint. DISCOVERY remains
+closed; D049/D070/D079 and the D078 architecture remain unchanged. The
+[exact contract and boundaries](COLLECTION_INCREMENT_A.md) describe capability
+v3/output schema 2 through the existing validator, registry and dispatcher.
+Live System handlers and unrelated v1/v2 contracts are not migrated.
+
+### Stabilization evidence ledger (2026-10-12)
+
+- Preserved interrupted evidence:
+  `/tmp/igor2-increment-a-scoped-evidence-20261012/summary.json`: 271 PASS,
+  two new fixture failures, inherited lint, one reviewed CLI failure, and one
+  governor-induced History timeout. Operator/secret groups were unexecuted.
+  That exhaustion is neither a pass nor a product timeout; the failed fixture
+  assertions stopped before their remaining negative checks.
+- Owner renewed the governor through the documented procedure. Stabilization
+  verified 896.252 seconds available before changes; no model renewal, delegation,
+  reset, clone, commit, push, merge or live service operation occurred.
+- Corrected the two negative fixtures' transport-return assumption. Existing
+  `ai_execute_tool` transport completion returns zero while the canonical result
+  independently records succeeded provider execution, invalid output, unknown
+  verification, `result=null` and `outcome=invalid_output`. All negative status,
+  effect-marker and rejected-value scans now execute and pass. Production
+  execution semantics were not changed to satisfy those assertions.
+- Propagated `collection_limit_exceeded` through the existing CLI/handler bridge
+  and canonical output-validation evidence into History. Oversized row/text/count/
+  cursor/page cases fail with a bounded value-free reason and no retained domain
+  payload. Oversized-integer JSON parsing now follows the existing safe error
+  path instead of escaping as a traceback.
+- `/tmp/igor2-increment-a-stabilization-focused/summary.json`: **101 collection
+  file tests pass**, including baseline-source Ruff reproduction, byte boundaries,
+  malformed structures, scoped references, inspection bindings, sorted transport
+  and isolated v3 dispatch/History. Retained runtime/module/operator tests also
+  pass. The only unmatched group failure was inherited Ruff `SIM103`, subsequently
+  classified from its reproduced historical source under the existing baseline
+  policy; no lint rule, unrelated production function or existing assertion was
+  weakened. This run precedes the final integer-parse correction.
+- Final candidate (including that correction):
+  `/tmp/igor2-increment-a-stabilization-acceptance-final/summary.json`, governed
+  focused mode with explicitly selected affected/security/recovery suites,
+  `jobs=4`, cached pinned pytest 9.1.1/Ruff 0.16.10 and existing BATS/ShellCheck.
+  **Exit 0; complete; 317.639 seconds; 384 PASS, 1 BASELINE_FIXED,
+  3 FAIL_BASELINE, 1 ENV_SKIP; zero new failures, timeouts, errors,
+  unavailable tools, cancelled checks or pending selected groups.**
+- All **101 collection file tests**, **40 History tests**, **2 secret-reference
+  tests**, **16 operator-surface identities** (15 PASS/1 BASELINE_FIXED), module
+  contract/registry/inspection and operator-backend checks are established.
+  Approval (25), modes (14), privilege (5), transactions (3), loader (12),
+  module-state (7), domain-event (5) and documentation-health (10) identities pass.
+  The Step 18 suite also proves retained v1 History, typed v2 results and invalid
+  CHANGE-output/possible-effect/History semantics on its isolated fixtures.
+- Retained failures: Ruff `SIM103` in unchanged `tool_input.py:221` (independently
+  reproduced on reviewed `525cc76`, raw final lint contains this diagnostic only);
+  the reviewed AI CLI partial-installation fixture; the reviewed Step 18 v2
+  privileged-declaration fixture's unavailability-reason assertion. Their raw
+  failures remain visible under the existing reviewed baseline mechanism.
+  No newly introduced Increment A regression remains.
+- Permitted skip: the existing LAN-IP scrub fixture reports
+  `hostname -I unavailable`. This exact guard is allowed by the existing
+  environmental policy; no new skip permission is added. The other 22 scrub
+  identities and all selected credential/private-data checks pass.
+- Seven historical baseline entries are outside this selected scope, not waived
+  Increment A gates. Automatic broad affected/full/CI sweeps were not selected:
+  unknown shared-file mapping would expand beyond this bounded contract task.
+  No broad green-suite or live/hardware claim is made. Final ledger-only Markdown
+  edits do not invalidate the tested runtime revision; final diff/reference
+  review covers them without repeating passing runtime/security suites.
+
+### Increment A proof classes and acceptance
+
+| EXECUTION proof | Established in Increment A | Deferred to B–E / complete milestone |
+|---|---|---|
+| Contract | Shared package/descriptor/result validation; exact row/property/depth/text/UTF-8 byte bounds; malformed/duplicate/invalid references and inspection declarations; canonical failure reasons. | Producer-backed pages, snapshot counts/cursors and elapsed-time freshness. |
+| Regression | Existing v1/v2, approval, privilege, modes, owner lifecycle, privacy, event/result and History checks above; explicit baseline/skip accounting. | Live System consumer cutover and complete milestone regression/release gates. |
+| Vertical slice | Isolated real Module API package through canonical READ dispatch, UTF-8 result retrieval and durable History; invalid/duplicate/oversize output retains completion and no rejected payload. | Actual System plus unrelated provider list/select/details/back/refresh and frontend invocation parity. |
+| Inspection | Typed descriptor/column/schema projection and registry-owned READ binding availability/ambiguity/type/selector checks without executing targets. | Operator collection views, snapshot completeness/provenance and stale-selection inspection. |
+| Migration/recovery | No persistent layout/schema change; old pins fail before invocation, disabled owners invoke nothing, retained v1 History remains inspectable and History recovery/import tests pass. | Snapshot expiry/disable/interruption/restart/recovery and live contract migration. |
+
+All Increment A-specific required evidence is satisfied. The complete
+System/TUI/snapshot vertical slice is explicitly outside A's acceptance gate.
+No unresolved Increment A contract-level defect is identified. The Owner accepted
+Increment A on 2026-10-12 at this contract-foundation scope, retaining the three
+reviewed baseline failures and one permitted environmental skip as limitations.
+This acceptance supersedes the earlier ready-for-review statements in the
+stabilization report; it does not close the complete Collection Operator milestone.
+The Owner subsequently authorized one implementation/stabilization checkpoint
+commit, superseding the implementation-phase no-commit instruction. Final review
+confirmed only Increment A files changed and all ten recorded production/test/
+baseline-metadata fingerprints match the validated candidate. Only this acceptance
+status changed after that review; no passing expensive tests were repeated.
+Increment B is technically unblocked but has not begun and requires a separate
+Owner instruction. No push, merge or live service operation is authorized here.
+
+## Collection extension — verified DISCOVERY closure and EXECUTION readiness (historical)
 
 The Owner authorized this separate documentation/evidence checkpoint on
 2026-10-12, explicitly excluding runtime implementation and push. Inspected

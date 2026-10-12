@@ -1467,7 +1467,7 @@ raise SystemExit(0 if any(spec.get("type")=="secret_ref" for spec in props.value
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="secret_consumer_unavailable"
                 elif [ "$(_ml_json_field "$_record" privilege)" = required ] &&
-                     [ "$(_ml_json_field "$_record" capability_version)" = 2 ]; then
+                     [ "$(_ml_json_field "$_record" capability_version)" -ge 2 ]; then
                     _IGOR_CONTRIBUTION_STATE["$_index_key"]="unavailable"
                     _IGOR_CONTRIBUTION_REASON["$_index_key"]="typed_privileged_output_adapter_unavailable"
                 elif [ "$(_ml_json_field "$_record" privilege)" = required ] && ! {

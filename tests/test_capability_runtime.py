@@ -158,9 +158,9 @@ class CapabilityRuntimeTests(unittest.TestCase):
     def test_tool_input_preserves_only_integer_supported_version_pins(self):
         sys.path.insert(0, "core/ai")
         from tool_input import tool_fields
-        for version in (1, 2):
+        for version in (1, 2, 3):
             self.assertEqual(tool_fields(json.dumps({"tool": "run_capability", "id": "system.host.memory.refresh", "inputs": {}, "capability_version": version}))[-1], str(version))
-        for version in (None, True, 0, 3, "2"):
+        for version in (None, True, 0, 4, "2"):
             with self.assertRaises(ValueError):
                 tool_fields(json.dumps({"tool": "run_capability", "id": "system.host.memory.refresh", "inputs": {}, "capability_version": version}))
 

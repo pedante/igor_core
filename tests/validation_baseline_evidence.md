@@ -107,3 +107,35 @@ test produced `ENV_SKIP` for its native GPG-agent guard during Boundary B.
 There are no host Docker/systemd/network availability skips. Unknown skip
 identities or reasons are errors; required missing tools remain nonzero
 `TOOL_UNAVAILABLE` outcomes.
+
+## Increment A inherited lint
+
+The Increment A stabilization task explicitly requires inherited-failure
+classification without unrelated production refactoring. Its first governed
+focused run is retained at
+`/tmp/igor2-increment-a-stabilization-focused/summary.json` (55.041 seconds).
+All 101 collection tests pass, including the historical-source lint reproduction;
+the only unmatched check failure is the existing Ruff `SIM103`.
+
+`test_inherited_ruff_diagnostic_reproduces_on_reviewed_source` supplies the exact
+`525cc76ea556bae199fecfaaa6bd931d01a9f6ea:core/ai/tool_input.py` Git blob to pinned
+Ruff through stdin with the current file name/configuration. Ruff returns 1 and
+exactly one JSON diagnostic: `SIM103`, row 221. No historical product code is
+executed or edited. `git diff 525cc76 f6007a4 -- core/ai/tool_input.py` is empty;
+the Increment A diff changes only the supported-version set inside `tool_fields`.
+The diagnostic's `_simple_command_is_read` function remains byte-identical.
+This establishes a pre-existing style failure, not a new capability or security
+regression. The independently reproduced tool-group identity is now recorded in
+the existing reviewed baseline mechanism. No lint rule or test assertion is
+suppressed; raw group failure remains visible as `FAIL_BASELINE`. Because Ruff
+uses a group identity, review the raw lint log for additional diagnostics on
+each candidate; this record covers only the demonstrated inherited `SIM103`.
+
+The AI CLI fixture failure remains the previously reviewed Python identity in
+this same manifest and the Python-assertions table above. Its partial installation
+copies only a subset of current Core services. Increment A changes neither
+`igor.sh`, `control.sh`, `catalog.py`, `operations.py`, the fixture, nor its config
+loading path. The loader's changed typed-privilege gate is not reached with zero
+modules; `tool_fields` is not invoked by the status/tools inspection path. Do not
+repair that unrelated fixture or reinterpret its failed CLI exit assertion as a
+collection regression.

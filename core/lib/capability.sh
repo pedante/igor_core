@@ -45,7 +45,7 @@ with open(path, encoding="utf-8") as stream:
             found = row
 if found is None:
     raise SystemExit(1)
-print(json.dumps(found, sort_keys=True, separators=(",", ":")))
+print(json.dumps(found, ensure_ascii=found.get("capability_version") != 3, sort_keys=True, separators=(",", ":")))
 PY
 }
 
@@ -257,7 +257,7 @@ PY
     _base_inputs="${_base_fields[3]}"
     if [ "$_base_privilege" = required ]; then
         # The existing privileged adapter has no typed domain result. Keep v1
-        # usable; a v2 provider stays unavailable until that adapter is reviewed.
+        # usable; typed providers need a reviewed typed output adapter.
         [ "$_base_version" = 1 ] || return 1
         # Reviewed Core operation adapter. A privileged module handler may not
         # replace argv after approval. Additional privileged operations need a
@@ -810,7 +810,7 @@ PY
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
     local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _outcome=failed _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
-    local _fresh_precondition _fresh_digest _fresh_privilege _fresh_owner _fresh_handler _fresh_timeout _fresh_outputs _field_text _output_rc
+    local _fresh_precondition _fresh_digest _fresh_privilege _fresh_owner _fresh_handler _fresh_timeout _fresh_outputs _fresh_collection _field_text _output_rc
     local -a _proposal_fields=() _fresh_fields=()
     _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
 import json,sys
@@ -847,11 +847,12 @@ print(p["owner"])
 print(p.get("descriptor",{}).get("handler",""))
 print(p.get("descriptor",{}).get("timeout_seconds",30))
 print(json.dumps(p.get("descriptor",{}).get("outputs",{}),sort_keys=True,separators=(",",":")))
+print(json.dumps(p.get("descriptor",{}).get("collection"),sort_keys=True,separators=(",",":")))
 print("ok")
 PY
 )" || return 1
     mapfile -t _fresh_fields <<< "$_field_text"
-    [ "${#_fresh_fields[@]}" -eq 9 ] && [ "${_fresh_fields[8]}" = ok ] || return 1
+    [ "${#_fresh_fields[@]}" -eq 10 ] && [ "${_fresh_fields[9]}" = ok ] || return 1
     _fresh_precondition="${_fresh_fields[0]}"
     _fresh_digest="${_fresh_fields[1]}"
     _fresh_privilege="${_fresh_fields[2]}"
@@ -860,6 +861,7 @@ PY
     _fresh_handler="${_fresh_fields[5]}"
     _fresh_timeout="${_fresh_fields[6]}"
     _fresh_outputs="${_fresh_fields[7]}"
+    _fresh_collection="${_fresh_fields[8]}"
     if [ "$_fresh_precondition" != satisfied ]; then
         # A legitimate precondition change keeps the same proposal content
         # except for its evaluated status. Changed inputs/provider/argv never
@@ -1017,14 +1019,14 @@ for argv in commands:
 PY
         then _exec=succeeded; fi
     else
-        if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" = 2 ] && printf 1 || printf 0)")"; then
+        if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" -ge 2 ] && printf 1 || printf 0)")"; then
             _exec=succeeded
             if [[ "$_id" = core.deployments.* ]]; then
                 _domain_result="$_envelope"
             fi
-            if [ "$_version" = 2 ]; then
+            if [ "$_version" -ge 2 ]; then
                 if _domain_result="$(printf '%s' "$_envelope" | "$(_ml_python)" \
-                    "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" handler-output "$_fresh_outputs" 2>/dev/null)"; then
+                    "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" handler-output "$_fresh_outputs" "$_fresh_collection" 2>&1)"; then
                     _output_rc=0
                 else
                     _output_rc=$?
@@ -1041,11 +1043,14 @@ PY
                     *)
                         # A valid ok-envelope with an invalid typed result means
                         # the provider ran, but its domain output is unusable.
+                        _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
+                        if [ "$_domain_result" = 'capability runtime: collection_limit_exceeded' ]; then
+                            _evidence='{"source":"capability.output_validation","reason":"collection_limit_exceeded"}'
+                        fi
                         _domain_result=null
                         _output_status=invalid
                         _verify=unknown
                         _outcome=invalid_output
-                        _evidence='{"source":"capability.output_validation","reason":"invalid_domain_output"}'
                         ;;
                 esac
             fi
@@ -1112,10 +1117,10 @@ result = {"operation_id": sys.argv[7], "capability_id": proposal["capability_id"
           "affected_objects": proposal["affected_objects"], "recovery": proposal["recovery"],
           "verification_evidence": [evidence] if evidence else [],
           "recorded_at": datetime.now(timezone.utc).isoformat()}
-if proposal["capability_version"] == 2:
+if proposal["capability_version"] >= 2:
     result["output_status"] = sys.argv[8]
     result["result"] = json.loads(sys.argv[9])
-print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+print(json.dumps(result, ensure_ascii=proposal["capability_version"] != 3, sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1
     _igor_capability_publish_result "$_result"

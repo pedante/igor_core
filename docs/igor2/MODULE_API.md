@@ -146,8 +146,11 @@ Version 2 declares `outputs` as a closed object with `schema_version: 1`,
 are string, integer, finite number, boolean, enum and object ID. Unknown schema
 versions, fields/types, invalid constraints/default assumptions and malformed
 results fail deterministically. Secret material and arbitrary file/path outputs
-are not admitted as typed domain properties. Rich nested schemas remain deferred
-until a real consumer requires them.
+are not admitted as typed domain properties. Capability version 3 now admits
+output schema 2 with the bounded closed record/row-array/scoped-reference grammar
+and optional collection metadata approved by D079. See the
+[Increment A contract](COLLECTION_INCREMENT_A.md) for the exact declaration and
+implemented boundary; existing v1/v2 capabilities are not migrated by this increment.
 
 Core validates the handler's domain result against the frozen output contract.
 Domain data cannot supply its own execution, verification, owner, safety,

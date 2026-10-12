@@ -45,7 +45,7 @@ _COMMON_KEYS = {"kind", "id", "requires", "path", "handler", "output_type", "tim
                 "object_kind", "properties", "freshness_seconds", "privilege", "required_facts",
                 "capability_version", "description", "inputs", "safety", "preconditions",
                 "verification", "recovery", "affects", "payload_schema", "trigger", "target",
-                "schema", "outputs", "implementation"}
+                "schema", "outputs", "implementation", "collection"}
 _REQUIRES_KEYS = {"modules", "capabilities", "platform_families", "platform_features", "bins"}
 _PLATFORM_FAMILIES = {"debian", "arch"}
 _REQUIRED_MODULE_KEYS = {"module_api", "name", "display_name", "version"}
@@ -255,22 +255,28 @@ def _closed_object(value: Any, allowed: set[str], where: str) -> dict[str, Any]:
 def _validate_capability_metadata(item: dict[str, Any], where: str) -> dict[str, Any]:
     fields = {"capability_version", "description", "inputs", "safety", "privilege",
               "preconditions", "verification", "recovery", "affects"}
-    present = (fields | {"outputs"}) & set(item)
+    present = (fields | {"outputs", "collection"}) & set(item)
     if not present:
         # Bare Wave C declarations remain inspectable, but unavailable.
         return {}
     missing = fields - set(item)
     if missing:
         raise _error(f"{where} missing capability field {min(missing)}")
-    if type(item["capability_version"]) is not int or item["capability_version"] not in {1, 2}:
-        raise _error(f"{where}.capability_version must be 1 or 2")
-    if item["capability_version"] == 2:
+    if type(item["capability_version"]) is not int or item["capability_version"] not in {1, 2, 3}:
+        raise _error(f"{where}.capability_version must be 1, 2 or 3")
+    if "collection" in item and (item["capability_version"] != 3 or not isinstance(item["collection"], dict)):
+        raise _error(f"{where}.collection requires capability_version 3")
+    if item["capability_version"] >= 2:
         from capability_runtime import CapabilityError, validate_output_schema
         try:
-            validate_output_schema(item.get("outputs"))
+            outputs = validate_output_schema(item.get("outputs"), collection=item.get("collection"))
+            if outputs["schema_version"] != item["capability_version"] - 1:
+                raise CapabilityError("output schema version does not match capability contract")
         except CapabilityError as exc:
             raise _error(f"{where}.outputs is invalid: {exc}") from exc
         fields.add("outputs")
+        if "collection" in item:
+            fields.add("collection")
     elif "outputs" in item:
         raise _error(f"{where}.outputs requires capability_version 2")
     if not isinstance(item["description"], str) or not item["description"].strip() or len(item["description"]) > 500:
@@ -435,7 +441,7 @@ def _validate_composite_implementation(value: Any, where: str,
             _validate_id(item["provider"], f"{field}.provider")
         if "capability_version" in item and (
                 type(item["capability_version"]) is not int or
-                item["capability_version"] not in {1, 2}):
+                item["capability_version"] not in {1, 2, 3}):
             raise _error(f"{field}.capability_version is unsupported")
         inputs = item.get("inputs")
         if not isinstance(inputs, dict) or len(inputs) > 32:
@@ -561,7 +567,7 @@ def _validate_contribution(package: Path, item: Any, index: int, source: str,
         raise _error(f"{where}.payload_schema is domain_event-only")
     capability_fields = {"capability_version", "description", "inputs", "safety",
                          "preconditions", "verification", "recovery", "affects", "outputs",
-                         "implementation"}
+                         "implementation", "collection"}
     if kind == "capability":
         if result["id"].count(".") < 1:
             raise _error(f"{where}.id requires at least two dotted segments")

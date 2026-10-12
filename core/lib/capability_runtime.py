@@ -12,6 +12,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
@@ -21,8 +22,10 @@ SECRET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 TIERS = {"READ", "CHANGE", "DESTROY"}
 RECOVERY = {"reversible", "best_effort", "compensating_action", "snapshot_required", "irreversible", "not_applicable"}
 INPUT_TYPES = {"string", "integer", "number", "boolean", "enum", "object_id", "path", "secret_ref"}
-CAPABILITY_VERSIONS = {1, 2}
+CAPABILITY_VERSIONS = {1, 2, 3}
 OUTPUT_TYPES = {"string", "integer", "number", "boolean", "enum", "object_id"}
+COLLECTION_PAGE_BYTES = 64 * 1024
+COLLECTION_RESULT_BYTES = 96 * 1024
 
 
 class CapabilityError(ValueError):
@@ -31,6 +34,21 @@ class CapabilityError(ValueError):
 
 def _json(value: Any) -> Any:
     return json.loads(json.dumps(value, sort_keys=True, separators=(",", ":")))
+
+
+def _decode(raw: str) -> Any:
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise CapabilityError("duplicate JSON field")
+            result[key] = value
+        return result
+
+    def invalid_constant(_value: str) -> Any:
+        raise CapabilityError("nonfinite JSON number")
+
+    return json.loads(raw, object_pairs_hook=unique, parse_constant=invalid_constant)
 
 
 def _cap_id(value: Any) -> str:
@@ -186,14 +204,23 @@ def _validate_schema(schema: Any) -> None:
             raise CapabilityError(f"input schema field {name!r} is invalid")
 
 
-def validate_output_schema(schema: Any) -> dict[str, Any]:
+def validate_output_schema(schema: Any, *, collection: Any = None) -> dict[str, Any]:
     """Bounded domain data; never an execution or authority envelope."""
     if (not isinstance(schema, dict) or
             set(schema) != {"schema_version", "properties", "required", "additionalProperties"} or
-            type(schema["schema_version"]) is not int or schema["schema_version"] != 1 or
+            type(schema["schema_version"]) is not int or schema["schema_version"] not in {1, 2} or
             schema["additionalProperties"] is not False):
-        raise CapabilityError("outputs requires a closed version-1 schema")
-    props, required = schema["properties"], schema["required"]
+        raise CapabilityError("outputs requires a closed supported schema")
+    _validate_output_record(schema, depth=1, structured=schema["schema_version"] == 2)
+    if collection is not None:
+        _validate_collection_schema(collection, schema)
+    return copy.deepcopy(schema)
+
+
+def _validate_output_record(schema: dict[str, Any], *, depth: int, structured: bool) -> None:
+    if depth > 4:
+        raise CapabilityError("collection_limit_exceeded")
+    props, required = schema.get("properties"), schema.get("required")
     if (not isinstance(props, dict) or len(props) > 32 or not isinstance(required, list) or
             any(type(name) is not str for name in required) or
             len(required) != len(set(required)) or set(required) - set(props)):
@@ -202,11 +229,45 @@ def validate_output_schema(schema: Any) -> dict[str, Any]:
         if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", name) or
                 any(word in name for word in ("password", "token", "credential", "secret"))):
             raise CapabilityError("outputs has invalid or secret-bearing field")
-        if not isinstance(spec, dict) or set(spec) - {"type", "enum", "minimum", "maximum", "minLength", "maxLength"}:
+        if not isinstance(spec, dict):
             raise CapabilityError("output field has unsupported metadata")
         typ = spec.get("type")
+        if not isinstance(typ, str):
+            raise CapabilityError("output field has unsupported type")
+        if structured and typ == "object":
+            if set(spec) != {"type", "properties", "required", "additionalProperties"} or spec["additionalProperties"] is not False:
+                raise CapabilityError("output record must be closed")
+            _validate_output_record(spec, depth=depth + 1, structured=True)
+            continue
+        if structured and typ == "scoped_reference":
+            if set(spec) != {"type"} or depth + 1 > 4:
+                raise CapabilityError("invalid scoped reference schema")
+            continue
+        if structured and typ == "array":
+            if (depth != 1 or name != "rows" or
+                    set(spec) != {"type", "items", "minItems", "maxItems"} or
+                    type(spec["minItems"]) is not int or type(spec["maxItems"]) is not int or
+                    not 0 <= spec["minItems"] <= spec["maxItems"] <= 128):
+                raise CapabilityError("output array requires bounded collection rows")
+            items = spec["items"]
+            if (not isinstance(items, dict) or items.get("type") != "object" or
+                    set(items) != {"type", "properties", "required", "additionalProperties"} or
+                    items["additionalProperties"] is not False):
+                raise CapabilityError("output rows require closed records")
+            _validate_output_record(items, depth=3, structured=True)
+            continue
+        allowed = {"type", "enum", "minimum", "maximum", "minLength", "maxLength"}
+        if structured:
+            allowed.add("validator")
+        if set(spec) - allowed:
+            raise CapabilityError("output field has unsupported metadata")
         if typ not in OUTPUT_TYPES:
             raise CapabilityError("output field has unsupported type")
+        if "validator" in spec and (not isinstance(spec["validator"], str) or spec["validator"] not in {
+                "string": {"systemd_unit", "package_name", "unix_mode"},
+                "object_id": {"object_id"},
+        }.get(typ, set())):
+            raise CapabilityError("output validator is invalid for its type")
         if typ == "enum":
             values = spec.get("enum")
             if (not isinstance(values, list) or not 1 <= len(values) <= 32 or
@@ -225,11 +286,87 @@ def validate_output_schema(schema: Any) -> dict[str, Any]:
                 raise CapabilityError("output length bound is invalid")
         if spec.get("minLength", 0) > spec.get("maxLength", 4096):
             raise CapabilityError("output length bounds are reversed")
-    return copy.deepcopy(schema)
 
 
-def validate_outputs(schema: Any, value: Any) -> dict[str, Any]:
-    schema = validate_output_schema(schema)
+def _validate_collection_schema(collection: Any, schema: dict[str, Any]) -> None:
+    if (schema["schema_version"] != 2 or not isinstance(collection, dict) or
+            set(collection) - {"resource_kind", "inventory", "columns", "inspect"} or
+            not {"resource_kind", "inventory"} <= set(collection)):
+        raise CapabilityError("invalid collection metadata")
+    for key in ("resource_kind", "inventory"):
+        value = collection[key]
+        if not isinstance(value, str) or not 1 <= len(value) <= 80 or not CAPABILITY_ID.fullmatch(value):
+            raise CapabilityError("invalid collection identifier")
+    props = schema["properties"]
+    fields = {"resource_kind", "inventory", "rows", "page", "freshness"}
+    if set(props) != fields or set(schema["required"]) != fields:
+        raise CapabilityError("collection requires its five domain fields")
+    for key in ("resource_kind", "inventory"):
+        if props[key] != {"type": "enum", "enum": [collection[key]]}:
+            raise CapabilityError("collection identifiers must match singleton enums")
+    rows = props["rows"]
+    if rows.get("type") != "array" or rows["minItems"] != 0 or rows["maxItems"] != 128:
+        raise CapabilityError("collection rows require bounds 0..128")
+    row = rows["items"]
+    if row["properties"].get("reference") != {"type": "scoped_reference"} or "reference" not in row["required"]:
+        raise CapabilityError("collection row requires scoped reference")
+    fixed_records = {
+        "page": {
+            "snapshot_revision": {"type": "string", "minLength": 1, "maxLength": 128},
+            "returned_count": {"type": "integer", "minimum": 0, "maximum": 128},
+            "total_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+            "has_more": {"type": "boolean"},
+            "next_cursor": {"type": "string", "minLength": 1, "maxLength": 256},
+        },
+        "freshness": {
+            "observed_at": {"type": "string", "maxLength": 32},
+            "expires_at": {"type": "string", "maxLength": 32},
+        },
+    }
+    for key, record_props in fixed_records.items():
+        record = props[key]
+        required = set(record_props) - ({"next_cursor"} if key == "page" else set())
+        if (record.get("type") != "object" or record["properties"] != record_props or
+                set(record["required"]) != required):
+            raise CapabilityError("invalid collection page or freshness schema")
+    scalar = {name for name, spec in row["properties"].items() if spec["type"] in OUTPUT_TYPES}
+    if "columns" in collection:
+        columns = collection["columns"]
+        if not isinstance(columns, list) or not 1 <= len(columns) <= 32:
+            raise CapabilityError("invalid collection columns")
+        seen = set()
+        for column in columns:
+            if (not isinstance(column, dict) or set(column) != {"field", "label"} or
+                    not isinstance(column["field"], str) or column["field"] not in scalar or
+                    column["field"] in seen or not isinstance(column["label"], str) or
+                    not 1 <= len(column["label"]) <= 80 or
+                    any(ord(char) < 32 or 127 <= ord(char) < 160 for char in column["label"])):
+                raise CapabilityError("invalid collection column")
+            seen.add(column["field"])
+    if "inspect" in collection:
+        binding = collection["inspect"]
+        if not isinstance(binding, dict) or set(binding) != {"capability_id", "inputs_from_row"}:
+            raise CapabilityError("invalid collection inspect declaration")
+        _cap_id(binding["capability_id"])
+        mapping = binding["inputs_from_row"]
+        if (not isinstance(mapping, dict) or len(mapping) > 32 or
+                any(not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", key) or
+                    not isinstance(value, str) or value not in scalar for key, value in mapping.items())):
+            raise CapabilityError("invalid collection inspect mapping")
+
+
+def validate_outputs(schema: Any, value: Any, *, collection: Any = None, scope_id: str | None = None) -> dict[str, Any]:
+    schema = validate_output_schema(schema, collection=collection)
+    if schema["schema_version"] == 2:
+        try:
+            result = _validate_output_record_value(schema, value)
+            _serialized_bound(result, COLLECTION_PAGE_BYTES)
+            if collection is not None:
+                _validate_collection_value(result, scope_id=scope_id)
+            return result
+        except (ValueError, TypeError, OverflowError, RecursionError) as exc:
+            reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid_domain_output"
+            raise CapabilityError(reason) from exc
     inputs = {key: schema[key] for key in ("properties", "required", "additionalProperties")}
     try:
         result = validate_inputs(inputs, value)
@@ -240,6 +377,80 @@ def validate_outputs(schema: Any, value: Any) -> dict[str, Any]:
         if isinstance(item, str) and not schema["properties"][name].get("minLength", 0) <= len(item) <= schema["properties"][name].get("maxLength", 4096):
             raise CapabilityError("output string is outside its bounds")
     return result
+
+
+def _serialized_bound(value: Any, limit: int) -> None:
+    size = 0
+    for part in json.JSONEncoder(ensure_ascii=False, allow_nan=False, separators=(",", ":")).iterencode(value):
+        size += len(part.encode("utf-8", errors="strict"))
+        if size > limit:
+            raise CapabilityError("collection_limit_exceeded")
+
+
+def _validate_output_record_value(schema: dict[str, Any], value: Any) -> dict[str, Any]:
+    if (not isinstance(value, dict) or set(value) - set(schema["properties"]) or
+            not set(schema["required"]) <= set(value)):
+        raise CapabilityError("invalid output record")
+    result = {}
+    for name, spec in schema["properties"].items():
+        if name not in value:
+            continue
+        item = value[name]
+        if spec["type"] == "object":
+            result[name] = _validate_output_record_value(spec, item)
+        elif spec["type"] == "array":
+            if not isinstance(item, list):
+                raise CapabilityError("invalid output array")
+            if not spec["minItems"] <= len(item) <= spec["maxItems"]:
+                raise CapabilityError("collection_limit_exceeded")
+            result[name] = [_validate_output_record_value(spec["items"], row) for row in item]
+        elif spec["type"] == "scoped_reference":
+            from operational_history import object_ref
+            if not isinstance(item, dict) or set(item) != {"scope_id", "object_id"}:
+                raise CapabilityError("invalid scoped reference")
+            result[name] = object_ref(item["scope_id"], item["object_id"])
+        else:
+            if isinstance(item, str) and len(item) > spec.get("maxLength", 4096):
+                raise CapabilityError("collection_limit_exceeded")
+            if (spec["type"] in {"integer", "number"} and type(item) in (int, float) and
+                    _finite_output_number(item) and "maximum" in spec and item > spec["maximum"]):
+                raise CapabilityError("collection_limit_exceeded")
+            result[name] = _validate_value(name, item, spec)
+            if isinstance(item, str):
+                if not spec.get("minLength", 0) <= len(item) <= spec.get("maxLength", 4096):
+                    raise CapabilityError("collection_limit_exceeded")
+                if any(ord(char) < 32 or 127 <= ord(char) < 160 for char in item):
+                    raise CapabilityError("invalid output text")
+    return result
+
+
+def _validate_collection_value(value: dict[str, Any], *, scope_id: str | None) -> None:
+    references = [(row["reference"]["scope_id"], row["reference"]["object_id"]) for row in value["rows"]]
+    if len(references) != len(set(references)) or len({scope for scope, _ in references}) > 1:
+        raise CapabilityError("invalid collection references")
+    if scope_id is not None:
+        from operational_history import object_ref
+        object_ref(scope_id, "host:local")
+        if any(scope != scope_id for scope, _ in references):
+            raise CapabilityError("invalid collection scope")
+    page = value["page"]
+    if (page["returned_count"] != len(references) or page["total_count"] < len(references) or
+            (page["has_more"] and (not references or page["total_count"] <= len(references))) or
+            (page["total_count"] > 0 and not references) or
+            ("next_cursor" in page) != page["has_more"]):
+        raise CapabilityError("inconsistent collection page")
+    if "next_cursor" in page and not re.fullmatch(r"[\x20-\x7e]{1,256}", page["next_cursor"]):
+        raise CapabilityError("invalid collection cursor")
+    if any(ord(char) < 32 or ord(char) == 127 for char in page["snapshot_revision"]):
+        raise CapabilityError("invalid collection revision")
+    times = []
+    for key in ("observed_at", "expires_at"):
+        text = value["freshness"][key]
+        if not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z", text):
+            raise CapabilityError("invalid collection timestamp")
+        times.append(datetime.fromisoformat(text.replace("Z", "+00:00")))
+    if (times[1] - times[0]).total_seconds() != 30:
+        raise CapabilityError("invalid collection lifetime")
 
 
 def _finite_output_number(value: float) -> bool:
@@ -348,6 +559,7 @@ class CapabilityDescriptor:
     active: bool = True
     unavailable_reason: str | None = None
     outputs: dict[str, Any] | None = None
+    collection: dict[str, Any] | None = None
     implementation: dict[str, Any] | None = None
 
     @classmethod
@@ -358,7 +570,7 @@ class CapabilityDescriptor:
         missing = required - set(raw)
         if missing:
             raise CapabilityError(f"capability descriptor is incomplete: {min(missing)}")
-        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds", "outputs", "handler", "implementation"})
+        unknown = set(raw) - (required | {"kind", "owner", "provider", "source", "requires", "active", "unavailable_reason", "timeout_seconds", "outputs", "handler", "implementation", "collection"})
         if unknown:
             raise CapabilityError(f"capability descriptor has unknown field {min(unknown)}")
         ident = _cap_id(raw["id"])
@@ -374,9 +586,14 @@ class CapabilityDescriptor:
         if raw["privilege"] not in {"none", "required"}:
             raise CapabilityError("privilege must be none or required")
         version = _version(raw["capability_version"])
-        outputs = validate_output_schema(raw.get("outputs")) if version == 2 else None
+        collection = raw.get("collection")
+        if "collection" in raw and (version != 3 or not isinstance(collection, dict)):
+            raise CapabilityError("collection requires capability_version 3")
+        outputs = validate_output_schema(raw.get("outputs"), collection=collection) if version >= 2 else None
+        if outputs is not None and outputs["schema_version"] != version - 1:
+            raise CapabilityError("output schema version does not match capability contract")
         if version == 1 and "outputs" in raw:
-            raise CapabilityError("outputs requires capability_version 2")
+            raise CapabilityError("outputs requires a typed capability contract")
         timeout = raw.get("timeout_seconds")
         if timeout is not None and (type(timeout) is not int or timeout <= 0):
             raise CapabilityError("timeout_seconds must be a positive integer")
@@ -409,11 +626,12 @@ class CapabilityDescriptor:
             active=raw.get("active", True),
             unavailable_reason=raw.get("unavailable_reason"),
             outputs=outputs,
+            collection=copy.deepcopy(collection),
             implementation=normalized_implementation,
         )
 
     def inspect(self) -> dict[str, Any]:
-        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), **({"handler": self.handler} if self.handler is not None else {}), **({"implementation": _json(self.implementation)} if self.implementation is not None else {}), **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {}), **({"outputs": _json(self.outputs)} if self.outputs is not None else {})}
+        return {"id": self.id, "capability_version": self.capability_version, "owner": self.owner, "provider": self.provider, "source": self.source, "description": self.description, "available": bool(self.active and not self.unavailable_reason), "unavailable_reason": self.unavailable_reason, "inputs": _json(self.inputs), "safety": _json(self.safety), "privilege": self.privilege, "preconditions": _json(self.preconditions), "verification": _json(self.verification), "recovery": _json(self.recovery), "affects": _json(self.affects), **({"handler": self.handler} if self.handler is not None else {}), **({"implementation": _json(self.implementation)} if self.implementation is not None else {}), **({"timeout_seconds": self.timeout_seconds} if self.timeout_seconds is not None else {}), **({"outputs": copy.deepcopy(self.outputs)} if self.outputs is not None else {}), **({"collection": copy.deepcopy(self.collection)} if self.collection is not None else {})}
 
 
 @dataclass(frozen=True)
@@ -474,7 +692,33 @@ class CapabilityRegistry:
         ident = _cap_id(capability_id)
         resolution = self.resolve(ident, provider)
         records = self._records.get(ident, [])
-        return {"resolution": {"status": resolution.status, "providers": list(resolution.providers), "selected_provider": resolution.selected_provider, "reason": resolution.reason}, "declarations": [d.inspect() for d in records]}
+        return {"resolution": {"status": resolution.status, "providers": list(resolution.providers), "selected_provider": resolution.selected_provider, "reason": resolution.reason}, "declarations": [dict(d.inspect(), **({"inspection_binding": self.inspection_binding(d)} if d.collection is not None else {})) for d in records]}
+
+    def inspection_binding(self, descriptor: CapabilityDescriptor, *, provider: str | None = None) -> dict[str, Any]:
+        """Evaluate declared READ metadata only; never probe or invoke a target."""
+        if descriptor.collection is None or "inspect" not in descriptor.collection:
+            return {"status": "unavailable", "reason": "not_declared"}
+        if not descriptor.active or descriptor.unavailable_reason:
+            return {"status": "unavailable", "reason": "collection_unavailable"}
+        binding = descriptor.collection["inspect"]
+        resolution = self.resolve(binding["capability_id"], provider)
+        result = {"status": resolution.status, "reason": resolution.reason,
+                  "providers": list(resolution.providers), "selected_provider": resolution.selected_provider}
+        if not resolution.available:
+            return result
+        target = self._selected(binding["capability_id"], resolution.selected_provider)
+        mapping = binding["inputs_from_row"]
+        if (target.safety["tier"] != "READ" or set(mapping) - set(target.inputs["properties"]) or
+                set(target.inputs["required"]) - set(mapping)):
+            return {**result, "status": "unavailable", "reason": "incompatible_inspection_target"}
+        row = descriptor.outputs["properties"]["rows"]["items"]["properties"]
+        required = descriptor.outputs["properties"]["rows"]["items"]["required"]
+        for input_name, field_name in mapping.items():
+            spec = target.inputs["properties"][input_name]
+            if (input_name in target.inputs["required"] and field_name not in required or
+                    not _inspection_field_compatible(row[field_name], spec, descriptor.collection["resource_kind"])):
+                return {**result, "status": "unavailable", "reason": "incompatible_inspection_target"}
+        return {**result, "capability_version": target.capability_version}
 
     def prepare(self, capability_id: str, inputs: dict[str, Any] | None = None, *, provider: str | None = None, capability_version: int | None = None, platform_family: str | None = None) -> dict[str, Any]:
         """Resolve and freeze a proposal without approval or execution."""
@@ -543,6 +787,40 @@ class CapabilityRegistry:
             proposal["composition_plan"] = resolved_plan
         proposal["digest"] = hashlib.sha256(json.dumps(proposal, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return proposal
+
+
+def _inspection_field_compatible(row: dict[str, Any], target: dict[str, Any], resource_kind: str) -> bool:
+    if "selector" in target:
+        from input_candidates import CandidateError, validate_selector
+        try:
+            selector = validate_selector(target["selector"], input_type=target["type"])
+        except CandidateError:
+            return False
+        if selector["resource_kind"] != resource_kind:
+            return False
+    if target["type"] not in OUTPUT_TYPES:
+        return False
+    if row["type"] == "enum":
+        try:
+            for value in row["enum"]:
+                _validate_value("inspection", value, target)
+            return True
+        except (CapabilityError, TypeError, OverflowError):
+            return False
+    if row["type"] != target["type"]:
+        return False
+    if "validator" in target and row.get("validator") != target["validator"]:
+        return False
+    if "pattern" in target:
+        return False
+    if row["type"] in {"string", "object_id"}:
+        return (row.get("minLength", 0) >= target.get("minLength", 0) and
+                row.get("maxLength", 4096) <= target.get("maxLength", 4096))
+    if row["type"] in {"integer", "number"}:
+        return all(bound not in target or bound in row and (
+            row[bound] >= target[bound] if bound == "minimum" else row[bound] <= target[bound])
+            for bound in ("minimum", "maximum"))
+    return True
 
 
 def _affected(template: Any, inputs: dict[str, Any]) -> str | None:
@@ -646,7 +924,7 @@ class CapabilityPlan:
                 "objects": _json(self.objects), "steps": _json(self.steps),
                 "final_check": _json(self.final_check), "digest": self.digest}
 
-def _handler_output_cli(schema_raw: str) -> int:
+def _handler_output_cli(schema_raw: str, collection_raw: str = "null", scope_id: str | None = None) -> int:
     """Validate one raw module-handler envelope and v2 output in one process.
 
     Exit 2 means provider/handler failure (matching the old handler-envelope
@@ -655,24 +933,30 @@ def _handler_output_cli(schema_raw: str) -> int:
     """
     import sys
 
-    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise CapabilityError("duplicate output field")
-            result[key] = value
-        return result
-
+    schema = None
     try:
-        schema = json.loads(schema_raw)
-        raw = sys.stdin.read()
-        envelope = json.loads(raw, object_pairs_hook=unique)
-    except (json.JSONDecodeError, TypeError, CapabilityError):
-        print("module handler: invalid JSON response", file=sys.stderr)
-        return 2
+        schema = _decode(schema_raw)
+        collection = _decode(collection_raw)
+        validate_output_schema(schema, collection=collection)
+        if schema.get("schema_version") == 2:
+            # Bound the wire envelope before JSON parsing; leave domain limits
+            # to the shared validator, including escaped UTF-8 representation.
+            raw_bytes = sys.stdin.buffer.read(COLLECTION_RESULT_BYTES + 1)
+            if len(raw_bytes) > COLLECTION_RESULT_BYTES:
+                print("capability runtime: collection_limit_exceeded", file=sys.stderr)
+                return 3
+            raw = raw_bytes.decode("utf-8", errors="strict")
+        else:
+            raw = sys.stdin.read()
+        envelope = _decode(raw)
+    except (ValueError, TypeError, RecursionError):
+        typed_collection = isinstance(schema, dict) and schema.get("schema_version") == 2
+        print("capability runtime: invalid domain output" if typed_collection else
+              "module handler: invalid JSON response", file=sys.stderr)
+        return 3 if typed_collection else 2
     if not isinstance(envelope, dict):
         print("module handler: response must be a JSON object", file=sys.stderr)
-        return 2
+        return 3 if schema["schema_version"] == 2 else 2
     status = envelope.get("status")
     if status == "error":
         error = envelope.get("error")
@@ -680,17 +964,19 @@ def _handler_output_cli(schema_raw: str) -> int:
                 not isinstance(error.get("code"), str) or not isinstance(error.get("message"), str)):
             print("module handler: invalid error response", file=sys.stderr)
             return 2
-        print(f"module handler: handler error {error['code']}: {error['message']}", file=sys.stderr)
+        print("module handler: handler error" if schema["schema_version"] == 2 else
+              f"module handler: handler error {error['code']}: {error['message']}", file=sys.stderr)
         return 2
     if status != "ok" or set(envelope) != {"status", "result"}:
         print("module handler: invalid output envelope", file=sys.stderr)
-        return 2
+        return 3 if schema["schema_version"] == 2 else 2
     try:
-        result = validate_outputs(schema, envelope["result"])
-    except (CapabilityError, TypeError, OverflowError):
-        print("capability runtime: invalid domain output", file=sys.stderr)
+        result = validate_outputs(schema, envelope["result"], collection=collection, scope_id=scope_id)
+    except (CapabilityError, TypeError, OverflowError) as exc:
+        reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid domain output"
+        print(f"capability runtime: {reason}", file=sys.stderr)
         return 3
-    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    print(json.dumps(result, ensure_ascii=schema["schema_version"] == 1, sort_keys=True, separators=(",", ":")))
     return 0
 
 
@@ -698,8 +984,8 @@ def _cli() -> int:
     """JSON stdin bridge for shell-owned loaders (resolution only)."""
     import sys
 
-    if len(sys.argv) == 3 and sys.argv[1] == "handler-output":
-        return _handler_output_cli(sys.argv[2])
+    if 3 <= len(sys.argv) <= 5 and sys.argv[1] == "handler-output":
+        return _handler_output_cli(*sys.argv[2:])
 
     shell_prepare = len(sys.argv) == 7 and sys.argv[1] == "prepare-shell"
     if not shell_prepare and len(sys.argv) != 1:
@@ -709,36 +995,29 @@ def _cli() -> int:
     op = None
     try:
         if shell_prepare:
-            records = json.load(sys.stdin)
+            records = _decode(sys.stdin.read())
             ident, inputs_raw, provider, version_raw, family = sys.argv[2:]
             request = {
                 "op": "prepare",
                 "records": records,
                 "id": ident,
-                "inputs": json.loads(inputs_raw),
+                "inputs": _decode(inputs_raw),
                 "provider": provider or None,
                 "platform_family": family or None,
             }
             if version_raw:
-                if version_raw not in {"1", "2"}:
+                if version_raw not in {"1", "2", "3"}:
                     raise CapabilityError("unsupported capability_version")
                 request["capability_version"] = int(version_raw)
         else:
-            request = json.load(sys.stdin)
+            request = _decode(sys.stdin.read())
         op = request.get("op")
         if op == "output":
-            def unique(pairs):
-                result = {}
-                for key, value in pairs:
-                    if key in result:
-                        raise CapabilityError("duplicate output field")
-                    result[key] = value
-                return result
-            envelope = json.loads(request["envelope"], object_pairs_hook=unique)
+            envelope = _decode(request["envelope"])
             if not isinstance(envelope, dict) or set(envelope) != {"status", "result"} or envelope["status"] != "ok":
                 raise CapabilityError("invalid output envelope")
-            result = validate_outputs(request["outputs"], envelope["result"])
-            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            result = validate_outputs(request["outputs"], envelope["result"], collection=request.get("collection"), scope_id=request.get("scope_id"))
+            print(json.dumps(result, ensure_ascii=request["outputs"]["schema_version"] == 1, sort_keys=True, separators=(",", ":")))
             return 0
         if op == "validate":
             descriptor = CapabilityDescriptor.from_dict(request["descriptor"])
@@ -752,12 +1031,8 @@ def _cli() -> int:
             # Loader rows may carry a normalized descriptor under descriptor;
             # inactive rows remain inspectable but cannot be prepared.
             descriptor = dict(item.get("descriptor", item))
-            # Shell preparation already supplies the selected capability plus
-            # its bounded dependency closure. Keep those child/final-check
-            # descriptors available for composite resolution. Resolve-only
-            # inspection may still filter to one identity.
-            if op == "resolve" and request.get("id") and descriptor.get("id") != request["id"]:
-                continue
+            # Keep supplied targets available for composition and collection
+            # inspection; the query itself still projects only its requested ID.
             if descriptor.get("kind", "capability") != "capability":
                 continue
             # Loader metadata is authoritative for ownership and activation;
@@ -795,8 +1070,9 @@ def _cli() -> int:
             print(json.dumps(value, sort_keys=True, separators=(",", ":")))
             return 0
         raise CapabilityError("unsupported operation")
-    except (CapabilityError, KeyError, TypeError, json.JSONDecodeError) as exc:
-        print("capability runtime: invalid domain output" if op == "output" else f"capability runtime: {exc}", file=sys.stderr)
+    except (ValueError, KeyError, TypeError, RecursionError) as exc:
+        reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid domain output"
+        print(f"capability runtime: {reason}" if op == "output" else f"capability runtime: {exc}", file=sys.stderr)
         return 1
 
 
@@ -817,9 +1093,11 @@ def _validate_result(value: Any) -> None:
         raise CapabilityError("invalid output_status")
     if value.get("output_status") == "invalid" and (value.get("result") is not None or value["outcome"] == "success"):
         raise CapabilityError("invalid domain output cannot be reported as success")
-    if value.get("capability_version") == 2 and value["outcome"] == "success" and (
+    if value.get("capability_version") in {2, 3} and value["outcome"] == "success" and (
             value.get("output_status") != "valid" or not isinstance(value.get("result"), dict)):
-        raise CapabilityError("capability version 2 success requires valid domain output")
+        raise CapabilityError("typed capability success requires valid domain output")
+    if value.get("capability_version") == 3:
+        _serialized_bound(value, COLLECTION_RESULT_BYTES)
     if value["outcome"] == "success":
         if value["execution_status"] != "succeeded" or value["verification_status"] in {"failed", "unknown", "unavailable"}:
             raise CapabilityError("unverified execution cannot be reported as success")

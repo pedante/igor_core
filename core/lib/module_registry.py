@@ -335,7 +335,7 @@ def static_unavailable_reason(record: dict[str, Any], owner: str) -> str:
             for spec in properties.values()
         ):
             return "secret_consumer_unavailable"
-        if record.get("privilege") == "required" and record.get("capability_version") == 2:
+        if record.get("privilege") == "required" and record.get("capability_version") in {2, 3}:
             return "typed_privileged_output_adapter_unavailable"
         if record.get("privilege") == "required":
             ident = record.get("id")

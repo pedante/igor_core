@@ -42,7 +42,7 @@ def tool_fields(text):
         raise ValueError("unknown or missing tool fields")
     for key, value in data.items():
         if name == "run_capability" and key == "capability_version":
-            if type(value) is not int or value not in {1, 2}:
+            if type(value) is not int or value not in {1, 2, 3}:
                 raise ValueError("unsupported capability version")
             value = str(value)
         if name == "run_capability" and key == "inputs":
