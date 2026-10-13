@@ -432,7 +432,7 @@ _igor_capability_nonexecution_result() {
     if [ -z "$_operation" ]; then
         _operation="$(_igor_history_begin "$1" "${IGOR_HISTORY_CORRELATION_ID:-}" "${ai_mode:-assist}")" || return 1
     fi
-    _result="$("$(_ml_python)" - "$1" "$2" "${3:-not_requested}" "$_privilege_result" "$_operation" <<'PY'
+    _result="$("$(_ml_python)" - "$1" "$2" "${3:-not_requested}" "$_privilege_result" "$_operation" "${5:-}" <<'PY'
 import json, sys
 from datetime import datetime, timezone
 p = json.loads(sys.argv[1])
@@ -447,12 +447,46 @@ print(json.dumps({"operation_id": sys.argv[5],
                   "execution_status": "not_executed",
                   "verification_status": "not_applicable", "outcome": reason,
                   "affected_objects": p["affected_objects"], "recovery": p["recovery"],
-                  "verification_evidence": [],
+                  "verification_evidence": ([{"source":"capability.inspection","reason":sys.argv[6]}] if sys.argv[6] else []),
                   "recorded_at": datetime.now(timezone.utc).isoformat()},
                  sort_keys=True, separators=(",", ":")))
 PY
     )" || return 1
     _igor_capability_publish_result "$_result"
+}
+
+_igor_collection_inspection() {
+    local _action="$1" _argument="$2" _proposal="${3:-}" _selection _id _ids _records _key _target
+    if [ "$_action" = inspection-check ]; then
+        _selection="$("$(_ml_python)" - "$_argument" "${_IGOR_LOADER_DIR}/core/lib" <<'PY'
+import json,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[2])
+from collection_runtime import read_private
+print(json.dumps(read_private(Path(sys.argv[1]),65536)["selection"]))
+PY
+)" || { printf inspection_unavailable; return 1; }
+    else
+        _selection="$_argument"
+    fi
+    _id="$(_igor_capability_field "$_selection" collection_id)" || { printf inspection_unavailable; return 1; }
+    _ids="$(_ml_capability_resolution_ids "$_id")" || { printf inspection_unavailable; return 1; }
+    for _key in "${!_IGOR_CONTRIBUTIONS[@]}"; do
+        case "$_key" in
+            "capability:$_id"|"capability:$_id@"*)
+                _target="$(_igor_capability_field "${_IGOR_CONTRIBUTIONS[$_key]}" collection.inspect.capability_id 2>/dev/null)" || continue
+                [ -z "$_target" ] || _ids+=$'\n'"$_target"
+                ;;
+        esac
+    done
+    _records="$(igor_capability_list "$_ids")" || { printf inspection_unavailable; return 1; }
+    if [ "$_action" = inspection-check ]; then
+        printf '%s' "$_records" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+            "$_action" "$_argument" "$IGOR_CAPABILITY_RESULT_OWNER" "$IGOR_CAPABILITY_RESULT_FILE" "$_proposal"
+    else
+        printf '%s' "$_records" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+            "$_action" "$_argument" "$IGOR_CAPABILITY_RESULT_OWNER" "$IGOR_CAPABILITY_RESULT_FILE"
+    fi
 }
 
 _igor_capability_preconditions() {
@@ -845,7 +879,17 @@ PY
     _inputs="${_proposal_fields[2]}"
     _version="${_proposal_fields[3]}"
     _digest="${_proposal_fields[4]}"
-    _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider" "$_version")" || return 1
+    if [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
+        [ "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" = "$_digest" ] || return 1
+    fi
+    _fresh="$(igor_capability_prepare "$_id" "$_inputs" "$_provider" "$_version")" || {
+        if [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
+            _igor_capability_nonexecution_result "$_proposal" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+                "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}" inspection_unavailable
+            return 0
+        fi
+        return 1
+    }
     [ -n "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" ] &&
         [ "$IGOR_CAPABILITY_APPROVED_DIGEST" = "$_digest" ] || return 1
     if [ -z "$IGOR_HISTORY_OPERATION_ID" ]; then
@@ -888,7 +932,24 @@ PY
         _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}"
         return 0
     fi
+    if [ "$_digest" != "$_fresh_digest" ] && [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
+        _igor_capability_nonexecution_result "$_proposal" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+            "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}" inspection_unavailable
+        return 0
+    fi
     [ "$_digest" = "$_fresh_digest" ] || return 1
+    if [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
+        local _inspection_check
+        _inspection_check="$(_igor_collection_inspection inspection-check "$IGOR_COLLECTION_INSPECTION_FILE" "$_fresh")" || {
+            case "$_inspection_check" in
+                collection_expired|invalid_collection_selection|collection_limit_exceeded) ;;
+                *) _inspection_check=inspection_unavailable ;;
+            esac
+            _igor_capability_nonexecution_result "$_fresh" precondition_failed "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+                "${IGOR_CAPABILITY_PRIVILEGE_STATUS:-not_requested}" "$_inspection_check"
+            return 0
+        }
+    fi
     # The execution-fence prepare above just evaluated current preconditions.
     # Repeating the same probes here adds latency without strengthening the
     # frozen proposal comparison.

@@ -83,7 +83,7 @@ class Terminal:
         return "\n".join("".join(line) for line in self.lines)
 
 
-def test_system_curses_pagination_refresh_loading_and_session_preservation(tmp_path):
+def test_system_curses_pagination_refresh_loading_and_session_preservation(tmp_path, inspect=False):
     root = tmp_path / "installation"
     (root / "modules").mkdir(parents=True)
     shutil.copytree(ROOT / "modules/system", root / "modules/system")
@@ -95,7 +95,10 @@ def test_system_curses_pagination_refresh_loading_and_session_preservation(tmp_p
     source = root / "inventory"
     source.write_text("".join(f"unit{i:04}.service loaded inactive dead Fixture\n" for i in range(51)))
     adapter = root / "bin/systemctl"
-    adapter.write_text('#!/bin/sh\n[ "$1" = list-units ] || exit 2\ncat "$COLLECTION_SOURCE"\n')
+    if inspect:
+        adapter.write_text('#!/bin/sh\ncase "$1" in\nlist-units) cat "$COLLECTION_SOURCE";;\nshow) printf "loaded\\n";;\nis-active) printf "%s\\n" "$*" >> "$STATUS_CALLS"; printf "active\\n";;\n*) exit 2;;\nesac\n')
+    else:
+        adapter.write_text('#!/bin/sh\n[ "$1" = list-units ] || exit 2\ncat "$COLLECTION_SOURCE"\n')
     adapter.chmod(0o700)
     stream = root / "data/runtime/events"
     driver = root / "backend.sh"
@@ -117,6 +120,7 @@ _ai_frontend_event session_finished '' completed
                IGOR_DISTRO_ID="debian", IGOR_DISTRO_FAMILY="debian", COLLECTION_SOURCE=str(source),
                IGOR_AI_MODE="assist", IGOR_AI_FRONTEND="tui", TERM="xterm",
                IGOR_AI_EVENT_STREAM=str(stream), IGOR_TUI_MOUSE="0",
+               STATUS_CALLS=str(root / "status-calls"),
                PATH=str(root / "bin") + ":" + os.environ["PATH"])
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 110, 0, 0))
@@ -138,6 +142,8 @@ _ai_frontend_event session_finished '' completed
                 terminal.feed(data)
                 if expected in terminal.text():
                     return time.monotonic()
+                if expected == "Details - ready" and any("Details - " + status in terminal.text() for status in ("unavailable", "failed", "expired")):
+                    raise AssertionError("Inspection failed: " + terminal.text())
             if process.poll() is not None:
                 break
         raise AssertionError(f"missing {expected!r}: {transcript[-5000:].decode(errors='replace')}")
@@ -165,6 +171,36 @@ _ai_frontend_event session_finished '' completed
         first = next(e for e in events() if e["event_type"] == "action_result" and e.get("result", {}).get("capability_id") == "system.service.list")
         assert first["result"]["output_status"] == "valid"
         cursor = first["result"]["result"]["page"]["next_cursor"]
+        if inspect:
+            detail_started = time.monotonic()
+            os.write(master, b"\n")
+            detail_loading = wait_text("Details - loading", 3)
+            detail_ready = wait_text("Details - ready")
+            wait_text("Backend READY", 15)
+            records = [e for e in events() if e["event_type"] == "action_result" and e.get("inspection")]
+            assert len(records) == 1
+            record = records[0]
+            assert record["result"]["capability_id"] == "system.service.status"
+            assert record["result"]["output_status"] == "valid" and record["result"]["result"]["unit"] == "unit0000.service"
+            assert record["inspection"]["reference"] == first["result"]["result"]["rows"][0]["reference"]
+            assert (root / "status-calls").read_text().splitlines() == ["is-active -- unit0000.service"]
+            back_started = time.monotonic()
+            os.write(master, b"\x1b")
+            back_ready = wait_text("Rows 1-50 of 51", 3)
+            assert sum(e["event_type"] == "action_result" and e.get("result", {}).get("capability_id") == "system.service.list" for e in events()) == 1
+            os.write(master, b"\x1b")
+            wait_text("LIVE", 3)
+            os.write(master, b"quit\n")
+            process.wait(timeout=10)
+            assert process.returncode == 0
+            assert cursor.encode() not in transcript
+            if os.environ.get("IGOR_VALIDATION_REPORT"):
+                measurement = {"environment": platform.platform(), "frontend": "actual curses/PTY, canonical dispatch, mocked System",
+                               "detail_loading_visible_seconds": detail_loading - detail_started,
+                               "detail_result_seconds": detail_ready - detail_started, "back_seconds": back_ready - back_started,
+                               "first_page_seconds": first_at - sent_at}
+                (Path(os.environ["IGOR_VALIDATION_REPORT"]).parent / "collection-inspection-measurement.json").write_text(json.dumps(measurement, indent=2) + "\n")
+            return
         os.write(master, b"n")
         wait_text("Rows 51-51 of 51")
         wait_text("Backend READY", 15)

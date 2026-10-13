@@ -10,6 +10,63 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
+## Collection EXECUTION 1D — Owner accepted at READ inspection scope
+
+Owner accepted Increment D on 2026-10-13: backend-authorized resource inspection,
+authoritative snapshot input derivation, READ-only binding enforcement, canonical
+execution, generic detail rendering, Guide/approval enforcement and lifecycle
+recovery. Acceptance covers D's defined READ inspection scope only; the complete
+Collection Operator milestone remains open. The Owner authorized one checkpoint
+commit of the accepted implementation and stabilization.
+
+Owner authorized Increment D at clean accepted C checkpoint
+`7946742184225e2f14cb3588e21cca654cf3b9b0` on `igor2`.
+The candidate adds descriptor-owned READ inspection with backend snapshot
+membership, trusted input derivation and execution-time revalidation through the
+existing registry/Guide/approval/privilege/result path. Generic details return to
+the same inventory page. No mutation action, alternate dispatcher or Increment E.
+
+[Increment D implementation and evidence](COLLECTION_INCREMENT_D.md) records all
+five proof classes at D scope. The first closing run exhausted its governor:
+220 reported passing observations, a new I001 mislabelled baseline, four total-
+budget timeouts and one permitted LAN-IP scrub skip. Those failures/interruptions
+remain historical, not passing evidence. The Owner renewed the governor externally.
+
+Final targeted stabilization verifies corrected lint, seven inspection-specific
+Guide cases, all 25 approval identities, all three interrupted History nodes and
+both secret-reference tests. Five new Guide assertion failures conflated existing
+session action IDs with durable History IDs; corrected tests preserve both
+identities and verify the matching canonical episode. No production behavior or
+accepted architecture was changed during this final stabilization.
+
+The qualifying ledger `/tmp/igor2-d-final-evidence-ledger.json` establishes
+244 unique PASS identities/check groups, 1 selected-lint BASELINE_FIXED,
+1 permitted ENV_SKIP and zero unresolved required D failures/timeouts/cancellations
+or unverified identities. Closing documentation evidence is recorded separately;
+required security executions were fresh. The controlled actual curses System
+list → Enter → canonical status → validated details → Back proof remains preserved
+without an unnecessary repeat. The report records exact provenance and evidence
+invalidation boundaries. Historical A/B/C baseline limitations remain separate.
+
+Observed detail time 12.355853 s includes backend preparation/execution,
+projection, UI rendering and fixture polling; it is not isolated handler latency.
+No peak-memory/Pi or maximum-page acceptance is claimed; B/C latency follow-ups
+remain open. All 16 scoped files are preserved. Unrelated untracked `katemark-git/`
+package-build work is preserved outside the D manifest.
+
+The checkpoint review verified all 16 scoped file hashes and the tracked diff
+against `/tmp/igor2-d-final-candidate-proof.json`, and verified the qualifying
+ledger's 13 summaries and 57 raw logs. Only this acceptance record and the D report
+changed afterward; production/tests and their qualifying evidence remain intact.
+Historical failures, four budget-induced timeouts and accepted baseline
+limitations remain separately documented. Expensive qualifying tests were not
+repeated for the checkpoint.
+
+The checkpoint commit closes Increment D at its accepted scope. Stop after the
+authorized commit; do not push, merge, operate live services or begin Increment E.
+The complete Collection Operator milestone and hardware/performance gates remain
+open under D078/D079 and the Collection RFC.
+
 ## Collection EXECUTION 1C — Owner accepted at generic TUI scope
 
 Owner accepted Increment C on 2026-10-13: descriptor-driven collection rendering,

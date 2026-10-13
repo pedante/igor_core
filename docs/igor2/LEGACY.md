@@ -25,9 +25,13 @@ Affected System consumers/pins/fixtures migrate together; there is no scalar
 adapter or second capability ID. Retained History versions keep their meaning,
 and unrelated v1/v2 contracts remain supported. See the
 [Increment B evidence](COLLECTION_INCREMENT_B.md) and [STATUS](STATUS.md) for
-actual passing proof and reviewed limitations. The local Increment C candidate
+actual passing proof and reviewed limitations. Owner-accepted Increment C
 adds a generic collection view over the existing curses/event/operator path;
 scalar/conversational rendering remains live. See [C evidence](COLLECTION_INCREMENT_C.md).
+Increment D's local candidate adds descriptor-owned READ inspection through the
+same capability/approval/result machinery, with frozen snapshot membership and
+execution-time revalidation. No alternate executor, resource database or mutation
+action is introduced; see [D status](COLLECTION_INCREMENT_D.md).
 The complete collection renderer/inspection milestone remains open.
 
 ## OpenRouter ownership cutover — Boundary B, D069

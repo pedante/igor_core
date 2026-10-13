@@ -156,6 +156,8 @@ class EventState:
                     if (not entry or entry.get("availability") != "active" or
                             any(entry.get(key) != self.collection.entry.get(key) for key in ("outputs", "collection", "owner"))):
                         self.collection.fail("unavailable")
+                        if self.collection.detail_state:
+                            self.collection.detail_failure("inspection_unavailable")
             return True
         if kind == "operator_candidates":
             result = event.get("result")
@@ -202,7 +204,10 @@ class EventState:
         request_id = event.get("view_request_id")
         if kind in {"warning", "error"} and view_request_id(request_id):
             if self.collection and self.collection.request_id == request_id:
-                self.collection.fail("unavailable")
+                if self.collection.request_kind == "inspect":
+                    self.collection.detail_failure(event.get("status"))
+                else:
+                    self.collection.fail("unavailable")
             return True
         if kind == "settings_snapshot":
             snapshot = event.get("settings")
@@ -252,7 +257,10 @@ class EventState:
                     except (ValueError, KeyError, TypeError):
                         return True
                 if self.collection:
-                    self.collection.accept(event.get("result"))
+                    if self.collection.request_kind == "inspect":
+                        self.collection.accept_detail(event)
+                    else:
+                        self.collection.accept(event.get("result"))
                     self.activity.append(Activity("action_result", "Collection: " + self.collection.state))
                     del self.activity[:-2000]
                 return True
@@ -1351,6 +1359,20 @@ def _draw_collection(screen: Any, view: CollectionView, backend_ready: bool = Fa
                 screen.addnstr(row, 0, safe, width - 1, curses.A_REVERSE if selected else 0)
             except curses.error:
                 pass
+    if view.detail_state:
+        put(0, "Details - " + view.detail_state + (" | Backend READY" if backend_ready else " | Backend busy"))
+        reference = view.detail_reference or {}
+        put(1, reference.get("scope_id", "") + " / " + reference.get("object_id", ""))
+        descriptor = view.detail_descriptor or {}
+        put(2, descriptor.get("id", "") + " | " + descriptor.get("provider", "") +
+            (" | Newly observed READ result" if view.detail_state != "inline" else " | Snapshot properties; no fresh probe"))
+        lines = render_structured({**view.detail_status, "properties": view.detail_result or {"status": view.detail_state}}, max_rows=200, max_depth=8)
+        for row, line in enumerate(lines[view.detail_scroll:view.detail_scroll + max(0, height - 6)], 3):
+            put(row, line)
+        put(height - 3, "Inspection does not renew inventory freshness.")
+        put(height - 2, "Up/Down scroll  r re-inspect if fresh  Esc/b Back  : explorer")
+        screen.refresh()
+        return
     title = view.entry["collection"]
     put(0, title["resource_kind"] + " / " + title["inventory"] + " - " + view.state
         + (" | Backend READY" if backend_ready else " | Backend busy"))
@@ -1381,18 +1403,40 @@ def _draw_collection(screen: Any, view: CollectionView, backend_ready: bool = Fa
         put(4, "Empty page" if not page[0]["rows"] else "No page-local matches")
     put(height - 4, "Fresh until " + view.freshness.get("expires_at", "-") + " | " + view.notice)
     put(height - 3, "Up/Down select  PgUp/PgDn scroll  Left/Right columns  / filter")
-    put(height - 2, "n next  p previous cached page  r refresh  Enter selection only  Esc/b close")
+    put(height - 2, "n next  p previous cached page  r refresh  Enter READ details  Esc/b close")
     screen.refresh()
 
 
 def _collection_key(key, screen, master, state):
     view = state.collection
-    if view is None or state.pending_action:
+    if view is None:
+        return False
+    if state.pending_action:
+        if view.detail_state and key in (27, ord("b")):
+            view.close_detail()
+            return True
         return False
     if key in (3, 9, 16, curses.KEY_F1, 11):
         if key in (3, 9, 16):
             state.collection = None
         return False
+    if view.detail_state:
+        if key in (27, ord("b")):
+            view.close_detail()
+            view.expire()
+        elif key == ord(":"):
+            state.collection = None
+            return False
+        elif key in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE, curses.KEY_NPAGE):
+            delta = -1 if key in (curses.KEY_UP, curses.KEY_PPAGE) else 1
+            view.detail_scroll = max(0, min(199, view.detail_scroll + delta))
+        elif key == ord("r") and state.backend_ready and view.detail_state != "loading":
+            view.close_detail()
+            command = view.inspection_request(view.detail_provider)
+            if command:
+                _send(master, command)
+                state.backend_ready = False
+        return True
     if view.filtering:
         if key in (27, 10, 13):
             view.filtering = False
@@ -1430,7 +1474,19 @@ def _collection_key(key, screen, master, state):
                 state.backend_ready = False
                 view.notice = ""
     elif key in (10, 13, curses.KEY_ENTER):
-        view.notice = "Selection only; READ inspection is deferred."
+        if not state.backend_ready:
+            view.notice = "Backend busy; inspection not requested."
+        else:
+            target = view.entry["collection"].get("inspect", {}).get("capability_id")
+            providers = sorted({entry["provider"] for entry in (state.operator_snapshot or {}).get("entries", [])
+                                if entry.get("target_id") == target and entry.get("safety") == "READ" and entry.get("availability") == "active"})
+            provider = _settings_choice(screen, "Inspection provider", tuple(providers), "") if len(providers) > 1 else None
+            if len(providers) > 1 and provider is None:
+                return True
+            command = view.inspection_request(provider)
+            if command:
+                _send(master, command)
+                state.backend_ready = False
     return True
 
 
@@ -2332,6 +2388,7 @@ def _help_overlay(screen: Any) -> None:
         "Ctrl+P opens commands · : on empty input explores modules/capabilities",
         "Ctrl+G collapse/expand successful tool output",
         "Collections: arrows select, n/p pages, / page-local filter, r refresh, Esc close",
+        "Collection Enter: declared READ details; details Esc/b: same page; r: fresh READ",
         "Ctrl+C or /stop sends the backend stop action",
         "Guide: Run / Skip / Explain / Stop",
         "CHANGE: Yes / No / Explain / Stop",

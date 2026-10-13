@@ -21,6 +21,7 @@ from capability_runtime import (
     COLLECTION_PAGE_BYTES,
     CapabilityError,
     _decode,
+    _registry_from_records,
     _serialized_bound,
     _validate_output_record_value,
     validate_output_schema,
@@ -130,6 +131,14 @@ class Snapshots:
                 path.unlink()
         for path in self.directory.glob(".write-*"):
             path.unlink()
+        for path in self.directory.parent.glob(".collection-inspection.*"):
+            try:
+                pending = read_private(path, 65536)
+                if not _alive(pending["session_owner"]):
+                    path.unlink()
+            except (OSError, ValueError, KeyError, TypeError):
+                if path.exists() and time.time() - path.stat().st_mtime >= TTL:
+                    path.unlink()
 
     def inspect(self):
         with self.locked() as state:
@@ -200,6 +209,36 @@ class Snapshots:
                 raise CapabilityError("invalid_collection_cursor")
             return self._page(state, revision, entry, snapshot, offset, context, limit)
 
+    def selection(self, context, revision, reference):
+        """Resolve an opaque selection only within its original live lease."""
+        if (not isinstance(revision, str) or len(revision) != 32 or
+                any(c not in "0123456789abcdef" for c in revision) or
+                not isinstance(reference, dict) or set(reference) != {"scope_id", "object_id"}):
+            raise CapabilityError("invalid_collection_selection")
+        try:
+            valid = object_ref(reference["scope_id"], reference["object_id"]) == reference
+        except ValueError:
+            valid = False
+        if not valid or reference["scope_id"] != context["scope_id"]:
+            raise CapabilityError("invalid_collection_selection")
+        with self.locked() as state:
+            entry = state["entries"].get(revision)
+            if entry is None:
+                raise CapabilityError("collection_expired")
+            if (entry["state"] != "committed" or not _alive(context["session_owner"]) or
+                    entry["binding"] != self.binding(context, entry["limit"])):
+                raise CapabilityError("invalid_collection_selection")
+            snapshot = read_private(self.directory / (revision + ".json"), SNAPSHOT_BYTES)
+            row_schema = validate_output_schema(context["descriptor"]["outputs"], collection=context["descriptor"]["collection"])["properties"]["rows"]["items"]
+            matches = [row for row in snapshot["rows"] if row.get("reference") == reference]
+            if len(matches) != 1:
+                raise CapabilityError("invalid_collection_selection")
+            row = _validate_output_record_value(row_schema, matches[0])
+            _serialized_bound(row, COLLECTION_PAGE_BYTES)
+            position = snapshot["rows"].index(matches[0])
+            row = self._page(state, revision, entry, snapshot, position, context, 1)["rows"][0]
+            return row, snapshot["freshness"]
+
     def build(self, context, limit, producer):
         if type(limit) is not int or not 1 <= limit <= 128:
             raise CapabilityError("invalid_collection_limit")
@@ -214,7 +253,7 @@ class Snapshots:
                                   "expires_at": (stamp + timedelta(seconds=TTL)).isoformat().replace("+00:00", "Z")}}
         entry = {"session": context["session"], "session_owner": context["session_owner"],
                  "owner": desc["owner"], "igor_dir": context["igor_dir"], "binding": self.binding(context, limit),
-                 "created": created, "bytes": SNAPSHOT_BYTES, "builder": _owner(os.getpid()), "state": "reserved"}
+                 "created": created, "limit": limit, "bytes": SNAPSHOT_BYTES, "builder": _owner(os.getpid()), "state": "reserved"}
         with self.locked() as state:
             # Explicit refresh replaces this session's same collection; other sessions
             # and different collections retain their fresh leases.
@@ -278,6 +317,53 @@ def context(proposal, pid, session):
     return {"descriptor": desc, "session_owner": _owner(pid),
             "session": session, "scope_id": OperationalHistory(Path(os.environ.get("IGOR_DATA_DIR", str(Path(os.environ["IGOR_DIR"]) / "data")))).ensure_scope(),
             "igor_dir": os.environ["IGOR_DIR"]}
+
+
+def prepare_inspection(registry, selection, pid, session, *, frozen=None, clock=time.monotonic):
+    allowed = {"collection_id", "provider", "snapshot_revision", "reference", "inspection_provider"}
+    if (not isinstance(selection, dict) or set(selection) - allowed or
+            not allowed - {"inspection_provider"} <= set(selection)):
+        raise CapabilityError("invalid_collection_selection")
+    family = os.environ.get("IGOR_DISTRO_FAMILY")
+    collection = registry.prepare(selection["collection_id"], {}, provider=selection["provider"], capability_version=3, platform_family=family)
+    descriptor = registry._selected(selection["collection_id"], selection["provider"])
+    ctx = context(collection, pid, session)
+    row, freshness = Snapshots(runtime_path(), clock=clock).selection(ctx, selection["snapshot_revision"], selection["reference"])
+    binding = registry.inspection_binding(descriptor, provider=selection.get("inspection_provider"))
+    if binding["status"] != "available":
+        raise CapabilityError("inspection_unavailable")
+    declaration = descriptor.collection["inspect"]
+    inputs = {name: row[field] for name, field in declaration["inputs_from_row"].items()}
+    target = registry.prepare(declaration["capability_id"], inputs, provider=binding["selected_provider"],
+                              capability_version=binding["capability_version"], platform_family=family)
+    if target["safety"]["tier"] != "READ" or not Snapshots(runtime_path(), clock=clock)._enabled({"owner": target["owner"], "igor_dir": ctx["igor_dir"]}):
+        raise CapabilityError("inspection_unavailable")
+    if target["affected_objects"] and row["reference"]["object_id"] not in target["affected_objects"]:
+        raise CapabilityError("invalid_collection_selection")
+    result = {"selection": selection, "collection_descriptor": collection["descriptor"],
+              "session_owner": ctx["session_owner"],
+              "target": target, "reference": row["reference"], "snapshot_revision": selection["snapshot_revision"],
+              "freshness": freshness, "descriptor": target["descriptor"]}
+    if frozen is not None and result != frozen:
+        raise CapabilityError("inspection_unavailable")
+    _serialized_bound(result, 65536)
+    return result
+
+
+def inspection_cli(records, action, argument, pid, session, fresh=None):
+    """Metadata bridge into the same registry; never execute a target here."""
+    registry = _registry_from_records(records)
+    frozen = read_private(Path(argument), 65536) if action == "inspection-check" else None
+    if frozen is None and len(argument.encode("utf-8")) > 4096:
+        raise CapabilityError("collection_limit_exceeded")
+    selection = frozen["selection"] if frozen is not None else _decode(argument)
+    result = prepare_inspection(registry, selection, int(pid), session, frozen=frozen)
+    if fresh is not None:
+        proposal = _decode(fresh)
+        target = result["target"]
+        if any(proposal[key] != target[key] for key in ("capability_id", "capability_version", "provider", "owner", "descriptor", "inputs", "safety")):
+            raise CapabilityError("inspection_unavailable")
+    return result
 
 
 def main():

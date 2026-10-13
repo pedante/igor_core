@@ -10,7 +10,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from capability_runtime import (
+    CapabilityDescriptor,
     CapabilityError,
+    _serialized_bound,
     _validate_result,
     validate_output_schema,
     validate_outputs,
@@ -64,6 +66,13 @@ class CollectionView:
     columns: list = field(default_factory=list)
     column_offset: int = 0
     notice: str = ""
+    detail_state: str = ""
+    detail_reference: dict | None = None
+    detail_result: dict | None = None
+    detail_descriptor: dict | None = None
+    detail_scroll: int = 0
+    detail_provider: str | None = None
+    detail_status: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if (not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", self.entry["target_id"]) or
@@ -76,7 +85,9 @@ class CollectionView:
 
     def expire(self):
         if self.pages and time.monotonic() >= self.expires:
+            request_id = self.request_id if self.request_kind == "inspect" else ""
             self.fail("expired")
+            self.request_id = request_id
             return True
         return False
 
@@ -87,6 +98,7 @@ class CollectionView:
         self.request_id = ""
 
     def request(self, kind="refresh"):
+        self.close_detail()
         self.expire()
         inputs = {}
         if kind == "next":
@@ -103,6 +115,76 @@ class CollectionView:
         self.state = "loading"
         target = self.entry["target_id"] + "@" + self.entry["provider"]
         return "invoke --view=" + self.request_id + " " + target + " " + json.dumps(inputs, separators=(",", ":"))
+
+    def inspection_request(self, provider=None):
+        reference = self.selected_reference()
+        if reference is None or self.detail_state == "loading":
+            return None
+        self.pages = [self.pages[self.page_index]]
+        self.page_index = 0
+        self.detail_reference = reference
+        self.detail_result = None
+        self.detail_status = {}
+        self.detail_descriptor = None
+        self.detail_scroll = 0
+        if "inspect" not in self.entry["collection"]:
+            self.detail_state = "inline"
+            self.detail_result = {k: v for k, v in self.rows()[self.selection].items() if k != "reference"}
+            return None
+        self.detail_provider = provider
+        self.detail_state = "loading"
+        self.request_kind = "inspect"
+        self.request_id = uuid.uuid4().hex
+        selection = {"collection_id": self.entry["target_id"], "provider": self.entry["provider"],
+                     "snapshot_revision": self.revision, "reference": reference}
+        if provider is not None:
+            selection["inspection_provider"] = provider
+        return "invoke --view=" + self.request_id + " --inspect " + json.dumps(selection, separators=(",", ":"))
+
+    def close_detail(self):
+        if self.request_kind == "inspect":
+            self.request_id = ""
+        self.detail_state = ""
+        self.detail_result = self.detail_descriptor = self.detail_reference = None
+        self.detail_scroll = 0
+        self.detail_status = {}
+
+    def detail_failure(self, reason):
+        self.detail_state = "expired" if reason == "collection_expired" else "unavailable"
+        self.detail_result = None
+        self.request_id = ""
+        if self.detail_state == "expired":
+            self.fail("expired")
+
+    def accept_detail(self, event):
+        try:
+            result, metadata = event["result"], event["inspection"]
+            descriptor = metadata["descriptor"]
+            admitted = {key: value for key, value in descriptor.items() if key != "available"}
+            descriptor = CapabilityDescriptor.from_dict(admitted).inspect()
+            _validate_result(result)
+            if (metadata["reference"] != self.detail_reference or metadata["snapshot_revision"] != self.revision or
+                    descriptor["id"] != self.entry["collection"]["inspect"]["capability_id"] or
+                    descriptor["safety"]["tier"] != "READ" or
+                    any(result[k] != descriptor[k] for k in ("capability_version", "owner", "provider")) or
+                    result["capability_id"] != descriptor["id"] or
+                    self.detail_provider is not None and descriptor["provider"] != self.detail_provider):
+                raise CapabilityError("invalid inspection projection")
+            self.detail_descriptor = descriptor
+            self.detail_status = {key: result[key] for key in ("execution_status", "verification_status", "outcome")}
+            self.request_id = ""
+            if result["outcome"] != "success":
+                reasons = {e.get("reason") for e in result.get("verification_evidence", []) if isinstance(e, dict)}
+                self.detail_failure("collection_expired" if "collection_expired" in reasons else "inspection_unavailable")
+                if result["execution_status"] == "failed" or result.get("output_status") == "invalid":
+                    self.detail_state = "failed"
+                return
+            data = validate_outputs(descriptor["outputs"], result["result"]) if descriptor.get("outputs") else {}
+            _serialized_bound(data, 65536)
+            self.detail_result = data
+            self.detail_state = "ready"
+        except (CapabilityError, KeyError, ValueError, TypeError, RecursionError):
+            self.detail_failure("inspection_unavailable")
 
     def accept(self, result):
         """Recheck presentation data with the canonical validator, not a UI schema."""
@@ -194,7 +276,10 @@ class CollectionView:
                 "freshness": copy.deepcopy(self.freshness),
                 "page": ({k: v for k, v in self.pages[self.page_index][0]["page"].items() if k != "next_cursor"}
                          if self.pages else None), "selected_reference": self.selected_reference(),
-                "page_local_filter": self.query, "request_pending": bool(self.request_id)}
+                "page_local_filter": self.query, "request_pending": bool(self.request_id),
+                "detail": {"state": self.detail_state, "reference": copy.deepcopy(self.detail_reference),
+                           "capability_id": (self.detail_descriptor or {}).get("id"),
+                           "status": dict(self.detail_status)}}
 
 
 def result_entry(snapshot, result):

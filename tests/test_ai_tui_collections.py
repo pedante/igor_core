@@ -185,7 +185,7 @@ def test_bounded_generic_rendering(shape, dimensions):
         assert any(style == tui.curses.A_REVERSE for _, _, style in screen.drawn)
 
 
-def test_navigation_keys_filter_and_no_inspection_execution(monkeypatch):
+def test_navigation_keys_filter_and_missing_binding_inline_only(monkeypatch):
     entry, result = fixture("volumes")
     view = tui.CollectionView(entry)
     view.accept(result)
@@ -193,10 +193,13 @@ def test_navigation_keys_filter_and_no_inspection_execution(monkeypatch):
     sent = []
     monkeypatch.setattr(tui, "_send", lambda _, command: sent.append(command))
     screen = Screen()
-    for key in [tui.curses.KEY_DOWN, 10, ord("/"), ord("2"), 27]:
+    for key in [tui.curses.KEY_DOWN, ord("/"), ord("2"), 27]:
         assert tui._collection_key(key, screen, 1, state)
     assert len(view.rows()) == 1 and sent == []
     assert view.selected_reference()["object_id"] == "storage:fixture2"
+    tui._collection_key(10, screen, 1, state)
+    assert view.detail_state == "inline" and sent == []
+    tui._collection_key(27, screen, 1, state)
     tui._collection_key(ord("r"), screen, 1, state)
     assert len(sent) == 1 and sent[0].startswith("invoke --view=") and "cursor" not in sent[0]
     assert view.state == "loading" and not state.backend_ready

@@ -15,10 +15,16 @@ migration inputs, not indefinite obligations.
 extends Step 18 outputs and Step 20 rendering through the same registry, result
 and invocation path. DISCOVERY is closed and the D079-approved first READ-only
 EXECUTION milestone is authorized. Accepted Increments A/B establish the typed
-contract and bounded canonical backend. Increment C's local candidate adds
+contract and bounded canonical backend. Accepted Increment C adds
 generic collection navigation and pasted leaf resolution through this same
-explorer; see [its evidence](COLLECTION_INCREMENT_C.md). READ inspection execution
-remains Increment D.
+explorer; see [its evidence](COLLECTION_INCREMENT_C.md). Increment D's local
+implementation requests the declared READ binding with opaque snapshot identity
+through that same backend session. Core derives inputs from the authoritative
+snapshot row, resolves the READ target and rechecks authority at the canonical
+execution fence. The TUI renders validated details and returns to the same page;
+it owns neither target arguments nor execution policy. See
+[D's validation status](COLLECTION_INCREMENT_D.md); the complete milestone and
+independent second-provider proof remain open.
 
 ## Purpose
 

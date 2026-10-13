@@ -90,7 +90,7 @@ _ml_bash_handler_run_process() {
     local _request="$1" _py="$2" _timeout="$3" _entrypoint="$4" _handler="$5"
     local _event_dir="$6" _event_schemas="$7"
     local -a _bounded=()
-    if [ -n "${IGOR_COLLECTION_CONTEXT:-}" ]; then
+    if [ -n "${IGOR_COLLECTION_CONTEXT:-}" ] || [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
         _bounded=("$_py" "${_IGOR_LOADER_DIR}/core/lib/bounded_handler.py")
     fi
     printf '%s\n' "$_request" | IGOR_PYTHON="$_py" "${_bounded[@]}" timeout --signal=TERM "${_timeout}s" \

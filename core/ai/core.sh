@@ -59,7 +59,14 @@ except ValueError:
 payload={"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""), "result": result}
 if sys.argv[2]:
     payload["view_request_id"]=sys.argv[2]
-print(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")))' "${IGOR_AI_EVENT_SESSION_ID:-}" "${IGOR_AI_VIEW_REQUEST_ID:-}") || return 0
+if sys.argv[3]:
+    from pathlib import Path
+    sys.path.insert(0,sys.argv[4])
+    from collection_runtime import read_private
+    record=read_private(Path(sys.argv[3]),65536)
+    payload["inspection"]={key:record[key] for key in ("reference","snapshot_revision","freshness","descriptor")}
+print(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")))' "${IGOR_AI_EVENT_SESSION_ID:-}" "${IGOR_AI_VIEW_REQUEST_ID:-}" \
+    "${IGOR_COLLECTION_INSPECTION_FILE:-}" "${_IGOR_LOADER_DIR:-${IGOR_DIR}}/core/lib") || return 0
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
 }
 
@@ -330,6 +337,7 @@ PY
 _ai_operator_invoke() {
     local _invoke_rest="${1:-}" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
     local IGOR_AI_VIEW_REQUEST_ID="" IGOR_AI_COLLECTION_RESULT_EMITTED=0 _invoke_rc=0
+    local IGOR_COLLECTION_INSPECTION_FILE="" _inspect=false _inspection_record
     if [[ "$_invoke_rest" == --view=* ]]; then
         _invoke_spec="${_invoke_rest%% *}"
         IGOR_AI_VIEW_REQUEST_ID="${_invoke_spec#--view=}"
@@ -337,6 +345,25 @@ _ai_operator_invoke() {
         [ "$_invoke_rest" != "$_invoke_spec" ] || return 2
         _invoke_rest="${_invoke_rest#* }"
     fi
+    if [[ "$_invoke_rest" == --inspect\ * ]]; then
+        _inspect=true
+        _invoke_rest="${_invoke_rest#--inspect }"
+    fi
+    if [ "$_inspect" = true ]; then
+        IGOR_COLLECTION_INSPECTION_FILE="$(mktemp "${IGOR_RUNTIME_DIR:-${IGOR_DIR}/data/runtime}/.collection-inspection.XXXXXXXX")" || return 1
+        _inspection_record="$(_igor_collection_inspection inspection-prepare "$_invoke_rest")" || {
+            case "$_inspection_record" in
+                collection_expired|invalid_collection_selection|collection_limit_exceeded) ;;
+                *) _inspection_record=inspection_unavailable ;;
+            esac
+            rm -f -- "$IGOR_COLLECTION_INSPECTION_FILE"
+            IGOR_COLLECTION_INSPECTION_FILE=""
+            _ai_frontend_event warning "Inspection unavailable; refresh the collection if expired." "$_inspection_record"
+            return 1
+        }
+        printf '%s' "$_inspection_record" > "$IGOR_COLLECTION_INSPECTION_FILE"
+        _invoke_tool="$(printf '%s' "$_inspection_record" | python3 -c 'import json,sys; r=json.load(sys.stdin)["target"]; print(json.dumps({"tool":"run_capability","id":r["capability_id"],"provider":r["provider"],"capability_version":r["capability_version"],"inputs":r["inputs"]},separators=(",",":")))')" || return 1
+    else
     _invoke_spec="${_invoke_rest%% *}"
     _invoke_id="${_invoke_spec%%@*}"
     if [ "$_invoke_spec" != "$_invoke_id" ]; then
@@ -364,6 +391,7 @@ if provider:
 print(json.dumps(request,separators=(",",":")))
 PY
     ) || return 2
+    fi
     IGOR_CAPABILITY_LAST_RESULT=""
     IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool" || _invoke_rc=$?
     if [ -n "$IGOR_AI_VIEW_REQUEST_ID" ] && [ "$IGOR_AI_COLLECTION_RESULT_EMITTED" = 0 ]; then
@@ -373,6 +401,7 @@ PY
             _ai_frontend_event warning "Collection request unavailable." unavailable
         fi
     fi
+    [ -z "$IGOR_COLLECTION_INSPECTION_FILE" ] || rm -f -- "$IGOR_COLLECTION_INSPECTION_FILE"
     return "$_invoke_rc"
 }
 

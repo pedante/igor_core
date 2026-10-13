@@ -1001,9 +1001,48 @@ def _handler_output_cli(schema_raw: str, collection_raw: str = "null", scope_id:
     return 0
 
 
+def _registry_from_records(records):
+    registry = CapabilityRegistry()
+    for item in records:
+        if not isinstance(item, dict):
+            raise CapabilityError("capability record must be an object")
+        # Loader rows may carry a normalized descriptor under descriptor;
+        # inactive rows remain inspectable but cannot be prepared.
+        descriptor = dict(item.get("descriptor", item))
+        # Keep supplied targets available for composition and collection
+        # inspection; the query itself still projects only its requested ID.
+        if descriptor.get("kind", "capability") != "capability":
+            continue
+        # Loader metadata is authoritative for ownership and activation;
+        # it must not be inferred from descriptor prose.
+        for field_name in ("owner", "provider", "source"):
+            if field_name in item:
+                descriptor[field_name] = item[field_name]
+        availability = item.get("availability")
+        if availability is not None:
+            descriptor["active"] = availability == "active"
+            if availability != "active":
+                descriptor["unavailable_reason"] = item.get("unavailable_reason") or availability
+        if item.get("unavailable_reason"):
+            descriptor["unavailable_reason"] = item["unavailable_reason"]
+        registry.register(CapabilityDescriptor.from_dict(descriptor))
+    return registry
+
+
 def _cli() -> int:
     """JSON stdin bridge for shell-owned loaders (resolution only)."""
     import sys
+
+    if len(sys.argv) in {5, 6, 7} and sys.argv[1] in {"inspection-prepare", "inspection-check"}:
+        from collection_runtime import inspection_cli
+        try:
+            records = _decode(sys.stdin.read())
+            print(json.dumps(inspection_cli(records, *sys.argv[1:]), ensure_ascii=False, separators=(",", ":")))
+            return 0
+        except (CapabilityError, OSError, ValueError, KeyError, TypeError):
+            reason = str(sys.exc_info()[1])
+            print(reason if reason in {"collection_expired", "invalid_collection_selection", "collection_limit_exceeded"} else "inspection_unavailable")
+            return 2
 
     if 3 <= len(sys.argv) <= 5 and sys.argv[1] == "handler-output":
         return _handler_output_cli(*sys.argv[2:])
@@ -1044,31 +1083,7 @@ def _cli() -> int:
             descriptor = CapabilityDescriptor.from_dict(request["descriptor"])
             print(json.dumps(descriptor.inspect(), sort_keys=True, separators=(",", ":")))
             return 0
-        registry = CapabilityRegistry()
-        records = request.get("descriptors", request.get("records", []))
-        for item in records:
-            if not isinstance(item, dict):
-                raise CapabilityError("capability record must be an object")
-            # Loader rows may carry a normalized descriptor under descriptor;
-            # inactive rows remain inspectable but cannot be prepared.
-            descriptor = dict(item.get("descriptor", item))
-            # Keep supplied targets available for composition and collection
-            # inspection; the query itself still projects only its requested ID.
-            if descriptor.get("kind", "capability") != "capability":
-                continue
-            # Loader metadata is authoritative for ownership and activation;
-            # it must not be inferred from descriptor prose.
-            for field_name in ("owner", "provider", "source"):
-                if field_name in item:
-                    descriptor[field_name] = item[field_name]
-            availability = item.get("availability")
-            if availability is not None:
-                descriptor["active"] = availability == "active"
-                if availability != "active":
-                    descriptor["unavailable_reason"] = item.get("unavailable_reason") or availability
-            if item.get("unavailable_reason"):
-                descriptor["unavailable_reason"] = item["unavailable_reason"]
-            registry.register(CapabilityDescriptor.from_dict(descriptor))
+        registry = _registry_from_records(request.get("descriptors", request.get("records", [])))
         if op == "resolve":
             print(json.dumps(registry.inspect(request["id"], request.get("provider")), sort_keys=True, separators=(",", ":")))
             return 0
