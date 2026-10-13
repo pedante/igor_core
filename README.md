@@ -96,6 +96,13 @@ Enter on Settings opens the existing settings editor. Session/AI and execution
 provenance are informational. See [interaction primitives](docs/interaction_surface.md)
 for the reusable schema/property model and authority boundary.
 Ctrl+G collapses or expands successful tool output, while failures stay visible.
+Validated typed collections open a generic view: arrows select rows, Page Up/Down
+scroll, Left/Right move through columns, `/` edits a page-local filter, `n`/`p`
+navigate pages, `r` refreshes explicitly and Esc/`b` closes the view. Enter selects
+without executing READ inspection. Loading remains interactive; closing a view
+does not cancel an already admitted backend operation. Snapshot expiry requires
+refresh in the same live backend session. See the
+[Increment C report](docs/igor2/COLLECTION_INCREMENT_C.md).
 Esc clears the draft; Ctrl+C or `/stop` uses the backend stop action. Pending
 actions show Run/Skip/Explain or Yes/No/Explain choices; destructive actions
 still require exact `YES`. Stop is handled at an approval prompt or the next

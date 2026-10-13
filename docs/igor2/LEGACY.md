@@ -18,15 +18,17 @@ data/recovery and all safety invariants. KEEP means reuse what remains correct,
 not prohibit deliberate redesign. Historical table entries are qualified by
 this amendment and later current status.
 
-The local Increment B candidate retires the scalar `system.service.list` output
+The Owner-accepted Increment B checkpoint retires the scalar `system.service.list` output
 in place under accepted D079/Q022–Q024: capability 3/output schema 2, bounded
 temporary snapshots and pagination through the existing canonical dispatcher.
 Affected System consumers/pins/fixtures migrate together; there is no scalar
 adapter or second capability ID. Retained History versions keep their meaning,
 and unrelated v1/v2 contracts remain supported. See the
 [Increment B evidence](COLLECTION_INCREMENT_B.md) and [STATUS](STATUS.md) for
-actual passing proof, reviewed limitations and pending Owner acceptance. The
-complete collection renderer/inspection milestone remains open.
+actual passing proof and reviewed limitations. The local Increment C candidate
+adds a generic collection view over the existing curses/event/operator path;
+scalar/conversational rendering remains live. See [C evidence](COLLECTION_INCREMENT_C.md).
+The complete collection renderer/inspection milestone remains open.
 
 ## OpenRouter ownership cutover — Boundary B, D069
 

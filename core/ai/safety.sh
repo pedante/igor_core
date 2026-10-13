@@ -1307,6 +1307,17 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
             fi
         fi
 
+        if [ "$T_TOOL" = run_capability ] &&
+           [ "$(_igor_capability_field "$_cap_prepared" capability_version)" = 3 ] &&
+           [ -n "$(_igor_capability_field "$_cap_prepared" descriptor.collection.resource_kind 2>/dev/null)" ]; then
+            # Publish the validated domain page through the existing result
+            # event; ordinary transcript text must not duplicate rows/cursors.
+            if declare -f _ai_frontend_action_result >/dev/null 2>&1; then
+                _ai_frontend_action_result "$IGOR_CAPABILITY_LAST_RESULT"
+                IGOR_AI_COLLECTION_RESULT_EMITTED=1
+            fi
+            output="Collection request completed; see canonical result status."
+        fi
         output="$(_ai_sanitize_selected_output "$output")" || true
         # Truncate only the safe projection; never retain a credential preview.
         if [ "$_raw_shell" = true ]; then

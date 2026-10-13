@@ -33,6 +33,7 @@ from typing import Any
 _CORE_LIB = Path(__file__).resolve().parents[1] / "lib"
 if str(_CORE_LIB) not in sys.path:
     sys.path.insert(0, str(_CORE_LIB))
+from collection_view import CollectionView, cell_text, result_entry, view_request_id
 from interaction import (
     FocusModel,
     Property,
@@ -107,6 +108,7 @@ class EventState:
     session_id: str = ""
     role: str = ""
     context_routing: dict[str, Any] | None = None
+    collection: CollectionView | None = None
 
     def accept(self, event: dict[str, Any]) -> bool:
         """Apply one event if it is valid and newer than the current stream."""
@@ -123,6 +125,16 @@ class EventState:
             return False
         if sequence <= self.sequence:
             return False
+        if (self.session_id and event.get("session_id") and event["session_id"] != self.session_id):
+            return False
+        if kind == "action_result":
+            try:
+                if len(json.dumps(event, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")) > 98304:
+                    raise ValueError("oversized frontend result")
+            except (ValueError, TypeError, UnicodeError, RecursionError):
+                if self.collection and event.get("view_request_id") == self.collection.request_id:
+                    self.collection.fail("invalid")
+                return False
         if kind not in {"settings_snapshot", "operator_snapshot", "operator_candidates"}:
             self.cancel_terminal_capture()
         self.sequence = sequence
@@ -138,6 +150,12 @@ class EventState:
             snapshot = event.get("surface")
             if isinstance(snapshot, dict):
                 self.operator_snapshot = copy.deepcopy(snapshot)
+                if self.collection:
+                    entry = result_entry(snapshot, {"capability_id": self.collection.entry["target_id"],
+                                                    "provider": self.collection.entry["provider"]})
+                    if (not entry or entry.get("availability") != "active" or
+                            any(entry.get(key) != self.collection.entry.get(key) for key in ("outputs", "collection", "owner"))):
+                        self.collection.fail("unavailable")
             return True
         if kind == "operator_candidates":
             result = event.get("result")
@@ -180,6 +198,12 @@ class EventState:
             self.session_status = event_status
         if kind == "session_finished":
             self.finished = True
+            self.collection = None
+        request_id = event.get("view_request_id")
+        if kind in {"warning", "error"} and view_request_id(request_id):
+            if self.collection and self.collection.request_id == request_id:
+                self.collection.fail("unavailable")
+            return True
         if kind == "settings_snapshot":
             snapshot = event.get("settings")
             sources = event.get("sources")
@@ -213,6 +237,29 @@ class EventState:
                          ("action_id", "operation_id", "tool_call_id")} - {""}
             if pending_ids & event_ids:
                 self.pending_action = None
+        if kind == "action_result":
+            entry = result_entry(self.operator_snapshot, event.get("result"))
+            if entry or request_id is not None:
+                if request_id is not None:
+                    if not view_request_id(request_id) or not self.collection or self.collection.request_id != request_id:
+                        return True
+                elif self.collection and (self.collection.state == "loading" or
+                                         event["result"].get("operation_id") == self.collection.operation_id):
+                    return True
+                elif entry:
+                    try:
+                        self.collection = CollectionView(entry)
+                    except (ValueError, KeyError, TypeError):
+                        return True
+                if self.collection:
+                    self.collection.accept(event.get("result"))
+                    self.activity.append(Activity("action_result", "Collection: " + self.collection.state))
+                    del self.activity[:-2000]
+                return True
+            if isinstance(event.get("result"), dict) and event["result"].get("capability_version") == 3:
+                self.activity.append(Activity("warning", "Collection descriptor unavailable; result not displayed."))
+                del self.activity[:-2000]
+                return True
         text = str(event.get("display") or event.get("output") or "")
         result = event.get("result")
         action_ids = {str(event.get(key) or "") for key in
@@ -275,6 +322,8 @@ class EventState:
     def add_operator_input(self, text: str) -> None:
         if text:
             label = text.removeprefix("invoke ").strip()
+            if label.startswith("--view="):
+                label = "Collection request"
             self.activity.append(Activity("operator", label or text, timestamp=_local_timestamp()))
             if len(self.activity) > 2000:
                 del self.activity[:-2000]
@@ -1207,6 +1256,7 @@ class EventReader:
         self.path = path
         self.offset = 0
         self.partial = b""
+        self.discard_line = False
 
     def read(self) -> list[dict[str, Any]]:
         if not self.path.exists() or not self.path.is_file():
@@ -1214,17 +1264,23 @@ class EventReader:
         try:
             with self.path.open("rb") as stream:
                 stream.seek(self.offset)
-                data = self.partial + stream.read()
+                data = self.partial + stream.read(262144)
                 self.offset = stream.tell()
         except OSError:
             return []
         chunks = data.split(b"\n")
         self.partial = chunks.pop() if chunks else b""
+        if self.discard_line and chunks:
+            chunks.pop(0)
+            self.discard_line = False
+        if self.discard_line or len(self.partial) > 1048576:
+            self.partial = b""
+            self.discard_line = True
         events = []
         for line in chunks:
             try:
                 value = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
                 continue
             if isinstance(value, dict):
                 events.append(value)
@@ -1284,9 +1340,106 @@ def _session_status_label(state: EventState) -> str:
     }.get(state.session_status, state.session_status)
 
 
+def _draw_collection(screen: Any, view: CollectionView, backend_ready: bool = False) -> None:
+    screen.erase()
+    height, width = screen.getmaxyx()
+    def put(row, text, selected=False):
+        if 0 <= row < max(0, height - 1) and width > 1:
+            safe = cell_text(text, width - 1).encode(getattr(sys.stdout, "encoding", None) or "ascii", errors="replace").decode(
+                getattr(sys.stdout, "encoding", None) or "ascii")
+            try:
+                screen.addnstr(row, 0, safe, width - 1, curses.A_REVERSE if selected else 0)
+            except curses.error:
+                pass
+    title = view.entry["collection"]
+    put(0, title["resource_kind"] + " / " + title["inventory"] + " - " + view.state
+        + (" | Backend READY" if backend_ready else " | Backend busy"))
+    page = view.pages[view.page_index] if view.pages else None
+    if page:
+        domain, start = page
+        put(1, f"Rows {start + 1 if domain['rows'] else 0}-{start + len(domain['rows'])} of {domain['page']['total_count']}"
+            + f" | {view.entry['provider']} | {view.operation_id}")
+    else:
+        put(1, "Loading; request continues. Esc closes view." if view.state == "loading" else "Use r to refresh explicitly.")
+    put(2, "Page-local filter: " + view.query + (" [editing; Esc finishes]" if view.filtering else ""))
+    columns = view.columns[view.column_offset:][:max(1, (width - 3) // 8)]
+    size = min(24, max(1, (width - 3 - 3 * (len(columns) - 1)) // max(1, len(columns))))
+    put(3, "  " + " | ".join(cell_text(c['label'], size, pad=True) for c in columns))
+    rows = view.rows()
+    visible = max(0, height - 8)
+    view.selection = min(view.selection, max(0, len(rows) - 1))
+    view.scroll = max(0, min(view.scroll, max(0, len(rows) - visible)))
+    if view.selection < view.scroll:
+        view.scroll = view.selection
+    elif visible and view.selection >= view.scroll + visible:
+        view.scroll = view.selection - visible + 1
+    for index, row in enumerate(rows[view.scroll:view.scroll + visible], view.scroll):
+        marker = "> " if index == view.selection and view.state == "ready" else "  "
+        text = marker + " | ".join(cell_text(row.get(c['field']), size, pad=True) for c in columns)
+        put(4 + index - view.scroll, text, marker == "> ")
+    if page and not rows:
+        put(4, "Empty page" if not page[0]["rows"] else "No page-local matches")
+    put(height - 4, "Fresh until " + view.freshness.get("expires_at", "-") + " | " + view.notice)
+    put(height - 3, "Up/Down select  PgUp/PgDn scroll  Left/Right columns  / filter")
+    put(height - 2, "n next  p previous cached page  r refresh  Enter selection only  Esc/b close")
+    screen.refresh()
+
+
+def _collection_key(key, screen, master, state):
+    view = state.collection
+    if view is None or state.pending_action:
+        return False
+    if key in (3, 9, 16, curses.KEY_F1, 11):
+        if key in (3, 9, 16):
+            state.collection = None
+        return False
+    if view.filtering:
+        if key in (27, 10, 13):
+            view.filtering = False
+        elif key in (127, 8, curses.KEY_BACKSPACE):
+            view.query = view.query[:-1]
+        elif isinstance(key, str) or isinstance(key, int) and 32 <= key < 127:
+            view.query = (view.query + (key if isinstance(key, str) else chr(key)))[:128]
+        view.selection = view.scroll = 0
+        return True
+    if key in (27, ord("b"), ord(":")):
+        state.collection = None
+        return key != ord(":")
+    if key == ord("/"):
+        view.filtering = True
+    elif key in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE, curses.KEY_NPAGE):
+        delta = {curses.KEY_UP: -1, curses.KEY_DOWN: 1,
+                 curses.KEY_PPAGE: -max(1, screen.getmaxyx()[0] - 8),
+                 curses.KEY_NPAGE: max(1, screen.getmaxyx()[0] - 8)}[key]
+        view.move(delta)
+    elif key in (curses.KEY_HOME, curses.KEY_END):
+        view.move(-128 if key == curses.KEY_HOME else 128)
+    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+        view.column_offset = max(0, min(len(view.columns) - 1, view.column_offset + (-1 if key == curses.KEY_LEFT else 1)))
+    elif key == ord("p"):
+        view.cached_page(-1)
+    elif key in (ord("n"), ord("r")):
+        if key == ord("n") and view.cached_page(1):
+            return True
+        if not state.backend_ready:
+            view.notice = "Backend busy; Esc can close the view."
+        else:
+            command = view.request("next" if key == ord("n") else "refresh")
+            if command:
+                _send(master, command)
+                state.backend_ready = False
+                view.notice = ""
+    elif key in (10, 13, curses.KEY_ENTER):
+        view.notice = "Selection only; READ inspection is deferred."
+    return True
+
+
 def _draw(screen: Any, state: EventState, buffer: InputBuffer,
           scroll: int | ActivityNavigator, focus: FocusModel | None = None,
           sections: list[dict[str, Any]] | None = None) -> None:
+    if state.collection and not state.pending_action and not state.privilege_waiting:
+        _draw_collection(screen, state.collection, state.backend_ready)
+        return
     screen.erase()
     height, width = screen.getmaxyx()
     if height < 1 or width < 1:
@@ -1911,11 +2064,20 @@ def _operator_surface_summary(snapshot: dict[str, Any] | None) -> tuple[str, str
 
 
 def _operator_overlay(screen: Any, master: int, reader: EventReader,
-                      state: EventState, buffer: InputBuffer) -> str | None:
+                      state: EventState, buffer: InputBuffer, initial: str = "") -> str | None:
     """Browse contract-derived namespaces without owning execution."""
     if state.pending_action or state.privilege_waiting or state.finished:
         return None
     prefix, query, selected = "", "", 0
+    if initial:
+        parts = initial.strip().strip(".").split(".")
+        alias = _operator_alias_target(state.operator_snapshot, parts[0])
+        parts[0] = alias or parts[0]
+        if len(parts) > 1:
+            prefix, query = ".".join(parts[:-1]), parts[-1]
+        else:
+            query = parts[0]
+    initial_submit = bool(initial)
     active_alias: tuple[str, str] | None = None
     snapshot = state.operator_snapshot
     refreshing = False
@@ -2016,7 +2178,11 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                 pass
             screen.refresh()
 
-            key = _next_key(screen)
+            if initial_submit and len(nodes) == 1:
+                key = 10
+            else:
+                key = _next_key(screen)
+            initial_submit = False
             if key == 18:  # Ctrl+R: refresh without discarding the last good snapshot.
                 if refreshing:
                     notice = ("Refresh already in progress… · showing current snapshot"
@@ -2124,6 +2290,14 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     if not state.backend_ready:
                         notice = "Backend busy — wait for READY or press Ctrl+C to stop current work"
                         continue
+                    if "collection" in entry:
+                        try:
+                            state.collection = CollectionView(entry)
+                            command = state.collection.request()
+                        except (ValueError, KeyError, TypeError):
+                            notice = "Invalid collection descriptor"
+                            state.collection = None
+                            continue
                     _send(master, command)
                     state.backend_ready = False
                     return command
@@ -2157,6 +2331,7 @@ def _help_overlay(screen: Any) -> None:
         "Control focus: arrows select section, Enter open/refresh, Esc input",
         "Ctrl+P opens commands · : on empty input explores modules/capabilities",
         "Ctrl+G collapse/expand successful tool output",
+        "Collections: arrows select, n/p pages, / page-local filter, r refresh, Esc close",
         "Ctrl+C or /stop sends the backend stop action",
         "Guide: Run / Skip / Explain / Stop",
         "CHANGE: Yes / No / Explain / Stop",
@@ -2522,6 +2697,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             _, maximum, after_count = _activity_limits(screen, state, focus)
             navigator.preserve_view(after_count - before_count, maximum)
         dirty = inspection.poll() or dirty or bool(events)
+        if state.collection:
+            dirty = state.collection.expire() or dirty
         if investigations is not None:
             dirty = investigations.poll() or dirty
         for inspector in (modules, health, deployments, recognition):
@@ -2564,6 +2741,8 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 data = _privilege_key_bytes(key)
                 if data:
                     os.write(master, data)
+            continue
+        if _collection_key(key, screen, master, state):
             continue
         if isinstance(key, str):
             if focus.region == "input":
@@ -2704,6 +2883,13 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 submitted = submitted.splitlines()[0] if submitted.splitlines() else ""
             if not pending and submitted.strip() == "settings":
                 _settings_overlay(screen, master, reader, state)
+                navigator.latest()
+                continue
+            if not pending and submitted.strip().startswith(":"):
+                selected = _operator_overlay(screen, master, reader, state, buffer,
+                                             submitted.strip()[1:])
+                if selected:
+                    state.add_operator_input(selected)
                 navigator.latest()
                 continue
             state.end_terminal_capture()

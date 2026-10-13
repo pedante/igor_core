@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
 
 ## How to read this file
 
@@ -10,7 +10,57 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Collection EXECUTION 1B — Owner accepted at backend scope
+## Collection EXECUTION 1C — Owner accepted at generic TUI scope
+
+Owner accepted Increment C on 2026-10-13: descriptor-driven collection rendering,
+navigation, page-local filtering, canonical pagination, refresh, backend-session
+retention, event correlation and frontend lifecycle handling. This accepts C's
+defined generic TUI scope only; the complete Collection Operator milestone remains
+open. The Owner authorized one checkpoint commit of the accepted implementation.
+
+Owner authorized Increment C at accepted checkpoint
+`9b09403f92b0ccefc28a21fe7e1ba30a4df06270`; `igor2` was clean before editing.
+[Increment C implementation/evidence](COLLECTION_INCREMENT_C.md) records the
+generic curses view, bounded projection, navigation/filtering, canonical same-session
+pagination/refresh and disposable correlated lifecycle. No READ inspection,
+second provider registration, new execution authority or live service operation.
+
+Final governed affected run: `/tmp/igor2-c-acceptance/summary.json`, 93.070 s,
+403 PASS, zero failures/timeouts/errors/unavailable tools, two baseline-fixed
+classifications and one permitted LAN-IP scrub skip. The actual curses/PTY System
+fixture discovers 50/51 rows, retrieves the remaining row from the same frozen
+snapshot, goes back, refreshes changed source and dismisses without changing the
+backend session. All new output goes through existing canonical dispatch/events.
+
+Final display review corrected wide/combining cell padding and expiry inspection;
+`/tmp/igor2-c-display-correction/summary.json` records 109 PASS, one selected lint
+baseline-fixed classification and no failures/skips/timeouts/errors. ASCII System,
+event/authorization/History inputs remain equivalent; affected collection/TUI/color
+proof was rerun, without repeating the broad selection. A final one-line rejected
+warning transcript bound and exact-node/lint check add one pass; successful
+collection/backend inputs stay unchanged. The deduplicated ledger
+`/tmp/igor2-c-evidence-ledger.json` establishes **408 PASS, 0 failures,
+2 BASELINE_FIXED, 1 ENV_SKIP; zero required C checks unverified/cancelled**.
+Prior unchanged ShellCheck and Bash syntax evidence is retained. Three introduced
+lint diagnostics and two terminal/stream fixture failures are preserved as new
+historical failures despite broad runner baseline labels. Accepted A/B baseline
+limitations remain failures; they were not repaired or claimed as passing here.
+
+Actual x86_64 curses response measurements: loading 0.02954 s, busy-key redraw
+0.00252 s, first page 14.39537 s under concurrent governed load, cached back
+0.00625 s. Frontend process VmRSS/VmHWM: 29344 -> 32512 KiB for 51 fixture rows;
+this does not establish maximum-page/Pi performance. B's 11.261-second latency
+follow-up remains open. Exact measurement provenance is in the C report.
+
+The checkpoint commit containing this acceptance record closes Increment C.
+All eleven scoped files matched the accepted candidate manifest before the two
+acceptance-document updates; production and test content remains unchanged.
+Qualifying governed evidence and historical failures remain preserved, with no
+expensive validation repeated for the checkpoint. Latency, RSS/VmHWM and hardware
+limitations above remain open performance evidence. Stop after the authorized
+commit; do not push, merge, operate live services or begin Increment D.
+
+## Collection EXECUTION 1B — Owner accepted at backend scope (historical)
 
 Owner accepted Increment B on 2026-10-12: structured System collections, bounded
 producer transport, frozen snapshots, pagination, resource accounting, canonical

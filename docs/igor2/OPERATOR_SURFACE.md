@@ -14,8 +14,11 @@ migration inputs, not indefinite obligations.
 [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
 extends Step 18 outputs and Step 20 rendering through the same registry, result
 and invocation path. DISCOVERY is closed and the D079-approved first READ-only
-EXECUTION milestone is ready. Direct pasted leaf invocation and generic
-collection navigation are not yet implemented behavior.
+EXECUTION milestone is authorized. Accepted Increments A/B establish the typed
+contract and bounded canonical backend. Increment C's local candidate adds
+generic collection navigation and pasted leaf resolution through this same
+explorer; see [its evidence](COLLECTION_INCREMENT_C.md). READ inspection execution
+remains Increment D.
 
 ## Purpose
 

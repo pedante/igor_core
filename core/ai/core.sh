@@ -42,8 +42,9 @@ print(json.dumps({key: value for key, value in {
     "session_id": sys.argv[1], "mode": sys.argv[2],
     "provider": sys.argv[3], "model": sys.argv[4],
     "status": sys.argv[5], "display": sys.stdin.read(),
+    "view_request_id": sys.argv[6],
 }.items() if value}, ensure_ascii=True))' \
-        "${IGOR_AI_EVENT_SESSION_ID:-}" "$(ai_get_mode)" "${provider:-}" "${model:-}" "$_status") || return 0
+        "${IGOR_AI_EVENT_SESSION_ID:-}" "$(ai_get_mode)" "${provider:-}" "${model:-}" "$_status" "${IGOR_AI_VIEW_REQUEST_ID:-}") || return 0
     _ai_event_emit "$_kind" "$_payload" >/dev/null 2>&1 || true
 }
 
@@ -55,7 +56,10 @@ try:
     result = json.load(sys.stdin)
 except ValueError:
     raise SystemExit(1)
-print(json.dumps({"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""), "result": result}, ensure_ascii=True))' "${IGOR_AI_EVENT_SESSION_ID:-}") || return 0
+payload={"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""), "result": result}
+if sys.argv[2]:
+    payload["view_request_id"]=sys.argv[2]
+print(json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")))' "${IGOR_AI_EVENT_SESSION_ID:-}" "${IGOR_AI_VIEW_REQUEST_ID:-}") || return 0
     _ai_event_emit action_result "$_payload" >/dev/null 2>&1 || true
 }
 
@@ -325,6 +329,14 @@ PY
 # This function owns no approval, privilege, execution, or verification logic.
 _ai_operator_invoke() {
     local _invoke_rest="${1:-}" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
+    local IGOR_AI_VIEW_REQUEST_ID="" IGOR_AI_COLLECTION_RESULT_EMITTED=0 _invoke_rc=0
+    if [[ "$_invoke_rest" == --view=* ]]; then
+        _invoke_spec="${_invoke_rest%% *}"
+        IGOR_AI_VIEW_REQUEST_ID="${_invoke_spec#--view=}"
+        [[ "$IGOR_AI_VIEW_REQUEST_ID" =~ ^[0-9a-f]{32}$ ]] || return 2
+        [ "$_invoke_rest" != "$_invoke_spec" ] || return 2
+        _invoke_rest="${_invoke_rest#* }"
+    fi
     _invoke_spec="${_invoke_rest%% *}"
     _invoke_id="${_invoke_spec%%@*}"
     if [ "$_invoke_spec" != "$_invoke_id" ]; then
@@ -352,7 +364,16 @@ if provider:
 print(json.dumps(request,separators=(",",":")))
 PY
     ) || return 2
-    IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool"
+    IGOR_CAPABILITY_LAST_RESULT=""
+    IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool" || _invoke_rc=$?
+    if [ -n "$IGOR_AI_VIEW_REQUEST_ID" ] && [ "$IGOR_AI_COLLECTION_RESULT_EMITTED" = 0 ]; then
+        if [ -n "$IGOR_CAPABILITY_LAST_RESULT" ]; then
+            _ai_frontend_action_result "$IGOR_CAPABILITY_LAST_RESULT"
+        else
+            _ai_frontend_event warning "Collection request unavailable." unavailable
+        fi
+    fi
+    return "$_invoke_rc"
 }
 
 # Frontend control messages are not conversational turns. Keep them out of
