@@ -157,3 +157,88 @@ genuine small task with the Owner rather than writing a duplicate test.
 For a later resource-sensitive task, fill the same record's metric, baseline,
 hardware, uncertainty and calibration fields before any expensive workload.
 This example makes no memory or Pi claim and does not resume Increment E.
+
+## F0.2 READ lifecycle pilot record
+
+- **Authority/scope:** Owner authorized the final F0 engineering pilot on
+  2026-10-15 under existing module activation, capability dispatch, ownership
+  and approval contracts. F0.1 is ACCEPTED, locally committed and verified at
+  `5aa8bdd0e2042d8b7833f4b4a180ad1ccfa12c65`. No new architecture or further F0
+  increment; no F0.2 commit or push is authorized.
+- **Candidate:** `igor2` at that commit, with one new
+  `tests/modules/test_read_capability_lifecycle.bats` regression plus this record
+  and the STATUS pointer. Dirty Increment E work is preserved and excluded from
+  ownership; entry contents/hashes are retained in `/tmp/igor-f02-entry.json`.
+- **Discovery:** existing `test_step18_module_composition.bats` proves typed READ
+  dispatch/History and disabled-owner preparation refusal separately;
+  `test_module_state.bats` proves owner filtering, and `test_module_v2.bats`
+  proves registration recovery. These do not prove the complete same-operation
+  dispatch lifecycle or stale-proposal refusal. Source inspection is reused as
+  coverage analysis, not claimed as passing execution evidence.
+- **Acceptance:** an isolated v2 fixture's READ succeeds through `ai_execute_tool`;
+  disabling its owner refuses both that request and an already-prepared proposal
+  without another handler call. A fresh disabled process neither sources the
+  provider nor registers it. Re-enable plus a fresh process restores one active,
+  correctly owned contribution and a second successful READ. History retains two
+  success records with no approval or privilege escalation. Production services,
+  configuration and runtime implementation are unchanged.
+- **Proof:** contract/regression/vertical slice are the single canonical-dispatch
+  regression; inspection is the filtered contribution registry and History.
+  Migration is not applicable because no retained-data format changes; recovery
+  is the explicit new-process re-enable scenario. The Owner-executed regression
+  passed all of these assertions; no production behavior or E gate is accepted by it.
+- **Validation plan:** four exact focused groups in the retained dry-run
+  `/tmp/igor-f02-plan-20261015/summary.json`: structure, shellcheck,
+  `syntax:tests/modules/test_read_capability_lifecycle.bats` and
+  `bats:tests/modules/test_read_capability_lifecycle.bats`. The runner's structural
+  and shell checks also see existing dirty paths; no E runtime test is selected.
+  Planning estimate: 60 seconds, not a measurement; one serial temporary fixture,
+  no network, sudo, live service, Pi or performance workload. Command cap 120 s,
+  below the existing 240-s ceiling; Owner maximum 300 s cumulative execution.
+  Stop on sufficient proof, exhaustion or a concrete failure requiring inspection.
+- **Execution evidence:** Owner activated the supported 300-s budget and executed
+  the exact focused selection. `/tmp/igor-f02-validation-20261015/summary.json`
+  reports complete, exit 0, four PASS, zero failures/timeouts/skips/errors, fresh
+  execution (`reused=false`). Raw TAP confirms the single lifecycle test passed
+  in 24.179 s; its BATS group took 24.497 s. Total runner wall time: **30.002 s**
+  against the 60-s planning estimate. Structural, ShellCheck and BATS-count checks
+  also passed. Excluded groups remain unverified and outside this test-only pilot.
+  No successful check was repeated.
+- **Evidence retention/budget:** raw summary/logs, the test snapshot and entry
+  record are retained under `.igor-governor/evidence/f0-2-20261015/`, with SHA-256
+  hashes in `index.json`. Summary hash:
+  `8d3cfe956b38cfb9c28475a69d5f9a7337310662f53f4accb0f08bfb721203f8`;
+  test hash: `9cc92c7d28b886915da3bc7ed03a549f583476f5b872f9b09490fa7a14f26af0`.
+  Unrelated dirty source/evidence hashes match task entry. Ledger inspection records
+  269.9968952399995 s remaining; this is not reconstructed from durations and is
+  not authorization for more work, E verification or another process increment.
+- **Workflow evaluation:** current summary/authority links recovered the scope,
+  contracts and deferred E boundary; this continuing session is not an independent
+  fresh-session experiment, and no context-recovery time was measured. Acceptance
+  criteria were clear. Existing fixtures/patterns and coverage analysis were reused;
+  a duplicate F0.1 commit, runtime fix, broad suite and resource measurements were
+  avoided. The one planned execution supplied sufficient proof without a correction
+  or rerun. No missing architecture or product defect was identified. Owner-terminal
+  activation introduced a handoff, now resolved through the supported mechanism.
+  The workflow proved practical for this bounded pilot; no general efficiency gain
+  or independent fresh-session result is claimed.
+- **Independent review / Owner acceptance (2026-10-15):** a separate review
+  returned **APPROVE** after tracing canonical dispatch, current owner availability,
+  the matching-digest stale proposal, handler nonexecution sentinels, approval,
+  privilege and authoritative History. All retained evidence hashes and the current
+  test snapshot matched; the 23 pre-existing E files matched task entry. No material
+  findings or production/architecture changes were identified. Owner accepted F0.2
+  and authorized the scoped local checkpoint, explicitly acknowledging outstanding
+  isolated-baseline regression evidence. Author self-review remains separate.
+- **Evidence applicability:** the four PASS results above belong to the retained
+  mixed-tree candidate containing E runtime edits. The isolated committed baseline
+  has not executed the lifecycle regression. No clean-baseline pass is inferred from
+  acceptance or Git separation. The one required follow-up is
+  `bats:tests/modules/test_read_capability_lifecycle.bats` through `tests/validate.sh`
+  against the clean accepted history, with fresh retained output and the existing
+  governor. This checkpoint identifies that check; it does not execute it.
+- **Handoff:** RELEASE_FREEZE; accepted F0.2 is locally checkpointed separately from
+  E. Finish the authorized E WIP preservation and return to clean `igor2`; no push,
+  Step 20A implementation, further process milestone or regression execution.
+  E remains deferred/unaccepted with its existing criteria and evidence. Historical
+  no-commit authorization above describes the pilot run before this Owner checkpoint.
