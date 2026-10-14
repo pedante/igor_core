@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-13
+Last updated: 2026-10-14
 
 ## How to read this file
 
@@ -9,6 +9,37 @@ sections are retained as scoped implementation/validation evidence and are not a
 linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
+
+## Current focus — F0.1 documentation-first process increment
+
+- **Acceptance/phase:** **ACCEPTED by Owner, 2026-10-14**; RELEASE_FREEZE
+  for the authorized local F0.1 commit. No push; completion follows commit verification.
+- **Objective/authority:** Owner authorized a compact persistent context,
+  requirements/acceptance, bounded increments/testing, independent review and
+  handoff slice under existing D078/architecture and lifecycle rules.
+- **Specification/candidate:** [F0.1 record and worked next-increment example](F0_DEVELOPMENT_IMPROVEMENT_PROPOSAL.md#f01-increment-record);
+  `igor2` at base `d729449f2bb26ac97791418a402956ff7e7740f0`, scoped docs diff.
+  Existing dirty Increment E sources/tests are preserved, not part of F0 ownership.
+- **Evidence / allowed next action:** governed structure PASS (initial 6.741 s),
+  TOML parsing/root-selection/delegation policy PASS, local links/anchors and
+  scoped diff PASS. Final handoff-content validation and exact remaining budget
+  are recorded under `.igor-governor/evidence/f0-1-20261014/`. Only final
+  staged-diff inspection, authorized local commit and commit verification remain;
+  stop development. Minor correction passed documentation/reference and diff checks.
+- **Budget:** started with 20.550 seconds; initial check plus bounded final
+  handoff-content check fit within it. No renewal or deferred E tranche use.
+  No runtime tests. `.igor-governor/evidence/f0-1-20261014/handoff.json` records
+  **0 seconds remaining**. Governed execution allowance cannot be reconstructed
+  by subtracting test durations from configured ceilings.
+- **Review/blockers:** independent review returned **APPROVE WITH MINOR CORRECTIONS**;
+  no architectural blocker. The remaining-allowance reference is corrected above;
+  Owner accepted F0.1 after the correction was implemented and verified.
+  F0.2 task, reviewer and budget require separate settlement; pilot effectiveness
+  remains unverified. Local F0.1 commit is authorized; push is not.
+- **Deferred work:** Increment E remains STABILIZATION/unaccepted. Its two
+  900-second tranches and Pi verification remain deferred; TTL stays 30 seconds
+  and memory limits unchanged. Use [E resumption evidence](COLLECTION_INCREMENT_E.md#deferral-and-resumption--2026-10-14)
+  before any separately authorized continuation; no automatic Wave F.
 
 ## Collection EXECUTION 1D — Owner accepted at READ inspection scope
 

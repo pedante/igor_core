@@ -75,6 +75,67 @@ Avoid exit statements shaped only like:
 
 If a statement cannot be falsified, it is not sufficient as an exit condition.
 
+## Increment record and handoff
+
+Before implementation, put one compact record in the existing task/design
+document and link it from the current focus in [STATUS.md](STATUS.md). Update
+that record at phase changes and handoffs; do not create parallel registries.
+The record is coordination, subordinate to architectural authority and the
+[engineering lifecycle](../../.codex/README.md#task-lifecycle).
+
+```text
+Objective / slice: one observable outcome; explicit exclusions.
+Authority / scope: accepted decision links and Owner authorization; affected
+  callers, consumers, fixtures, data and supported platforms; unresolved decisions.
+Candidate: branch, base revision, scoped diff or source hashes; unrelated dirty work.
+Requirements -> acceptance: scenario / expected observable result / proof method;
+  success, refusal and recovery where applicable. Map all five proof classes,
+  including a concrete reason for each not-applicable class.
+Validation plan: exact governed selection and prior duration/dry-run reference;
+  authorized total remaining time, per-command ceiling, estimate and closing reserve;
+  required hardware/services, concurrency, fixture size and resource budget.
+Evidence: scenario | candidate/environment | verified/failed/unverified/awaiting
+  decision | raw summary/log/artifact + hash | limitation / invalidating change.
+Review: independent reviewer/session, reviewed candidate and raw evidence,
+  findings/disposition; author self-review is separate, pending review stays pending.
+Handoff: phase; allowed next action; exit evidence; remaining budget; blockers
+  and smallest action/Owner decision that changes each; commit/push authorization.
+```
+
+Keep requirements small enough to verify together. Prefer one real consumer
+and its negative/recovery cases over implementing a broad subsystem first.
+If proof depends on unavailable hardware, a new decision, or more than the
+authorized budget, split the increment or record the gate before implementation.
+A smaller slice may narrow scope, never silently waive a required safety or
+acceptance check. Do not add a test when retained evidence already proves the
+unchanged contract under the governor's applicability/fresh-security rules.
+
+For resource-sensitive work, state the metric/units, baseline, process scope,
+peak versus retained usage, target hardware and measurement uncertainty.
+Calibrate transient/concurrent coverage and instrumentation overhead before
+maximum workloads. Stop if the instrument cannot produce decisive evidence;
+report inconclusive bounds without treating them as compliance or violation.
+An estimate is not an authorized allowance. Keep supervisor/session time distinct
+from validation time; use existing governor reports and stop on exhaustion.
+
+For runtime implementations, an Owner-designated independent reviewer checks
+connected consumers and authority/data boundaries, a real success/refusal/recovery
+path, and raw acceptance evidence against the reviewed candidate. Record material
+findings and their resolution before acceptance; revalidate only affected proof.
+A separate review of the author's summary alone is insufficient. No reviewer
+is implied by this template, and no agents are authorized. Documentation-only
+work receives proportionate policy/reference/diff review, with independence
+reported accurately. Follow the lifecycle freeze rule once required checks pass;
+do not keep searching for improvements while waiting for Owner review or commit.
+
+Failure classification remains separate from acceptance status: distinguish a
+product defect, test/instrument defect, missing evidence, external authorization
+dependency, architectural limitation and reviewed baseline debt. Record the
+smallest useful next action; avoid another run that cannot change the finding.
+Scope-based evidence retention does not override the governor's exact reuse or
+required-fresh security rules. Missing proof prevents acceptance; updating the
+record does not complete a roadmap feature.
+
 ## Thin-slice strategy
 
 Use the smallest real implementation that crosses the new boundary.

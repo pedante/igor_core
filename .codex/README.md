@@ -37,6 +37,27 @@ in AGENTS.md; their IMPLEMENTATION phase permits only authorized deliverables.
 Example status: `Phase: STABILIZATION. Allowed now: one policy-consistency
 review. Exit: TOML, links and final diff checks pass; no unresolved scope issue.`
 
+## Persistent session context
+
+For Igor 2 work, start from the compact active task record at the top of
+[STATUS.md](../docs/igor2/STATUS.md), then its linked specification and relevant
+accepted architecture/decisions. Use the
+[increment record](../docs/igor2/EXECUTION.md#increment-record-and-handoff)
+before implementation. Keep it in the existing task document; STATUS holds only
+the current summary and pointer, not a second evidence ledger.
+
+At a handoff, update phase, allowed next action, candidate/diff, evidence,
+remaining budget, blockers and Owner decisions. Preserve deferred tasks with
+their resumption pointer. The next session checks actual branch/status and
+evidence provenance before editing or scheduling validation; compaction and
+chat recollection do not grant budget or invalidate passing proof by themselves.
+
+This record links architectural authority rather than copying it. It is
+engineering context, never Igor operational state or authorization. Keep the
+Owner's root model choice and single-agent policy; an independent reviewer is
+a human or separately authorized review session, not an automatically spawned
+agent. Author self-review must be reported as self-review.
+
 ## Release freeze and stopping conditions
 
 When implementation, focused tests, required regression tests and documentation
