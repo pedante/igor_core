@@ -41,6 +41,213 @@ entries supersede historical timing statements.
   and memory limits unchanged. Use [E resumption evidence](COLLECTION_INCREMENT_E.md#deferral-and-resumption--2026-10-14)
   before any separately authorized continuation; no automatic Wave F.
 
+## Collection EXECUTION 1E — STABILIZATION, final acceptance blocked
+
+Owner-authorized Git checkpoint (2026-10-15): this report and its STATUS
+history are committed as documentation of deferred, unaccepted work. Runtime,
+fixtures and tests are preserved separately on `wip/collection-increment-e-deferred`.
+E remains STABILIZATION with blocked acceptance and deferred validation;
+historical no-commit instructions below describe their original checkpoints.
+No push or E acceptance is authorized.
+
+The assessment below is retained prior evidence. F0.1 documentation work is now
+authorized as recorded above; older statements that F0 is proposal-only describe
+the earlier checkpoint and do not override the current Owner instruction.
+
+Owner budget disposition (2026-10-14): **DEFERRED — AWAITING OWNER APPROVAL**
+for the proposed two 900-second validation tranches. No expensive tests,
+acceptance-criteria changes, commit or push. E remains STABILIZATION/unaccepted;
+the 30-second TTL and mandatory unverified gates are retained. Findings,
+procedures and hash-bound candidate/raw evidence are preserved, with an additional
+owner-only workspace archive under
+`.igor-governor/evidence/collection-increment-e-deferred-20261014/`.
+See [resumption instructions](COLLECTION_INCREMENT_E.md#deferral-and-resumption--2026-10-14).
+The recommendation is a small documentation-first F0 slice before expensive
+verification, followed by focused navigation diagnosis and instrument calibration.
+This is a recommendation, not authorization for F0 implementation or Wave F.
+
+Focused evidence recovery (2026-10-14): Owner retains 30 seconds for now,
+preserves memory criteria, blocks Pi without an authorized target and accepts
+deferral of the four inherited lint findings. No commit or push. This resolves
+the current TTL choice without accepting the navigation failure or waiving gates.
+
+SHA-256-bound analysis of ten retained sequences finds a concrete latency/lease
+interaction: 9 initial inspection checks passed; 8 then expired at execution
+revalidation after another 6.127–9.888 s (median 7.952 s). Trial 2 crossed expiry
+in its initial check. Only trial 0 invoked READ, visibly completing after expiry
+as allowed. The next-page handler median is 1.412 s, while correlated request
+span is 13.594 s; median 7.855 s lies outside the execution wrapper. No bad lease
+reset or wrong-row execution is demonstrated. Harness readiness/frame waits,
+timing wrappers, explicit 2/2/1 reading and probable bare-ESC decoding contribute;
+they do not erase nine real backend refusals. Exact expensive dispatch helpers
+remain unprofiled. Recommend paired 30-s stage/frame/READY diagnosis before any
+production correction; no 45/60 experiment is authorized.
+
+The [E execution plan](COLLECTION_INCREMENT_E.md#focused-causal-assessment-and-execution-plan--2026-10-14)
+requests two 900-s governed tranches for navigation diagnosis, calibration-first
+epoch bounds, three canonical memory pairs, real aggregate/detail/refresh overlap
+and affected closing proof. The 240-s command ceiling stays; oversized pairs
+need equivalent bounded test-only phases. The current 45.877-s allowance cannot
+cover those workloads and is not renewed. Stop maximum dispatch if calibration
+cannot establish trustworthy, decisive intervals. Pi remains a separate gate.
+
+Lifecycle stays STABILIZATION; acceptance remains BLOCKED with finite next actions.
+The separately authorized [F0 proposal](F0_DEVELOPMENT_IMPROVEMENT_PROPOSAL.md)
+is DISCOVERY only: existing context/specification/evidence practices plus one
+pilot, no process implementation or Wave F. This pass changes documents only;
+runtime/regression proof retains its existing provenance and limitations.
+
+Previous Owner-requested assessment (2026-10-14; superseded where above):
+Owner-requested assessment (2026-10-14): **lifecycle STABILIZATION; acceptance
+BLOCKED**, not READY FOR OWNER REVIEW. The test tracer now retires completed
+diagnostics within the unchanged 4096-record ceiling, while keeping live records,
+late-fork fencing and accumulated peak counters. A 4202-process regression passed:
+4094 records retained, 108 explicitly discarded; an early 20-MiB spike remained
+in peak accounting after its diagnostic record was retired. The existing native
+exec-memory self-check also passed. This proves instrument capacity/counter
+preservation, not the undispatched corrected aggregate backend workload.
+
+Fresh scoped regressions: **30 PASS**, covering capability versions/results,
+shell bridge pins, schema transport, projection freshness/fail-closed behavior,
+secret references, History non-exposure and independent baseline-lint proof.
+No production files changed. Four History lint findings remain inherited;
+they are not repaired or described as clean lint.
+
+Three historical conservative RSS proofs remain inconclusive, not actual peak
+violations: their difference intervals include the 16-MiB ceiling, and the
+empty-workflow uncertainty alone is 19392–47144 KiB. Bounded diagnostic retirement
+does not tighten those bounds. Current aggregate, backend detail/refresh-overlap,
+Pi-class and complete isolated-stage evidence remain unverified. The remaining
+governed allowance cannot cover the complete required memory workload set; no
+renewal or repeat of passing benchmarks. No Pi access was provided at assessment.
+
+**TTL Owner decision pending:** retain 30 seconds with explicit usability
+limitations, authorize measured latency work under the same lease, or authorize
+evaluation of a longer absolute lease. 45/60 seconds remain unmeasured; longer
+leases extend stale-data exposure and budget occupancy. The current recommendation
+is to preserve 30 seconds pending sufficient backend/Pi evidence. No waiver,
+commit, push, Wave F or development-process implementation. The E report records
+the finding matrix, reproducible checks and deferred process-review outline.
+
+Previous trace-capable continuation (2026-10-14; superseded where above):
+Resumed trace-capable continuation (2026-10-14): all 24 candidate hashes and 183
+retained evidence files matched before edits. An approved outside-sandbox
+owned-child self-check passed. The first backend case exposed a test-only tracer
+race: a child's exit can arrive before its parent's fork notification, causing
+a dead child to be re-added. The tracer now tracks those exits and observes
+children whose stop arrives first. Production, TTL and thresholds are unchanged.
+
+Corrected one-collection, two-collection and failed-construction measurements
+completed canonical execution and cleanup. Their conservative incremental upper
+bounds were **21516, 41432 and 20624 KiB**, respectively, above the 16384-KiB
+ceiling: all three raw acceptance tests remain FAIL_NEW. These overcounting
+bounds do not establish an actual peak violation; they fail to prove the ceiling.
+The four-session/eight-call case hit the tracer's 4096-record guard during the
+empty baseline, before any complete memory artifact. This is a fixture capacity
+failure, not aggregate memory proof. All raw attempts remain preserved under
+`/tmp/igor2-e-resume-*`; [the E report](COLLECTION_INCREMENT_E.md) records bounds,
+failure classification and validation. A larger trace workload needs a bounded
+verification plan; the remaining allowance cannot cover a conservative serial
+estimate from these durations plus closing checks. No budget renewal.
+
+All ten retained paced workflows still prove safe recovery, with **0/10** complete
+before expiry. Fresh local frontend peak remains 1880 KiB. Backend acceptance,
+detail/refresh-overlap memory coverage, Pi evidence and complete isolated stage
+measurements remain missing; D079 TTL Owner review remains required. Phase stays
+STABILIZATION, with no acceptance, RELEASE_FREEZE or commit.
+
+Previous verified continuation (2026-10-14): corrected trial 5 and remaining trials
+7–9 passed; all ten post-correction paced sequences now establish safe recovery,
+but **0/10** completed page→inspection→Back before expiry. One inspection returned
+details; nine reported expired, and all ten expired on Back. Median first/next/
+details intervals: 14.207/13.528/13.536 s; median lifetime remaining at first
+visibility: 26.109 s. These include transport/UI/polling and varying local load.
+Fresh maximum-page frontend kernel peak increment: **1880 KiB**, within 8 MiB.
+Corrected tracer lint has no new diagnostics; four reviewed History diagnostics
+remain inherited. Candidate hashes and all 134 retained summary/log files plus
+16 retained artifacts match; new observations and their provenance are preserved.
+
+Whole-backend 16/64-MiB measurements remain **blocked/unverified**: the latest
+pinned-interpreter mechanism check failed with owned-child tracing EPERM in the
+restricted sandbox. The earlier approved external self-check proves only that
+mechanism in its own environment. No backend workload was dispatched here;
+no permission workaround or sampled-RSS substitute. The external governor
+authorization now retains allowance; the old interrupted checkpoint is preserved.
+Pi-class evidence and complete isolated stage measurements remain unverified.
+Thirty seconds is unchanged. D079 Owner review must decide whether to retain
+30 seconds with explicit usability limitations or authorize a measured longer
+absolute TTL; 45/60 seconds remain untested proposals. Acceptance and
+RELEASE_FREEZE remain blocked; no commit.
+
+Previous interrupted continuation (2026-10-14; superseded where above):
+bounded page-local redaction preparation and
+one managed projector per event projection preserve D049/privacy checks. Fresh
+contract/History/privacy tests: 192 PASS; four reviewed History Ruff diagnostics
+remain inherited. Real-time maximum retention now passes with eight exact
+512-KiB snapshots (4 MiB), construction 5.632–9.646 s, zero state after release.
+Six post-correction paced trials completed safe recovery; none completed the
+whole workflow while fresh. Trial 5 exposed an assertion waiting for a new frame
+despite an already-expired display; correction remains unverified. Trial 7 was
+interrupted, 8–9 undispatched. The interrupted governor checkpoint still says
+running and reserves zero remaining allowance; no ledger repair/renewal.
+Owned-child kernel memory tracing passed its authorized self-check outside the
+sandbox; actual backend memory workloads remain undispatched. New tracer lint
+BLE001 was corrected but its final lint check is unverified. No Pi target.
+The 30-second TTL remains unchanged. Source, original evidence and unrelated
+`katemark-git/` are preserved; no commit or acceptance.
+
+Owner authorized Increment E at clean tracked/index D checkpoint
+`d729449f2bb26ac97791418a402956ff7e7740f0` on `igor2`; unrelated untracked
+`katemark-git/` is untouched. [Increment E evidence](COLLECTION_INCREMENT_E.md)
+records the independently registered test-only document provider, actual generic
+curses/PTY READ/back/paging/refresh, cross-provider authority and exact bounds.
+No permanent fake module, new architecture, production TUI changes or live service
+operations. The only Core correction rechecks the construction TTL after final
+validation/writes, before snapshot commit; its failing reproduction and focused
+correction evidence are preserved.
+
+The maximum-snapshot cohort still failed after the expiry correction: all eight
+constructions succeeded individually in 13.918–26.646 s, but earlier leases
+expired before final inspection, leaving two snapshots/1 MiB. Component kernel
+VmHWM increments were 1764–3092 KiB, sum 9500 KiB; these exclude canonical
+Bash/transport descendants and cannot satisfy whole-backend memory acceptance.
+The real canonical curses probe passed two exact 128-row/64-KiB pages, refresh,
+READ details and Back; frontend kernel peak increment was 1708 KiB, within the
+local 8-MiB ceiling. First wire event: 66253 bytes. No Pi claim.
+
+All ten real paced sequences passed safe expiry/recovery and explicit refresh,
+but zero completed page→inspect→Back before expiry. Five inspections returned
+details, five were rejected as expired, and all ten expired on Back. Median
+first/next/inspection intervals were 12.058/10.942/12.462 s, including
+backend/frontend/polling. Diagnostic profiling identified repeated D049/privacy
+preparation as the dominant maximum-snapshot cost; instrumentation-triggered
+expiry correctly retained zero data. No privacy shortcut, TTL extension or
+automatic refresh. Usability and maximum concurrent retention failed acceptance;
+whole-backend peak and Raspberry Pi measurements remain unverified.
+
+Fresh final regressions record 91 PASS, 1 selected-lint BASELINE_FIXED and one
+permitted environmental skip, with no failures/timeouts. The deduplicated E ledger
+records 171 PASS, one unresolved maximum-workload FAIL_NEW, one BASELINE_FIXED and
+one ENV_SKIP. The expiry reproduction is fixed; all new fixture/lint failures are
+retained as historical corrections. Exact classifications, candidate hashes and
+measurement limits are recorded in the E report/ledger. Historical failures/timeouts and accepted
+A–D baseline limitations remain separate from passing E checks. No Owner budget
+renewal was performed by the model. Increment E and the complete Collection
+Operator milestone are not ready for acceptance or RELEASE_FREEZE. Stop with the
+workspace/evidence preserved; no commit, push, merge or further roadmap work.
+
+Performance follow-up removed immediately duplicated canonical reference/row
+validation, retaining fresh D049/privacy and full-page checks. Fresh focused
+security/History/lifecycle tests passed; canonical document production also
+passed. Maximum profiling fell from 3093 to 2069 D049 calls (33.1%) and
+30.132 to 25.171 s (16.5%, including instrumentation). Controlled capacity now
+independently proves eight live snapshots, ninth-request rejection, owner disable
+and exact expiry. Real-time maximum retention still failed, with four snapshots
+remaining after construction; cleanup left zero state. Previous ten-trial 0/10
+usability is pre-correction evidence; post-correction ten trials, isolated stage
+timings, full process-tree peak memory and Pi remain unverified. The 30-second
+TTL is unchanged; acceptance remains blocked. No Owner budget renewal by model.
+
 ## Collection EXECUTION 1D — Owner accepted at READ inspection scope
 
 Owner accepted Increment D on 2026-10-13: backend-authorized resource inspection,
