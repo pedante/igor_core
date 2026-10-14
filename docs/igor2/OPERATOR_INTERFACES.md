@@ -29,6 +29,41 @@ bindings, capabilities, approvals, privilege or success.
 
 ## Step 20A — First-class CLI
 
+### Public CLI READ acceptance record — 2026-10-15
+
+- **Objective/authority:** Owner authorized one existing READ capability through
+  `bash igor.sh capability run`, under D078 and the shared dispatcher contract
+  below. F0 is closed; its accepted workflow applies normally. No CLI redesign,
+  ownership refactor, Collection Increment E stabilization, commit or push.
+- **Candidate/scope:** clean `igor2`, base `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`.
+  Affected paths: `core/lib/operator_cli.sh`, `igor.sh`, CLI regressions and
+  this task/status record. No persisted format or capability contract migration.
+- **Phase:** IMPLEMENTATION. Allowed: regression reproduction and smallest
+  argument/startup fixes, then governed focused validation after Owner-terminal
+  authorization. Exit: runtime evidence, scoped diff and reviewable handoff.
+- **Requirements/proof:** enabled public READ succeeds; disabled owner refuses
+  without execution; re-enable restores execution; invalid inputs refuse;
+  omitted/explicit `{}` and populated JSON arrive intact; History identifies
+  `cli` and `operator`; noninteractive execution avoids startup UI while keeping
+  security/module/approval/authentication initialization. Existing F0.2 regression
+  supplies stale-proposal and ownership coverage on this baseline. Existing CLI
+  frontend tests plus approval/privilege regressions protect interactive policy.
+  Contract/regression/vertical-slice proof uses the public CLI fixture and canonical
+  dispatcher; inspection uses History and owner registry. Migration is inapplicable
+  (no format change); recovery is fresh-process disable/re-enable.
+- **Budget plan:** single agent, serial temporary fixtures, no network, live service,
+  Pi or privileged operation. Prior F0.2 lifecycle: 24.497 s; preflight: about 6 s.
+  Estimate 150 s including CLI reproduction/final pass and policy neighbors,
+  request 450 s total with 120 s command cap and correction reserve. No allowance
+  currently authorized for this slice; F0.2's unused ledger is not authorization.
+  Runner dry-run and exact Owner-terminal command will precede execution.
+- **Evidence/review:** source inspection only so far; runtime reproduction and
+  validation pending, independent review pending. F0.2 mixed-tree evidence is
+  preserved, not claimed as a clean-baseline pass.
+- **Handoff:** finish implementation while awaiting authorization; do not execute
+  governed tests until Owner activates the slice budget from their terminal.
+  Step 20A as a whole and 20B/C remain open; Increment E remains deferred/unaccepted.
+
 The current headless inspection flags remain migration inputs. Igor 2 should
 also offer one coherent user-facing CLI.
 

@@ -10,7 +10,26 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Current focus — F0.2 READ lifecycle pilot
+## Current focus — Step 20A public CLI READ acceptance
+
+- **Phase:** IMPLEMENTATION; Owner authorized bounded public CLI READ development.
+  [Task record, acceptance and budget](OPERATOR_INTERFACES.md#public-cli-read-acceptance-record--2026-10-15).
+- **Candidate:** clean `igor2` at `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`;
+  JSON default handling and capability startup UI only, through canonical dispatch.
+- **Evidence/budget:** inspection complete; runtime reproduction/validation pending
+  Owner-terminal authorization. Existing F0.2 allowance grants no Step 20A budget.
+- **Allowed next action/exit:** implement focused regressions/fixes, obtain terminal
+  authorization, validate and prepare independent review. No Step 20A commit/push.
+- **Roadmap:** F0 closed, practices now normal workflow. Step 20 remains PARTIAL;
+  20B/C and broad 20A acceptance remain open. E deferred/unaccepted, criteria unchanged.
+
+## F0.2 — accepted and locally committed; F0 closed
+
+Owner reaffirmed acceptance and closed F0 on 2026-10-15. Local scoped commit
+`1feddd10e913c2359de193f4e6321b3ae7cfaf0c` already contains only the regression
+and its two evidence documents; clean entry/staged diff inspected. No duplicate
+commit or push. Retained evidence and regression preserved. Historical checkpoint
+handoff below is superseded by the authorized Step 20A slice above.
 
 - **Phase:** RELEASE_FREEZE; **ACCEPTED by Owner, 2026-10-15**, following
   independent **APPROVE** review. Authorized local checkpoint; no push.

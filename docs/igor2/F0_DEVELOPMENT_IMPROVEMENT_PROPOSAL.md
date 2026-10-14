@@ -1,6 +1,11 @@
 # F0 — development improvement proposal
 
-Status: **F0.1 ACCEPTED by Owner — RELEASE_FREEZE for local commit**, 2026-10-14.
+Status: **F0 CLOSED — F0.1 and F0.2 ACCEPTED by Owner**, 2026-10-15.
+
+F0.2 is locally committed at `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`;
+its regression and retained evidence remain intact. No push. The Owner closed
+F0: its accepted practices are normal development workflow, with no further
+F0 increments. Historical authorization/handoff entries below are retained.
 The Owner authorized this small documentation-first slice after deferring
 Increment E verification. Closing evidence and the independent review are
 recorded below; the runtime pilot remains unverified. F0 is development discipline,
