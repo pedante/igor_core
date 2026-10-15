@@ -10,16 +10,47 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Current focus — Step 20A public CLI READ acceptance
+## Current focus — integrated Step 20 System operator package
 
-- **Phase:** IMPLEMENTATION; Owner authorized bounded public CLI READ development.
+- **Acceptance:** **ACCEPTED by Owner, 2026-10-15** — bounded Step 20A/B System
+  operator package only. Independent correction review: **APPROVE**, no remaining
+  defects. This local checkpoint records acceptance; no push is authorized.
+  [Scope and evidence record](OPERATOR_INTERFACES.md#integrated-system-operator-package--2026-10-15).
+- **Candidate:** `igor2`, HEAD `ce97fbb` plus the preserved uncommitted 20A candidate.
+  All 15 reviewed source hashes and 101 retained artifact hashes matched before
+  the acceptance-only documentation updates. Commit identity is retained in the
+  local evidence index after closeout.
+- **Evidence:** clean/redacted CLI results and failure exits, verified memory READ,
+  disable/stale refusal/recovery; actual curses/PTY System summary, availability,
+  result, shared History navigation and Quit pass. Security/History regressions
+  pass; the two inherited lint/exact-string baseline findings remain explicit.
+  Final History selection visibility/Enter regression uses 20 overflowing records;
+  affected navigation/operator checks pass (31 tests), no new lint diagnostic.
+- **Budget:** Owner-terminal 900 s cumulative / 240 s command ceiling; no renewal.
+  Exact timings/remaining allowance and raw hash-bound evidence:
+  `.igor-governor/evidence/step20-system-20261015/index.json`.
+- **Closeout:** one scoped local acceptance commit; then stop. Passing runtime
+  tests are retained, not repeated for acceptance prose. The authorized independent
+  reviewer `/root/history_correction_review` inspected the correction, regression,
+  contracts and raw/hash-bound evidence read-only; no test rerun or delegation.
+- **Roadmap:** Step 20 remains **PARTIAL**. Broader CLI/TUI application scenarios,
+  System facts/health and configuration proposal/apply/readback acceptance, and
+  Step 20C remain open. Collection Increment E remains deferred/unaccepted with
+  unchanged evidence, criteria and authorization. No next task is implemented.
+
+## Step 20A public CLI READ acceptance — preserved input to integrated package
+
+- **Phase:** RELEASE_FREEZE; bounded public CLI READ slice ready for independent review.
   [Task record, acceptance and budget](OPERATOR_INTERFACES.md#public-cli-read-acceptance-record--2026-10-15).
-- **Candidate:** clean `igor2` at `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`;
-  JSON default handling and capability startup UI only, through canonical dispatch.
-- **Evidence/budget:** inspection complete; runtime reproduction/validation pending
-  Owner-terminal authorization. Existing F0.2 allowance grants no Step 20A budget.
-- **Allowed next action/exit:** implement focused regressions/fixes, obtain terminal
-  authorization, validate and prepare independent review. No Step 20A commit/push.
+- **Candidate:** task base `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`, external
+  checkpoint `ce97fbb` plus uncommitted JSON/startup fixes and corrected regressions.
+- **Evidence/budget:** both argument defects reproduced. Public JSON/lifecycle,
+  existing System READ/verification, CLI History, startup gating and classic routing
+  passed; 25 approval, 5 privilege and unchanged F0.2 lifecycle tests passed.
+  Scoped lint/syntax passed. Owner-terminal 450-s budget; exact remaining allowance
+  and hash-bound evidence: `.igor-governor/evidence/step20a-20261015/index.json`.
+- **Allowed next action/exit:** closing docs/diff inspection, then independent review
+  and Owner acceptance. No Step 20A commit/push; no further feature development.
 - **Roadmap:** F0 closed, practices now normal workflow. Step 20 remains PARTIAL;
   20B/C and broad 20A acceptance remain open. E deferred/unaccepted, criteria unchanged.
 
@@ -30,6 +61,8 @@ Owner reaffirmed acceptance and closed F0 on 2026-10-15. Local scoped commit
 and its two evidence documents; clean entry/staged diff inspected. No duplicate
 commit or push. Retained evidence and regression preserved. Historical checkpoint
 handoff below is superseded by the authorized Step 20A slice above.
+Its unchanged regression now also passes on the current E-free candidate;
+the original mixed-tree provenance is retained below as historical evidence.
 
 - **Phase:** RELEASE_FREEZE; **ACCEPTED by Owner, 2026-10-15**, following
   independent **APPROVE** review. Authorized local checkpoint; no push.

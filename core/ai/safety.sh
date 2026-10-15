@@ -1263,7 +1263,9 @@ print(json.dumps({"capability_id":p.get("capability_id"),"capability_version":p.
                         output=$(igor_capability_execute "$_cap_prepared" 2>&1)
                         exit_code=$?
                     fi
-                    IGOR_CAPABILITY_LAST_RESULT="$output"
+                    # Return the committed result, not handler diagnostics mixed
+                    # into the tool transcript. Operation identity is local here.
+                    IGOR_CAPABILITY_LAST_RESULT="$(igor_capability_result "$IGOR_HISTORY_OPERATION_ID")" || IGOR_CAPABILITY_LAST_RESULT=""
                     if [ "$exit_code" -eq 0 ]; then
                         local _cap_outcome _cap_metadata
                         _cap_metadata=$(printf '%s' "$output" | python3 -c 'import json,sys; r=json.load(sys.stdin); print("|".join(str(r.get(k,"")) for k in ("operation_id","outcome","verification_status")))' 2>/dev/null) || _cap_metadata='|failed|'

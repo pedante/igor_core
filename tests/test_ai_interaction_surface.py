@@ -200,6 +200,38 @@ class FocusNavigationTests(unittest.TestCase):
             tui._draw(screen, state, draft, navigator, focus)
         self.assertTrue(any("LIVE" in row for row in screen.drawn))
 
+    def test_history_selection_stays_visible_across_viewport_and_enter_keeps_identity(self):
+        query = tui.HistoryInspection()
+        query.data = [{"operation_id": f"op-{index:032x}",
+                       "capability": {"id": "system.host.memory.refresh"},
+                       "outcome": "success", "provenance": {"interface": "cli"}}
+                      for index in range(20)]
+        original_draw = tui._draw_panel
+        selections = []
+
+        def draw(screen, focus, sections, *args):
+            first = len(screen.drawn)
+            original_draw(screen, focus, sections, *args)
+            if sections[focus.panel_selection]["id"] == "history":
+                visible = "".join(screen.drawn[first:])
+                self.assertIn("> " + query.data[query.selection]["operation_id"], visible)
+                selections.append(query.selection)
+
+        keys = ([2] + [tui.curses.KEY_DOWN] * 3 +
+                [tui.curses.KEY_RIGHT] * 22 + [10] +
+                [tui.curses.KEY_LEFT] * 22 + [10, 2])
+        with patch.object(tui, "HistoryInspection", return_value=query), \
+                patch.object(tui, "_draw_panel", side_effect=draw), \
+                patch.object(query, "start") as start:
+            _screen, send, _state = run_keys(keys)
+        self.assertEqual(start.call_args_list, [
+            unittest.mock.call(("--history", "inspect", query.data[19]["operation_id"])),
+            unittest.mock.call(("--history", "inspect", query.data[0]["operation_id"])),
+        ])
+        self.assertEqual(set(selections), set(range(20)))
+        self.assertEqual(query.selection, 0)
+        send.assert_not_called()
+
 
 class PropertyControlTests(unittest.TestCase):
     def test_five_typed_controls_and_detached_proposals(self):
@@ -412,8 +444,19 @@ _ai_apply_session_setting "$1" "$2"
             section = next(section for section in tui.panel_sections(tui.EventState(), query)
                            if section["id"] == "history")
             rendered = " ".join(tui.panel_rows(section))
-            self.assertIn("corr-ui", rendered)
+            self.assertIn(row["operation_id"], rendered)
             self.assertIn("Source: --history recent 20", rendered)
+            with patch.dict(os.environ, {"IGOR_DATA_DIR": str(data)}):
+                query.inspect_operation(row["operation_id"])
+                deadline = time.monotonic() + 8
+                while query.process is not None and time.monotonic() < deadline:
+                    query.poll()
+                    time.sleep(0.01)
+            detail = next(section for section in tui.panel_sections(tui.EventState(), query)
+                          if section["id"] == "history")
+            rendered = " ".join(tui.panel_rows(detail))
+            self.assertIn("Source: --history inspect", rendered)
+            self.assertIn("corr-ui", rendered)
             self.assertIn("scope_id", rendered)
             self.assertEqual({path: path.read_bytes() for path in data.rglob("*") if path.is_file()}, before)
 

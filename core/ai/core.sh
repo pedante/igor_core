@@ -56,7 +56,15 @@ try:
     result = json.load(sys.stdin)
 except ValueError:
     raise SystemExit(1)
-payload={"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""), "result": result}
+if result.get("capability_version") != 3:
+    from pathlib import Path
+    sys.path.insert(0,str(Path(sys.argv[4]).parent/"ai"))
+    from privacy import scrub_data
+    for key in ("result", "verification_evidence", "affected_objects", "recovery"):
+        if key in result:
+            result[key]=scrub_data(result[key])
+payload={"session_id": sys.argv[1], "action_id": result.get("tool_call_id", ""),
+         "operation_id": result.get("operation_id", ""), "result": result}
 if sys.argv[2]:
     payload["view_request_id"]=sys.argv[2]
 if sys.argv[3]:
@@ -337,6 +345,7 @@ PY
 _ai_operator_invoke() {
     local _invoke_rest="${1:-}" _invoke_spec _invoke_id _invoke_provider _invoke_inputs _invoke_tool
     local IGOR_AI_VIEW_REQUEST_ID="" IGOR_AI_COLLECTION_RESULT_EMITTED=0 _invoke_rc=0
+    local _invoke_result=""
     local IGOR_COLLECTION_INSPECTION_FILE="" _inspect=false _inspection_record
     if [[ "$_invoke_rest" == --view=* ]]; then
         _invoke_spec="${_invoke_rest%% *}"
@@ -394,11 +403,14 @@ PY
     fi
     IGOR_CAPABILITY_LAST_RESULT=""
     IGOR_HISTORY_INTERFACE=operator_surface ai_execute_tool "$_invoke_tool" || _invoke_rc=$?
-    if [ -n "$IGOR_AI_VIEW_REQUEST_ID" ] && [ "$IGOR_AI_COLLECTION_RESULT_EMITTED" = 0 ]; then
-        if [ -n "$IGOR_CAPABILITY_LAST_RESULT" ]; then
-            _ai_frontend_action_result "$IGOR_CAPABILITY_LAST_RESULT"
-        else
+    if [ "$IGOR_AI_COLLECTION_RESULT_EMITTED" = 0 ]; then
+        _invoke_result="$IGOR_CAPABILITY_LAST_RESULT"
+        if [ -n "$_invoke_result" ]; then
+            _ai_frontend_action_result "$_invoke_result"
+        elif [ -n "$IGOR_AI_VIEW_REQUEST_ID" ]; then
             _ai_frontend_event warning "Collection request unavailable." unavailable
+        elif [ "$_invoke_rc" -ne 0 ]; then
+            _ai_frontend_event warning "Capability refused: unavailable provider or invalid inputs. Inspect module/capability availability and refresh." refused
         fi
     fi
     [ -z "$IGOR_COLLECTION_INSPECTION_FILE" ] || rm -f -- "$IGOR_COLLECTION_INSPECTION_FILE"
@@ -3914,6 +3926,9 @@ except: pass
                 local _active_key_exit; [ "$provider" = "openrouter" ] && _active_key_exit="$(_ai_openrouter_cached_key)" || _active_key_exit="$api_key"
                 _ai_set_session_state user_exited
                 _ai_session_cleanup
+                # The TUI owns closing; hidden classic wrap-up prompts would
+                # leave its backend blocked after session_finished.
+                [ "${IGOR_TUI_MODE:-false}" != true ] || return 0
                 # Restore layout (remove yellow border) but do NOT clear screen yet —
                 # the knowledge session end prompts need a readable screen.
                 if declare -f igor_layout_restore &>/dev/null; then

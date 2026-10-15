@@ -366,6 +366,12 @@ else
 fi
 
 # ── Source library files ───────────────────────────────────────────────────────────
+# Capability CLI keeps operational/security startup but has no startup UI.
+# Silence bootstrap before config loading, which can itself print diagnostics.
+if [ "${1:-}" = --capability-run ]; then
+    exec 3>&1 4>&2 >/dev/null 2>&1
+    _IGOR_STDOUT_SAVED=true
+fi
 source "${IGOR_DIR}/core/lib/ui.sh"
 source "${IGOR_DIR}/core/lib/helpers.sh"
 source "${IGOR_DIR}/core/lib/config.sh"
@@ -399,7 +405,7 @@ _IGOR_RICH_AVAILABLE=false
 _IGOR_SKIP_SESSION=false
 for _a in "$@"; do
     case "$_a" in
-        --extra|--status|--help|-h|--capture|--tune|--check|--ai-tui-backend)
+        --extra|--status|--help|-h|--capture|--tune|--check|--ai-tui-backend|--capability-run)
             _IGOR_SKIP_SESSION=true; break ;;
     esac
 done
@@ -419,7 +425,7 @@ unset _a
 # all modes, but sub-modes must not pollute their pane with the same startup
 # chatter as the main session.  Save real FDs, redirect to /dev/null, restore
 # just before the execution block at the bottom of this file.
-if [ "${_IGOR_SKIP_SESSION:-false}" = "true" ]; then
+if [ "${_IGOR_SKIP_SESSION:-false}" = "true" ] && [ "${_IGOR_STDOUT_SAVED:-false}" != true ]; then
     exec 3>&1 4>&2 >/dev/null 2>&1
     _IGOR_STDOUT_SAVED=true
 fi
@@ -551,7 +557,7 @@ fi
 # The standalone curses TUI owns its own interaction surface and never uses the
 # tmux/fzf/rich startup probe; skipping that probe also prevents an unrelated
 # package-install prompt from blocking the backend PTY.
-if [ "${IGOR_TUI_MODE:-false}" != true ]; then
+if [ "${IGOR_TUI_MODE:-false}" != true ] && [ "${1:-}" != --capability-run ]; then
     igor_setup_features
 fi
 
@@ -1390,8 +1396,28 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
                 ;;
             --capability-run)
                 [ "$#" -ge 3 ] && [ "$#" -le 4 ] || { printf 'Usage: bash igor.sh capability run ID [INPUTS_JSON] [PROVIDER]\n' >&2; exit 2; }
-                _igor_cli_cap_id="$2"; _igor_cli_cap_inputs="${3:-{}}"; _igor_cli_cap_provider="${4:-}"
+                _igor_cli_cap_id="$2"; _igor_cli_cap_inputs="${3:-}"; _igor_cli_cap_provider="${4:-}"
+                [ -n "$_igor_cli_cap_inputs" ] || _igor_cli_cap_inputs='{}'
+                _igor_cli_tool="$("${IGOR_PYTHON:-python3}" - "$_igor_cli_cap_id" "$_igor_cli_cap_provider" "$_igor_cli_cap_inputs" <<'PY'
+import json,sys
+ident,provider,raw=sys.argv[1:4]
+try:
+    inputs=json.loads(raw)
+    if not isinstance(inputs,dict): raise ValueError()
+except (ValueError,TypeError):
+    raise SystemExit(2) from None
+request={"tool":"run_capability","id":ident,"inputs":inputs}
+if provider: request["provider"]=provider
+print(json.dumps(request,separators=(",",":")))
+PY
+)" || { igor_operator_cli_refuse invalid_arguments "$_igor_cli_cap_id" 'Inputs must be a JSON object.' || exit $?; exit 0; }
                 _igor_cli_cap_inspect="$(igor_capability_inspect "$_igor_cli_cap_id" "$_igor_cli_cap_provider")" || exit 1
+                _igor_cli_cap_resolution="$(_igor_capability_field "$_igor_cli_cap_inspect" resolution)" || exit 1
+                if [ "$_igor_cli_cap_resolution" != resolved ]; then
+                    igor_operator_cli_refuse "$_igor_cli_cap_resolution" "$_igor_cli_cap_id" \
+                        'No unique active provider; inspect capability and module availability.' || exit $?
+                    exit 0
+                fi
                 _igor_cli_cap_tier="$(printf '%s' "$_igor_cli_cap_inspect" | "${IGOR_PYTHON:-python3}" -c '
 import json,sys
 row=json.load(sys.stdin); providers=row.get("providers") or []; selected=row.get("selected_provider")
@@ -1400,21 +1426,23 @@ if not isinstance(match,dict): raise SystemExit(1)
 print(match["descriptor"]["safety"]["tier"])
 ')" || exit 1
                 if { [ ! -t 0 ] || [ ! -t 1 ]; } && [ "$_igor_cli_cap_tier" != READ ]; then
-                    printf '{"status":"approval_required","capability_id":"%s","classification":"%s","interface":"cli"}\n' "$_igor_cli_cap_id" "$_igor_cli_cap_tier"
-                    exit 3
+                    igor_operator_cli_refuse approval_required "$_igor_cli_cap_id" \
+                        'This capability requires an interactive approval terminal.' || exit $?
+                    exit 0
                 fi
                 _igor_load_subsystem "ai" "${IGOR_DIR}/core/ai/core.sh"
-                _igor_cli_tool="$("${IGOR_PYTHON:-python3}" - "$_igor_cli_cap_id" "$_igor_cli_cap_provider" "$_igor_cli_cap_inputs" <<'PY'
-import json,sys
-ident,provider,raw=sys.argv[1:4]; inputs=json.loads(raw)
-if not isinstance(inputs,dict): raise SystemExit(2)
-request={"tool":"run_capability","id":ident,"inputs":inputs}
-if provider: request["provider"]=provider
-print(json.dumps(request,separators=(",",":")))
-PY
-)" || exit 2
-                IGOR_HISTORY_INTERFACE=cli ai_execute_tool "$_igor_cli_tool"
-                exit $?
+                IGOR_CAPABILITY_LAST_RESULT=""
+                IGOR_QUIET_LOOP=true IGOR_HISTORY_INTERFACE=cli ai_execute_tool "$_igor_cli_tool" >/dev/null || true
+                # The dispatcher returns the committed result separately from
+                # transcript text; its shell return code is not an outcome.
+                _igor_cli_result="$IGOR_CAPABILITY_LAST_RESULT"
+                [ -n "$_igor_cli_result" ] || {
+                    igor_operator_cli_refuse result_unavailable "$_igor_cli_cap_id" \
+                        'No canonical result is available; inspect Operational History before retrying.' || exit $?
+                    exit 0
+                }
+                igor_operator_cli_result "$_igor_cli_result" || exit $?
+                exit 0
                 ;;
             --ai-tui-backend)
                 if [ "${IGOR_TUI_MODE:-false}" = true ]; then

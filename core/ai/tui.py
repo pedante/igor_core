@@ -464,6 +464,12 @@ def _activity_text(item: Activity) -> str:
         return _clean_terminal_output(item.text)
     if item.event_type == "action_result":
         status = item.status or (item.result or {}).get("execution_status") or "complete"
+        if item.result and item.result.get("capability_id") and item.result.get("operation_id"):
+            return ("Result: " + display_text(status) + " · Outcome: " +
+                    display_text(item.result.get("outcome", "unknown")) +
+                    " · Output: " + display_text(item.result.get("output_status", "not_applicable")) +
+                    " · Verification: " + display_text(item.result.get("verification_status", "not_applicable")) +
+                    "\nOperation: " + display_text(item.result["operation_id"]))
         exit_code = (item.result or {}).get("exit_code")
         suffix = f" (exit {exit_code})" if exit_code is not None else ""
         output = _display_result_output(
@@ -966,14 +972,15 @@ class HistoryInspection:
         self.status = f"Enter to load {self.label}"
         self.started = 0.0
         self.output = bytearray()
+        self.selection = 0
 
-    def start(self) -> None:
+    def start(self, command: tuple[str, ...] | None = None) -> None:
         if self.process is not None:
             return
         self.output.clear()
         try:
             self.process = subprocess.Popen(
-                ("bash", str(REPO_ROOT / "igor.sh"), *self.command),
+                ("bash", str(REPO_ROOT / "igor.sh"), *(command or self.command)),
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 close_fds=True, start_new_session=True)
             os.set_blocking(self.process.stdout.fileno(), False)
@@ -983,6 +990,12 @@ class HistoryInspection:
             return
         self.started = time.monotonic()
         self.status = f"Loading {self.label}…"
+
+    def inspect_operation(self, operation_id: str) -> None:
+        if not re.fullmatch(r"op-[0-9a-f]{32}", operation_id):
+            self.status = "Invalid operation identity; History not queried"
+            return
+        self.start(("--history", "inspect", operation_id))
 
     def poll(self) -> bool:
         process = self.process
@@ -1016,8 +1029,13 @@ class HistoryInspection:
             result = json.loads(self.output.decode("utf-8"))
             if code != 0 or not isinstance(result, (list, dict)):
                 raise ValueError("unavailable")
+            if self.label == "Operational History" and isinstance(result, list) and any(
+                    not isinstance(record, dict) for record in result):
+                raise ValueError("invalid History records")
             self.data = result
-            self.status = "Read-only · Enter refresh"
+            self.selection = min(self.selection, max(0, len(result) - 1)) if isinstance(result, list) else 0
+            self.status = ("Read-only · Enter details · r recent · Left/Right select"
+                           if self.label == "Operational History" else "Read-only · Enter refresh")
         except (ValueError, UnicodeDecodeError):
             self.status = f"{self.label} unavailable/invalid response"
         return True
@@ -1105,8 +1123,9 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
          "properties": settings_properties(
              state.settings_snapshot or {}, state.settings_sources),
          "hint": "Enter opens existing backend settings; ownership is shown per field"},
-        {"id": "history", "label": "Operational History", "source": "--history recent 20",
-         "data": inspection.data, "hint": inspection.status},
+        {"id": "history", "label": "Operational History",
+         "source": "--history inspect" if isinstance(inspection.data, dict) else "--history recent 20",
+         "data": inspection.data, "selection": inspection.selection, "hint": inspection.status},
     ]
     if investigations is not None:
         sections.append({"id": "investigations", "label": "Investigations",
@@ -1130,10 +1149,21 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
                          "data": recognition.data, "hint": recognition.status})
     snapshot = state.operator_snapshot if isinstance(state.operator_snapshot, dict) else {}
     entries = snapshot.get("entries") if isinstance(snapshot.get("entries"), list) else []
+    system_entries = [row for row in entries if row.get("owner") == "system" and row.get("kind") == "capability"]
+    system_result = next((item.result for item in reversed(state.activity)
+                          if item.result and item.result.get("owner") == "system" and
+                          item.result.get("safety", {}).get("tier") == "READ"), None)
+    sections.append({"id": "system", "label": "System information",
+                     "source": "registered System capabilities / canonical action_result",
+                     "data": {"registered_capabilities": len(system_entries),
+                              "last_read": ({key: system_result.get(key) for key in
+                                             ("capability_id", "outcome", "verification_status", "operation_id", "result")}
+                                            if system_result else "Not observed; choose a READ capability.")},
+                     "hint": "Enter opens System explorer; execution rechecks availability"})
     sections.append({"id": "capabilities", "label": "Capabilities",
                      "source": "backend operator_snapshot",
                      "data": [row for row in entries if row.get("kind") == "capability"],
-                     "hint": "Generated from canonical capability registry"})
+                     "hint": "Enter opens explorer; registration is not execution authorization"})
     sections.append({"id": "configuration", "label": "Configuration",
                      "source": "backend operator_snapshot",
                      "data": [row for row in entries if row.get("kind") == "configuration"],
@@ -1145,7 +1175,8 @@ def panel_sections(state: EventState, inspection: HistoryInspection,
     result = next((item.result for item in reversed(state.activity) if item.result), None)
     if result is not None:
         sections.append({"id": "result", "label": "Latest result", "data": result,
-                         "source": "frontend action_result"})
+                         "source": "frontend action_result",
+                         "hint": "Enter inspects this operation in authoritative History"})
     return sections
 
 
@@ -1153,7 +1184,32 @@ def panel_rows(section: dict[str, Any]) -> list[str]:
     if not isinstance(section, dict):
         return ["Invalid inspection section"]
     rows = ["Source: " + display_text(section.get("source", "unavailable"))]
-    if section.get("id") == "recognition" and isinstance(section.get("data"), dict):
+    if section.get("hint"):
+        rows.append(display_text(section["hint"]))
+    if section.get("id") == "history" and isinstance(section.get("data"), list):
+        if not section["data"]:
+            rows.append("No operations recorded")
+        for index, record in enumerate(section["data"]):
+            if not isinstance(record, dict):
+                continue
+            marker = "> " if index == section.get("selection", 0) else "  "
+            capability = record.get("capability")
+            provenance = record.get("provenance")
+            rows.append(marker + display_text(record.get("operation_id", "unavailable")))
+            rows.append("  " + display_text((capability if isinstance(capability, dict) else {}).get("id", "unavailable")) +
+                        " · " + display_text(record.get("outcome", "unknown")) +
+                        " · " + display_text((provenance if isinstance(provenance, dict) else {}).get("interface", "unavailable")))
+    elif section.get("id") == "modules" and isinstance(section.get("data"), list):
+        if not section["data"]:
+            rows.append("No installed modules")
+        for record in section["data"]:
+            if not isinstance(record, dict):
+                continue
+            rows.append(display_text(record.get("name", "unavailable")) + " · " +
+                        display_text(record.get("status", "unknown")))
+            if record.get("reason"):
+                rows.append("  " + display_text(record["reason"]))
+    elif section.get("id") == "recognition" and isinstance(section.get("data"), dict):
         try:
             rows.extend(recognition_text_lines(section["data"]))
         except (RecognitionViewError, KeyError, TypeError):
@@ -1161,8 +1217,6 @@ def panel_rows(section: dict[str, Any]) -> list[str]:
     else:
         rows.extend(render_properties(section["properties"]) if "properties" in section
                     else render_structured(section.get("data")))
-    if section.get("hint"):
-        rows.append(display_text(section["hint"]))
     return rows
 
 
@@ -1314,13 +1368,17 @@ def _draw_panel(screen: Any, focus: FocusModel, sections: list[dict[str, Any]],
         screen.addnstr(1, left, "Control · " + focus.region.upper(), panel_width,
                        curses.A_BOLD)
         focus.panel_selection = min(focus.panel_selection, max(0, len(sections) - 1))
-        for index, section in enumerate(sections):
-            if index + 2 > page:
+        # Keep inspection content visible in a normal-height terminal.
+        count = min(len(sections), max(1, min(5, page // 3)))
+        start = max(0, min(focus.panel_selection - count // 2, len(sections) - count))
+        for row, section in enumerate(sections[start:start + count], 2):
+            index = start + row - 2
+            if row > page:
                 break
             selected = index == focus.panel_selection
-            screen.addnstr(index + 2, left, ("> " if selected else "  ") + section["label"],
+            screen.addnstr(row, left, ("> " if selected else "  ") + section["label"],
                            panel_width, curses.A_REVERSE if selected else curses.A_NORMAL)
-        first_row = len(sections) + 3
+        first_row = count + 3
         available = max(0, page - first_row + 1)
         section = sections[focus.panel_selection]
         rows = [wrapped for line in panel_rows(section)
@@ -2846,7 +2904,7 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             elif key in (curses.KEY_PPAGE, curses.KEY_NPAGE, curses.KEY_HOME, curses.KEY_END):
                 rows = [wrapped for line in panel_rows(sections[focus.panel_selection])
                         for wrapped in _wrap_line(line, max(1, _surface_width(screen.getmaxyx()[1], focus)[1]))]
-                visible = max(1, page - len(sections) - 2)
+                visible = max(1, page - min(len(sections), max(1, min(5, page // 3))) - 2)
                 maximum_panel = max(0, len(rows) - visible)
                 if key == curses.KEY_HOME:
                     focus.panel_scroll = 0
@@ -2858,7 +2916,21 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
             elif key in (10, 13, curses.KEY_ENTER):
                 section_id = sections[focus.panel_selection]["id"]
                 if section_id == "history":
-                    inspection.start()
+                    if isinstance(inspection.data, list) and inspection.data:
+                        record = inspection.data[min(inspection.selection, len(inspection.data) - 1)]
+                        inspection.inspect_operation(str(record.get("operation_id", "")))
+                    else:
+                        inspection.start()
+                elif section_id == "result":
+                    inspection.inspect_operation(str(sections[focus.panel_selection]["data"].get("operation_id", "")))
+                    focus.panel_selection = next(index for index, section in enumerate(sections) if section["id"] == "history")
+                    focus.panel_scroll = 0
+                elif section_id in {"system", "capabilities"}:
+                    selected = _operator_overlay(screen, master, reader, state, buffer,
+                                                 "system" if section_id == "system" else "")
+                    if selected:
+                        state.add_operator_input(selected)
+                        focus.set_focus("input")
                 elif section_id == "investigations" and investigations is not None:
                     investigations.start()
                 elif section_id == "modules" and modules is not None:
@@ -2872,6 +2944,20 @@ def _interaction_loop(screen: Any, pid: int, master: int, path: Path,
                 elif section_id == "properties" and not state.pending_action:
                     _settings_overlay(screen, master, reader, state)
                     focus.set_focus("input")
+            elif sections[focus.panel_selection]["id"] == "history" and key in (
+                    curses.KEY_LEFT, curses.KEY_RIGHT, ord("r"), ord("b")):
+                if key in (curses.KEY_LEFT, curses.KEY_RIGHT) and isinstance(inspection.data, list):
+                    delta = -1 if key == curses.KEY_LEFT else 1
+                    inspection.selection = max(0, min(len(inspection.data) - 1, inspection.selection + delta))
+                    # Use the rendered prefix so wrapped records stay aligned.
+                    section = {**sections[focus.panel_selection],
+                               "data": inspection.data[:inspection.selection]}
+                    panel_width = max(1, _surface_width(screen.getmaxyx()[1], focus)[1])
+                    focus.panel_scroll = (sum(len(_wrap_line(line, panel_width))
+                                              for line in panel_rows(section))
+                                          if inspection.selection else 0)
+                elif key in (ord("r"), ord("b")):
+                    inspection.start()
             elif key == 27:
                 focus.set_focus("input")
             continue

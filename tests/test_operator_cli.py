@@ -187,10 +187,14 @@ v1_hooks=false
         (module / "module.sh").write_text(r'''
 printf 'source\n' >> "$IGOR_DIR/module-sources"
 fixture__read() {
-    printf '%s\n' "$1" >> "$IGOR_DIR/handler-inputs"
-    python3 - "$1" <<'PY'
+    local request
+    IFS= read -r request || return 1
+    python3 - "$request" "$IGOR_DIR/handler-inputs" <<'PY'
 import json,sys
-print(json.dumps({"status":"ok","result":{"label":json.loads(sys.argv[1]).get("label", "")}}))
+inputs = json.loads(sys.argv[1])["input"]
+with open(sys.argv[2], "a", encoding="utf-8") as stream:
+    stream.write(json.dumps(inputs) + "\n")
+print(json.dumps({"status":"ok","result":{"label":inputs.get("label", "")}}))
 PY
 }
 ''')
@@ -217,8 +221,10 @@ esac' DEBUG
 
     def assert_read(self, result, label=""):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn('"outcome":"success"', result.stdout)
-        self.assertIn(json.dumps({"label": label}, separators=(",", ":")), result.stdout)
+        self.assertIn("Outcome: success", result.stdout)
+        self.assertIn("label: " + label, result.stdout)
+        self.assertNotIn("TOOL:", result.stdout)
+        self.assertIn("History: bash igor.sh history inspect op-", result.stdout)
         self.assertNotIn("Press any key", result.stderr + result.stdout)
         self.assertNotIn("[module_loader]", result.stderr + result.stdout)
         self.assertTrue((self.root / "data/runtime/locks").is_dir())
@@ -227,11 +233,12 @@ esac' DEBUG
         self.assert_read(self.cli("capability", "run", "fixture.read", "{}", "fixture"))
         inputs = self.root / "handler-inputs"
         self.assertEqual([json.loads(line) for line in inputs.read_text().splitlines()], [{}])
+        sources_before = (self.root / "module-sources").read_text()
         (self.root / "config/modules.conf").write_text("fixture=disabled\n")
         result = self.cli("capability", "run", "fixture.read", "{}", "fixture")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(inputs.read_text().splitlines()), 1)
-        self.assertEqual((self.root / "module-sources").read_text().splitlines(), ["source"])
+        self.assertEqual((self.root / "module-sources").read_text(), sources_before)
         (self.root / "config/modules.conf").write_text("fixture=enabled\n")
         self.assert_read(self.cli("capability", "run", "fixture.read"))
         label = 'spaces } and "quotes"'
@@ -249,7 +256,8 @@ esac' DEBUG
             self.assertEqual(record["provenance"]["interface"], "cli")
             self.assertEqual(record["provenance"]["actor"], "operator")
             self.assertEqual(record["outcome"], "success")
-            self.assertEqual(record["capability"]["provider"], "fixture")
+            self.assertEqual(record["provider"]["id"], "fixture")
+            self.assertEqual(record["provider"]["owner"], "fixture")
             self.assertEqual(record["approval"]["result"], "not_required")
             self.assertEqual(record["privilege"]["result"], "not_required")
 
@@ -262,10 +270,52 @@ esac' DEBUG
         data = json.loads(contract.read_text())
         data["contributions"][0]["safety"]["tier"] = "CHANGE"
         contract.write_text(json.dumps(data))
-        result = self.cli("capability", "run", "fixture.read", "{}")
+        result = self.cli("--json", "capability", "run", "fixture.read", "{}")
         self.assertEqual(result.returncode, 3, result.stderr + result.stdout)
         self.assertEqual(json.loads(result.stdout)["status"], "approval_required")
         self.assertFalse((self.root / "handler-inputs").exists())
+
+    def test_existing_system_read_runs_through_public_cli(self):
+        (self.root / "modules/system").symlink_to(ROOT / "modules/system",
+                                                  target_is_directory=True)
+        (self.root / "config/modules.conf").write_text("system=enabled\nfixture=disabled\n")
+        result = self.cli("--json", "capability", "run", "system.host.memory.refresh", "{}", "system")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn('"outcome":"success"', result.stdout)
+        self.assertIn('"verification_status":"passed"', result.stdout)
+        history = self.cli("history", "recent", "10")
+        self.assertEqual(history.returncode, 0, history.stderr)
+        records = json.loads(history.stdout)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["capability"]["id"], "system.host.memory.refresh")
+        self.assertEqual(records[0]["provenance"]["interface"], "cli")
+        self.assertEqual(records[0]["outcome"], "success")
+
+    def test_json_is_canonical_and_redacted_failure_is_nonzero(self):
+        self.env["CLI_TEST_SECRET"] = "private-fixture-value"
+        result = self.cli("--json", "capability", "run", "fixture.read",
+                          json.dumps({"label": self.env["CLI_TEST_SECRET"]}))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        row = json.loads(result.stdout)
+        self.assertEqual(row["result"]["label"], "[REDACTED]")
+        self.assertNotIn(self.env["CLI_TEST_SECRET"], result.stdout + result.stderr)
+        history = self.cli("history", "inspect", row["operation_id"])
+        self.assertEqual(json.loads(history.stdout)["outcome"], row["outcome"])
+        (self.root / "modules/fixture/module.sh").write_text('''fixture__read() {
+    printf '%s\\n' '{"status":"error","error":{"code":"fixture_unavailable","message":"unavailable"}}'
+}
+''')
+        result = self.cli("--json", "capability", "run", "fixture.read", "{}")
+        self.assertEqual(result.returncode, 1, result.stderr + result.stdout)
+        row = json.loads(result.stdout)
+        self.assertEqual(row["execution_status"], "failed")
+        self.assertEqual(row["outcome"], "failed")
+        self.assertTrue(row["operation_id"].startswith("op-"))
+
+    def test_classic_startup_still_enters_session_setup(self):
+        result = self.cli("--classic")
+        self.assertEqual(result.returncode, 97)
+        self.assertIn('unexpected startup UI: igor_ensure_session "$@"', result.stderr)
 
 
 if __name__ == "__main__":

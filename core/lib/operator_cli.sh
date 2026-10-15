@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Step 20 CLI argument normalization only. This selects existing Igor backend
-# entry points and owns no facts, authorization, privilege or execution.
+# Step 20 CLI routing and presentation. Backend services own facts,
+# authorization, privilege, execution and canonical results.
 
 igor_operator_cli_normalize() {
     _IGOR_OPERATOR_ARGS=()
@@ -11,7 +11,7 @@ igor_operator_cli_normalize() {
         export IGOR_CLI_JSON=false
     fi
     [ "${IGOR_CLI_JSON}" != true ] || [ "$#" -gt 0 ] || return 2
-    local _cmd="${1:-}" _sub _prompt
+    local _cmd="${1:-}" _sub _prompt _inputs
     case "$_cmd" in
         "") ;;
         modules)
@@ -37,7 +37,9 @@ igor_operator_cli_normalize() {
                     _IGOR_OPERATOR_ARGS=(--capabilities plan "$1") ;;
                 run)
                     shift; [ "$#" -ge 1 ] && [ "$#" -le 3 ] || return 2
-                    _IGOR_OPERATOR_ARGS=(--capability-run "$1" "${2:-{}}" "${3:-}") ;;
+                    _inputs="${2:-}"
+                    [ -n "$_inputs" ] || _inputs='{}'
+                    _IGOR_OPERATOR_ARGS=(--capability-run "$1" "$_inputs" "${3:-}") ;;
                 *) return 2 ;;
             esac ;;
         recognition)
@@ -79,4 +81,55 @@ igor_operator_default_frontend() {
     else
         printf 'existing\n'
     fi
+}
+
+# Render an owning-service result; presentation never supplies execution state.
+igor_operator_cli_result() {
+    printf '%s' "$1" | "${IGOR_PYTHON:-python3}" -c '
+import json,sys
+sys.path[:0] = [sys.argv[1]+"/core/ai", sys.argv[1]+"/core/lib"]
+from capability_runtime import _validate_result
+from interaction import display_text, render_structured
+from privacy import scrub_data
+try:
+    result=json.load(sys.stdin)
+    if "operation_id" in result:
+        _validate_result(result)
+        for key in ("result", "verification_evidence", "affected_objects", "recovery"):
+            if key in result:
+                result[key]=scrub_data(result[key])
+        status=result["outcome"]
+    else:
+        status=result["status"]
+        result=scrub_data(result)
+    if sys.argv[2]=="true":
+        print(json.dumps(result,ensure_ascii=False,allow_nan=False,separators=(",",":")))
+    elif "operation_id" in result:
+        print("Capability: "+display_text(result["capability_id"]))
+        print("Outcome: "+display_text(status))
+        print("Execution: %s · Output: %s · Verification: %s" % tuple(
+            display_text(result.get(key,"not_applicable")) for key in
+            ("execution_status","output_status","verification_status")))
+        print("Provider: "+display_text(result.get("provider","unavailable")))
+        print("Operation: "+display_text(result["operation_id"]))
+        if result.get("result") is not None:
+            print("\n".join(render_structured(result["result"],root_label="Result")))
+        print("History: bash igor.sh history inspect "+display_text(result["operation_id"]))
+    else:
+        print("Request refused: "+display_text(status)+" — "+display_text(result.get("reason","")))
+except (OSError,ValueError,TypeError,KeyError):
+    print("{\"status\":\"result_unavailable\",\"interface\":\"cli\"}" if sys.argv[2]=="true"
+          else "Result unavailable; inspect Operational History before retrying.")
+    raise SystemExit(1) from None
+raise SystemExit(0 if status=="success" else 3 if status=="approval_required" else
+                 2 if status=="invalid_arguments" else 1)
+' "$IGOR_DIR" "${IGOR_CLI_JSON:-false}"
+}
+
+igor_operator_cli_refuse() {
+    local _result
+    _result="$("${IGOR_PYTHON:-python3}" -c 'import json,sys
+print(json.dumps(dict(status=sys.argv[1],capability_id=sys.argv[2],reason=sys.argv[3],interface="cli")))' \
+        "$1" "$2" "$3")" || return 1
+    igor_operator_cli_result "$_result"
 }

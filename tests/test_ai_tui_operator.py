@@ -110,6 +110,39 @@ def capability(path="system.host.memory.refresh", required=(), provider_required
 
 
 class OperatorExplorerTests(unittest.TestCase):
+    def test_system_and_result_panels_use_canonical_operation_and_link_history(self):
+        state = tui.EventState()
+        state.operator_snapshot = snapshot_event(1, [capability()])["surface"]
+        result = {"operation_id": "op-" + "a" * 32, "owner": "system",
+                  "safety": {"tier": "READ"},
+                  "capability_id": "system.host.memory.refresh", "outcome": "success",
+                  "execution_status": "succeeded", "output_status": "valid",
+                  "verification_status": "passed", "result": {"observer_id": "host.memory"}}
+        tui.apply_event(state, {"event_type": "action_result", "sequence": 1,
+                               "operation_id": result["operation_id"], "result": result})
+        query = tui.HistoryInspection()
+        sections = tui.panel_sections(state, query)
+        system = next(row for row in sections if row["id"] == "system")
+        self.assertEqual(system["data"]["last_read"]["operation_id"], result["operation_id"])
+        self.assertEqual(system["data"]["last_read"]["result"], result["result"])
+        self.assertEqual(system["data"]["registered_capabilities"], 1)
+        with patch.object(query, "start") as start:
+            query.inspect_operation(result["operation_id"])
+            start.assert_called_once_with(("--history", "inspect", result["operation_id"]))
+        with patch.object(query, "start") as start:
+            query.inspect_operation("../../untrusted")
+            start.assert_not_called()
+
+    def test_history_rows_distinguish_empty_and_selected_operations(self):
+        rows = tui.panel_rows({"id": "history", "data": [], "source": "History"})
+        self.assertIn("No operations recorded", rows)
+        record = {"operation_id": "op-" + "a" * 32,
+                  "capability": {"id": "system.host.memory.refresh"},
+                  "outcome": "success", "provenance": {"interface": "cli"}}
+        rows = tui.panel_rows({"id": "history", "data": [record], "selection": 0})
+        self.assertIn("> " + record["operation_id"], rows)
+        self.assertIn("cli", " ".join(rows))
+
     def test_sys_alias_keeps_canonical_invoke_target(self):
         entry = capability()
         keys = [ord(c) for c in "sys"] + [ord(".")] + \

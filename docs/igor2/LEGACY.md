@@ -34,6 +34,16 @@ execution-time revalidation. No alternate executor, resource database or mutatio
 action is introduced; see [D status](COLLECTION_INCREMENT_D.md).
 The complete collection renderer/inspection milestone remains open.
 
+The integrated Step 20 System operator candidate replaces the public capability
+CLI's AI transcript output with readable results or canonical `--json` results.
+The AI transcript protocol remains live internally. Existing callers/tests of the
+public CLI are migrated with it under D078; capability and retained History formats
+are unchanged. Scalar TUI results/refusals now reach the existing event projection,
+with operation links into owning-service History. TUI Quit retains session saves
+and cleanup without entering hidden classic wrap-up prompts; classic behavior is
+preserved. No classic surface is retired, and Step 20C remains open. See the
+[integrated acceptance record](OPERATOR_INTERFACES.md#integrated-system-operator-package--2026-10-15).
+
 ## OpenRouter ownership cutover — Boundary B, D069
 
 The single selected OpenRouter credential uses the existing secret-reference

@@ -6,12 +6,13 @@ F0.2 is locally committed at `1feddd10e913c2359de193f4e6321b3ae7cfaf0c`;
 its regression and retained evidence remain intact. No push. The Owner closed
 F0: its accepted practices are normal development workflow, with no further
 F0 increments. Historical authorization/handoff entries below are retained.
-The Owner authorized this small documentation-first slice after deferring
-Increment E verification. Closing evidence and the independent review are
-recorded below; the runtime pilot remains unverified. F0 is development discipline,
-not product Wave F. Increment E remains STABILIZATION/unaccepted, with its
-budget, Pi verification, 30-second TTL and memory limits unchanged. Only the local
-F0.1 commit is authorized; no push.
+The accepted pilot and independent review are recorded below. F0 is development
+discipline, not product Wave F. The unchanged lifecycle regression also passed
+on the E-free Step 20A candidate; see the
+[Step 20A evidence](OPERATOR_INTERFACES.md#public-cli-read-acceptance-record--2026-10-15).
+Historical mixed-tree evidence is preserved. Increment E remains
+STABILIZATION/unaccepted, with its budget, Pi verification, 30-second TTL and
+memory limits unchanged. No push.
 
 ## Problem and recommendation
 

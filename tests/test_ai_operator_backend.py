@@ -11,6 +11,30 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class OperatorBackendTests(unittest.TestCase):
+    def test_scalar_operator_result_and_refusal_emit_visible_backend_events(self):
+        with tempfile.TemporaryDirectory() as runtime:
+            stream = Path(runtime) / "events.jsonl"
+            script = r'''
+source "$IGOR_DIR/core/ai/core.sh"
+export PRESENTATION_TEST_SECRET=private-fixture-value
+ai_execute_tool() {
+    if [ "$1" = '{"tool":"run_capability","id":"fixture.refused","inputs":{}}' ]; then
+        return 1
+    fi
+    IGOR_CAPABILITY_LAST_RESULT='{"operation_id":"op-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","capability_id":"fixture.read","outcome":"success","result":{"observed":true,"label":"private-fixture-value"}}'
+}
+_ai_operator_invoke fixture.read
+_ai_operator_invoke fixture.refused
+'''
+            result = self._run(script, str(stream))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            events = [json.loads(line) for line in stream.read_text().splitlines()]
+        scalar = next(row for row in events if row["event_type"] == "action_result")
+        self.assertEqual(scalar["operation_id"], scalar["result"]["operation_id"])
+        self.assertEqual(scalar["result"]["result"]["label"], "[REDACTED]")
+        self.assertTrue(any(row["event_type"] == "warning" and row.get("status") == "refused"
+                            for row in events))
+
     def _run(self, body, event_stream=""):
         with tempfile.TemporaryDirectory() as runtime:
             env = {**os.environ, "IGOR_DIR": str(ROOT), "IGOR_RUNTIME_DIR": runtime}

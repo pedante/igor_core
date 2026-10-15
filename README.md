@@ -176,6 +176,33 @@ Raw AI shell requests are identified as unstructured; raw CHANGE requires
 explicit approval even in Executive mode and has no automatic postcondition
 verification.
 
+The public operator CLI uses the same dispatcher and Operational History:
+
+```bash
+bash igor.sh modules list
+bash igor.sh capability inspect system.host.summary
+bash igor.sh capability run system.host.summary '{}' system
+bash igor.sh --json capability run system.host.summary '{}' system
+bash igor.sh history recent 20
+bash igor.sh history inspect OPERATION_ID
+```
+
+Normal execution output shows the outcome, execution/output/verification states
+and operation ID. `--json` returns the canonical result without the AI transcript.
+Exit codes are 0 for success, 1 for refusal/failure or unavailable results,
+2 for malformed JSON/command arguments, and 3 when interactive approval is required.
+Unavailable results require History inspection before retrying; they do not prove
+that an admitted operation had no effect. Noninteractive commands cannot answer
+approval or authentication prompts for the user.
+
+In the TUI, `:sys.host.summary` selects the same System READ. Ctrl+B opens the
+control panel: Modules shows availability, System information opens the explorer,
+and Latest result opens its operation in History. In History, Left/Right selects
+an operation, Enter loads its authoritative details, and `r`/`b` returns to recent
+records. System information shows the latest explicit System READ, not an automatic
+background observation. Disabled module policy takes effect under the existing
+process-restart rules; execution still rechecks current backend availability.
+
 The existing memory refresh now uses capability version 2 with a closed typed
 domain result; version 1 capabilities remain supported. Requests and plans may
 pin an exact capability version. Core validates provider output separately from
