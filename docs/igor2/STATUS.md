@@ -10,7 +10,43 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Current focus — approved System swap-health increment
+## Current focus — Step 19 disposable Nextcloud environment
+
+- **Phase:** STABILIZATION; disposable fixture prepared, host setup blocked.
+  Owner authorizes repository packages and focused setup checks, prefers rootless,
+  and forbids Docker-group access, socket permission changes and unreviewed AUR.
+  Allowed next action: Owner-terminal authentication/fresh transaction review,
+  settle the rootless launcher route, then initialize only this fixture.
+  Exit evidence: installed Nextcloud, OCC as `www-data`, integer loglevel `2`,
+  fresh read `2`, and existing attachment-provider identification.
+- **Environment:** [pinned Compose stack and host-specific runbook](../../tests/fixtures/step19-nextcloud/README.md).
+  Actual CachyOS/systemd host has no Docker/Compose packages or local socket.
+  Rootless kernel/subordinate-ID prerequisites pass; repository rootless launcher
+  is missing, and the reviewed AUR hook reapplies all host sysctls. Sudo requires
+  Owner-terminal authentication. Cached package preview only: no installation,
+  containers, volumes, service/group/socket/sysctl changes. Private ignored test
+  credentials exist. No active Docker mode/endpoint; live checks are unexecuted.
+- **Record:** [integration/failure inventory, prerequisites and validation plan](DEPLOYMENTS.md#step-19-loglevel-preflight--2026-10-16).
+- **Baseline:** `igor2` at `73a4c06`, accepted System swap-health closeout committed;
+  the working tree was clean before this documentation checkpoint. No pending
+  swap closeout. Step 19 commit/push remains explicitly unauthorized.
+- **Preflight:** deployment identity/grant admission, canonical approvals,
+  History and operator invocation are reusable. Deployment-scoped desired
+  persistence, module setting operations and legacy-writer cutover remain to be
+  implemented coherently. Owner accepted execution architecture B: a narrow typed
+  Nextcloud adapter using existing canonical dispatch, approval and configuration.
+  Architecture investigation is closed. This task prepares the disposable
+  environment only; no Igor setting workflow or `2 → 3 → 2` test is implemented.
+- **Validation:** initial focused dry run only; 0 seconds governed tests spent.
+  The ledger retains 46.028 seconds under swap-health authorization, not a new
+  Step 19 budget. Proposed 900-second/240-second-command fixture envelope requires
+  Owner-terminal authorization. No Docker executable/socket or isolated endpoint
+  is available; the prior real Nextcloud proof gate remains open.
+- **Acceptance/review:** no runtime candidate, no implementation review readiness
+  or completion claim. Collection Increment E remains deferred/unaccepted and
+  its evidence/allowance is preserved; Step 20C remains outside scope.
+
+## Accepted System swap-health increment
 
 - **Acceptance:** **ACCEPTED by Owner, 2026-10-16** — complete bounded System
   swap-health package. Final independent delta review: **APPROVE**, no blocking defects.

@@ -1,0 +1,60 @@
+name: igor-step19-nc
+
+services:
+  db:
+    # Official MariaDB 11.4.13, immutable multi-platform manifest.
+    image: mariadb@sha256:1292844148b311e4ed4300022a996d39083f415a963e970cf47cad1b3b18e3a6
+    command: [--transaction-isolation=READ-COMMITTED, --binlog-format=ROW]
+    environment:
+      MARIADB_DATABASE: nextcloud
+      MARIADB_USER: nextcloud
+      MARIADB_PASSWORD: ${STEP19_DB_PASSWORD:?Generate the private test credentials first}
+      MARIADB_ROOT_PASSWORD: ${STEP19_DB_ROOT_PASSWORD:?Generate the private test credentials first}
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  app:
+    # Official Nextcloud 32.0.15 Apache. Digest-only syntax matches attachment.py.
+    image: nextcloud@sha256:45afe3bebd1eef20b402cafcb87206e3d9f3a27dbc514a21ab8e124d97bbfe8c
+    ports:
+      - "127.0.0.1:18080:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: ${STEP19_DB_PASSWORD:?Generate the private test credentials first}
+      NEXTCLOUD_ADMIN_USER: step19admin
+      NEXTCLOUD_ADMIN_PASSWORD: ${STEP19_ADMIN_PASSWORD:?Generate the private test credentials first}
+      NEXTCLOUD_TRUSTED_DOMAINS: "127.0.0.1 localhost"
+    volumes:
+      - html:/var/www/html
+    healthcheck:
+      test:
+        - CMD
+        - php
+        - -r
+        - >-
+          $$s = json_decode(file_get_contents('http://127.0.0.1/status.php'), true);
+          exit(($$s['installed'] ?? false) === true &&
+          ($$s['maintenance'] ?? true) === false &&
+          ($$s['needsDbUpgrade'] ?? true) === false ? 0 : 1);
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 30
+
+volumes:
+  db:
+  html:
+
+networks:
+  default:
+    driver: bridge

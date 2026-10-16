@@ -1,6 +1,6 @@
 # Step 19 — Representative Application Workflow / Relationships and Deployment Ownership
 
-Status: **architecture approved; Boundary 1 complete; Boundary 2 implementation under validation; Boundary 3 pending**.
+Status: **architecture approved; Boundary 1 complete; Boundary 2 implementation under validation; Boundary 3 in preflight, implementation pending**.
 This owner-scoped Step 19 supersedes the older roadmap numbering of Relationships
 and Deployments as Step 17. It does not authorize the older Self-Healing v2 item.
 
@@ -313,3 +313,157 @@ destruction, application upgrades, whole-Nextcloud migration, generic workflows,
 agents, self-healing, package marketplaces, new AI features or Step 20.
 General integration-rule packaging (Q009) remains deferred; interpretation for
 the selected proof stays with the existing domain package.
+
+## Step 19 loglevel preflight — 2026-10-16
+
+**Subsequent Owner direction (2026-10-16):** execution architecture B is accepted:
+a narrow typed Nextcloud adapter through existing canonical dispatch, approval
+and configuration. The architectural investigation is closed; the pending-choice
+wording below is retained historical preflight evidence. Owner now authorizes
+preparation and, where host access is already authorized, initialization of the
+[disposable Nextcloud fixture](../../tests/fixtures/step19-nextcloud/README.md).
+This supersedes the earlier no-provisioning instruction only for that fixture.
+The actual CachyOS host lacks Docker/Compose. Owner subsequently authorized normal
+repository package installation, interactive transaction review and focused
+testing, preferring rootless. Docker-group membership, socket permission changes,
+unreviewed AUR and unrelated host changes are forbidden. See the fixture runbook
+for the actual authentication/launcher blockers; no installation has occurred.
+No Igor configuration
+workflow, change-and-recovery test, commit/push or swap-budget reuse is authorized
+by this environment-preparation task.
+
+**Phase: DISCOVERY.** Allowed next action: settle the execution-boundary choice
+and validation allowance below, then implement the authorized Boundary 3 slice.
+Exit requires a feasible, authorized fixture/consumer validation plan and no
+unresolved ownership, secret or privilege prerequisite. No runtime implementation
+or Step 19 test execution has occurred. This record is preflight evidence, not
+application proof or Owner acceptance.
+
+**Objective/authority/candidate:** one discover → propose → approve → desired
+commit → apply → independent native readback → History → explicit recovery path,
+under [D063](DECISIONS.md#d063--deployment-identity-relationships-and-scoped-responsibility-owner-scoped-step-19)
+and the Owner's current Step 19 instruction. Local `igor2` at
+`73a4c06` (`Complete accepted System swap-health package`) was clean before this
+documentation checkpoint. The accepted swap closeout is committed; no additional
+closeout is needed. No Step 19 commit or push is authorized. Collection Increment
+E and Step 20C remain outside scope; E's sources, deferred evidence and allowance
+are unchanged.
+
+### Affected integration and failure paths
+
+Each row lists the live contract, required extension, authority, refusal/recovery
+behavior and existing coverage. Listed new behavior is a requirement, not code.
+
+| Boundary / concrete consumers | Inputs, outputs and validation | Authority / failure / recovery | Existing coverage to retain |
+|---|---|---|---|
+| Discovery and target binding: module `lib/attachment.py`, Core `deployment_attachment.py` / `deployments.py` | Exact daemon, full container ID, creation incarnation, immutable image, Compose identity, mount and regular config.php evidence. Deployment setting reference is `(scope_id, deployment_id, setting_id)`. Reuse the active exact `nextcloud_docker.loglevel` grant; never select by display name/default stack. | Deployment Service owns identity/responsibility; the module interprets the layout. Missing/ambiguous/replaced target, changed provider, conflicting/released grant or unavailable daemon refuses before effects. Refresh/repropose explicitly; do not re-adopt silently. | `test_nextcloud_attachment_provider.py`, `test_deployment_attachment.py`, `test_deployment_prerequisites.py`, `test_deployment_attachment.bats` |
+| Setting declaration and desired persistence: `configuration_schema.py`, `configuration.py` / `.sh`, loader and module inspection | Today schemas allow only installation/module scope and `_field` accepts one corresponding target. `validate_deployment_target` is admission only. Add the accepted deployment-scoped setting to the existing Configuration authority, including schema discovery, inspect/list, export/restore and retained-record validation. Reject booleans, strings, out-of-range numbers, duplicate/unknown fields and mismatched scope. | Module owns meaning; Core owns validation, desired revisions/state tokens and persistence. No global module setting standing in for a deployment. A desired commit never proves application. Disabled-owner desired records remain inspectable; application stays unavailable. | `test_configuration.py`, `test_deployment_prerequisites.py`, `test_system_configuration_workflow.py` |
+| Proposal and stale-state fencing: capability prepare/execute, Configuration and Deployment services | Freeze current native value, desired value, exact binding/provider/version, registry and configuration revisions/state, target evidence and prior-state recovery information. Recheck after approval immediately before effects. Distinguish an absent key from a real prior value; missing/unsupported configuration refuses rather than assuming a default. | Neither serialized approval claims nor reference data grant authority. Reject intervening desired/native/binding/activation changes. Do not silently refresh a proposal after approval. Retain failed attempt identity; obtain a fresh proposal before retry. | Attachment stale/tamper cases; configuration CAS tests; `test_wave_e_capability_dispatch.bats` |
+| Module registration and executable provider | Nextcloud is currently API v1 with legacy actions; no canonical loglevel setting/read/apply/recovery contribution exists. `installed_schemas` discovers only validated v2 declarations. Use the existing module contribution mechanism, preserving unrelated live hooks/config/path/secret/menu consumers; do not invent v1 configuration hooks or Core-owned Nextcloud operations. | `nextcloud_docker` owns the application operation. Static installed metadata is not active availability. Recheck live loader state and current disabled policy on prepare and execution, including stale sessions. No alternate provider fallback. | Module contract/lifecycle/inspection tests; attachment disable/stale-session cases |
+| Approval, OS privilege and Docker transport | Canonical proposals already freeze safety, privilege, handler and input digest. Existing OCC runs Docker as the Igor OS user, with `www-data` inside the container; the attachment transport permits read-only queries/stat only. Typed privileged module capabilities are explicitly unavailable in loader/dispatcher. | Approval stays in canonical dispatch; OS access remains independent. See the required execution-boundary choice below. No hidden sudo, credential import, arbitrary shell, handler-selected privileged argv or Docker-group/permission change. Permission failure must not report execution success. | `test_wave_e_capability_dispatch.bats`, Core approval/privilege BATS, PTY privilege tests |
+| Apply, readback and partial effects | New bounded module OCC adapter must accept only the exact approved target and supported scalar value. Fixed argv, bounded output, closed result shapes and sanitized errors; no config export or Docker environment data. Independent native readback must check the applied value and target; do not echo desired state as observation. Establish the effective configuration source, refusing unsupported overrides. | Provider completion, output validity and verification remain separate. Nonzero execution, timeout, malformed output, unavailable/mismatching readback and interrupted/unknown effect stay unsuccessful or unverified. No automatic retry/rollback. Reconcile native state before another change. | Canonical execution/verification/output tests and System mismatch/failed-apply tests; Nextcloud cases are missing |
+| Operational History and reversal | Canonical operation/correlation identity, scoped affected objects, frozen inputs, provider/version, approvals/privilege, execution, output and verification provenance. Retain prior native value and its target identity, plus relevant prior desired state, without secrets. | History owns attempts/outcomes, including refusal after admission and unsuccessful effects. Recovery is a newly approved, stale-checked change through the same path with independent verification; failure remains visible. Do not erase the failed operation or blindly restore over external drift. | `test_operational_history.py`, `test_operational_history_dispatch.bats`, System explicit recovery tests |
+| CLI, TUI, AI and inspection: `operator_cli.sh`, capability dispatcher, `operator_surface.py`, `interaction.py`, `tui.py` | Reuse public `capability run`, chat `invoke` / `run_capability`, backend events and shared History inspection. Present current/desired values and target before approval; consume canonical outcomes and validated typed scalar properties. Keep structured/JSON and terminal representations consistent, including absent/malformed results. | Frontends request and render; backend authorizes/executes. Noninteractive approval-required exit stays 3; failure/refusal stays nonzero. Do not add a frontend executor or infer success from text. Exercise actual CLI and curses/backend success/refusal/recovery; unit rendering alone is insufficient. | `test_operator_cli.py`, `test_ai_tui_snapshot_admission.py`, `test_ai_tui_operator.py`, real `test_capability_operator_workflow.py` pattern |
+| Competing legacy writers and release | `core/diagnose/fixes.sh` automatic `nc_loglevel`; generic OCC set/delete/import; `undo_stack.py`, journal/module rollback; overlapping host/file edits, module restore, installation migration/reset and broad recovery. Template default is not currently applied by the selected config injector. Include retained/released grants when determining historical adoption. | For the adopted setting, delegate to canonical proposal/recovery or refuse when exact non-overlap cannot be proved. Ambiguous legacy selectors fail closed. Preserve unadopted behavior without creating responsibility. Release fences prepared operations and never silently restores legacy authority. Broad detach remains uncertified. | Existing Diagnose, safety/OCC, undo/journal, module recovery and attachment release tests; adopted-setting cutover cases are missing |
+
+### Execution prerequisite and recommendation
+
+There is **no reviewed canonical privileged Nextcloud OCC adapter**. In
+`core/lib/module_loader.sh`, `typed_privileged_output_adapter_unavailable` rejects
+typed capabilities requiring privilege; `core/lib/capability.sh` permits only
+reviewed exact privileged System argv. Calling the legacy OCC tool would lose
+the deployment/desired-state contract and is not a safe substitute.
+
+Two bounded choices were presented to the Owner:
+
+1. **Recommended: existing OS-user Docker access only.** Declare no host privilege
+   escalation, use the already-authorized OS user's Docker access, and run the
+   fixed setting command as container `www-data`. Access denial fails closed;
+   no sudo fallback, remote credential acquisition or permission repair. This
+   matches the existing unprivileged Docker transport, with a clearly stated
+   support boundary. It still needs the new reviewed bounded setting adapter.
+2. **Privileged adapter prerequisite.** First confirm/design a narrowly reviewed
+   exact-target OCC privilege adapter through existing native PTY authorization,
+   including typed output and independent readback. This changes the currently
+   supported privileged execution boundary; do not implement it without Owner
+   confirmation. No general Docker executor is proposed.
+
+This is a pending scope choice, not a claim that every Nextcloud installation
+requires sudo. Deployment-scoped schema/persistence, the setting adapter and
+legacy cutover are implementation work within D063, not additional architectural
+blockers. No application secret is needed for this one setting; full config.php,
+Docker environment values and application credentials must not enter results,
+events, History or AI context.
+
+### Validation plan, evidence and handoff
+
+Required new fixture scenarios: valid discovery/read; reviewed current/desired
+proposal and approved apply; invalid/malformed values; missing config; denied
+approval/OS access; disabled/unavailable provider before and after approval;
+stale desired/native state or replaced/released target; execution failure,
+timeout/unknown effect and failed/malformed/mismatching readback; verified
+explicit restoration; desired/observed divergence; unsuccessful History;
+legacy-writer refusal and stale-operation fencing after release. Include the
+actual public CLI and curses/backend consumer with private fixture state.
+
+Contract, regression, vertical-slice, inspection and recovery proof are all
+applicable. Use private temporary installation/data/config and an injected Docker
+fixture; no real installation writes are authorized. A transport fixture is not
+a real Nextcloud application proof. This checkout has no Docker executable or
+local `/var/run/docker.sock` or `/run/docker.sock`; no isolated Nextcloud endpoint
+has been supplied. Boundary 2's previously open real application gate remains
+open. Do not provision a stack or describe fixtures as closing that gate.
+
+The initial runner dry run succeeded with base `73a4c06`, jobs 1, structure plus
+these exact groups (no tests executed):
+
+```text
+bats:tests/modules/test_deployment_attachment.bats
+bats:tests/modules/test_wave_e_capability_dispatch.bats
+pytest:tests/test_ai_tui_snapshot_admission.py
+pytest:tests/test_configuration.py
+pytest:tests/test_deployment_attachment.py
+pytest:tests/test_deployment_prerequisites.py
+pytest:tests/test_nextcloud_attachment_provider.py
+pytest:tests/test_operator_cli.py
+pytest:tests/test_system_configuration_workflow.py
+```
+
+This is an initial coverage inventory, not the final execution selection. Add
+the setting workflow, legacy-cutover and real operator fixture tests alongside
+implementation; inspect the final affected dry run before scheduling. Select
+small exact node groups where existing files exceed the command ceiling. The
+earlier System workflow record reports 108.60 seconds standalone; this is a
+planning reference, not a current measurement. Provisional envelope: 900 seconds
+cumulative, 240 seconds per command, jobs 1; estimate 600–750 seconds for focused
+and affected groups, reserving 150 seconds for a demonstrated correction and
+closing documentation. Recalculate from final selected groups before spending;
+do not promise that a broad affected sweep fits this estimate. Prefer governed
+CI for any required remainder. No full suite is authorized.
+
+**Budget:** `.igor-governor/budget.json` retains **46.02779241499229 seconds**, with
+authorization `Owner authorizes bounded swap-health validation continuation`.
+It is not a new Step 19 allowance. Step 19 governed test time spent: **0 seconds**;
+the dry run reported 0.011 seconds and consumed no validation allowance. Request
+Owner-terminal Step 19 authorization before executing the planned tests; the
+agent must not use `--new-budget` itself or spend E's deferred allowance. A
+suitable Owner-terminal initialization, after confirming the scope, is:
+
+```bash
+bash tests/validate.sh focused --base 73a4c06 --only-group structure \
+    --new-budget "Owner authorizes Step 19 Nextcloud fixture validation" \
+    --total-timeout 900 --command-timeout 240
+```
+
+Stop on exhausted allowance, a missing ownership/secret/privilege prerequisite,
+or an inconclusive acceptance instrument. Inspect failure logs/assertions before
+any targeted correction; retain unaffected evidence. No repeated broad runs.
+
+**Review/handoff:** no runtime candidate exists and independent implementation
+review is not ready. Author source inspection establishes the inventory only.
+Remaining Owner inputs are the Docker privilege support boundary and terminal
+validation allowance; real isolated application evidence remains separately
+unavailable. Checkpoint files are this section and the linked current focus in
+`STATUS.md`. Documentation parsing/link checks remain unexecuted pending the
+allowance; Git diff inspection is separate from runtime validation. No agents,
+implementation commit, push, Step 20C or Collection E work is authorized here.
