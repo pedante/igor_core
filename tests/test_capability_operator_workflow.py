@@ -13,13 +13,18 @@ import termios
 import time
 from pathlib import Path
 
+import pytest
 import test_operator_cli as cli_tests
 from test_ai_tui_collection_backend import Terminal
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_system_read_cli_and_real_tui_share_history(tmp_path):
+@pytest.mark.parametrize("capability,command,detail", [
+    ("system.host.summary", ":sys.host.summary", "kernel:"),
+    ("system.host.runtime.status", ":sys.host.runtime.status", "swap_health_status:"),
+], ids=["summary", "swap"])
+def test_system_read_cli_and_real_tui_share_history(tmp_path, capability, command, detail):
     fixture = cli_tests.PublicCapabilityCliTests()
     fixture.setUp()
     root = fixture.root
@@ -31,7 +36,7 @@ def test_system_read_cli_and_real_tui_share_history(tmp_path):
         (root / "config/variables").mkdir()
         (root / "config/variables/ai_settings.env").write_text(
             "provider=ollama\nmodel=fixture-local\nai_mode=assist\n")
-        cli = fixture.cli("--json", "capability", "run", "system.host.summary", "{}", "system")
+        cli = fixture.cli("--json", "capability", "run", capability, "{}", "system")
         assert cli.returncode == 0, cli.stderr + cli.stdout
         cli_result = json.loads(cli.stdout)
         assert cli_result["outcome"] == "success"
@@ -83,18 +88,26 @@ raise SystemExit(tui.run_tui(("bash",str(tui.REPO_ROOT/"igor.sh"),"--ai-tui-back
         wait_text("system · active")
         os.write(master, b"\x02")
         wait_text("LIVE")
-        os.write(master, b":sys.host.summary\n")
+        os.write(master, (command + "\n").encode())
         wait_text("Verification: not_applicable")
-        wait_text("kernel:")
+        wait_text(detail)
         wait_text("READY")
         tui_result = next(row["result"] for row in events()
                           if row["event_type"] == "action_result" and
-                          row.get("result", {}).get("capability_id") == "system.host.summary")
+                          row.get("result", {}).get("capability_id") == capability)
         assert tui_result["outcome"] == "success"
         assert tui_result["operation_id"] != cli_result["operation_id"]
         assert tui_result["provider"] == cli_result["provider"] == "system"
-        assert tui_result["result"]["kernel"] == cli_result["result"]["kernel"]
-        assert tui_result["result"]["architecture"] == cli_result["result"]["architecture"]
+        if capability == "system.host.summary":
+            assert tui_result["result"]["kernel"] == cli_result["result"]["kernel"]
+            assert tui_result["result"]["architecture"] == cli_result["result"]["architecture"]
+        else:
+            for result in (cli_result, tui_result):
+                assert result["capability_version"] == 3
+                assert result["result"]["observation_scope"] == "current_read"
+                assert result["result"]["observed_at"]
+                assert result["result"]["swap_health_status"] in {"OK", "WARN", "FAIL", "SKIP"}
+            assert tui_result["result"]["observed_at"] != cli_result["result"]["observed_at"]
 
         # Control panel History lists both interfaces, then opens a selected
         # authoritative operation. Arrow bytes use the terminal's application mode.
@@ -128,16 +141,28 @@ raise SystemExit(tui.run_tui(("bash",str(tui.REPO_ROOT/"igor.sh"),"--ai-tui-back
         assert {row["operation_id"] for row in records} == {
             cli_result["operation_id"], tui_result["operation_id"],
         }
-        assert all(row["capability"]["id"] == "system.host.summary" and
+        assert all(row["capability"]["id"] == capability and
                    row["provider"]["owner"] == "system" and row["outcome"] == "success" and
                    row["approval"]["result"] == "not_required" and
                    row["privilege"]["result"] == "not_required" for row in records)
         artifact = Path(os.environ.get("IGOR_VALIDATION_REPORT", str(tmp_path / "result.jsonl"))).parent
-        (artifact / "system-operator-workflow.json").write_text(json.dumps({
+        (artifact / f"system-operator-workflow-{capability}.json").write_text(json.dumps({
             "frontend": "actual curses with outer/inner PTYs", "backend": "bash igor.sh --ai-tui-backend",
-            "capability": "system.host.summary", "cli_operation": cli_result["operation_id"],
+            "capability": capability, "cli_operation": cli_result["operation_id"],
             "tui_operation": tui_result["operation_id"], "history": records,
         }, indent=2) + "\n")
+        if capability == "system.host.runtime.status":
+            (root / "config/modules.conf").write_text("system=disabled\nfixture=disabled\n")
+            refused = fixture.cli("--json", "capability", "run", capability, "{}", "system")
+            assert refused.returncode == 1, refused.stdout + refused.stderr
+            assert len(json.loads(fixture.cli("history", "recent", "20").stdout)) == 2
+            (root / "config/modules.conf").write_text("system=enabled\nfixture=disabled\n")
+            recovered = fixture.cli("--json", "capability", "run", capability, "{}", "system")
+            assert recovered.returncode == 0, recovered.stdout + recovered.stderr
+            recovery = json.loads(recovered.stdout)
+            assert recovery["operation_id"] not in {cli_result["operation_id"], tui_result["operation_id"]}
+            assert recovery["result"]["observation_scope"] == "current_read"
+            assert len(json.loads(fixture.cli("history", "recent", "20").stdout)) == 3
     finally:
         if "transcript" in locals():
             artifact = Path(os.environ.get("IGOR_VALIDATION_REPORT", str(tmp_path / "result.jsonl"))).parent

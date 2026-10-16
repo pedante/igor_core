@@ -33,7 +33,14 @@ from typing import Any
 _CORE_LIB = Path(__file__).resolve().parents[1] / "lib"
 if str(_CORE_LIB) not in sys.path:
     sys.path.insert(0, str(_CORE_LIB))
+from capability_runtime import (
+    CapabilityError,
+    _validate_result,
+    _validate_schema,
+    validate_output_schema,
+)
 from collection_view import CollectionView, cell_text, result_entry, view_request_id
+from input_candidates import validate_selector
 from interaction import (
     FocusModel,
     Property,
@@ -45,6 +52,7 @@ from interaction import (
     render_properties,
     render_structured,
 )
+from operator_surface import _safe_id
 from operator_surface import children as operator_children
 from recognition_view import RecognitionViewError
 from recognition_view import text_lines as recognition_text_lines
@@ -62,6 +70,88 @@ EVENT_TYPES = frozenset(
         "session_finished", "context_routing",
     }
 )
+
+
+def _operator_snapshot_entries(snapshot):
+    """Admit metadata using the parsers required by result, panel and explorer consumers."""
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("entries"), list):
+        return None
+    entries = snapshot["entries"]
+    if len(entries) > 4096 or any(not isinstance(row, dict) for row in entries):
+        return None
+    aliases = snapshot.get("aliases", {})
+    if not isinstance(aliases, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str) or
+            _operator_alias_target(snapshot, key) != value for key, value in aliases.items()):
+        return None
+    if any(key in snapshot and not isinstance(snapshot[key], str)
+           for key in ("state", "digest", "availability_model")):
+        return None
+    if "entry_count" in snapshot and (type(snapshot["entry_count"]) is not int or snapshot["entry_count"] < 0):
+        return None
+    sources = snapshot.get("sources", {})
+    if not isinstance(sources, dict) or any(
+            not isinstance(name, str) or not isinstance(source, dict) or
+            not isinstance(source.get("status"), str) or
+            type(source.get("count")) is not int or source["count"] < 0
+            for name, source in sources.items()):
+        return None
+    for row in entries:
+        if any(key in row and not isinstance(row[key], str)
+               for key in ("kind", "path", "target_id", "provider", "owner", "availability", "label", "description")):
+            return None
+        if any(key in row and row[key] is not None and not isinstance(row[key], str)
+               for key in ("safety", "privilege", "unavailable_reason")):
+            return None
+        if "provider_required" in row and type(row["provider_required"]) is not bool:
+            return None
+        if any(key in row and not isinstance(row[key], dict) for key in ("inputs", "outputs", "collection")):
+            return None
+        if row.get("kind") == "capability" and any(
+                not isinstance(row.get(key), str) or not row[key]
+                for key in ("path", "target_id", "provider", "owner")):
+            return None
+        try:
+            for key in ("target_id", "provider", "owner"):
+                if key in row:
+                    _safe_id(row[key], key)
+            if "path" in row:
+                path, separator, provider = row["path"].partition("@")
+                _safe_id(path, "path")
+                if separator:
+                    _safe_id(provider, "path provider")
+            if "inputs" in row:
+                inputs = row["inputs"]
+                # The projection omits additionalProperties and lifts selectors out of properties.
+                schema = {key: value for key, value in inputs.items() if key != "selectors"}
+                schema.setdefault("additionalProperties", False)
+                _validate_schema(schema)
+                if len(schema["properties"]) > 32 or len(schema["required"]) != len(set(schema["required"])):
+                    return None
+                for name, spec in schema["properties"].items():
+                    if re.fullmatch(r"[a-z][a-z0-9_]*", name) is None:
+                        return None
+                    for bound in ("minLength", "maxLength"):
+                        if bound in spec and (type(spec[bound]) is not int or spec[bound] < 0):
+                            return None
+                    if "root" in spec and not isinstance(spec["root"], str):
+                        return None
+                    if "selector" in spec:
+                        validate_selector(spec["selector"], input_type=spec["type"])
+                selectors = inputs.get("selectors", {})
+                if not isinstance(selectors, dict) or set(selectors) - set(schema["properties"]):
+                    return None
+                for name, selector in selectors.items():
+                    validate_selector(selector, input_type=schema["properties"][name]["type"])
+            if "collection" in row:
+                if row.get("kind") != "capability":
+                    return None
+                CollectionView(row)
+            elif "outputs" in row:
+                validate_output_schema(row["outputs"])
+        except (ValueError, TypeError, KeyError, RecursionError):
+            return None
+    return entries
 
 
 @dataclass
@@ -104,6 +194,7 @@ class EventState:
     settings_snapshot: dict[str, Any] | None = None
     settings_sources: dict[str, str] = field(default_factory=dict)
     operator_snapshot: dict[str, Any] | None = None
+    operator_snapshot_rejected: bool = False
     operator_candidates: dict[str, Any] | None = None
     session_id: str = ""
     role: str = ""
@@ -148,8 +239,18 @@ class EventState:
             return True
         if kind == "operator_snapshot":
             snapshot = event.get("surface")
-            if isinstance(snapshot, dict):
+            if _operator_snapshot_entries(snapshot) is None:
+                self.operator_snapshot_rejected = True
+                self.operator_candidates = None
+                if self.collection:
+                    self.collection.fail("unavailable")
+                    self.collection.close_detail()
+                self.activity.append(Activity("warning", "Invalid operator snapshot rejected; refresh required before selection."))
+                del self.activity[:-2000]
+                return False
+            else:
                 self.operator_snapshot = copy.deepcopy(snapshot)
+                self.operator_snapshot_rejected = False
                 if self.collection:
                     entry = result_entry(snapshot, {"capability_id": self.collection.entry["target_id"],
                                                     "provider": self.collection.entry["provider"]})
@@ -243,7 +344,10 @@ class EventState:
             if pending_ids & event_ids:
                 self.pending_action = None
         if kind == "action_result":
-            entry = result_entry(self.operator_snapshot, event.get("result"))
+            snapshot = self.operator_snapshot
+            if self.operator_snapshot_rejected or _operator_snapshot_entries(snapshot) is None:
+                snapshot = {"entries": []}
+            entry = result_entry(snapshot, event.get("result"))
             if entry or request_id is not None:
                 if request_id is not None:
                     if not view_request_id(request_id) or not self.collection or self.collection.request_id != request_id:
@@ -265,9 +369,21 @@ class EventState:
                     del self.activity[:-2000]
                 return True
             if isinstance(event.get("result"), dict) and event["result"].get("capability_version") == 3:
-                self.activity.append(Activity("warning", "Collection descriptor unavailable; result not displayed."))
-                del self.activity[:-2000]
-                return True
+                result = event["result"]
+                matches = [row for row in snapshot["entries"]
+                           if isinstance(row, dict) and row.get("kind") == "capability"
+                           and row.get("target_id") == result.get("capability_id")
+                           and row.get("provider") == result.get("provider")
+                           and row.get("owner") == result.get("owner")
+                           and "collection" not in row]
+                try:
+                    _validate_result(result)
+                    if len(matches) != 1:
+                        raise CapabilityError("result descriptor unavailable")
+                except (CapabilityError, TypeError, RecursionError):
+                    self.activity.append(Activity("warning", "Capability descriptor unavailable; result not displayed."))
+                    del self.activity[:-2000]
+                    return True
         text = str(event.get("display") or event.get("output") or "")
         result = event.get("result")
         action_ids = {str(event.get(key) or "") for key in
@@ -1478,6 +1594,9 @@ def _collection_key(key, screen, master, state):
         if key in (3, 9, 16):
             state.collection = None
         return False
+    if state.operator_snapshot_rejected and key in (10, 13, curses.KEY_ENTER, ord("n"), ord("r")):
+        view.notice = "Operator snapshot rejected; refresh the Operator Surface before selection."
+        return True
     if view.detail_state:
         if key in (27, ord("b")):
             view.close_detail()
@@ -1537,7 +1656,8 @@ def _collection_key(key, screen, master, state):
         else:
             target = view.entry["collection"].get("inspect", {}).get("capability_id")
             providers = sorted({entry["provider"] for entry in (state.operator_snapshot or {}).get("entries", [])
-                                if entry.get("target_id") == target and entry.get("safety") == "READ" and entry.get("availability") == "active"})
+                                if entry.get("kind") == "capability" and entry.get("target_id") == target
+                                and entry.get("safety") == "READ" and entry.get("availability") == "active"})
             provider = _settings_choice(screen, "Inspection provider", tuple(providers), "") if len(providers) > 1 else None
             if len(providers) > 1 and provider is None:
                 return True
@@ -1886,6 +2006,8 @@ def _operator_candidate_overlay(
     invoke_on_select: bool = True,
 ) -> tuple[str, str | None]:
     """Choose one ephemeral candidate without acquiring execution authority."""
+    if state.operator_snapshot_rejected:
+        return "back", None
     selector = _operator_input_selector(entry, input_name)
     path_selector = (
         isinstance(selector, dict)
@@ -1911,6 +2033,8 @@ def _operator_candidate_overlay(
                 apply_event(state, event)
                 if event.get("event_type") in {"warning", "error"}:
                     notice = str(event.get("display") or "Candidate selection unavailable")
+            if state.operator_snapshot_rejected:
+                return "back", None
             if path_selector and state.backend_ready and requested_query != query:
                 state.operator_candidates = None
                 _send(master, _operator_candidate_request(entry, input_name, query))
@@ -2133,7 +2257,7 @@ def _operator_required_input_overlay(
                 return outcome, value
         values[input_name] = value
 
-    if not state.backend_ready:
+    if not state.backend_ready or state.operator_snapshot_rejected:
         return "busy", None
     command, _ = _operator_invoke_command(entry)
     command += " " + json.dumps(values, sort_keys=True, separators=(",", ":"))
@@ -2208,11 +2332,11 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
     try:
         while True:
             for event in reader.read():
-                apply_event(state, event)
+                accepted = apply_event(state, event)
                 if event.get("event_type") == "operator_snapshot":
                     refreshing = False
                     requested_at = None
-                    notice = ""
+                    notice = "" if accepted else "Invalid operator snapshot rejected · Ctrl+R retry"
                 elif event.get("event_type") in {"warning", "error"}:
                     display = str(event.get("display") or "Operator surface unavailable")
                     if refreshing and "operator surface" in display.casefold():
@@ -2242,6 +2366,9 @@ def _operator_overlay(screen: Any, master: int, reader: EventReader,
                     _operator_alias_target(snapshot, active_alias[0]) != active_alias[1]):
                 active_alias = None
             nodes = operator_children(snapshot, prefix) if isinstance(snapshot, dict) else []
+            if state.operator_snapshot_rejected:
+                nodes = []
+                notice = "Operator snapshot rejected; selection unavailable · Ctrl+R retry"
             alias_target = _operator_alias_target(snapshot, query) if not prefix else None
             needle = query.casefold()
             if needle:

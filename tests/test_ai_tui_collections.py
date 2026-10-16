@@ -207,6 +207,52 @@ def test_navigation_keys_filter_and_missing_binding_inline_only(monkeypatch):
     assert state.collection is None
 
 
+def test_collection_inspection_providers_ignore_non_capability_rows(monkeypatch):
+    sent, choices = [], []
+    monkeypatch.setattr(tui, "_send", lambda _, command: sent.append(command))
+
+    def choose_provider(_screen, _title, providers, _current):
+        choices.append(providers)
+        return "fixture"
+
+    monkeypatch.setattr(tui, "_settings_choice", choose_provider)
+    for check_provider in (None, "impostor"):
+        sent.clear()
+        choices.clear()
+        entry, result = fixture("services")
+        target = entry["collection"]["inspect"]["capability_id"]
+        check = {"kind": "check", "path": target, "target_id": target, "owner": "system",
+                 "safety": "READ", "availability": "active"}
+        if check_provider is not None:
+            check["provider"] = check_provider
+        providers = [
+            {"kind": "capability", "path": target + "@" + provider, "target_id": target,
+             "provider": provider, "owner": provider, "safety": safety, "availability": availability}
+            for provider, safety, availability in [("alpha", "READ", "active"), ("fixture", "READ", "active"),
+                                                    ("disabled", "READ", "disabled"), ("change", "CHANGE", "active")]
+        ]
+        state = tui.EventState(backend_ready=True)
+        assert state.accept({"event_type": "operator_snapshot", "sequence": 1,
+                             "surface": {"entries": [entry, check, *providers]}})
+        assert state.accept({"event_type": "action_result", "sequence": 2, "result": result})
+        screen, view = Screen(), state.collection
+        assert tui._collection_key(tui.curses.KEY_DOWN, screen, 1, state)
+        selected = result["result"]["rows"][1]["reference"]
+        assert view.selected_reference() == selected and sent == choices == []
+        assert tui._collection_key(10, screen, 1, state)
+        assert choices == [("alpha", "fixture")]
+        assert len(sent) == 1 and sent[0].startswith("invoke --view=" + view.request_id + " --inspect ")
+        selection = json.loads(sent[0].split(" --inspect ", 1)[1])
+        assert selection == {"collection_id": entry["target_id"], "provider": entry["provider"],
+                             "snapshot_revision": view.revision, "reference": selected,
+                             "inspection_provider": "fixture"}
+        assert view.detail_state == "loading" and not state.backend_ready
+        assert tui._collection_key(27, screen, 1, state)
+        assert tui._collection_key(tui.curses.KEY_UP, screen, 1, state)
+        assert not view.detail_state and view.selected_reference() == result["result"]["rows"][0]["reference"]
+        assert len(sent) == 1
+
+
 def test_two_page_cache_frozen_identity_and_expired_back():
     entry, result = fixture(count=1)
     result["result"]["page"].update(has_more=True, total_count=3, next_cursor="OPAQUE_CONTINUATION")
@@ -388,3 +434,88 @@ def test_rejected_unknown_descriptor_events_keep_transcript_bounded():
                                        "result": {"capability_version": 3, "result": "REJECTED_SENTINEL"}})
     assert state.collection is None and len(state.activity) == 2000
     assert "REJECTED_SENTINEL" not in str(state.activity)
+
+
+@pytest.mark.parametrize("provider,owner,retained", [
+    ("system", "system", True), ("other", "system", False),
+    ("system", "other", False),
+])
+def test_v3_non_collection_result_uses_registered_scalar_presentation(provider, owner, retained):
+    entry = {"kind": "capability", "path": "system.host.runtime.status", "target_id": "system.host.runtime.status",
+             "provider": "system", "owner": "system"}
+    result = {"operation_id": "op-" + "b" * 32,
+              "capability_id": entry["target_id"], "capability_version": 3,
+              "provider": provider, "owner": owner, "execution_status": "succeeded",
+              "verification_status": "not_applicable", "outcome": "success",
+              "output_status": "valid", "result": {"swap_health_status": "OK"}}
+    state = tui.EventState(operator_snapshot={"entries": [entry]})
+    assert tui.apply_event(state, {"event_type": "action_result", "sequence": 1, "result": result})
+    assert state.collection is None
+    if retained:
+        assert state.activity[-1].result == result
+        assert state.activity[-1].event_type == "action_result"
+    else:
+        assert state.activity[-1].event_type == "warning"
+        assert state.activity[-1].result is None
+
+
+@pytest.mark.parametrize("snapshot", [
+    None, [], "invalid", 42, {}, {"entries": None}, {"entries": 42},
+    {"entries": {}}, {"entries": "invalid"}, {"entries": [None, {}, 42]},
+])
+@pytest.mark.parametrize("collection", [False, True])
+def test_v3_result_rejects_missing_or_malformed_snapshot(snapshot, collection):
+    _, result = fixture()
+    if not collection:
+        result["capability_id"] = "system.host.runtime.status"
+        result["result"] = {"swap_health_status": "REJECTED_SENTINEL"}
+    state = tui.EventState(operator_snapshot=snapshot)
+    assert tui.apply_event(state, {"event_type": "action_result", "sequence": 1, "result": result})
+    assert state.collection is None
+    assert state.activity[-1].event_type == "warning"
+    assert state.activity[-1].text == "Capability descriptor unavailable; result not displayed."
+    assert state.activity[-1].result is None
+    assert "REJECTED_SENTINEL" not in str(state.activity)
+
+
+@pytest.mark.parametrize("malformed", [None, {}, {"entries": None},
+                                       {"entries": {}}, {"entries": [None]},
+                                       {"entries": [], "aliases": []},
+                                       {"entries": [{"availability": []}]}])
+def test_snapshot_update_rejection_revokes_collection_until_valid_refresh(malformed, monkeypatch):
+    from test_ai_tui_operator import Reader
+    from test_ai_tui_operator import Screen as OperatorScreen
+
+    entry, result = fixture()
+    snapshot = {"entries": [entry]}
+    state = tui.EventState(backend_ready=True)
+    assert tui.apply_event(state, {"event_type": "operator_snapshot", "sequence": 1, "surface": snapshot})
+    assert tui.apply_event(state, {"event_type": "action_result", "sequence": 2, "result": result})
+    view = state.collection
+    view.move(1)
+    assert view.selected_reference() is not None
+    assert not tui.apply_event(state, {"event_type": "operator_snapshot", "sequence": 3, "surface": malformed})
+    assert state.operator_snapshot == snapshot
+    assert state.operator_snapshot_rejected
+    assert state.activity[-1].event_type == "warning"
+    assert view.state == "unavailable" and view.selected_reference() is None and not view.pages
+    assert not view.request_id
+    sent = []
+    monkeypatch.setattr(tui, "_send", lambda _, command: sent.append(command))
+    for key in (tui.curses.KEY_DOWN, 10, ord("n"), ord("r")):
+        assert tui._collection_key(key, Screen(), 1, state)
+    assert tui._operator_overlay(OperatorScreen([10, 27]), 1, Reader([]), state, tui.InputBuffer()) is None
+    assert sent == [] and view.selected_reference() is None
+    assert tui.apply_event(state, {"event_type": "action_result", "sequence": 4,
+                                   "result": result})
+    assert view.state == "unavailable" and not view.pages
+    assert tui.apply_event(state, {"event_type": "operator_snapshot", "sequence": 5, "surface": snapshot})
+    assert not state.operator_snapshot_rejected
+    assert view.selected_reference() is None
+    tui._collection_key(ord("r"), Screen(), 1, state)
+    assert len(sent) == 1
+    assert tui.apply_event(state, {"event_type": "action_result", "sequence": 6,
+                                   "view_request_id": view.request_id, "result": result})
+    assert view.state == "ready"
+    tui._collection_key(tui.curses.KEY_DOWN, Screen(), 1, state)
+    assert view.selected_reference() == result["result"]["rows"][1]["reference"]

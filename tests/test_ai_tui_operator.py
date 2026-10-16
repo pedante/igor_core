@@ -88,7 +88,7 @@ def candidate_event(sequence, capability_id="system.service.status", input_name=
 
 def capability(path="system.host.memory.refresh", required=(), provider_required=False,
                selector=False):
-    inputs = {"required": list(required), "properties": {}}
+    inputs = {"required": list(required), "properties": {name: {"type": "integer"} for name in required}}
     if selector and required:
         name = required[0]
         inputs["properties"][name] = {"type": "string", "validator": "systemd_unit"}

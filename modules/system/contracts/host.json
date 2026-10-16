@@ -91,6 +91,31 @@
       ]
     },
     {
+      "kind": "check",
+      "id": "host.swap.health",
+      "handler": "system__check_swap",
+      "output_type": "health.result",
+      "timeout_seconds": 10,
+      "object_kind": "host",
+      "required_facts": [
+        {
+          "property": "swap.total_bytes",
+          "state_class": "observed",
+          "observer": "host.runtime"
+        },
+        {
+          "property": "swap.free_bytes",
+          "state_class": "observed",
+          "observer": "host.runtime"
+        },
+        {
+          "property": "swap.used_bytes",
+          "state_class": "observed",
+          "observer": "host.runtime"
+        }
+      ]
+    },
+    {
       "kind": "automation",
       "id": "system.host.memory.once",
       "trigger": {
@@ -434,15 +459,15 @@
       "kind": "capability",
       "id": "system.host.runtime.status",
       "handler": "system__host_runtime_status",
-      "capability_version": 2,
-      "description": "Inspect bounded current local host uptime, load averages and swap counters from normalized Linux procfs state.",
+      "capability_version": 3,
+      "description": "Inspect bounded current uptime, load and swap counters with System swap health; this READ does not refresh System Model snapshots.",
       "inputs": {
         "properties": {},
         "required": [],
         "additionalProperties": false
       },
       "outputs": {
-        "schema_version": 1,
+        "schema_version": 2,
         "properties": {
           "uptime_seconds": {
             "type": "integer",
@@ -482,6 +507,34 @@
             "enum": [
               "core.host.runtime"
             ]
+          },
+          "swap_health_status": {
+            "type": "enum",
+            "enum": [
+              "OK",
+              "WARN",
+              "FAIL",
+              "SKIP",
+              "UNKNOWN"
+            ]
+          },
+          "swap_finding_code": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "swap_health_message": {
+            "type": "string",
+            "maxLength": 2048
+          },
+          "observed_at": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "observation_scope": {
+            "type": "enum",
+            "enum": [
+              "current_read"
+            ]
           }
         },
         "required": [
@@ -493,7 +546,12 @@
           "swap_free_bytes",
           "swap_used_bytes",
           "swap_use_percent",
-          "source"
+          "source",
+          "swap_health_status",
+          "swap_finding_code",
+          "swap_health_message",
+          "observed_at",
+          "observation_scope"
         ],
         "additionalProperties": false
       },

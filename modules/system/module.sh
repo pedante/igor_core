@@ -69,8 +69,8 @@ system__read_memory_warning() { _mod_sys_memory_warning_request readback; }
 
 
 # S8.1 host runtime telemetry. Core owns strict procfs normalization; System
-# owns host-domain observation and typed presentation. This block is READ-only
-# and intentionally excludes thermal-provider meaning and health thresholds.
+# owns host-domain observation, swap interpretation and typed presentation.
+# This block is READ-only and excludes thermal-provider meaning.
 _mod_sys_runtime_read() {
     [ -n "${_IGOR_LOADER_DIR:-}" ] || return 1
     # shellcheck source=core/lib/host_runtime.sh
@@ -144,24 +144,23 @@ system__host_runtime_status() {
         _mod_sys_admin_error unavailable "host runtime discovery failed"
         return 0
     }
-    HOST_RUNTIME_ROW="$row" "${IGOR_PYTHON:-python3}" - <<'PY'
-import json
-import os
-
-row = json.loads(os.environ["HOST_RUNTIME_ROW"])
-result = {
-    "uptime_seconds": row["uptime_seconds"],
-    "load_1": row["load_1"],
-    "load_5": row["load_5"],
-    "load_15": row["load_15"],
-    "swap_total_bytes": row["swap_total_bytes"],
-    "swap_free_bytes": row["swap_free_bytes"],
-    "swap_used_bytes": row["swap_used_bytes"],
-    "swap_use_percent": row["swap_use_percent"],
-    "source": "core.host.runtime",
+    printf '%s' "$row" | _mod_sys_swap_health runtime
 }
-print(json.dumps({"status": "ok", "result": result}, separators=(",", ":")))
-PY
+
+
+_mod_sys_swap_health() {
+    local package
+    package="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    "${IGOR_PYTHON:-python3}" "$package/lib/swap_health.py" "$1"
+}
+
+system__check_swap() {
+    local input
+    input="$(_mod_sys_admin_request host.swap.health)" || {
+        _mod_sys_admin_error invalid_request "expected host.swap.health v2 request"
+        return 0
+    }
+    printf '%s' "$input" | _mod_sys_swap_health check
 }
 
 
@@ -1183,15 +1182,7 @@ system__diagnose() {
         fi
     fi
 
-    # Swap usage
-    local swap_pct
-    swap_pct=$(free 2>/dev/null | awk '/^Swap:/{if($2>0) printf "%d", $3*100/$2; else print 0}')
-    if [ -n "$swap_pct" ] && [ "$swap_pct" -gt 0 ]; then
-        if   [ "$swap_pct" -ge 85 ]; then echo "CHECK:swap:fail:swap ${swap_pct}% used — CRITICAL"
-        elif [ "$swap_pct" -ge 60 ]; then echo "CHECK:swap:warn:swap ${swap_pct}% used — elevated"
-        else                              echo "CHECK:swap:ok:swap ${swap_pct}% used"
-        fi
-    fi
+
 }
 
 # OPTIONAL — called by AI context builder

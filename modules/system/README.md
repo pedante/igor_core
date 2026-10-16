@@ -52,6 +52,15 @@ continuation is valid only in its original live backend session for less than
 [Increment B contract and evidence](../../docs/igor2/COLLECTION_INCREMENT_B.md).
 Other administration contracts retain their existing versions.
 
+`system.host.runtime.status` now uses capability v3/output schema 2. It retains
+uptime/load/swap counters and adds System swap status, finding and explanation,
+plus an explicit current-READ timestamp/scope. `host.swap.health` consumes the
+existing runtime facts through the shared health runner. WARN begins at 60%,
+FAIL at 85%, based on byte counters; no configured swap is SKIP and unknown
+evidence is not healthy. Neither path changes host configuration. A current
+capability READ does not refresh older model facts/checks. Retained capability
+v2 History remains counters-only. See [the increment record](docs/SYS_BROADER_CATALOGUE_PROPOSAL.md#approved-swap-health-increment--2026-10-15).
+
 
 ## Platform abstraction
 

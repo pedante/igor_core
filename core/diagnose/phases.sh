@@ -216,21 +216,15 @@ _diag_phase_1() {
         fi
     fi
 
-    # ── Swap usage ────────────────────────────────────────────────────────────
-    local swap_total swap_used swap_pct
-    swap_total=$(free -m 2>/dev/null | awk 'NR==3{print $2}' || true)
-    swap_used=$(free -m  2>/dev/null | awk 'NR==3{print $3}' || true)
-    if (( swap_total > 0 )); then
-        swap_pct=$(( swap_used * 100 / swap_total ))
-        if (( swap_pct >= 85 )); then
-            _diag_emit CRITICAL swap_critical "Swap usage ${swap_pct}% ≥ 85% — severe I/O latency, SD card wear accelerating"
-        elif (( swap_pct >= 60 )); then
-            _diag_emit WARN swap_high "Swap usage ${swap_pct}% ≥ 60% — system under memory pressure"
-        else
-            _diag_emit OK swap_ok "Swap usage ${swap_pct}%"
+    # Swap interpretation belongs to the active System check, including UNKNOWN
+    # and no-swap results. Disabled/unavailable providers have no fallback probe.
+    if declare -f igor_health_run_v2_check >/dev/null 2>&1; then
+        local _swap_result _swap_line _swap_severity _swap_code _swap_message
+        if _swap_result="$(igor_health_run_v2_check host.swap.health)"; then
+            _swap_line="$(igor_health_json_to_healing "$_swap_result")" || return 1
+            read -r _ _swap_severity _swap_code _swap_message <<< "$_swap_line"
+            _diag_emit "$_swap_severity" "$_swap_code" "$_swap_message"
         fi
-    else
-        _diag_emit WARN swap_none "No swap configured — 1GB Pi 3 RAM only; add swap for stability"
     fi
 
     # ── NTP time sync ─────────────────────────────────────────────────────────

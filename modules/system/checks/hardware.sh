@@ -1,14 +1,14 @@
 #!/bin/bash
 # ==============================================================================
 #  IGOR — modules/system/checks/hardware.sh
-#  Host hardware health check: CPU temperature, undervoltage, disk, swap.
+#  Host hardware health check: CPU temperature, undervoltage, disk.
 #
 #  Discoverable by _healing_discover_checks() in core/healing/core.sh.
 #  Architecture-agnostic: uses /proc, /sys, and optional vcgencmd (Pi).
 # ==============================================================================
 
 CHECK_NAME="hardware"
-CHECK_DESCRIPTION="CPU temperature, undervoltage (Pi), root filesystem, swap"
+CHECK_DESCRIPTION="CPU temperature, undervoltage (Pi), root filesystem"
 CHECK_SCHEDULE="60"
 
 # PATTERN_HINT cpu_overtemp "CPU temperature critical (≥85°C)" CHANGE "sudo systemctl stop docker && sleep 30 && sudo systemctl start docker"
@@ -60,16 +60,5 @@ run_check() {
         fi
     fi
 
-    # ── Swap usage ────────────────────────────────────────────────────────────
-    local swap_pct
-    swap_pct=$(free 2>/dev/null | awk '/^Swap:/{if($2>0) printf "%d", $3*100/$2; else print 0}')
-    if [ -n "$swap_pct" ] && [ "$swap_pct" -gt 0 ]; then
-        if   [ "$swap_pct" -ge 85 ]; then
-            echo "CHECK_RESULT FAIL swap_critical Swap ${swap_pct}% used — critical"
-        elif [ "$swap_pct" -ge 60 ]; then
-            echo "CHECK_RESULT WARN swap_high Swap ${swap_pct}% used — elevated"
-        else
-            echo "CHECK_RESULT OK swap Swap ${swap_pct}% used"
-        fi
-    fi
+
 }

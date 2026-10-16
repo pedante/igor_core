@@ -1,6 +1,6 @@
 # Igor 2 migration status
 
-Last updated: 2026-10-15
+Last updated: 2026-10-16
 
 ## How to read this file
 
@@ -10,7 +10,62 @@ linear work queue. For architecture decisions, use the authority order in
 [README.md](README.md) and `AGENTS.md`; later accepted decisions and newer status
 entries supersede historical timing statements.
 
-## Current focus — integrated Step 20 System operator package
+## Current focus — approved System swap-health increment
+
+- **Acceptance:** **ACCEPTED by Owner, 2026-10-16** — complete bounded System
+  swap-health package. Final independent delta review: **APPROVE**, no blocking defects.
+- **Phase/exit:** RELEASE_FREEZE; Owner authorized one local closeout commit after
+  acceptance records and staged inspection. No push or further development authorized.
+- **Record:** [focused acceptance, evidence and handoff](../../modules/system/docs/SYS_BROADER_CATALOGUE_PROPOSAL.md#swap-health-focused-acceptance--2026-10-16).
+- **Candidate:** `igor2`, base `5efca3db`, scoped working diff; one shared System
+  evaluator, check, runtime READ contract and legacy swap-health cutover.
+- **Evidence:** retain 23 evaluator cases and ten runtime BATS scenarios. UTC alias
+  equivalence and unchanged test/fixture hashes are confirmed. Independent lint
+  comparison, both partitioned BATS cases, 67 connected regressions and actual
+  CLI/curses/History/refusal/re-enable proof pass. No completed runtime proof was
+  repeated merely because of preparation or server restart.
+- **Corrections:** one BATS fixture adjustment for legacy non-errexit Diagnose;
+  one production TUI fix for registered non-collection version-3 results. Eight
+  focused presentation/rejection/session/privacy cases and the real operator
+  workflow pass after that fix. Original interruption and failures remain retained.
+  The subsequent author-session review found a missing-snapshot crash. A local
+  guard now rejects absent/malformed snapshot entries before result routing;
+  20 new rejection cases, eight affected TUI cases and the real swap CLI/TUI/
+  History workflow pass. Earlier backend/evaluator evidence remains valid.
+  Independent review then found the active-collection snapshot-update crash. The
+  Owner-authorized correction validates snapshot containers before storage, retains
+  the last good snapshot with an explicit rejection flag, revokes collection rows/
+  pending requests and blocks stale selections until valid metadata returns.
+  Seven focused rejection/recovery cases and 64 affected existing TUI cases pass;
+  collection data requires an explicit refresh after metadata recovery.
+  A further independent review found malformed aliases and nested capability inputs
+  still reached consumers. The Owner-authorized complete admission correction is
+  recorded in the task record's **Complete TUI snapshot admission contract** section;
+  it reuses canonical identity, input, selector and collection/output parsers.
+  Both crashes were reproduced before correction; 30 new cases, 71 affected
+  consumer regressions and the real swap CLI/curses/History workflow pass (102 total).
+  Final independent review found a collection Enter lookup that admitted unrelated
+  check rows as inspection providers. The exact KeyError was reproduced; provider
+  discovery now filters capability entries before accessing provider. One new
+  two-scenario regression and eight directly affected navigation/recovery cases pass.
+  Snapshot admission and backend authority contracts remain unchanged.
+- **Lint:** 17 inherited ShellCheck warnings independently confirmed; two inherited
+  Ruff warnings on unchanged lines after the TUI correction. No new diagnostic;
+  raw lint is not described as clean.
+- **Closeout:** all 20 reviewed candidate hashes matched before acceptance-only
+  updates to this file and the task record. The local Git commit is the accepted
+  checkpoint; after commit verification, stop. Passing tests are retained without
+  reruns; no further reviews or budget renewal.
+  The prepared review request, reviewed package hashes and exact remaining allowance are in
+  `.igor-governor/evidence/system-swap-20261015/inspection-kind-20261016/index.json`;
+  prior admission evidence remains in `admission-contract-20261016/index.json`;
+  earlier evidence remains indexed in `execution-20261016.json` alongside it.
+  No renewal, additional feature development or automatic next task.
+- **Boundaries:** no host/configuration writes, broad System migration or new
+  framework. Step 20 remains PARTIAL, 20C open; Collection Increment E remains
+  deferred/unaccepted. No E validation or automatic next implementation.
+
+## Accepted integrated Step 20 System operator package
 
 - **Acceptance:** **ACCEPTED by Owner, 2026-10-15** — bounded Step 20A/B System
   operator package only. Independent correction review: **APPROVE**, no remaining

@@ -302,7 +302,18 @@ unchanged by the v2 package contract.
 
 - The first condition is met for memory: the typed observer/check now serves
   AI context, Diagnose and Healing, and redundant RAM probes/check lines were
-  removed. Other temperature, swap, load, storage and network direct probes
+  removed. The approved swap-health increment also replaces System's Diagnose
+  hook/hardware-file swap probes and phased Diagnose swap interpretation with
+  `host.swap.health` over the existing `host.runtime` counters. The current
+  runtime READ shares System's evaluator but does not refresh the stored model.
+  Its capability v3/output schema 2 replaces the live counters-only v2 contract;
+  historical records keep their original version/meaning, without rewriting.
+  The runtime READ's scalar v3 result exposed a frontend assumption that v3
+  always meant collection. The existing TUI event path now validates and renders
+  registered non-collection v3 results normally while retaining unknown collection
+  rejection. Focused guards and the real CLI/curses/History workflow prove this
+  correction; it does not validate deferred Collection Increment E.
+  Other temperature, load, storage and network direct probes
   remain compatibility paths until their own observers/checks exist.
 - The shared health runner owns active v1 file/hook execution; `CHECK:` and
   `CHECK_RESULT` remain presentation/adaptation formats for v1 modules.
