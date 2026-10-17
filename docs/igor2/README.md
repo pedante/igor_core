@@ -9,14 +9,15 @@ Igor 1 cutoff. Current source behavior and proposed changes are different claims
 
 1. [STATUS](STATUS.md): current work, accepted evidence and open gates.
 2. [ARCHITECTURE](ARCHITECTURE.md): accepted principles/authority boundaries.
-3. [ROADMAP](ROADMAP.md): proposed five substantial milestones and exact first batch.
+3. [ROADMAP](ROADMAP.md): accepted five substantial milestones and exact first batch.
 4. [Architectural audit](ARCHITECTURE_READINESS.md): evidence, verdict, design
    alternatives, testing/development recommendations and limits.
 5. [LEGACY](LEGACY.md): finite cutoff, preservation/import and deletion proof.
 
 For implementation, read [EXECUTION](EXECUTION.md), [MIGRATION](MIGRATION.md)
-and only affected contracts. The reset architecture remains DISCOVERY until
-Owner confirmation; D080's no-v1-compatibility direction is already accepted.
+and only affected contracts. D080/D081 accept the cutoff, bounded M1 scope,
+Python execution/module coordination in M1 and durable AI orchestration in M2.
+The audit's other proposals, including exact persistent roots, remain unconfirmed.
 Documentation edits do not implement or validate a runtime migration.
 
 ## Document lifecycle and authority
@@ -64,6 +65,6 @@ Read them for the named task, not before every edit. Accepted parts remain tied
 to their decisions; unimplemented ideas are not a backlog commitment. Generalized
 imports, remote operation, marketplaces and agent networks are Igor 2.x candidates.
 
-After reset confirmation/implementation, consolidate overlapping target prose into
+As accepted milestones are implemented, consolidate overlapping target prose into
 ARCHITECTURE and the live contracts. Keep the useful reasons in DECISIONS and Git;
 do not force developers to reconstruct the project's full evolution.

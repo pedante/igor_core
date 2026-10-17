@@ -1,6 +1,6 @@
 # Igor 2 development policy
 
-Status: **authoritative Project Owner policy; D078, amended by D080 on 2026-10-16**.
+Status: **authoritative Project Owner policy; D078, amended by D080/D081 through 2026-10-17**.
 
 This is the single development-policy authority for Igor 2. It governs branch
 selection and pre-release compatibility obligations alongside
@@ -36,14 +36,19 @@ The Owner requires Igor 2 to support only its own architecture. Eliminate Igor 1
 module parsing, adapters, hooks/registrations, configuration fallback and obsolete
 execution interfaces in the coherent cutoff described in [LEGACY](LEGACY.md).
 Keeping Nextcloud on v1, waiting for old Step 23, a deprecation period or proving
-Igor 1 interface parity is no longer a requirement. Useful implementations and
-user functionality are migration inputs, not automatic deletion candidates.
+Igor 1 interface parity is no longer a requirement. Useful implementations are
+reusable material, not mandatory feature parity.
+Inventory operations for explicit retain/defer/remove disposition and data safety;
+M1 implements only the selected System/Docker and Nextcloud configuration scope
+in [ROADMAP](ROADMAP.md), as accepted by D081.
 
 Preserve/export existing configuration and persistent data with explicit,
 verified, recoverable transition. An offline one-shot importer or documented
 manual transition is allowed; a permanent runtime compatibility framework is not.
-The audit changes documentation only. Revised implementation architecture and
-the broader cutoff batch still require Owner confirmation before runtime work.
+D081 confirms Python execution/module coordination in M1 and durable AI task and
+conversation orchestration in M2. This governance cleanup changes no runtime.
+Implementation still needs a scoped task instruction; accepted decisions require
+no repeat vote. Storage-layout proposals outside D081 remain unconfirmed.
 
 ### Coherent internal migration
 

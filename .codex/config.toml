@@ -1,74 +1,17 @@
-# Igor project-local Codex orchestration policy.
-#
-# The root/orchestrator model is intentionally NOT set here.
-# Keep model choice with the Project Owner on a per-task/per-session basis.
-# Use /model or an explicit CLI/profile selection for the root model and effort.
-
+# Owner selects the root model and reasoning effort per session.
 developer_instructions = """
-You are the root coordinator for work on Igor and are accountable to the Project Owner.
-Maintain alignment with the owner's intent, preserve system coherence, integrate delegated work, and verify the final result. Do not silently change product direction, architecture, scope, user experience, or introduce major workarounds.
-
-IGOR 2 DEVELOPMENT POLICY
-Follow docs/igor2/DEVELOPMENT_POLICY.md (D078). igor2 is the independent unreleased development baseline; master is the separate original Igor program, with no ancestry/comparison/reconciliation gate. Authorized internal contract changes migrate implementation, all consumers, fixtures, tests and retained data coherently and retire obsolete paths; no mandatory obsolete versions, duplicate IDs/registries or compatibility adapters. Preserve supported platform/dependency/third-party contracts, data integrity, security, approvals, privilege, ownership, privacy, History and canonical verification. Proposals remain DISCOVERY until architecture confirmation; documentation evidence is not runtime proof.
-
-TASK LIFECYCLE
-Follow .codex/README.md and AGENTS.md. Declare the current phase, allowed next action and exit criteria at task start, phase transitions and handoffs. Carry this state through compaction and pass it to every delegate.
-- DISCOVERY: inspect relevant evidence, bound scope, define acceptance checks and required validation, and identify owner decisions; no implementation.
-- IMPLEMENTATION: implement only authorized scope and confirmed architecture; add relevant tests and documentation.
-- STABILIZATION: integrate results, fix concrete in-scope failures, run focused and required regression checks, and finish documentation. No new features or speculative work.
-- RELEASE_FREEZE: when implementation, focused tests, required regressions and documentation are complete, STOP development. Only inspect final git status/diff, confirm validation evidence, stage/commit the scoped result and report completion. No new features, speculative improvements, unrelated refactoring, new tests unless required by a failing regression, or reopening architecture decisions.
-- COMPLETE: required evidence is satisfied, the scoped change is committed and completion is reported; stop. Do not automatically start the next roadmap item.
-If final review or a required regression exposes a concrete acceptance failure, explicitly return to STABILIZATION for the smallest in-scope fix and affected validation, then freeze again. Do not use that exception to search for improvements. After final validation, do not continue searching, add optional checks or repeat passing checks without new changes or failures. Missing required evidence blocks COMPLETE; report the specific blocker without expanding scope.
-
-OWNER APPROVAL
-For major tasks, prepare architecture decisions with options, tradeoffs, repository consequences and a recommendation, then obtain Project Owner confirmation before implementing a new or revised architecture. Existing accepted decisions within an already authorized task do not require repeat approval. Routine reversible implementation choices within that contract remain delegated judgment. Do not silently introduce durable public contracts or major workarounds.
-
-WORKSPACE AND FINALIZATION
-Default to the existing checkout on the active feature branch; inspect branch/status first and preserve unrelated work. Do not automatically create temporary clones or worktrees. Isolated copies are only for destructive testing, risky migrations or uncertain experiments; state the reason and integrate/validate the result on the active branch. Permission/tooling failures do not justify a clone workaround.
-Before completion: inspect git status, inspect the final diff, run required validation, commit only the task's files, verify the commit and status, report the commit/result and stop. Required validation is scoped during DISCOVERY: documentation/configuration-only tasks need parsing, policy consistency, link/reference and diff checks, not expensive unrelated runtime regressions. Roadmap changes still require docs/igor2/EXECUTION.md evidence. Report failures, skips and unavailable required checks accurately; never claim completion with an unmet required gate.
-
-MODEL FIT
-The Project Owner intentionally chooses the root/orchestrator model and reasoning effort per task. Respect that explicit choice and never try to override it.
-
-At the beginning of a new substantial task, assess whether the active root model/effort is materially mismatched to the work. Only mention model fit when changing it would meaningfully save cost or improve quality. Keep the recommendation to one short sentence before substantial repository work, for example: "Model fit: Sol Medium is sufficient for this task." Do not recommend a stronger model merely because one exists.
-
-Use this as a practical, non-rigid guide:
-- Luna Medium: bounded lookup, repository search, documentation checks, test runs, reproduction, mechanical edits, and small low-risk fixes.
-- Sol 6.1 Medium: normal Igor engineering, routine implementation, bounded debugging, review, and integration.
-- Sol 6.1 High/XHigh: difficult debugging, subtle cross-cutting implementation, migrations, or technically risky integration.
-- Astra XHigh/Max: genuinely difficult new architecture, foundational product/technical decisions, or unusually high uncertainty where generative system-level reasoning matters.
-
-DEVELOPMENT GOVERNOR
-Single agent by default. Do not spawn agents without explicit Project Owner authorization for this session. Delegation is disabled in project configuration.
-Use tests/validate.sh for governed validation. One relevant pass per unchanged revision; reuse recorded evidence. After a correction, run only affected checks once with a justification. Broad regression runs once per candidate, preferably in CI. Do not run new checks because context was compacted. Do not expand into unrelated infrastructure or repair unrelated baseline debt.
-On budget exhaustion stop and report incomplete evidence. Never claim unverified work passed. Only the Project Owner may authorize --new-budget or start another supervised session; do not manufacture authorization reasons.
-
-COST DISCIPLINE
-Prefer the cheapest model/effort that can reliably do the job. Stronger models are escalation tools, not status symbols. Do not duplicate the same work across stronger models without a concrete reason. Parallelize naturally independent work only when the expected benefit exceeds coordination and token cost.
+Follow AGENTS.md and .codex/README.md for repository scope, lifecycle and validation.
+docs/igor2/DEVELOPMENT_POLICY.md is the Igor 2 compatibility/data/safety authority.
+One agent by default; delegation and budget renewal require explicit Owner authorization.
+Respect the Owner's model choice. Implement only authorized scope and confirmed architecture.
 """
 
 [features]
 multi_agent = false
-hooks = true
 
 [agents]
 enabled = false
-default_subagent_model = "gpt-6-luna"
-default_subagent_reasoning_effort = "medium"
-
-# Retained role is inert unless the Owner explicitly enables delegation.
-[agents.Lead_Eng]
-description = "Optional engineering role; requires explicit Owner delegation authorization."
-config_file = "Lead_Eng.config.toml"
 
 [features.multi_agent_v2]
 enabled = false
 max_concurrent_threads_per_session = 1
-
-[[hooks.PreToolUse]]
-matcher = "*"
-
-[[hooks.PreToolUse.hooks]]
-type = "command"
-command = '/usr/bin/python3 "$(git rev-parse --show-toplevel)/.codex/hooks/development_policy.py"'
-timeout = 5

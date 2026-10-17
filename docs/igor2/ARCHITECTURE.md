@@ -9,11 +9,26 @@ Collections extend these contracts under accepted D079 in
 [COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md); acceptance remains
 increment-specific, with Increment E deferred/unaccepted.
 
-The [2026-10-17 audit](ARCHITECTURE_READINESS.md) recommends consolidating the
-control plane into Python, a small explicit task state machine and five delivery
-milestones. Those revised implementation choices remain DISCOVERY until Owner
-confirmation. This file retains accepted principles; it does not claim that
-today's runtime satisfies every invariant or that the proposed reset is implemented.
+D081 accepts the revised [five-milestone roadmap](ROADMAP.md): final Python
+execution and module coordination in M1; durable AI task and conversation
+orchestration in M2. The [audit](ARCHITECTURE_READINESS.md) supplies rationale,
+not a feature-parity obligation. Igor 1 compatibility and mandatory preservation
+of every existing operation are excluded. These are accepted targets, not claims
+that today's mixed runtime has migrated.
+
+M1 delivers useful integrated System/Docker operations and Nextcloud configuration
+through one canonical Python executor and module authority. CLI, curses TUI, AI,
+checks and automation submit intent to that authority; useful reviewed Bash leaf
+handlers remain allowed. There is no transitional Bash coordinator to replace in
+M2 and no second registry/executor. M2 adds durable objectives, conversation and
+pending-question continuity, bounded model transactions and recovery referencing
+canonical operation IDs; it does not redesign M1 execution.
+
+Inventory old operations for explicit retain/defer/remove disposition and data
+safety, not parity. Nextcloud install, backup/restore, repair and broad application
+management are not M1 requirements. Preserve native application data and unsupported
+configuration offline. Exact new persistent roots remain a separate decision if
+required; D081 does not accept the audit's entire proposed storage layout.
 
 ## Product definition
 
@@ -320,7 +335,15 @@ Module API v2 is a versioned target contract. A module may contribute any subset
 - configuration;
 - lifecycle.
 
-The current hook-based API remains a compatibility input during migration.
+M1 uses a minimal forward-compatible Igor 2 contract: strict v2 identity/bootstrap
+and explicit typed declarations, API/capability/schema versions, owner and dependency/
+platform eligibility, activation/availability, typed inputs/results and bounded
+handler invocation. Operations declare effect, privilege, verification and recovery;
+configuration/secret references stay with their canonical authorities. Inspection
+exposes owner, version, availability and provenance. Unsupported versions and
+missing/ambiguous providers fail closed; no auto-enable or runtime v1 adapter.
+Optional contributions are added for real consumers, not a speculative framework.
+Current hooks are source material for migration, not a compatibility contract.
 
 ### Observation and health
 

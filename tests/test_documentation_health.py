@@ -41,12 +41,19 @@ def test_step16_baseline_contract_does_not_claim_overall_track_is_partial():
     assert "completed Step 16 learning/knowledge track" in baselines
 
 
-def test_status_does_not_reopen_already_accepted_boundary_a_recommendations():
-    status = read("docs/igor2/STATUS.md")
-    top = "\n".join(status.splitlines()[:80])
-    assert "implementation unaccepted" not in top
-    assert "recommendations accepted" in top
-    assert "requiring owner confirmation" not in top
+def test_accepted_milestone_decision_is_linked_and_not_left_open():
+    decisions = read("docs/igor2/DECISIONS.md")
+    accepted, remaining = decisions.split("## Open decisions", 1)
+    opened, resolved = remaining.split("## Resolved questions retained for traceability", 1)
+    assert re.search(r"^### D081\b", accepted, re.MULTILINE)
+    assert not re.search(r"^### Q025\b", opened, re.MULTILINE)
+    assert re.search(r"^### Q025\b", resolved, re.MULTILINE)
+    for relative in (
+        "docs/igor2/ARCHITECTURE.md", "docs/igor2/ROADMAP.md",
+        "docs/igor2/DEVELOPMENT_POLICY.md", "docs/igor2/MODULE_API.md",
+        "docs/igor2/MIGRATION.md", "docs/igor2/EXECUTION.md", "docs/igor2/LEGACY.md",
+    ):
+        assert "D081" in read(relative), relative
 
 
 def test_architecture_index_defines_lifecycle_and_has_no_literal_newline_artifact():
@@ -105,12 +112,7 @@ def test_collection_closure_keeps_existing_execution_proofs_and_read_only_gate()
     assert "remain open EXECUTION acceptance gates" in rfc
     for proof in proofs:
         assert f"| {proof} |" in rfc
-    roadmap = read("docs/igor2/ROADMAP.md")
-    for step, following in (("18", "19"), ("20", "21")):
-        section = roadmap.split(f"## Step {step} —", 1)[1].split(
-            f"## Step {following} —", 1
-        )[0]
-        assert "COLLECTION_OPERATOR_RFC.md" in section
+    assert "COLLECTION_OPERATOR_RFC.md" in read("docs/igor2/ROADMAP.md")
     assert "### D078" in read("docs/igor2/DECISIONS.md")
     assert "### D079" in read("docs/igor2/DECISIONS.md")
 

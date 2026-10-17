@@ -1,14 +1,15 @@
 # Igor 2 delivery roadmap
 
-Status: **proposed reset (DISCOVERY); implementation awaits architecture confirmation**.
+Status: **accepted direction and bounded M1 scope (D080/D081); runtime work not started**.
 
 Updated: 2026-10-17, source baseline `1aac86a`. This replaces the A–H/23-step
 planning structure, not historical acceptance or retained proof. The
 current-work cursor lives in [STATUS.md](STATUS.md). The recommendation and
 tradeoffs are in [the audit](ARCHITECTURE_READINESS.md); accepted policy is in
 [DEVELOPMENT_POLICY.md](DEVELOPMENT_POLICY.md) and [DECISIONS.md](DECISIONS.md).
-The Owner has accepted complete Igor 1 cutoff (D080); the proposed runtime
-organization below is not accepted merely because this file was rewritten.
+The Owner has accepted complete Igor 1 cutoff (D080) and the bounded M1/M2
+architecture below (D081). The audit's other proposals are not automatically
+accepted. This governance task implements no runtime milestone.
 
 ## Delivery rule
 
@@ -28,8 +29,8 @@ Do not renew the governor or waive missing real-consumer evidence.
 
 | Milestone | Usable result | Main deletion | Complexity |
 |---|---|---|---|
-| M1 — One module and operation platform | Inspect and operate System, Docker and an attached Nextcloud through the same safe CLI/TUI path | v1 loader/hooks/actions, legacy configuration sources and direct menu execution | High: cross-cutting consumer/data migration |
-| M2 — A reliable conversational operator | Complete a bounded task, answer its questions, recover after interruption; one Python coordinator | Bash control-plane plumbing, prose-based continuation, provider launch wrappers | High: PTY, transaction and state parity |
+| M1 — One module and operation platform | Final Python executor/module coordination; useful System/Docker operations and Nextcloud configuration through CLI/TUI | Bash execution/module coordination, v1 interfaces and direct menu execution | High: bounded consumer/data cutover |
+| M2 — A reliable conversational operator | Durable AI tasks/conversations, exact pending questions and safe restart through M1 execution | Bash AI loop, prose-based continuation and provider launch wrappers | High: transaction and recovery correctness |
 | M3 — A machine that Igor remembers | Persistent stale-aware inventory and continuing investigations with relevant evidence | Redundant probes, chat/WIP files used as machine memory | Medium/high: retention and provenance |
 | M4 — Substantial verified work | Resume installation/configuration procedures safely with explicit recovery | Ad-hoc install/recovery scripts as independent controllers | High: irreversible effects and real environments |
 | M5 — Installable, supportable Igor 2 | Documented Debian/Arch release with onboarding, diagnostics, upgrades and bounded resource use | Remaining obsolete docs/helpers and unreleased scaffolding | Medium/high: release integration |
@@ -41,154 +42,119 @@ matrix, not the first opportunity to run the software.
 
 ## M1 — One module and operation platform
 
-**Purpose:** close the authority, lifecycle and ownership gaps before adding
-more operations. Finish the clean module system in one coherent batch.
-
-**User-visible result:** the user can inspect active modules and their settings,
-operate System/Docker, attach an existing Nextcloud, read/change/verify a setting,
-and use retained application operations through CLI and the same generic TUI.
-Disabling a module removes its active behavior/context without deleting its data.
-Every operation reports actual execution and verification, never unconditional OK.
+**Purpose/result:** final Python execution and module coordination, with useful
+integrated System/Docker operations and one attached Nextcloud configuration
+workflow through CLI and the same generic curses TUI. No Igor 1 compatibility,
+mandatory feature parity or temporary Bash coordinator awaiting M2 replacement.
+Disabling a module removes its active behavior/context without deleting data.
 
 **Architecture and implementation:**
 
-- Keep strict v2 INI + explicit JSON declarations; one admitted contribution
-  index. Migrate System's remaining hooks and all Nextcloud registrations.
-  Docker stays v2. Samba remains an unadvertised recognition adapter until needed.
-- Route all shipped operational entry points through canonical dispatch, including
-  menus, diagnosis/healing, recovery, automation and AI. Retain the current Bash
-  coordinator for this milestone; move deterministic policy ownership out of AI
-  and remove competing invocation contracts. No new parallel backend.
-- Finish one configuration/secret/path ownership model for shipped consumers.
-  Reuse Configuration, Secret and Deployment services. Module packages carry
-  no mutable machine values. Native application settings remain bound external
-  authority; desired values and apply/readback are distinct.
-- Move application-specific diagnosis/recovery/provider loading out of Core.
-  Keep Nextcloud-on-Docker as one coherent application module; Docker's generic
-  operations remain reusable. Do not split nginx/Redis/PostgreSQL/tunnel modules.
-- Inventory and preserve useful existing operations. Replace interactive menu
-  orchestration with typed inputs and generated presentation; reuse correct leaf
-  scripts. Remove the host-wide NUKE action, replacing only a scoped operation
-  when its resource/recovery contract is justified.
-- Apply the finite data transition and no-old-interface proof in [LEGACY](LEGACY.md).
-  Existing process sessions cannot straddle the cutover; require explicit restart.
+- Reuse strict v2 INI + explicit JSON declarations and one admitted contribution
+  index. Keep the minimal forward-compatible [module contract](MODULE_API.md#m1-target-contract-d081):
+  versions, owners, activation, dependencies/platform eligibility, typed I/O,
+  bounded handlers, availability/provenance and canonical safety semantics.
+- Python owns deterministic module loading/activation, resolution, authorization,
+  execution and result/History coordination. Existing CLI/TUI/AI/check/automation
+  consumers use that same authority. Useful reviewed Bash/Python leaf handlers
+  remain; shell globals, duplicate registries and alternate executors do not.
+- Reuse Configuration, Secret, Deployment, History and collection services.
+  Packages carry code/defaults/knowledge, not machine values. Native application
+  settings remain external authority; desired state, apply and readback differ.
+- Keep Nextcloud-on-Docker together, with application-specific configuration and
+  provider logic in its module. Docker supplies generic substrate operations.
+  Do not split Redis, PostgreSQL, proxy or tunnel into new module products.
+- Inventory all old interfaces for retain/defer/remove disposition and data
+  safety. Port only selected Igor 2 operations. Remove unsafe global NUKE and
+  unreachable v1 paths; preserve unsupported values/data offline under [LEGACY](LEGACY.md).
 
-**Scope:** the three shipped packages, live consumers, existing operations,
-configuration/secret ownership, immediate F01–F04 defects, one real Nextcloud
-configuration cycle. Includes a short install/doctor path for the declared roots.
-Excludes new domains, remote control, third-party marketplace, hot unload,
-generic rollback, full AI-loop rewrite, and new background automation behavior.
+**Scope:** useful existing System host/service/package/storage/access/network
+operations and Docker read/lifecycle capabilities that compose through the final
+executor, plus Nextcloud recognition/attachment and bounded configuration
+inspection, desired-state proposal/commit, apply and independent readback. Keep
+existing capability IDs/semantics where correct; record deliberate migrations.
+No requirement to port all 40 System capabilities or all 12 old Nextcloud AI
+actions merely because they exist. The implementation inventory names the actual
+selected IDs and their retain/defer/remove disposition before conversion.
 
-**Dependencies:** Owner confirmation of the reset architecture/scope; reviewed
-current operation inventory and private data inventory; disposable Nextcloud
-runtime supplied without altering the Owner's production stack. The existing
-Step 19 fixture/runbook is reusable, but its host setup remains unexecuted.
-The prior narrow loglevel execution architecture remains useful; the broader
-cutoff is a new scope, not silently covered by that approval.
+**Excluded:** Nextcloud installation, backup/restore, repair/maintenance, app
+management and general service administration; new domains, remote control,
+marketplace, hot unload, generic rollback, new automation behavior, and M2's
+durable AI tasks/conversations. These exclusions do not justify leaving old
+execution interfaces callable. Useful mechanics can remain inactive source material.
+
+**Dependencies:** the accepted D081 architecture needs no repeat vote. Before
+runtime edits, bound the operation/data inventory at the implementation base and
+plan validation within the existing allowance. Reuse declared roots and explicit
+overrides; any required new storage-layout decision stays explicit. A disposable
+Nextcloud runtime is needed for closure; the existing Step 19 fixture/runbook is
+reusable, but host setup has not been completed or reauthorized by this cleanup.
 
 **Completion criteria:**
 
-1. No v1 manifest/registration/action/hook consumer is executable in the Igor 2
-   tree. No compatibility mode or fallback reactivates it. All shipped modules
-   validate and require explicit activation; disabled/stale proposals fail closed.
-2. Every retained operation has exactly one owner/provider, input contract,
-   effect tier, privilege route, outcome and verification/recovery definition.
-   A parity table accounts for all former menu/action functions. Valuable
-   functionality is retained; any proposed removal beyond obsolete/unsafe paths
-   is surfaced as an explicit scope change, never silently dropped.
-3. User can inspect effective config source/owner and secret reference without
-   exposing values. No normal startup sources legacy env files or moves data.
-   Conflicts require explicit import decisions. Re-entry and recovery work.
-4. Actual CLI and curses operation: attach fixture, read loglevel `2`, approve
-   `3`, independently read `3`, approve return to `2`, read `2`, inspect History.
-   OCC runs as the intended application user; no unbound deployment is touched.
-5. System/Docker/Nextcloud disabling removes operations, checks, observations,
-   active knowledge and automation; retained records remain historical. Re-enable
-   recovers availability without inventing responsibility or applying settings.
-6. No success result after a failed service command; no global Docker-volume
-   enumeration in application destruction; all destructive approval is exact.
+1. Python is the final execution/module authority. No v1 manifest, hook,
+   registration, legacy action, configuration fallback or competing executor is
+   reachable. Unsupported packages fail before executing module code.
+2. Each selected operation has one owner/provider, typed contract, effect tier,
+   approval/privilege route, honest outcome, verification and recovery limits.
+   A disposition inventory accounts for omitted operations; no parity gate.
+3. Active/disabled/stale/missing/ambiguous provider behavior fails closed across
+   operations, checks, observations, knowledge, config validation and automation.
+   Retained records remain historical; re-enable never invents responsibility.
+4. Effective config owner/source and secret references are inspectable without
+   values. Startup never sources old env files or silently moves data. Explicit
+   import/export, conflict handling, interruption/re-entry and recovery preserve
+   supported and unsupported user data and historical operation meaning.
+5. Real System and Docker operations run through the shared CLI/TUI authority.
+   On a disposable bound Nextcloud: attach, read loglevel `2`, approve/apply `3`,
+   independently read `3`, approve return to `2`, read `2`, inspect History.
+   OCC uses the intended application user and exact deployment identity.
+6. Refusal, failure, stale target and external drift never become success or
+   authorize another target. Exact destructive approval and native sudo PTY,
+   pre-effect History, private/scrubbed data and exact-consumer secrets survive.
 
-**Small meaningful validation set:** one shared authorization/secret/History
-matrix; strict-v2/lifecycle contract tests; migration interruption/conflict tests;
-one real System operation and the real Nextcloud cycle through CLI/TUI; affected
-regressions for changed execution/storage/AI boundaries. Preserve targeted safety
-edge cases. One broad integration run is justified by this cross-cutting cutoff,
-preferably governed CI, not repeated after every correction. Lack of a real
-application environment blocks closure, not implementation of independent code.
-
-**Cleanup:** v1 parser, `compat.v1_hooks`, `__register`, hook registries and
-`legacy.<owner>.<action>` dispatch; legacy env writers/fallbacks; direct menu
-execution; obsolete v1 tests/guides; exact duplicate deprecated scripts; dormant
-Textual frontend after caller check. Data import is an offline one-shot utility,
-not an installed compatibility service. Keep existing collection validation;
-Increment E's deferred acceptance is not automatically closed by M1.
-
-**Expected complexity:** high, the largest migration. The finite boundary is
-three packages/current operations. No calendar estimate is credible before the
-operation mapping; do not disguise this as a small patch or enlarge it with M2.
+**Validation:** one shared authorization/secret/History matrix; strict-v2 and
+lifecycle tests; explicit data-transition interruption/conflict/recovery tests;
+real System/Docker and Nextcloud CLI/curses slices; affected execution/storage
+regressions. One broad integration pass is justified by the executor cutoff,
+preferably governed CI. Missing real application evidence blocks closure, not
+independent implementation. Collections Increment E remains deferred/unaccepted.
 
 ### Immediate implementation batch — exact handoff
 
-This is the first batch after architecture confirmation, not another open-ended
-audit. Implement all of M1 with the following dependency order:
+The next implementation task is M1 only, in this dependency order:
 
-1. **Freeze a parity/data inventory at the implementation base.** Enumerate
-   `module.sh` registrations, manifest menus, AI actions, diagnose/recovery hooks,
-   configuration writes and data locations. Use the tables in LEGACY as the
-   seed; append each remaining callable menu operation. For every row name
-   retained v2 capability/check/observer/knowledge/config owner or explicit
-   approved retirement. No broad additional architecture study is needed.
-2. **Fix the dangerous legacy edges while converting their consumers.**
-   `modules/nextcloud_docker/menus/services.sh`: start/stop/restart must report
-   failures; eliminate `_mod_services_nuke`'s global resource selection. Preserve
-   a failure fixture. `config_loader.sh`/`module_loader.sh`: eliminate fixed
-   diagnostic captures and raw secret error output as those paths are retired.
-   These are integrated fixes, not an excuse to ship the rest of the cutoff later.
-3. **Complete data ownership and explicit import first.** Extend
-   `configuration.py`, `secret_refs.py`, `openrouter_import.py`, `deployments.py`
-   and declared path resolution only where shipped consumers require it.
-   Select the proposed roots once; preserve supported explicit overrides.
-   Implement dry-run inventory, conflict decisions, private staged copy,
-   verification, atomic cutover marker, idempotent re-entry and recovery.
-   Disable startup moves/source fallback in the same candidate.
-4. **Convert the packages and consumers together.** Touch
-   `modules/system/module.conf`, `module.sh` and contracts; Nextcloud manifest,
-   contracts, `lib/` providers and menu leaf functions; Docker consumers as needed.
-   The 12 existing Nextcloud AI actions are: health check, full diagnostic,
-   services status, scan files, flush Redis, flush caches, repair, full repair,
-   fix permissions, DB maintenance, permission inspection and native config
-   injection. Also cover service lifecycle/logs, apps, configuration, backup,
-   restore and installation workflows currently reachable through menus/hooks.
-   Typed parameterization replaces hardcoded broad commands, not a generic
-   shell-string escape hatch. Do not turn all verbs into a new mini-language.
-5. **Unify dispatch and visibility.** Update `module_contract.py`,
-   `module_registry.py`, `module_loader.sh`, `module_loader_fast.sh`,
-   `module_handler.sh`, `capability.sh`, AI catalog/tool dispatch, operator CLI,
-   TUI projection, health/diagnose, recovery and automation. Move Nextcloud
-   provider selection out of `deployment_attachment.py`'s hardcoded import.
-   Keep one live implementation per operation; cache invalidation/owner checks
-   must survive removal of old views. Do not add another fast-loader override.
-6. **Prove the complete application slice.** Use
-   `tests/fixtures/step19-nextcloud/`; bind exact endpoint/project/application
-   identity. Extend the existing approved narrow Nextcloud setting adapter for
-   desired/apply/readback with canonical History. Run `2 → 3 → 2`, rejection,
-   stale/disabled refusal and external-drift handling. Inject command failure
-   without touching production Docker. Never install host dependencies merely
-   to satisfy the audit; implementation setup has its own explicit authority.
-7. **Retire and close.** Delete obsolete runtime paths and associated tests/docs,
-   run the cutoff proof, required affected/CI gates once, update actual operator
-   instructions and status, inspect final diff, commit and stop. No M2 work.
+1. **Freeze a bounded operation/data disposition inventory.** Use LEGACY and
+   current manifests, hooks, menus and live callers. Name selected System/Docker
+   capability IDs and Nextcloud configuration operations, deferred/removed
+   interfaces, data sources and retention/export handling. No new architectural
+   investigation or mandatory port of every legacy operation.
+2. **Finish the Python module/execution authority.** Reuse `module_contract.py`,
+   `module_registry.py`, canonical capability admission, approval/PTY, verification
+   and History. Replace Bash coordination in `module_loader*.sh`,
+   `module_handler.sh` and `capability.sh` together with their live callers.
+   Adapt CLI/TUI, AI tool dispatch, check/observer and automation consumers;
+   preserve collection validation and one canonical result path.
+3. **Complete selected ownership/data transitions.** Reuse `configuration.py`,
+   `secret_refs.py`, `openrouter_import.py`, `deployments.py` and declared paths.
+   Provide explicit offline inventory/import/export with conflict decisions,
+   private staging, verification, idempotent cutover and recovery where needed.
+   Remove startup moves, secret diagnostic captures and env fallback together.
+4. **Convert selected package operations.** Remove System compatibility hooks,
+   integrate Docker, and give Nextcloud v2 declarations and module-owned bound
+   configuration/attachment providers. Remove hardcoded Nextcloud selection from
+   Core. Extend the existing narrow setting adapter for desired/apply/readback;
+   typed inputs replace menu prompting. Eliminate global NUKE and v1 menus/actions
+   without porting excluded operations or deleting native application data.
+5. **Prove and retire.** Exercise selected operations and the real loglevel
+   `2 → 3 → 2` cycle, refusal, failure, stale/disabled target, drift and recovery.
+   Retire replaced interfaces/tests/guides, map safety tests to retained invariants,
+   update actual operator docs and STATUS/LEGACY, run the required bounded gates,
+   review, commit and stop. No M2 work.
 
-**Affected safety tests to retain/adapt, not simply delete:** module contract/
-capability runtime, approval/privilege BATS, request/transaction privacy,
-configuration/secret references, deployment/Nextcloud attachment, History,
-module lifecycle and actual CLI/curses integration. Document-wording tests may
-be replaced with link/authority checks; legacy invocation tests become canonical
-behavior tests. Map removed cases to retained invariants in the single ledger.
-
-**First-batch stopping rule:** missing real fixture, unsafe data transition,
-unknown operation parity or exhausted validation budget means incomplete M1.
-No successful unit count or documentation change substitutes for those gates.
+Missing selected-operation disposition, unsafe data transition, unavailable real
+fixture or exhausted validation allowance means incomplete M1. Unit counts and
+documentation cannot substitute for the five EXECUTION proof classes.
 
 ## M2 — A reliable conversational operator
 
@@ -196,17 +162,19 @@ No successful unit count or documentation change substitutes for those gates.
 asked, see progress, cancel, and continue after a failure/restart without losing
 the target or silently repeating a change. CLI and TUI share one application.
 
-**Implementation:** Python owns session/task/registry/context orchestration and
-imports existing services. Retain curses and native PTY authentication. Adopt
+**Implementation:** extend M1's Python application with durable AI task and
+conversation orchestration and bounded context selection. Execution and module
+coordination are already final in M1. Retain curses and native PTY authentication. Adopt
 one typed internal model/tool transaction format and small provider adapters.
 Reuse structured capability plans; persist task objective, pending question,
 selected refs, steps/operation IDs, outcomes and explicit wait/unknown states.
 Fresh authority/target checks remain in the executor. Persist bounded state,
-not the whole conversation as operational truth. Consolidate policy under the
-application executor and retire Bash orchestration together with its consumers.
+not the whole conversation as operational truth. Use M1's deterministic
+executor; retire the remaining Bash AI conversation loop with its consumers.
 
-**Scope/dependencies:** M1 contracts and operation parity. Anthropic, OpenRouter,
-Ollama parity; configured ordinary/strong bindings; bounded context and accounting.
+**Scope/dependencies:** M1 contracts and selected operations. Preserve supported
+Anthropic/OpenRouter/Ollama transaction safety; configured ordinary/strong bindings;
+bounded context and accounting. No Igor 1 feature-parity obligation.
 No autonomous multi-agent system, new provider requirement, arbitrary workflow
 DSL, background daemon or remote approval. Native provider differences remain
 inside adapters, not a universal least-common-denominator loss of tool safety.
@@ -225,7 +193,8 @@ with separate budget/privacy authorization. One affected gate for final candidat
 
 **Cleanup:** `core/ai/core.sh` control-plane loop, duplicated first/follow-up tool
 dispatch, prose-based choices/completion, provider shell launchers/router, dynamic
-loader patching and shell-JSON state transports. Retain useful shell handlers,
+AI-specific shell-JSON state transports. Module-loader patching was retired in M1.
+Retain useful shell handlers,
 validated schemas, secret/History stores and provider boundary tests.
 **Complexity:** high; cancellation, PTY and crash consistency are principal risks.
 
@@ -277,8 +246,8 @@ configuration, secrets, dependency preparation and deployment responsibility.
 
 **Scope/dependencies:** M1–M3, disposable test environments. First full procedure:
 Nextcloud-on-Docker installation/configuration and bounded recovery, using retained
-working implementation. Current one-shot installation operations remain useful;
-this milestone makes the complete sequence durable/verifiable. No arbitrary
+working implementation. Existing installation mechanics are reusable source material; M1 does not
+retain them as callable legacy interfaces. M4 makes the sequence durable/verifiable. No arbitrary
 DAG scheduler, universal undo, automatic internet-script execution or remote fleet.
 
 **Completion:** install from declared prerequisites; verify application/user/storage;
@@ -322,8 +291,8 @@ Set numeric budgets from M1/M2 measurements, not invented audit targets.
 installation smoke, real CLI/TUI/privilege/application slices, data transition and
 recovery, provider smoke with authorized secrets/costs. Failure classifications
 remain visible; baseline debt is not a clean pass.
-**Cleanup:** final obsolete interfaces/docs, inert agents/config duplication,
-unused helpers verified by callers. No deferred core cleanup gate: earlier
+**Cleanup:** final obsolete interfaces/docs, unused helpers verified by callers. Governance roles/hooks and config duplication
+are removed by the current cleanup, not deferred to M5. No deferred core cleanup gate: earlier
 milestones already remove the paths they replace.
 **Complexity:** medium/high integration; enter RELEASE_FREEZE after evidence,
 commit and stop rather than add another architecture round.
@@ -339,7 +308,7 @@ Historical completion is scoped evidence, not completion of a new milestone.
 | Steps 11–12 / Wave E | Canonical execution and bounded plans retained; assistant/task continuity M2, durable procedures M4 |
 | Steps 13–14 | Domain events and READ-only automation retained; no new event/scheduler architecture |
 | Steps 15–16 | History, investigations, context, learning/pattern/procedure services reused in M2/M3; no wholesale rebuild |
-| Step 17 / Ownership boundaries | Partial setting/credential cutovers; complete shipped-consumer ownership in M1 |
+| Step 17 / Ownership boundaries | Partial setting/credential cutovers; selected-consumer ownership and offline preservation in M1 |
 | Step 18 / collections | Contracts and accepted increments retained; [collection RFC](COLLECTION_OPERATOR_RFC.md) and deferred E evidence remain binding within scope |
 | Step 19 | Deployment/attachment code reusable; real setting cycle open and required by M1; provisioning M4 |
 | Step 20 | Bounded System CLI/TUI and swap accepted; broad acceptance and 20C open; work absorbed into M1/M2/M5 |

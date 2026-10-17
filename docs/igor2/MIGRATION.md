@@ -6,9 +6,10 @@ complete tested migration without retaining obsolete parallel implementations.
 Migration is bounded work on Igor 2, not a requirement to reconcile Igor 1.
 
 D080 requires complete Igor 1 cutoff. [LEGACY](LEGACY.md) is the executable
-consumer/data/retirement plan. The [reset roadmap](ROADMAP.md) proposes a
-coherent shipped-module batch; new runtime architecture remains DISCOVERY until
-confirmed. Historical wave scope below is evidence, not a permanent restriction.
+consumer/data/retirement plan. D081 accepts the [roadmap](ROADMAP.md): final
+Python execution/module coordination and selected integrated operations in M1,
+durable AI tasks/conversations in M2. There is no mandatory feature parity.
+Historical wave scope below is evidence, not a permanent restriction.
 
 ## Roadmap outcomes are not rebuild instructions
 
@@ -87,9 +88,11 @@ migrates its consumers/data; complete Igor 1 cutoff is a finite deliverable.
 
 ## Vertical-slice migration rule
 
-Bound migrations to named consumers and a usable result. The proposed M1 groups
-the three shipped packages and their ownership/execution consumers; it does not
-authorize adding new domains or simultaneously rewriting AI coordination.
+Bound migrations to named consumers and a usable result. M1 groups the three
+shipped packages' selected operations and final Python ownership/execution/module
+coordination. It does not include every former operation or M2's durable AI task
+and conversation orchestration. Inventory omitted operations and preserve their
+data offline; do not retain executable v1 adapters to provide feature parity.
 
 The completed Wave C boundary used this bounded scope (not a permanent
 compatibility obligation for later migrations):

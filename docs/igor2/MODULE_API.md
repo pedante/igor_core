@@ -22,6 +22,22 @@ extension of the existing output validator and `system.service.list` contract.
 DISCOVERY is closed and the first READ-only EXECUTION milestone is ready;
 the closure checkpoint changes no current executable schema.
 
+## M1 target contract (D081)
+
+The accepted [architecture](ARCHITECTURE.md#module-api) retains strict v2 INI
+bootstrap and explicit JSON declarations with only the fields needed by real
+consumers: identity/versions, ownership, activation/availability, dependencies and
+platform eligibility, typed inputs/results and bounded invocation. Operations keep
+canonical effect/privilege/verification/recovery and config/secret-reference rules.
+Inspection exposes provenance and rejection reasons; unknown versions and missing
+or ambiguous providers fail closed. This is forward compatibility for Igor 2,
+not Igor 1 parsing or mandatory feature parity.
+
+M1 moves execution and module coordination into Python, reusing reviewed Bash or
+Python leaf handlers. The detailed Bash-first and mixed-loader sections below
+describe current/historical contracts until that coherent migration. No new
+parallel registry, generic plugin framework or speculative contribution API.
+
 ## First-class module boundary (Step 18A)
 
 A module is a portable reviewed package that teaches and operates a coherent

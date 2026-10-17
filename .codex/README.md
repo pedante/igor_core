@@ -1,306 +1,88 @@
-# Igor Codex orchestration
+# Igor Codex development workflow
 
-This directory contains Igor's project-local Codex policy. Codex loads `.codex/config.toml` for trusted projects, so the policy follows the repository instead of depending on one person's global `~/.codex/config.toml`.
-
-This document is the engineering orchestration lifecycle reference. The root
-and role configurations carry its operational rules; [AGENTS.md](../AGENTS.md)
-provides repository constraints. These phases govern Codex engineering work,
-not Igor runtime state, AI roles or roadmap architecture.
-
-## Igor 2 development baseline
-
-Follow [Development Policy / D078](../docs/igor2/DEVELOPMENT_POLICY.md). `igor2`
-is independent of original Igor on `master`; no comparison, ancestry, merge or
-reconciliation gate applies. Authorized internal pre-release contract changes
-migrate all consumers/tests/data coherently and retire obsolete paths without
-mandatory compatibility adapters. Platform/dependency/third-party support,
-private data, approval, privilege, ownership, History and verification remain
-mandatory. Proposed collection/TUI work remains DISCOVERY until confirmed.
+[AGENTS](../AGENTS.md) owns repository guidance;
+[DEVELOPMENT_POLICY](../docs/igor2/DEVELOPMENT_POLICY.md) owns compatibility,
+data and safety. This file owns the engineering lifecycle. Config links policy.
 
 ## Task lifecycle
 
-At task start, every phase transition and each handoff, the root states the
-current phase, the allowed next action and the evidence still needed to exit.
-Keep that state in the task plan/handoff through compaction; no persistent
-runtime phase service is required. Small tasks may pass through phases quickly,
-but must satisfy the same gates. Audit/decision tasks retain the restrictions
-in AGENTS.md; their IMPLEMENTATION phase permits only authorized deliverables.
+State phase, next action and exit evidence at start, transitions and handoffs.
+Carry candidate, scope, evidence, budget and blockers through compaction in one
+concise record; STATUS links it when needed. No separate document per small task.
 
-| Phase | Allowed actions | Exit condition |
+| Phase | Allowed work | Exit evidence |
 |---|---|---|
-| `DISCOVERY` | Inspect the active branch and relevant repository evidence; bound scope; define acceptance checks and required validation; prepare any architecture proposal for owner confirmation. No implementation. | Scope, applicable checks and owner decisions are settled. |
-| `IMPLEMENTATION` | Implement authorized scope under confirmed architecture; add relevant tests and documentation; work as a single agent unless the Owner explicitly authorizes delegation. | Requested implementation and initial focused checks are ready for integration. |
-| `STABILIZATION` | Integrate results, fix concrete in-scope failures, run focused and required regression checks, finish documentation and completion evidence. No new features or speculative improvements. Root owns edits; single agent by default; an explicitly authorized validator is the only permitted delegate. | Implementation, focused tests, required regressions and documentation are complete; all applicable evidence gates are satisfied. |
-| `RELEASE_FREEZE` | STOP development. Inspect final git status/diff, confirm agreed validation evidence, stage and commit the scoped result, verify commit/status and report completion. | Scoped change is committed, required evidence is satisfied and completion is reported. |
-| `COMPLETE` | Stop. No further autonomous work or next roadmap item. | Terminal for this task; new work needs owner instruction. |
+| DISCOVERY | Inspect relevant source; bound scope/checks; propose major changes. No implementation. | Scope and required Owner decisions settled. |
+| IMPLEMENTATION | Implement authorized scope under confirmed architecture, with relevant tests/docs. | Result ready for integration. |
+| STABILIZATION | Fix concrete in-scope failures, run required checks, finish docs. No speculative work. | Applicable evidence complete. |
+| RELEASE_FREEZE | Stop development; final status/diff/evidence review, scoped commit and verification. | Committed result and completion report. |
+| COMPLETE | Stop; no automatic next milestone. | Terminal for this task. |
 
-Example status: `Phase: STABILIZATION. Allowed now: one policy-consistency
-review. Exit: TOML, links and final diff checks pass; no unresolved scope issue.`
+Concrete acceptance failure permits returning to STABILIZATION for the smallest
+fix/affected check, then freezing again. No optional searches/tests after final
+validation. Missing proof or blocked commit prevents COMPLETE; report the gap.
 
-## Persistent session context
+## Owner decisions and workspace
 
-For Igor 2 work, start from the compact active task record at the top of
-[STATUS.md](../docs/igor2/STATUS.md), then its linked specification and relevant
-accepted architecture/decisions. Use the
-[increment record](../docs/igor2/EXECUTION.md#increment-record-and-handoff)
-before implementation. Keep it in the existing task document; STATUS holds only
-the current summary and pointer, not a second evidence ledger.
+Major revised architecture needs a recommendation, options, tradeoffs and repository
+consequences for confirmation before runtime implementation. Accepted decisions
+within authorized work need no repeat vote; routine reversible choices remain
+engineering judgment. Audits implement only explicitly authorized deliverables.
 
-At a handoff, update phase, allowed next action, candidate/diff, evidence,
-remaining budget, blockers and Owner decisions. Preserve deferred tasks with
-their resumption pointer. The next session checks actual branch/status and
-evidence provenance before editing or scheduling validation; compaction and
-chat recollection do not grant budget or invalidate passing proof by themselves.
+Use the active checkout; inspect branch/status, preserve unrelated work and review
+staged/final diffs. Isolate only risky migrations, destructive tests or uncertain
+experiments for a stated reason; integrate/validate on the active branch.
+Permission failures do not justify clones. Honor instructions such as no commit.
 
-This record links architectural authority rather than copying it. It is
-engineering context, never Igor operational state or authorization. Keep the
-Owner's root model choice and single-agent policy; an independent reviewer is
-a human or separately authorized review session, not an automatically spawned
-agent. Author self-review must be reported as self-review.
+## Agent and model policy
 
-## Release freeze and stopping conditions
+One capable Owner-selected model normally completes the task. No automatic
+hierarchy or retained roles. Delegation needs explicit session authorization and
+a concrete benefit: independent risky review or separable investigation. Root
+owns synthesis/validation; self-review is not independent review. Do not duplicate
+work for a stronger model. Mention fit only for a material cost/quality mismatch.
 
-When implementation, focused tests, required regression tests and documentation
-are complete: **STOP development and enter RELEASE_FREEZE.**
-
-During release freeze:
-
-- no new features;
-- no speculative improvements;
-- no unrelated refactoring;
-- no new tests unless required by a failing regression;
-- no reopening architecture decisions.
-
-Do not search for improvements after final validation, request new exploratory
-reviews, add optional checks or repeat passing checks without new changes or
-failures. Adjacent observations stay deferred; they do not extend this task.
-
-A concrete acceptance failure found in final review or a required regression
-allows an explicit return to STABILIZATION for the smallest in-scope correction
-and affected validation, then freeze again. New tests during that return are
-limited to those required by the failing regression. This exception cannot
-authorize new features or architecture. If correcting a failure needs a new
-architecture decision or expanded scope, surface the blocker for the owner
-before implementation. Missing required tools/evidence also blocks COMPLETE;
-report the specific gap without starting later work or claiming success.
-
-## Owner approval for major tasks
-
-New or revised architecture decisions require Project Owner confirmation before
-implementation. During DISCOVERY, prepare a reviewable proposal with options,
-tradeoffs, repository consequences, scope and a recommendation. Record the
-confirmed decision in the applicable design/decision document when the task
-calls for it, then implement within that boundary.
-
-Accepted decisions already covered by the owner's task authorization do not
-need repeat confirmation. Routine reversible implementation choices inside
-that contract remain engineering judgment. Delegates escalate architectural
-questions to the root; neither the root nor Lead_Eng may silently introduce a
-durable public contract or major workaround. Release freeze never authorizes
-reopening a confirmed architecture decision.
-
-## Workspace rules
-
-Work directly in the existing checkout on the active feature branch by default.
-Inspect branch and git status first, preserve unrelated changes and assign file
-ownership when delegates edit the shared checkout. Do not automatically create
-temporary clones or worktrees.
-
-Use isolated copies only for destructive testing, risky migrations or uncertain
-experiments. State the isolation reason and return the scoped result to the
-active branch for integration and required validation. Permission or tooling
-failures are blockers to resolve through the applicable approval mechanism,
-not reasons to create a clone workaround.
-
-## Root/orchestrator model is intentionally changeable
-
-`config.toml` deliberately does **not** set the root model or reasoning effort. The Project Owner chooses the orchestrator per task.
-
-In an interactive Codex session, use `/model` to choose the model and reasoning effort for the root/orchestrator. You can therefore use Luna for cheap bounded work, Sol Medium for normal coding, stronger Sol reasoning for difficult engineering, or Astra only when the task really deserves system-level architectural reasoning. CLI/profile selections remain available as normal.
-
-The project instructions ask the root to flag a meaningful model mismatch before it starts substantial work. Example: `Model fit: Sol Medium is sufficient for this task.` This is meant to prevent doing an ordinary task on Astra by accident.
+Config disables delegation and leaves root model/effort unset. Restart Codex to
+load changed configuration; injected session instructions still apply. Project
+settings are not an OS security boundary. See the
+[official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 
 ## Development governor
 
-Default development is single agent. Project configuration disables both
-multi-agent feature generations and agent availability; retained role files
-are inert. Restart Codex after changing configuration. Trusted project config
-can be overridden by a human's session/global settings; it is not an admin
-security boundary. See the [official configuration](https://learn.chatgpt.com/docs/config-file/config-reference)
-and [hook contracts](https://learn.chatgpt.com/docs/hooks).
+Use `tests/validate.sh focused|affected|full`; plan with `--dry-run` and prior
+durations. `--only-group` selects exact focused IDs; excluded groups remain
+unverified, not waived. [VALIDATION](../docs/igor2/VALIDATION.md) owns runner usage;
+[EXECUTION](../docs/igor2/EXECUTION.md) owns five proof classes. Use one ledger.
 
-Use `tests/validate.sh focused|affected|full`. Existing selection, raw logs,
-pytest/BATS adapters, baseline classification and required CI gates remain.
-For a bounded focused stage, inspect `--dry-run`, then repeat exact planned
-IDs with `--only-group ID`. Unknown IDs and affected/full filtering fail closed.
-The report lists `excluded_groups`; these remain unverified until separately
-covered. This selects work under the same governor, never waives acceptance gates.
-Local default ceilings are **900 seconds cumulative validation** and **240
-seconds per subprocess**. Existing file timeouts can tighten these ceilings.
-A command timeout or total exhaustion stops dispatch, cancels active trees,
-leaves pending checks unverified and exits nonzero. Linux `/proc` tracking
-supplements process-group termination for children that create new sessions.
+Limits stay **900 seconds cumulative local validation, 240 per subprocess**, or
+the existing Owner-granted allowance; shorter file limits apply. CI retains
+10800/1200-second ceilings. Locked `.igor-governor/` state accounts across runs;
+exhaustion cancels process trees, stops dispatch and leaves pending proof unverified.
+Crash reservation, attempts and evidence hashes remain unchanged.
 
-`.igor-governor/` is ignored development state, outside production runtime. A
-locked ledger serializes governed runs and charges elapsed wall time across
-invocations and compaction. A crash reserves the remaining allowance, so later
-invocations cannot replenish it. Increasing `--total-timeout` alone does not
-renew the ledger. `--dry-run` executes no tests and consumes no allowance.
+Reuse exact complete evidence under runner source/environment/tool rules. Security
+suites and CI execute freshly under existing rules. Change `--environment-key` for
+external fixture changes. One relevant pass per candidate; corrections invalidate
+affected proof. Inspect failures first; targeted reruns use the same allowance.
+Broad regression once when required, preferably CI. Compaction alone is no rerun reason.
 
-Exact local result reuse compares the entire tracked/nonignored source tree,
-selected plan, baseline, tools, local Python package file metadata, sanitized
-environment, platform and `--environment-key`. It over-invalidates rather than
-guesses dependencies. Logs/reports must exist and match their hashes. Complete
-failures keep their failure exit code; partial, missing-tool, timeout or
-malformed evidence cannot be reused as a pass. Alternate Python interpreters
-execute freshly. CI executes all selected gates freshly, with 10800-second
-total and 1200-second command ceilings matching existing CI/full limits;
-shorter file limits still apply. Recognized security suites (safety, privilege, approvals, secrets, scrubbing,
-request boundaries, capabilities and transactions) are never reused. Their
-unchanged repeats require a justified targeted rerun or Owner renewal; no
-cached pass can waive these gates. New security suites must be included in
-`requires_fresh_security` when named outside these categories. External fixture/service state is not inferred: change
-`--environment-key` when it changes; local reuse is not proof of live host or
-service security. Evidence is trusted local state, not a signed attestation.
+Only the Owner authorizes `--new-budget REASON` or another supervised session.
+Never reset/delete the ledger or invent authorization. Stop/report on exhaustion.
+Owner-launched sessions use `tools/codex_supervised.py`; deadline, descendant
+termination and evidence remain unchanged. It limits wall time, not token/dollar quotas.
 
-One unchanged attempt is allowed; exact complete evidence is reused.
-`--rerun-reason REASON` permits one additional targeted attempt when evidence
-cannot be reused. A correction changes the fingerprint and permits one new
-relevant pass. `full` is limited to one attempt per source/environment candidate
-even if selection/options differ. Prefer CI for broad regression. Compaction
-does not justify another run. On exhaustion **stop and report**.
+The project command-text PreToolUse filter is removed: it misclassified read-only
+searches without enforcing budgets. Sandbox/approval, runner and supervisor remain.
+No project-wide hook-disable flag is set; unrelated approved hooks remain user choice.
 
-Only the Owner may explicitly renew a budget from their terminal:
+## Validation scope and finalization
 
-```bash
-tests/validate.sh focused --base HEAD --test tests/test_validation_governor.py \
-    --new-budget "Owner approved governor correction" --total-timeout 900
-```
+Define checks in DISCOVERY. Docs/config need parsing, policy/references and diff
+review; runtime tasks need focused behavior/affected regressions. Preserve
+secret/approval/privilege/History/recovery/real-consumer proof where applicable.
+Obsolete headings/status wording are not product contracts.
 
-This records the reason, resets attempt/time allowances and retains evidence.
-It cannot convert a failed gate into a pass. Do not delete the ledger or invent
-authorization to continue. Budgets control model use; they cannot prevent a
-developer deliberately editing local state.
-
-The supplementary `PreToolUse` hook denies delegation tools, recognized direct
-broad-suite/lint commands, and model commands that renew a budget or start a
-nested supervised session. Route broad validation through the governed runner.
-Coverage depends on Codex version/tool paths; hooks cannot parse arbitrary
-programs or enforce a complete session deadline. They change no credential,
-approval, privilege or sandbox logic.
-
-For an independent complete-session deadline, use noninteractive Codex:
-
-```bash
-python3 tools/codex_supervised.py --seconds 1800 -- exec "Implement the bounded task"
-```
-
-The Linux supervisor runs outside the model, forces single-agent settings,
-acts as a child subreaper, terminates descendants (including detached/double
-forked children), and writes `session.log` plus `session.json`. Deadline exit
-is 124; unfinished evidence is unverified. Output is logged; use `tail -f` on
-the reported log if desired. `codex exec` retains its normal approval/sandbox
-settings. The launcher is intentionally noninteractive and enforces wall
-time, not token/dollar quotas or sessions launched elsewhere. A human may
-start a fresh bounded session, or add
-`--new-budget "Owner approved next correction" --validation-seconds 900` to
-renew validation before launch. The model may not relaunch itself to escape
-the deadline.
-
-Scope discipline, rerun justification and preferring CI remain advisory.
-Runner budgets/reuse/attempts, configured single-agent availability and
-supervised process lifetime are mechanically enforced.
-
-## Validation and completion criteria
-
-Define required checks in DISCOVERY from the task's affected contracts and
-[repository validation rules](../AGENTS.md#validation). Runtime changes need
-focused tests and applicable regression coverage; roadmap completion also needs
-the proof categories in [EXECUTION.md](../docs/igor2/EXECUTION.md).
-Documentation/configuration-only work needs TOML parsing where applicable,
-policy consistency, links/references and diff checks. Do not run expensive
-unrelated repository regressions for a change with no runtime code.
-
-Report failures, skips and unavailable checks accurately. A pre-existing failure
-is not permission to repair unrelated code; record its baseline and impact.
-Passing tests alone cannot waive another required gate. A check may be marked
-not applicable with a concrete scope reason, never just to reach completion.
-
-### Failure-first STABILIZATION: a bounded decision procedure
-
-When an acceptance check fails, do not launch another broad validation run
-as the first response. Inspect the existing `summary.json`, the smallest raw
-failure log and the exact test assertion. Create a brief failure ledger:
-
-1. **Classify:** actual product/security violation; contract-mismatched test
-   expectation; fixture/environment/runner failure; reviewed baseline; or
-   unresolved. Record the required observable invariant, not merely the
-   assertion's current wording.
-2. **Fix the demonstrated cause only.** Correct an over-specific assertion
-   when a generic safe error satisfies the accepted contract, but retain an
-   independent sentinel/side-effect test. Never conceal or downgrade a real
-   credential leak, forbidden access, failed recovery or missing History record.
-3. **Target the invalidated proof.** Run the previously failing node or small
-   fixture first, followed by affected neighboring cases. Reuse complete
-   previously passing evidence only under the governor's exact
-   source/environment equivalence rules; security checks still follow the
-   governor's required-fresh policy. Do not reschedule unrelated tests to
-   obtain a larger pass count.
-4. **One closing gate.** Once fixes are integrated, run the required affected
-   selection against the final candidate, plus any distinct mandatory
-   security/vertical-slice/recovery proof not covered by that selection.
-   Full-repository validation is a separate explicit release/CI requirement,
-   not an automatic loop after every STABILIZATION fix. If broad checks are
-   required, prefer CI within its established governor instead of burning
-   through the smaller local budget.
-5. **Budget before execution.** Check prior group durations and
-   `--dry-run` selection. The local 240-second subprocess ceiling overrides
-   longer generic group defaults; break work into runner-supported bounded
-   groups without changing that ceiling or silently dropping selected tests.
-   If equivalent partitioning is unavailable, report the specific unverified
-   gate and stop. Budget exhaustion is not a reason to repeat already valid
-   proof, reset ledgers, spawn more agents or ask for routine renewal.
-
-Maintain an evidence ledger recording candidate fingerprint, covered contract,
-pass/fail/skip, provenance and invalidation reason. Stop once all mandatory
-evidence has been established; do not open new exploratory validation after
-RELEASE_FREEZE. These economics do not reduce the five proof classes in
-`EXECUTION.md` or the secret and authorization acceptance requirements.
-
-Before completion, the root must:
-
-1. Inspect git status and the final diff, including staged changes, to verify
-   task scope and preserve unrelated work.
-2. Run required validation on the final content; record results and resolve
-   concrete in-scope failures. Revalidate affected checks if content changes.
-3. Enter RELEASE_FREEZE once implementation, tests and documentation are done;
-   stage only task files and commit on the active feature branch.
-4. Verify the commit and git status, then report COMPLETE with commit ID,
-   changed behavior/policy, validation results and any scoped limitations.
-5. Stop. Do not continue searching for improvements or begin the next step.
-
-If commit or required validation is blocked, report the current phase, exact
-blocker and remaining action; do not label the task COMPLETE. Existing owner
-instructions take precedence, including an explicit request not to commit.
-
-## Step 15B workflow lessons
-
-The [Step 15B evidence](../docs/igor2/STATUS.md#step-15b-operational-history--implemented-validation-gate)
-distinguishes completed implementation/behavioral proofs from an open tooling
-and remote-baseline gate. It also records a temporary checkout used because
-original Git metadata was read-only. These are evidence for explicit closure
-gates and workspace decisions; they do not prove or authorize subsequent work.
-
-This lifecycle makes the future default direct feature-branch work, bounded
-verification and a clear stop at freeze/completion. It does not close Step 15B's
-recorded validation gate or authorize Decision/Judgment, 15UI, 15C, model routing
-or investigations. Igor runtime and migration state remain unchanged.
-
-## Compatibility
-
-These files use current Codex project configuration, custom agent roles, and Multi-Agent V2 settings. Keep Codex reasonably current. If Codex reports an unknown setting after an upgrade/downgrade, validate the project configuration against that installed release before removing behavior.
-
-The lifecycle and phase-dependent worker cap are instruction policy, not a new
-TOML scheduler or runtime enforcement mechanism. Configuration keys remain
-unchanged; guidance uses the existing instruction fields described in the
-[official Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Classify failures as product/security defect, over-specific test, environment,
+reviewed baseline or unknown; fix the cause. Never downgrade safety failures.
+Report failures/skips/unavailable checks. Once proof is complete, freeze, commit,
+verify commit/status, report and stop.

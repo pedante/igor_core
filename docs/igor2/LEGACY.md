@@ -1,6 +1,6 @@
 # Igor 1 cutoff and simplification plan
 
-Status: **complete Igor 1 cutoff accepted (D080); runtime migration not executed**.
+Status: **bounded M1 cutoff and Python coordination accepted (D080/D081); not implemented**.
 
 Updated: 2026-10-17. Baseline `1aac86a`. This plan replaces the earlier legacy
 inventory; original evidence remains in Git and [archived STATUS](archive/STATUS_2026-10-16.md).
@@ -16,7 +16,9 @@ activation default or environment fallback remains reachable. Reject an old
 package with a clear unsupported-interface error; do not translate it at runtime.
 `master` remains an independent program and is not modified by this cutoff.
 
-Preserve useful algorithms, capabilities, native applications and user data.
+Preserve user data and native applications; reuse useful algorithms and selected
+capabilities. No Igor 1 compatibility or mandatory feature parity. Account for
+omitted operations explicitly and preserve unsupported configuration offline.
 Module API v1 is **not** the same version axis as a version-1 capability result,
 History schema or reference envelope. Do not delete records or rename every
 `v1` token. Each changed internal contract migrates its own consumers/data.
@@ -30,57 +32,59 @@ No permanent compatibility framework is needed for a one-time explicit import.
 | `module_loader_fast.sh` old-function copies/overrides | Retire with the authoritative loader implementation; keep necessary digest/activation invalidation | cold/warm registry equivalence and stale-owner refusal |
 | `compat.v1_hooks`, omitted-api/implicit-enable semantics | Remove; explicit `module_api=2` and activation policy | inactive code/knowledge/checks never load |
 | `ai_capabilities`, `ai_tools`, `ai_tiers`, ACTION/FUNCTION blocks, `legacy.*`, `run_igor_action` | Replace with canonical capability metadata/dispatch | no alternative executable ID or fallback resolution |
-| Module-owned menu operations and direct shared menu writes | Replace presentation with canonical typed operations; retain useful leaf implementations | each UI/AI/automation request reaches same operation ID/History |
+| Module-owned menu operations and direct shared menu writes | Replace selected operations with canonical typed presentation; defer/remove other interfaces and retain useful source material | each UI/AI/automation request reaches same operation ID/History |
 | Core Nextcloud diagnosis/recovery/helpers/provider imports | Move domain semantics to Nextcloud package; use shared owner-aware resolution | Core contract/dispatch works without Nextcloud installed |
 | `config.sh`/`config_loader.sh` sourcing, root/HOME env fallback and startup moves | One scoped desired/secret/path authority; explicit offline import | startup ignores legacy files and writes no migration state |
 | Module schemas/defaults versus machine config | Retain schemas/defaults in packages; persist local values outside | installed package can be read-only; disable has no active validation contribution |
-| Canonical approval/privilege/verification, private History | Retain and extend to all operations | exact approval, refusal, pre-effect History, independent readback |
+| Canonical approval/privilege/verification, private History | Retain and extend to all selected operations | exact approval, refusal, pre-effect History, independent readback |
 | Platform package/service adapters, useful Bash/Python handlers | Retain where correct; remove orchestration/implicit globals from handler contract | declared distro behavior and bounded I/O |
 | Safe configuration/secret/deployment/investigation/learning stores | Retain identity/recovery semantics; migrate only affected fields/roots | export/import/interrupt/re-entry/ref-unavailable scenarios |
-| Classic hybrid/line/operator duplication | Keep one primary curses UI and first-class CLI; port real interactions before retirement | usable operation parity, provider setup and native PTY flow |
+| Classic hybrid/line/operator duplication | Keep one primary curses UI and first-class CLI; port selected interactions before retirement | selected operations, provider setup and native PTY flow |
 | Textual `core/lib/igor_tui.py`, dormant path wrapper chain | Delete if final caller inventory confirms no supported consumer | no tracked/dynamic registration/export references |
 | Deprecated test script copies and duplicate canary | Keep one called canonical copy; delete duplicates | callers updated; same canonical behavior |
-| Old install/recovery scripts | Retain useful mechanics as owned handlers; M4 makes multi-step procedures durable | no separate authorization/History/execution controller |
+| Old install/recovery scripts | Preserve useful mechanics as inactive source material; M4 implements canonical durable procedures | no separate authorization/History/execution controller |
 
-The M1 coordinator may still be Bash. This does not justify v1 compatibility.
-M2 consolidates coordination into Python and removes shell state transport;
-neither milestone introduces a permanent compatibility bridge.
+M1 delivers final Python execution and module coordination, reusing reviewed
+Bash/Python leaf handlers. M2 adds durable AI task/conversation orchestration;
+it does not replace a transitional M1 executor or module coordinator.
 
 ## Shipped-module disposition
 
 | Module | Current state | Required rewrite/retention |
 |---|---|---|
-| `system` | v2 plus v1 hooks; host/storage/access/network declarations | Retain 40 capability implementations and useful observers/checks; migrate remaining hooks/knowledge/config consumers and remove compat flag |
+| `system` | v2 plus v1 hooks; host/storage/access/network declarations | Select useful integrated operations from the 40 capabilities; migrate selected observers/checks/knowledge/config and remove compatibility hooks |
 | `docker` | v2, four capabilities, optional System dependencies | Retain; adapt to sole executor/config API, verify explicit targets and disable isolation |
-| `nextcloud_docker` | v1 with extensive menus/hooks, 12 AI actions, recognition/attachment code | Rewrite interface and control flow to v2, not all application algorithms; explicit deployment binding/config/secret refs, native readback, canonical operations |
+| `nextcloud_docker` | v1 with extensive menus/hooks, 12 AI actions, recognition/attachment code | V2 attachment and configuration only in M1; explicit deployment/config/secret refs and native readback; other operations deferred/removed |
 | `samba` | recognition Python adapter only, no module manifest | Keep as bounded recognition fixture/reference consumer if used; do not advertise a complete package or create a new product milestone |
 
 Do not split Nextcloud's PostgreSQL, Redis, web proxy and tunnel into independent
 module products merely to satisfy a diagram. Domain decomposition needs actual
 reuse and independent lifecycle value. Docker already supplies generic substrate.
 
-### Operation parity inventory seed
+### Operation disposition inventory seed
 
 The implementation agent completes this finite inventory from current registrations
-and menu entry points before deleting code; this is accounting, not another design wave.
+and menu entry points before deleting code; this is data-safety and scope
+accounting, not a feature-parity gate or design wave.
 
 | Existing behavior | Target |
 |---|---|
-| System host/package/service/log/storage/access/network operations | Preserve canonical IDs/semantics unless explicitly migrated; retain exact privilege adapters |
+| System host/package/service/log/storage/access/network operations | Select useful integrated operations; retain canonical IDs/semantics and exact privilege adapters where correct |
 | Docker lifecycle/read operations | Existing v2 capabilities with explicit endpoint/target binding |
-| Nextcloud health/full diagnostic/status/permission inspection | Owned observers/checks/READ capabilities, application-specific interpretation stays in module |
-| scan files, flush Redis/caches, repair/full repair, permission fix, DB maintenance, config injection | Typed canonical capabilities with bounded targets, concrete effect and honest verifier/recovery limits |
-| Service start/stop/restart/logs | Explicit bound Compose project; propagate exit status, independent state readback |
-| App enable/disable/update and maintenance/upgrade menus | Inventory each reachable leaf; preserve as reviewed capabilities and structured inputs |
-| Configure/wizard/install/backup/restore/recovery | Preserve valuable implementations under canonical authority; M4 adds durable multi-step coordination rather than reintroducing raw menus |
+| Nextcloud health/full diagnostic/status/permission inspection | Only reads required by attachment/configuration in M1; broader diagnosis/repair deferred |
+| scan files, flush Redis/caches, repair/full repair, permission fix, DB maintenance, config injection | Outside M1 except the selected bounded configuration apply; preserve useful implementation for later explicit scope |
+| Service start/stop/restart/logs | Generic Docker operations only in M1; broader Nextcloud service administration deferred; no failed command reported successful |
+| App enable/disable/update and maintenance/upgrade menus | Outside M1; inventory and retire old callable interfaces, preserve useful source material |
+| Configure/wizard/install/backup/restore/recovery | Only selected Nextcloud setting configuration in M1; installation/recovery procedures belong to M4, other verbs require explicit later scope |
 | Native Nextcloud loglevel setting | Desired proposal/commit, canonical apply, OCC readback and explicit recovery |
 | Notify/status/AI knowledge hooks | Typed domain signals or read projections and module reference knowledge; no authority from prose |
 | Mail-control hooks with absent Core consumer | Remove unused registration; communications is a later product decision |
 | Global Docker NUKE | Remove unsafe host-wide operation; no automatic generic replacement |
 
-Every former callable operation must have a target or an explicitly documented
-retirement reason. If valuable behavior cannot fit M1 safely, surface the scope
-conflict to the Owner; do not hide it as cleanup or leave an indefinite adapter.
+Every former callable operation receives a retain/defer/remove disposition and
+data-safety treatment. Omission from M1 is allowed by D081 and does not require
+another parity approval. Do not leave an executable v1 adapter for deferred work
+or delete user/native application data because an interface is retired.
 
 ## Configuration and retained data transition
 
@@ -102,7 +106,8 @@ all exist on this machine.
 
 Proposed canonical roots: per-user XDG configuration/state/runtime with explicit
 supported overrides and a declared system-install profile. Exact paths are selected
-once on M1 architecture confirmation. The importer records a concrete map; no
+only if a required layout change is separately confirmed; D081 does not select
+them. The importer records a concrete map; no
 runtime search chain guesses among old locations.
 
 ### Executable migration protocol
@@ -142,9 +147,11 @@ runtime search chain guesses among old locations.
 - menu-specific operation success strings: replace with actual exit/outcome,
   approval, History and verification through the shared executor.
 - XML/internal environment transport and shell phase instrumentation: retire
-  only in M2 with transaction/context/provider parity coverage.
+  with their owner: execution/module transports in M1, AI conversation transports
+  in M2. Preserve supported transaction/context/provider safety coverage.
 - roadmap numbers and status phrases: replace with structural links/authority
-  checks in M1; do not preserve obsolete roadmap headings to satisfy assertions.
+  checks during governance cleanup; do not preserve obsolete roadmap headings to
+  satisfy assertions.
 - duplicate deprecated script tests and unused frontend tests: remove with
   confirmed unused implementations.
 
@@ -163,9 +170,9 @@ record format support is data integrity, not Igor 1 runtime compatibility.
 - D021's compatibility obligation, D018's retained v1 parser and old Wave C
   instructions are superseded by D080. Historical assertions remain history.
 - Delete the late Step 23 cleanup gate; cleanup belongs to each replacement.
-- Keep current detailed contracts until their consumers migrate. Consolidate
-  accepted reset architecture into ARCHITECTURE after confirmation; do not make
-  proposals normative by editing status labels.
+- Keep current detailed contracts until their consumers migrate. Accepted
+  D081 architecture is recorded in ARCHITECTURE; unaccepted storage proposals
+  remain proposals. Do not change current runtime claims before migration.
 - Historical status is archived; obsolete roadmap/review versions are in Git.
   Future agents read current STATUS, not every historical evidence paragraph.
 
@@ -189,9 +196,9 @@ Use **all** of these; a grep alone is insufficient:
    operation identity, approval, execution result and independent verification.
 6. Verify data transition, interruption and recovery, retained record meaning,
    package read-only operation, and no implicit native application deletion.
-7. Review final dependency graph, active docs and parity/evidence ledger. Retired
+7. Review final dependency graph, active docs and disposition/evidence ledger. Retired
    names may occur in historical documentation or rejection fixtures only, not
    callable production paths. Commit the coherent cutover; no compatibility flag.
 
-This audit executes none of the deletion/migration steps. Findings and proposals
-are concrete handoff material; current runtime defects remain until implemented.
+This governance cleanup executes no runtime deletion or data migration. The
+accepted handoff is concrete; current runtime defects remain until implemented.

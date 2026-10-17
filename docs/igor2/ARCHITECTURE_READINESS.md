@@ -1,11 +1,13 @@
 # Igor 2 architectural audit and development reset
 
-Status: **audit delivered; recommended architecture remains DISCOVERY**.
+Status: **historical audit; D081 accepts revised M1/M2 direction, other proposals remain DISCOVERY**.
 
 Completed: 2026-10-17. Source baseline: local `igor2`, `1aac86a`, initially clean.
 This replaces the 2026-10-01 review at this path; that review remains in Git.
-The Owner's complete Igor 1 cutoff is accepted as D080. The architecture and
-milestones below are recommendations, not runtime implementation authorization.
+The Owner's complete Igor 1 cutoff is accepted as D080. D081 subsequently accepts Python execution/module coordination in M1, durable
+AI orchestration in M2 and a smaller M1 without feature parity. The audit below
+records baseline findings and recommendations, not current runtime proof or
+authorization of every proposed operation/storage change.
 See [decisions](DECISIONS.md), [roadmap](ROADMAP.md), [cutoff plan](LEGACY.md)
 and [current status](STATUS.md).
 
@@ -304,12 +306,13 @@ startup state, yet F01/F02 remain outside canonical guarantees.
 **Action:** replace obsolete wording/phase tests when migrating their subjects;
 retain privacy, policy, recovery and budget behavior. This audit does not edit
 runtime tests to manufacture a green suite. Its gate is scoped reference/policy
-validation; historical roadmap-wording assertions need replacement in M1.
+validation; historical roadmap-wording assertions are replaced by the subsequent governance
+cleanup, without changing runtime safety tests.
 
 ### F16 — P2 / S,J: development rules are duplicated
 
-AGENTS, `.codex/README.md`, the long `.codex/config.toml` instruction string and
-Lead_Eng config repeat lifecycle/model/governor policy. Delegation is disabled;
+At the audit baseline, AGENTS, `.codex/README.md`, the long project instruction
+string and a dormant agent-role config repeated lifecycle/model/governor policy. Delegation is disabled;
 agent definitions do not demonstrate agent benefit. The pre-tool hook matches
 command text; it is a convenience policy, not an OS security boundary or a
 reliable interpretation of task intent.
@@ -317,7 +320,8 @@ reliable interpretation of task intent.
 root model. One agent owns integration; specialists are explicitly authorized
 for independent risky review or useful parallel reads. Remove duplicate roles
 and lexical policing only through an authorized tooling change; current limits
-remain in force during this audit.
+remain in force during this audit. The subsequent authorized governance cleanup
+removes that role and command-text filter; runner/supervisor budgets remain.
 
 ### F17 — P2 / S,J: documentation exaggerates coherence and complicates entry
 
@@ -362,8 +366,9 @@ validated active AI file reader.
 Python is already required and hosts structured services. One application process
 owns the interactive session; headless CLI imports the same components. Private
 persistence/locks coordinate separate invocations. A terminal child/PTY still
-runs exact privileged commands. No persistent daemon is required. The existing
-Bash coordinator can remain through M1; M2 replaces it without a permanent bridge API.
+runs exact privileged commands. No persistent daemon is required. D081 supersedes the original sequencing recommendation: final Python execution
+and module coordination ship in M1; durable AI task/conversation orchestration
+follows in M2. Useful Bash leaf handlers remain.
 
 ```mermaid
 flowchart TB
@@ -552,7 +557,7 @@ this recommendation.
 | This report | Dated findings/proposal, not another permanent normative layer |
 | Archive/explorations | Evidence/optional ideas, not default reading or authorization |
 
-After confirmation, fold the recommendation into ARCHITECTURE and retire
+D081 records the accepted direction in ARCHITECTURE. Retire
 superseded target prose in AGENT_ARCHITECTURE, OPERATOR_INTERFACES and
 RESUMABLE_WORK as implementation migrates. Preserve precise live contracts until
 then. AI_SPECIALISTS, MODEL_ROLES and COMMUNICATIONS are 2.x research, not gates.
@@ -575,13 +580,15 @@ multi-agent arrangement is better for Igor; the Owner retains that choice.
 
 ## Challenge to the recommendation
 
-- **Could Bash remain?** Yes at leaf operations and through M1. Rewriting correct
+- **Could Bash remain?** Yes at leaf operations. D081 moves final execution/module
+  coordination into Python in M1. Rewriting correct
   platform algorithms solely into Python is waste; structured coordination earns
   the migration cost.
 - **Is Task another framework?** It must be a small record/loop reusing plans,
   History and investigations, deleting the prose-based mechanisms at cutover.
 - **Is M1 too large?** It is high risk, bounded to three shipped packages and
-  their existing surface. Use internal integration commits, not new domains,
+  their selected System/Docker operations and Nextcloud configuration. Use internal
+  integration commits, not new domains,
   marketplace work or a simultaneous AI rewrite.
 - **Are stores too separate?** Shared plumbing can shrink, but facts, intent,
   evidence and secrets require distinct authority/recovery rules.
@@ -591,8 +598,7 @@ multi-agent arrangement is better for Igor; the Owner retains that choice.
   continuation paths make a broad reliable-operator claim premature. Existing
   bounded System functionality is useful and should be described honestly.
 
-The remaining Owner gate is confirmation of the proposed runtime architecture
-and scope, especially Python coordination and the full v2 cutoff batch. Ordinary
-file/adapter choices need no further architectural vote. The already accepted
-no-Igor-1-compatibility decision needs no repeat approval. No runtime fixes or
-new milestone implementation occurred in this documentation audit.
+D081 closes the Python coordination and bounded M1/M2 scope decision. Exact
+new storage roots remain a proposal if needed. Ordinary file/adapter choices
+need no further architectural vote. No runtime fixes or new milestone
+implementation occurred in this documentation audit or governance cleanup.

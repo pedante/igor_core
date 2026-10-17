@@ -1,7 +1,6 @@
 """Focused synthetic governor acceptance checks; no Igor runtime regressions."""
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -10,12 +9,12 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import tomllib
 import validation_runner as runner
 from validation_governor import BudgetError, Governor
 
@@ -230,21 +229,20 @@ time.sleep(30)
         time.sleep(.9)
         self.assertFalse(marker.exists())
 
-    def test_delegation_disabled_and_hooks_block_supported_paths(self):
+    def test_project_governance_has_no_retired_roles_or_command_filter(self):
         config = tomllib.loads((REPOSITORY / ".codex/config.toml").read_text())
         self.assertFalse(config["features"]["multi_agent"])
         self.assertFalse(config["features"]["multi_agent_v2"]["enabled"])
-        self.assertFalse(config["agents"]["enabled"])
-        self.assertTrue(config["features"]["hooks"])
-        spec = importlib.util.spec_from_file_location("governor_hook", REPOSITORY / ".codex/hooks/development_policy.py")
-        hook = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(hook)
-        for tool, inputs in [("spawn_agent", {}), ("Bash", {"command": "bash tests/run_all.sh"}),
-                             ("exec", {"code": "await tools.spawn_agent({})"}),
-                             ("Bash", {"command": "tests/validate.sh focused --new-budget fake"}),
-                             ("Bash", {"command": "ruff check ."})]:
-            self.assertIsNotNone(hook.denial({"tool_name": tool, "tool_input": inputs}))
-        self.assertIsNone(hook.denial({"tool_name": "Bash", "tool_input": {"command": "tests/validate.sh full"}}))
+        self.assertEqual(config["features"]["multi_agent_v2"]["max_concurrent_threads_per_session"], 1)
+        self.assertEqual(config["agents"], {"enabled": False})
+        self.assertNotIn("model", config)
+        self.assertNotIn("model_reasoning_effort", config)
+        self.assertNotIn("hooks", config["features"])
+        self.assertNotIn("hooks", config)
+        self.assertFalse((REPOSITORY / ".codex/hooks/development_policy.py").exists())
+        self.assertFalse((REPOSITORY / ".codex/Lead_Eng.config.toml").exists())
+        for policy in ("AGENTS.md", ".codex/README.md", "docs/igor2/DEVELOPMENT_POLICY.md"):
+            self.assertIn(policy, config["developer_instructions"])
 
 
 if __name__ == "__main__":

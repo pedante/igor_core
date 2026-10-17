@@ -2,8 +2,8 @@
 
 Accepted decisions should not be repeatedly reopened without new repository evidence.
 The Owner-requested 2026-10-16 reset explicitly supplies authority to review them.
-D080 accepts complete Igor 1 cutoff; Q025 records the recommended implementation
-architecture awaiting confirmation. Historical implementation evidence remains valid
+D080 accepts complete Igor 1 cutoff; D081 records the accepted implementation
+architecture and bounded milestone scope. Historical implementation evidence remains valid
 within its original scope, even where its future compatibility obligation is superseded.
 
 ## Accepted
@@ -1268,28 +1268,40 @@ and [roadmap](ROADMAP.md) propose implementation organization. D080 accepts the
 Owner's direction, not every newly proposed architecture or a runtime rewrite
 during this documentation task. Current source remains mixed v1/v2.
 
+### D081 — Bounded M1 platform and M2 durable AI orchestration
+
+**Accepted by explicit Owner instruction, 2026-10-17.** This confirms the
+following decisions from the audit with a smaller M1 scope:
+
+- No Igor 1 compatibility or mandatory feature parity. Account for old operations
+  as retained, deferred or removed; preserve data and useful reusable code.
+- M1 delivers final Python execution and module coordination. Reuse existing
+  safety, approval/PTY, configuration, secrets, History and collection services;
+  reviewed Bash/Python leaf handlers remain valid. One executor and admitted
+  contribution index serve all selected CLI/TUI/AI/check/automation consumers.
+- Keep a minimal forward-compatible Igor 2 module contract: strict v2 INI/JSON,
+  explicit versions/ownership/activation, dependencies/platform eligibility,
+  typed I/O, bounded invocation and canonical authority/inspection. Reject old
+  or unsupported interfaces; add optional seams only for real consumers.
+- M1 is limited to useful integrated System/Docker operations and an attached
+  Nextcloud configuration workflow, including the real loglevel `2 → 3 → 2`
+  proof. No migration of every historical Nextcloud menu/AI action. Installation,
+  backup/restore, repair and broad application management are outside M1.
+- M2 adds durable AI task and conversation orchestration, pending questions,
+  bounded provider transactions and restart/recovery through M1 operation IDs.
+  It does not replace a temporary M1 Bash execution/module coordinator.
+
+This amends D015/D017's implementation sequencing without changing language-neutral
+handler contracts or safety/ownership semantics. D036/D048's data protections
+remain; exact proposed XDG roots/system profiles are not accepted here. Resolve
+any required layout change explicitly with migration/recovery evidence.
+
+[ARCHITECTURE](ARCHITECTURE.md), [ROADMAP](ROADMAP.md) and [LEGACY](LEGACY.md)
+carry the target, exact next scope and cutoff disposition. This decision authorizes
+recording the agreed architecture, not runtime work during governance cleanup.
+No milestone is completed by this decision; current runtime remains mixed.
+
 ## Open decisions
-
-### Q025 — Confirm the audit's implementation architecture and milestone scope
-
-Recommendation: one Python application coordinator importing existing services,
-reviewed shell/Python leaf handlers, one canonical executor, a small durable Task
-state machine and explicit configuration/state/runtime roots. Keep strict v2
-INI/JSON and current safe storage authorities; no daemon, workflow framework,
-agent swarm or wholesale store rewrite. Deliver the five [roadmap](ROADMAP.md)
-milestones, beginning with the complete three-package v2/ownership cutover.
-
-Alternatives, costs and losses are evaluated in the [audit](ARCHITECTURE_READINESS.md#recommended-architecture).
-Python coordination replaces the Bash-first *control plane*, not the right to
-use Bash handlers. M1 retains the existing coordinator while removing v1; M2
-retires its orchestration without a permanent adapter. Proposed XDG roots require
-the explicit data migration protocol, not startup moves. These are substantial
-architecture/scope choices and need Owner confirmation before runtime work.
-Do not ask the Owner to select routine parser, class or file organization options.
-
-Acceptance would amend the relevant implementation portions of D015/D017 and
-the persistence sequencing in D036/D048, retaining their ownership/safety
-meaning. Until then accepted live contracts remain the implementation authority.
 
 ### Q019 — Initial S8 hardware/runtime identity
 
@@ -1364,6 +1376,13 @@ If remote control is added, which READ/CHANGE/DESTROY operations may execute wit
 Decision target: Step 22.
 
 ## Resolved questions retained for traceability
+
+### Q025 — Audit architecture and milestone scope — resolved by D081
+
+Python execution/module coordination belongs to M1; durable AI orchestration to
+M2. M1 is bounded to useful System/Docker operations and Nextcloud configuration,
+without feature parity. The audit's exact storage-root proposal remains outside
+this decision and requires confirmation if implementation needs it.
 
 Resolved questions stay here only so older references to their Q-numbers remain
 understandable. Their accepted D-decisions, not this section, are authoritative.

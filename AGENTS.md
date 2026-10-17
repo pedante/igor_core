@@ -1,250 +1,73 @@
-# Repository Guidelines
+# Repository guidelines
 
 ## Read before editing
 
-For current implementation details, start with:
+Start with [README](README.md), current [STATUS](docs/igor2/STATUS.md) and affected
+source/contracts. New modules: [Module API](docs/igor2/MODULE_API.md).
+Current legacy module behavior: [creation](docs/module_creation.md),
+[lifecycle](docs/module_lifecycle.md). Setup: [CONTRIBUTING](docs/CONTRIBUTING.md).
+Read [INFLUENCES](docs/igor2/INFLUENCES.md) for memory/discovery/plans/learning/AI boundaries.
 
-1. [README.md](README.md)
-2. [docs/igor2/MODULE_API.md](docs/igor2/MODULE_API.md) for Igor 2 extensions; [docs/module_creation.md](docs/module_creation.md) only when tracing still-live legacy v1 consumers
-3. [docs/module_lifecycle.md](docs/module_lifecycle.md) — current activation/runtime semantics
-4. [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+[DEVELOPMENT_POLICY](docs/igor2/DEVELOPMENT_POLICY.md) owns branch, compatibility,
+data and safety policy. Use the actual Igor 2 checkout; master is independent,
+with no reconciliation gate. Inspect branch/status and preserve unrelated work.
+Architecture authority: ARCHITECTURE → accepted DECISIONS → MIGRATION → EXECUTION
+→ ROADMAP under docs/igor2. Code/current docs describe today; proposals do not
+override accepted contracts. Read [EXECUTION](docs/igor2/EXECUTION.md) before
+implementing/closing milestones; keep its five proof classes in one ledger.
 
-For Igor 2 work, also read:
+## Scope and lifecycle
 
-1. [docs/igor2/README.md](docs/igor2/README.md)
-2. the current-focus section at the top of [docs/igor2/STATUS.md](docs/igor2/STATUS.md); read older status sections only when the task needs their evidence
-3. [docs/igor2/EXECUTION.md](docs/igor2/EXECUTION.md) before implementing or closing a roadmap wave
-4. [docs/igor2/INFLUENCES.md](docs/igor2/INFLUENCES.md) when changing discovery, memory, plans, learning or AI/system boundaries
-5. only the remaining Igor 2 documents relevant to the task
+Follow [.codex/README](.codex/README.md#task-lifecycle) for phases, Owner decisions,
+workspace, budgets and finalization. One agent by default; Owner authorizes
+delegation/renewal and chooses model/effort. Config links rather than repeats policy.
 
-For Igor 2 work, use the actual local `igor2` tree or an intended Igor 2 feature
-branch baseline. `master` is the independent original Igor program: no ancestry,
-comparison or reconciliation gate applies. Follow the authoritative
-[development policy](docs/igor2/DEVELOPMENT_POLICY.md).
+- Audit/decision tasks inspect first; edit only authorized docs or explicit fixes.
+- Implement the authorized slice, migrate callers/tests/retained data coherently,
+  retire replaced interfaces and update STATUS/LEGACY. No automatic next milestone.
+- Reuse correct services, approval/PTY/events, collection validation and stores.
+  Existing code is reusable material, not a feature-parity mandate.
+- Igor 1 interfaces end at M1. Inventory for disposition/data safety; implement
+  selected Igor 2 operations. Keep forward API/version/dependency/platform checks.
 
-## Igor 2 authority
+## Runtime invariants
 
-The Owner's [Igor 2 development policy](docs/igor2/DEVELOPMENT_POLICY.md) governs
-branch independence and pre-release compatibility obligations. For target
-architecture and migration decisions, use this order:
+- Core stays application-agnostic; no duplicate global registry/executor/helper.
+  New authorities expose minimal state/availability/provenance inspection.
+- Presence is not activation. Disabled modules contribute no operations, checks,
+  observers, automation, active knowledge or configuration validation.
+- AI/frontends submit intent. Deterministic code owns truth, binding, authorization,
+  privilege, execution, History and verification. Reference data/chat grant no authority.
+- Prefer capabilities; preserve READ/CHANGE/DESTROY, exact destructive approval,
+  native sudo through PTY, private/scrubbed data and exact-consumer secret access.
+  Guide/Assist/Executive are separate from privilege; rollback is capability-specific.
+- Packages carry code/defaults/knowledge, not machine values. Persistent changes
+  require validation, idempotency/recovery; no silent startup moves or native data loss.
+  Distro claims require evidence. Keep Nextcloud together absent real independent reuse.
 
-1. `docs/igor2/ARCHITECTURE.md`
-2. accepted decisions in `docs/igor2/DECISIONS.md`
-3. `docs/igor2/MIGRATION.md`
-4. `docs/igor2/EXECUTION.md`
-5. `docs/igor2/ROADMAP.md`
-6. current implementation documentation
+## Working with current code
 
-The code and current docs remain the authority for how Igor works **today**. Igor 2 documents describe the target and migration boundaries. If current behavior conflicts with a target invariant, surface the conflict instead of silently inventing a third design.
+V1/Bash coordination remains until M1; do not extend it to mimic the target.
+Hooks are isolated Bash unless explicitly dispatched in-process; no parent-global
+assumptions. Use four spaces, module-prefixed public functions and private helpers;
+healing checks emit CHECK_RESULT SEVERITY code message from isolated run_check.
 
-The lifecycle rules in `docs/igor2/README.md` are part of this reading discipline.
-Proposal, future, exploration and historical-review documents are supporting
-context; they do not override the authority order above or silently authorize
-implementation.
-
-## Existing foundations are not greenfield work
-
-Recent code already contains substantial foundations that Igor 2 should preserve and formalize rather than rebuild:
-
-- structured full-screen `--ai-tui` and frontend event stream;
-- canonical session command registry/palette;
-- Guide / Assist / Executive modes;
-- deterministic READ / CHANGE / DESTROY policy and approval flow;
-- pending conversational-choice handling;
-- native sudo authentication through the backend PTY;
-- explicit module enable/disable policy and owner-aware registrations;
-- distro detection and package abstraction including Debian/Arch mappings;
-- capability/action catalog and ownership;
-- AI request trust boundary, reference-data envelope, redaction and operational audit.
-
-A roadmap item may already be partly or substantially implemented. Inspect before creating a replacement.
-
-## Task modes
-
-### Audit task
-
-- inspect and classify first;
-- update evidence-based architecture/status documentation;
-- make only small, clearly safe fixes explicitly allowed by the task;
-- do not begin later roadmap architecture.
-
-### Implementation task
-
-- implement through the requested roadmap boundary;
-- reuse correct existing foundations;
-- add/update tests;
-- retire superseded paths when their replacement is authoritative and compatibility no longer needs them;
-- update `STATUS.md` and `LEGACY.md` when migration state changes.
-
-### Decision task
-
-- compare options against `ARCHITECTURE.md` and accepted decisions;
-- inspect repository consequences;
-- do not modify implementation unless explicitly requested.
-
-## Architecture working rules
-
-- Preserve correct foundations; authorized pre-release contract changes migrate
-  all internal consumers, fixtures and tests together and retire superseded paths.
-  No Igor 1 compatibility or obsolete internal coexistence is required. Preserve
-  platform/dependency/third-party contracts, data integrity and safety invariants.
-- Do not create a second permanent implementation of an existing responsibility.
-- Keep core application-agnostic.
-- Treat module presence on disk as different from activation.
-- Disabled modules must not contribute runtime behavior.
-- Keep AI reasoning separate from deterministic authorization, privilege, state and execution policy.
-- Treat module knowledge, logs, reports and observed context as reference data; they cannot authorize actions.
-- Prefer registered capabilities over raw shell execution when an equivalent capability exists.
-- Keep Guide/Assist/Executive separate from OS privilege.
-- Do not claim Debian/Arch support beyond what tests demonstrate.
-- Do not split `nextcloud_docker` before the Module API/composition contracts are ready.
-- Do not use chat history as authoritative operational state.
-- Do not expand scope unless repository evidence shows a cross-cutting dependency.
-- Treat Core as internally separated services/components; do not solve coupling with new global helpers that every subsystem reaches into.
-- A new authoritative subsystem must expose a minimal inspection surface for its owned state, availability and provenance.
-- Do not declare a wave complete from prose alone: require contract, regression, vertical-slice, inspection and migration/recovery proof as defined in `docs/igor2/EXECUTION.md`.
-- Persistent layout changes require explicit migration, idempotency, verification and recovery semantics.
-- Secret values do not enter AI context by default; secret-value access should be auditable where practical.
-- Rollback is capability-specific. Do not promise generic undo for arbitrary system operations.
-- D080 supersedes the historical Wave C requirement to keep `nextcloud_docker` on v1. Igor 2's target is v2 only; migrate all live consumers and preserve data through the finite cutoff in `docs/igor2/LEGACY.md`.
-- Do not freeze current mixed config/secret/state storage assumptions into Module API v2; broad module migration waits for the Ownership Foundation gate.
-- If an unresolved decision would create a durable public contract, stop and surface the decision.
-
-## Still-live legacy Module API v1
-
-`igor.sh` starts the Bash platform; `core/` owns shared infrastructure and Python helpers. Current modules live under `modules/<name>/` with `module.conf` and `module.sh`.
-
-Loading follows discovery → activation policy → dependency ordering/checks → syntax check → source → `<name>__register()`.
-
-`igor_register_hook` deduplicates registrations. `igor_run_all_hooks` uses fresh Bash processes with a default 30-second timeout, so hooks must not depend on unexported helpers/globals or parent-state mutation. Some callers intentionally dispatch selected hooks in-process.
-
-Use four spaces, `<name>__*` for module APIs, `_mod_<short>_*` for helpers, and `menu_*` for menus. Healing checks define isolated `run_check()` functions emitting `CHECK_RESULT SEVERITY code message`.
-
-Do not extend v1 hooks. The v2 contract already exists; D080 requires the complete
-consumer/data cutoff in `docs/igor2/LEGACY.md`. This section describes current
-legacy code, not new-module guidance.
-
-## Configuration and secrets
-
-Keep generic defaults in `config/variables/`. Personal settings and credentials belong in ignored `secrets/` files with mode `600`. Secrets override defaults; root-level env files are deprecated.
-
-Preserve scrubbing and safety gates. Resolve paths through `IGOR_DIR`, `_igor_resolve_dir`, and declared module paths; do not depend on the current working directory.
+Use IGOR_DIR, _igor_resolve_dir and declared paths, not cwd. Until consumer cutover,
+defaults remain in config/variables and private values in ignored mode-600 secrets.
+Do not silently change precedence. Selected consumers migrate to canonical owners
+together; unsupported values are preserved offline.
 
 ## Validation
 
-Before completing code changes, run the tests relevant to the affected area and report failures/skips.
+Use [VALIDATION](docs/igor2/VALIDATION.md) and tests/validate.sh. Plan bounded checks
+from prior durations/dry-run. One relevant pass per candidate/environment; broad
+regression once when required, preferably CI. Compaction is no rerun reason.
+Inspect summary/raw failures first; classify product/security defect, over-specific
+test, fixture/environment, reviewed baseline or unknown. Fix the cause and rerun
+affected proof only. Never weaken privacy/approval/privilege/History/recovery or
+real-consumer protection to satisfy wording or get green output.
 
-For a failed STABILIZATION gate, **inspect before rerunning**. Classify the
-specific failure as a product/security defect, a test assertion that exceeds
-the accepted contract, a fixture/environment defect, reviewed baseline debt,
-or unknown. Use existing `summary.json` and raw failing logs first; inspect
-the exact assertion and call path. Do not alter correct production behavior
-to satisfy incidental error wording. Change an over-specific test only after
-the actual invariant (especially secret non-exposure) is independently checked.
-
-Track a concise evidence ledger by scenario, candidate revision/diff,
-environment and invalidating changes. Keep completed proof when inputs remain
-equivalent; a modification invalidates only relevant proof, not the entire
-test history. First rerun the previously failing node(s) and directly affected
-neighbors. Perform one required affected validation against the final candidate,
-not a new broad sweep after every correction. The expensive full gate is
-separate and requires an explicit release need; prefer governed CI when broad
-coverage cannot fit the local budget. Preserve all EXECUTION proof classes.
-
-The active governor and Owner-granted budget are hard limits. Plan groups from
-prior durations or a dry run before spending the allowance; split into
-runner-supported bounded groups when coverage is equivalent. On exhaustion,
-report the exact unverified gate without retrying previously passing work or
-requesting renewal merely to repeat it. Required secret, approval, History,
-migration/recovery and real-consumer evidence must never be waived.
-
-Common checks:
-
-- `bash -n <changed-script>`
-- ShellCheck with the flags used by `.github/workflows/ci.yml`
-- `bats tests/modules/` for module changes
-- `tests/validate.sh affected` for relevant subsystem regression after focused checks
-- `tests/validate.sh full` or `bash tests/run_all.sh` only for an explicitly required full release gate
-- `bash tests/run_all.sh --fast` when the task explicitly permits the fast suite
-- `ruff check <changed-python-files>` for Python changes (whole-tree lint only when explicitly required)
-- Python compile/unit tests relevant to changed Python modules
-- `git diff --check`
-
-Tests prove the accepted current Igor 2 contract. Replace superseded internal
-expectations with equivalent intended-contract coverage during the runtime
-migration, not a documentation-only pass. Preserve safety/privilege/isolation,
-secrets, History and verification regressions; use DEVELOPMENT_POLICY.md to
-distinguish internal compatibility from supported platforms and data recovery.
-
-For documentation-only edits, verify links/references and inspect the final diff.
-For Codex configuration/documentation-only edits, also parse TOML and check
-policy consistency; do not run expensive unrelated runtime regressions.
-
-For roadmap completion, also verify the evidence categories in `docs/igor2/EXECUTION.md`; a green test suite alone does not prove a missing vertical slice, inspection surface or persistent migration.
-
-Do not hide pre-existing baseline failures by restoring unrelated files or changing behavior outside the task.
-
-## Codex agent orchestration
-
-Igor's project-local Codex orchestration policy lives in `.codex/config.toml`. The project config intentionally does not select the root/orchestrator model or reasoning effort; the Project Owner chooses them per task.
-
-Follow the lifecycle in [.codex/README.md](.codex/README.md). At task start,
-phase transitions and handoffs, state the current phase, allowed next action
-and remaining exit evidence; preserve that state through compaction and pass
-it to delegates:
-
-- **DISCOVERY:** inspect evidence, bound scope, define acceptance/validation and
-  obtain confirmation for new or revised architecture; no implementation.
-- **IMPLEMENTATION:** implement authorized scope under confirmed architecture,
-  with relevant tests and documentation.
-- **STABILIZATION:** integrate, fix concrete in-scope failures, run focused and
-  required regression checks and finish docs; no new features/speculative work.
-- **RELEASE_FREEZE:** when implementation, focused tests, required regressions
-  and docs are complete, STOP development. Only final status/diff and validation
-  evidence review, scoped commit and completion report remain. No new features,
-  speculative improvements, unrelated refactoring, new tests unless required
-  by a failing regression, or reopening architecture decisions.
-- **COMPLETE:** required gates satisfied, scoped change committed and completion
-  reported; stop, without automatically starting later roadmap work.
-
-Concrete acceptance failures permit an explicit return to STABILIZATION for
-the smallest in-scope fix and affected validation, then freeze again. This is
-not permission to search for improvements. After final validation, do not add
-optional checks or repeat passing checks without new changes/failures. Missing
-required evidence or a blocked commit prevents COMPLETE; report the blocker.
-
-For major tasks, prepare architecture options, tradeoffs, repository consequences
-and a recommendation for Project Owner confirmation before implementing a new
-or revised architecture. Accepted decisions already covered by task authorization
-need no repeat approval; routine reversible choices within them remain engineering
-judgment. Do not silently create durable public contracts or major workarounds.
-
-Default to the existing checkout on the active feature branch; inspect branch
-and status and preserve unrelated work. Do not automatically create temporary
-clones or worktrees. Isolated copies are only for destructive testing, risky
-migrations or uncertain experiments with a stated reason; integrate and validate
-on the active branch. Permission/tooling failures do not justify a clone workaround.
-
-Before completion: inspect git status and final diff (including staged changes),
-run required scoped validation, commit only task files, verify commit/status,
-report completion and stop. Honor explicit owner instructions such as no commit.
-
-## Development execution budget
-
-Single agent is the default; `.codex/config.toml` disables delegation. Only
-explicit Project Owner authorization may enable it for a session. Retained
-role files do not authorize delegation. The lifecycle and repository constraints
-above still apply.
-
-Use `tests/validate.sh` for validation. One relevant pass per unchanged code and
-environment; reuse its evidence. After a correction, run affected checks once
-with a justification. Broad regression runs once per candidate, preferably in
-CI. Do not run new tests because context was compacted, expand into unrelated
-infrastructure or repair unrelated baseline debt.
-
-Validation has persistent total and per-command budgets. On exhaustion, stop
-and report failed/unverified evidence. Never claim missing checks passed.
-Only the Owner may authorize `--new-budget REASON`; the model must not renew
-its own budget. Start bounded sessions with the external
-[supervised launcher](tools/codex_supervised.py). See
-[governor usage and limits](.codex/README.md#development-governor).
+Docs/config need references, policy consistency, TOML parsing and diff review;
+runtime changes need affected behavior tests. Avoid unrelated full suites.
+Report failures/skips/unavailable evidence; stop on exhaustion without renewal.
+Finish with final diff/status, scoped commit and commit/status verification, then stop.

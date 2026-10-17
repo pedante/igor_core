@@ -2,7 +2,64 @@
 
 Last updated: 2026-10-17
 
-## Current focus — architectural audit and development reset
+## Current focus — governance cleanup and accepted M1/M2 handoff
+
+- **Task/base:** finish interrupted governance work on `igor2` at `dd5d0ac`.
+  Preserved the six pre-existing changes to AGENTS, Codex config/workflow, removed
+  role/hook and documentation tests; no runtime edits, host setup or data moves.
+- **Phase:** RELEASE_FREEZE. Required checks and author diff review are complete.
+  Only scoped commit/status verification and completion report remain; those close
+  this task. No automatic M1 implementation.
+- **Authority:** Owner's explicit cleanup instruction and [D081](DECISIONS.md#d081--bounded-m1-platform-and-m2-durable-ai-orchestration).
+  No Igor 1 compatibility or mandatory feature parity. Final Python execution/
+  module coordination in M1; durable AI tasks/conversations in M2. Minimal v2
+  contract, useful integrated System/Docker operations and Nextcloud configuration.
+- **Next implementation scope:** [M1 exact handoff](ROADMAP.md#immediate-implementation-batch--exact-handoff).
+  Inventory selected operations/data disposition, finish Python authority and its
+  callers, migrate selected ownership/packages, prove real operations and Nextcloud
+  `2 → 3 → 2`, retire v1 and stop. No full Nextcloud menu/action migration or M2.
+- **Unconfirmed/outstanding:** exact new persistent roots are not accepted by
+  D081; retain current declared roots unless a required change is confirmed.
+  Disposable Nextcloud runtime/real acceptance, independent implementation review
+  and sufficient governed validation remain M1 gates. No host setup or renewal
+  is authorized by this cleanup. Existing runtime defects below remain unfixed.
+- **Budget/plan:** 37.949 seconds remain at entry, 240-second subprocess ceiling
+  further bounded by that allowance. Dry run selected structural/Ruff/docs/governor
+  groups only. Runs completed in 13.836 s and 15.258 s; governor accounting now
+  reports 0 seconds remaining. All required checks finished successfully before
+  closeout; no renewal, further validation or broad runtime suite.
+- **Review:** author self-review; no delegation or independent review claimed.
+
+### Governance cleanup evidence ledger
+
+| EXECUTION class | Evidence / applicability |
+|---|---|
+| Contract | D081 and architecture/roadmap/cutoff consistency; minimal module contract and M1/M2 separation; no executable contract migration |
+| Regression | All 10 documentation and 9 governor tests PASS; corrected governor file rerun PASS. Structure/references and changed-test Ruff PASS; project/user TOML parsing PASS. Initial import-order failure was a test-infrastructure lint defect, corrected rather than waived by the broad baseline |
+| Vertical-slice | Not applicable: no product/runtime implementation; no real System/Docker/Nextcloud evidence claimed |
+| Inspection | Project/user config and hook registrations inspected: removed command is unregistered; user trust hash is inert metadata, unrelated hooks preserved; final diff reviewed at freeze |
+| Migration/recovery | Interrupted working changes preserved (snapshot `/tmp/igor-governance-interrupted.patch`); no user data/schema migration; offline preservation requirements retained |
+
+Evidence under `.igor-governor/evidence/` (both runs complete):
+
+- `governance-cleanup-20261017/summary.json`, SHA-256
+  `b6e55d48d18479ab424d00df7167ac7500e609f6bd7fbabbf5083832575beaa0`:
+  20 PASS identities/checks, one raw Ruff failure reported as `FAIL_BASELINE`.
+  Raw review found only import order; corrected rather than accepted as debt.
+- `governance-cleanup-corrected-20261017/summary.json`, SHA-256
+  `3281c1b464a21b00194f8e61904d9c5d319c0dff5fd3d6fffc645f2d4e7822bb`:
+  10 PASS plus Ruff `BASELINE_FIXED`; zero failures, skips, timeouts or unavailable
+  tools. Only structure, lint and the changed governor test file were rerun.
+  The unchanged documentation suite retains its first-run evidence; excluded
+  groups are not claimed as executed by the corrected run.
+
+The final ledger/phase annotation changes no validated policy or link target.
+No repository-wide or real application acceptance is claimed by this cleanup.
+
+Historical audit evidence and its old phase/budget below are retained provenance,
+not current instructions or proof for this candidate.
+
+## Completed architectural audit — historical task record
 
 - **Task:** documentation-only deep audit requested by the Owner; source baseline
   `igor2` at `1aac86a`, initially clean. No runtime rewrite, deletion, host setup,
@@ -72,7 +129,7 @@ Operational History's retained [Step 15B proof](archive/STATUS_2026-10-16.md#ste
 <a id="stabilization-evidence-ledger-2026-10-12"></a>
 Collections' retained [stabilization ledger](archive/STATUS_2026-10-16.md#stabilization-evidence-ledger-2026-10-12).
 
-## Documentation change manifest
+## Historical audit documentation change manifest
 
 All 19 changed paths are Markdown. Runtime, tests, fixtures and Codex TOML/hooks
 are unchanged. The new archive preserves historical acceptance/failure records.

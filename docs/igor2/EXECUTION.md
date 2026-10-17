@@ -139,9 +139,10 @@ record does not complete a roadmap feature.
 
 Use a real operation to prove each new boundary inside a coherent milestone.
 A thin proof slice is not a requirement to divide a complete product change into
-many separately approved roadmap items. The proposed reset in [ROADMAP](ROADMAP.md)
-groups complete module/ownership/execution work; it remains DISCOVERY until
-architecture confirmation. D080 independently supersedes v1 retention obligations.
+many separately approved roadmap items. D081's accepted [ROADMAP](ROADMAP.md)
+groups final Python module/ownership/execution work in M1 and durable AI tasks
+and conversations in M2. D080/D081 supersede v1 retention and mandatory feature
+parity; acceptance still requires proof for the selected operations.
 The five proof classes above remain mandatory where applicable; one scenario
 ledger can satisfy several classes without rerunning the same work.
 
