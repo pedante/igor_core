@@ -70,7 +70,7 @@ declare -gA _IGOR_TUI_MODULE_PHASE_MS 2>/dev/null || true
 declare -g _IGOR_TUI_MODULE_REGISTRATION_ORDER=""
 declare -g _IGOR_REGISTERING_MODULE=""
 declare -g _IGOR_MODULE_CONFIG_LOADED="${_IGOR_MODULE_CONFIG_LOADED:-0}"
-declare -g _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=0
+declare -g _IGOR_MODULE_POLICY_ERROR=""
 
 # Root of the Igor installation — resolved relative to this file's location
 _IGOR_LOADER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && cd ../.. && pwd)"
@@ -359,100 +359,33 @@ _ml_v2_prepare_all() {
 _ml_load_module_config() {
     [ "${_IGOR_MODULE_CONFIG_LOADED:-0}" -eq 1 ] && return 0
     _IGOR_MODULE_CONFIG_LOADED=1
-    local _cfg="${IGOR_DIR:-$_IGOR_LOADER_DIR}/config/modules.conf"
-    if ! _ml_migrate_system_policy "$_cfg"; then
-        _IGOR_SYSTEM_POLICY_MIGRATION_FAILED=1
-        _ml_log error "system policy migration failed; module will remain unavailable until config/modules.conf is writable"
-    fi
-    [ -f "$_cfg" ] || return 0
-    local _line _name _state _rhs
-    while IFS= read -r _line || [ -n "$_line" ]; do
-        _line="${_line%%#*}"
-        [[ -z "${_line//[[:space:]]/}" ]] && continue
-        if [[ "$_line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_-]*)[[:space:]]*= ]]; then
-            _name="${BASH_REMATCH[1]}"
-            _rhs="${_line#*=}"
-            _rhs="${_rhs#"${_rhs%%[![:space:]]*}"}"
-            _rhs="${_rhs%"${_rhs##*[![:space:]]}"}"
-            if [ "$_rhs" = enabled ] || [ "$_rhs" = disabled ]; then
-                _IGOR_MODULE_STATE["$_name"]="$_rhs"
-                unset '_IGOR_MODULE_REASON['"$_name"']'
-            else
-                _IGOR_MODULE_STATE["$_name"]="disabled"
-                _IGOR_MODULE_REASON["$_name"]="invalid module state (expected enabled or disabled)"
-            fi
-        else
-            _ml_log warn "Ignoring malformed module state entry in $_cfg: $_line"
-        fi
-    done < "$_cfg"
-}
-
-# Existing installations implicitly enabled the bundled system module. Record
-# that policy once when its package moves to v2; a new v2 package has no such
-# compatibility exception. The original policy is retained for recovery.
-_ml_migrate_system_policy() {
-    local _cfg="$1" _root="${IGOR_DIR:-$_IGOR_LOADER_DIR}"
-    local _manifest="$_root/modules/system/module.conf" _tmp
-    [ -f "$_manifest" ] || return 0
-    [ "$(_ml_probe_api "$_root/modules/system")" = 2 ] || return 0
-    [ ! -L "$_cfg" ] && [ ! -L "${_cfg}.pre-wave-c.bak" ] || return 1
-    if [ -f "$_cfg" ] && grep -Eq '^[[:space:]]*system[[:space:]]*=' "$_cfg"; then return 0; fi
-    mkdir -p "$(dirname "$_cfg")" || return 1
-    _tmp="$(mktemp "${_cfg}.XXXXXX")" || return 1
-    if [ -f "$_cfg" ]; then
-        cat "$_cfg" > "$_tmp" || { rm -f "$_tmp"; return 1; }
-        if [ ! -e "${_cfg}.pre-wave-c.bak" ]; then
-            cp -p "$_cfg" "${_cfg}.pre-wave-c.bak" || { rm -f "$_tmp"; return 1; }
-        fi
-    fi
-    printf 'system=enabled\n' >> "$_tmp"
-    chmod 600 "$_tmp" || { rm -f "$_tmp"; return 1; }
-    mv -f "$_tmp" "$_cfg"
+    _IGOR_MODULE_STATE=()
+    _IGOR_MODULE_POLICY_ERROR=""
+    local _policy _name _state
+    _policy="$("$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/module_registry.py" \
+        policy "${IGOR_DIR:-$_IGOR_LOADER_DIR}" 2>/dev/null)" || {
+        _IGOR_MODULE_POLICY_ERROR="module policy unavailable or malformed"
+        _ml_log error "$_IGOR_MODULE_POLICY_ERROR; all modules remain inactive"
+        return 1
+    }
+    while IFS=$'\t' read -r _name _state; do
+        [ -n "$_name" ] || continue
+        _IGOR_MODULE_STATE["$_name"]="$_state"
+    done <<< "$_policy"
 }
 
 igor_module_enabled() {
-    _ml_load_module_config
-    local _name="${1:-}"
-    if [ -n "${_IGOR_MODULE_STATE[$_name]+set}" ]; then
-        [ "${_IGOR_MODULE_STATE[$_name]}" = enabled ]
-    else
-        if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
-            return 0
-        fi
-        [ "${_IGOR_MODULE_API[$_name]:-1}" != 2 ]
-    fi
+    _ml_load_module_config || return 1
+    [ -z "$_IGOR_MODULE_POLICY_ERROR" ] &&
+        [ "${_IGOR_MODULE_STATE[${1:-}]:-disabled}" = enabled ]
 }
 
 igor_module_set_enabled() {
     local _name="${1:-}" _state="${2:-}"
-    _ml_valid_name "$_name" || { _ml_log error "invalid module name: $_name"; return 1; }
-    if [ "${#_IGOR_MODULE_DIRS[@]}" -gt 0 ] && [ -z "${_IGOR_MODULE_DIRS[$_name]:-}" ]; then
-        _ml_log error "module is not installed: $_name"
-        return 1
-    fi
-    [ "$_state" = enabled ] || [ "$_state" = disabled ] || {
-        _ml_log error "module state must be enabled or disabled"; return 1;
-    }
-    local _cfg="${IGOR_DIR:-$_IGOR_LOADER_DIR}/config/modules.conf"
-    local _parent _tmp
-    _parent="$(dirname "$_cfg")"
-    mkdir -p "$_parent" || return 1
-    _tmp="$(mktemp "${_parent}/.modules.conf.XXXXXX")" || return 1
-    if [ -f "$_cfg" ]; then
-        awk -v target="$_name" -v state="$_state" '
-            $0 ~ "^[[:space:]]*" target "[[:space:]]*=" {
-                if (!done) { print target "=" state; done=1 }
-                next
-            }
-            { print }
-            END { if (!done) print target "=" state }
-        ' "$_cfg" > "$_tmp"
-    else
-        printf '%s=%s\n' "$_name" "$_state" > "$_tmp"
-    fi
-    chmod 600 "$_tmp" || { rm -f "$_tmp"; return 1; }
-    mv -f "$_tmp" "$_cfg" || { rm -f "$_tmp"; return 1; }
-    _IGOR_MODULE_STATE["$_name"]="$_state"
+    "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/module_registry.py" policy-set \
+        "${IGOR_DIR:-$_IGOR_LOADER_DIR}" "$_name" "$_state" || return 1
+    _IGOR_MODULE_CONFIG_LOADED=0
+    _ml_load_module_config || return 1
     if [ "$_state" = disabled ] && [ -n "${_IGOR_LOADED_MODULES[$_name]:-}" ]; then
         _IGOR_MODULE_STATUS["$_name"]="disabled"
     fi
@@ -1059,7 +992,7 @@ _ml_check_dependencies() {
 declare -gA _IGOR_MODULE_DIRS 2>/dev/null || true
 
 igor_discover_modules() {
-    _ml_load_module_config
+    _ml_load_module_config || true
     local _modules_root="${IGOR_DIR:-$_IGOR_LOADER_DIR}/modules"
     local _names=()
 
@@ -1086,8 +1019,10 @@ igor_discover_modules() {
         _IGOR_MODULE_API["$_name"]="$_api"
         if ! igor_module_enabled "$_name"; then
             _IGOR_MODULE_STATUS["$_name"]="disabled"
-            if [ "$_api" = 2 ] && [ -z "${_IGOR_MODULE_STATE[$_name]+set}" ]; then
-                _IGOR_MODULE_REASON["$_name"]="explicit enablement required for new v2 module"
+            if [ -n "$_IGOR_MODULE_POLICY_ERROR" ]; then
+                _IGOR_MODULE_REASON["$_name"]="$_IGOR_MODULE_POLICY_ERROR"
+            elif [ -z "${_IGOR_MODULE_STATE[$_name]+set}" ]; then
+                _IGOR_MODULE_REASON["$_name"]="explicit enablement required for installed module"
             fi
         else
             _IGOR_MODULE_STATUS["$_name"]="discovered"
@@ -1359,11 +1294,6 @@ igor_load_module() {
 _ml_load_v2() {
     local _name="$1" _dir="${_IGOR_MODULE_DIRS[$1]}" _reason _key _index_key _record _source _requires
     local _entrypoint _kind
-    if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
-        _IGOR_MODULE_STATUS["$_name"]="unavailable"
-        _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
-        return 1
-    fi
     if [ "${_IGOR_MODULE_API[$_name]:-}" != 2 ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="unsupported or malformed module_api: ${_IGOR_MODULE_API[$_name]:-missing}"

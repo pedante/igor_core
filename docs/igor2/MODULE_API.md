@@ -593,9 +593,8 @@ The current loader keeps its existing concepts and state queries:
 
 - **discovered/installed**: a package candidate with `module.conf` can be
   inspected without execution; validity is reported separately;
-- **enabled/disabled**: administrator policy; a new v2 package needs an
-  explicit `enabled` entry, while omitted v1 entries remain enabled for
-  compatibility;
+- **enabled/disabled**: administrator policy; every package needs an explicit
+  `enabled` entry in `config/modules.conf`. Missing entries remain disabled;
 - **active**: required checks and registration succeeded in this process;
 - **unavailable + reason**: enabled but unsupported API, invalid data,
   unmet dependency/platform/runtime requirement or registration failure.
@@ -608,6 +607,13 @@ changes require a process restart for replacement of loaded code. No hot
 unload is needed now. A disabled package stays `disabled` and is never sourced;
 an explicit inspect/validate command may report manifest problems without
 changing that activation state.
+
+The Python registry owns activation-policy parsing and explicit changes. The
+loader, static inspection, attachment admission and collection lease checks use
+that same parser. Malformed/duplicate entries or symlinked policy paths fail
+closed for all modules. Explicit enable/disable writes are serialized, atomic,
+mode 600 and preserve unrelated decisions/comments; repeated decisions are a
+no-op. Startup does not create policy or migrate implicit System activation.
 
 Absent `module_api` means v1 only for compatibility; explicit `1` is also v1.
 The version probe must reject a malformed or unsupported marker rather than
@@ -624,9 +630,8 @@ through two adapters.
 `system` is the first small reference: add static host knowledge and one
 structured host observer under v2 while keeping its current v1 health,
 diagnose, AI context, notification and recovery behavior until those consumers
-migrate. Before changing its API version, preserve an implicitly enabled
-installation with an explicit `system=enabled` policy entry; never override an
-existing disabled entry. Keep its current `systemctl` requirement initially
+migrate. The historical implicit-System policy migration has been removed in M1;
+System now requires explicit activation like every package. Keep its current `systemctl` requirement initially
 so this migration does not silently change activation. Step 7 can move that
 requirement to service-specific contributions after platform helpers support
 it. At that historical boundary, `nextcloud_docker` stayed a v1 module with its soft

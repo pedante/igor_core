@@ -5,6 +5,7 @@ load '../helpers/common'
 REPO_DIR="${BATS_TEST_DIRNAME}/../.."
 
 setup() {
+    bats_require_minimum_version 1.5.0
     setup_igor_tmpdir
     mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config"
     # Keep loader output out of assertions unless a test explicitly captures it.
@@ -105,7 +106,7 @@ _basic_contract() {
     [ "$status" -eq 0 ]
     [[ "$output" == *'"owner":"config_owner"'* ]]
     [[ "$output" == *'"id":"config_owner.enabled"'* ]]
-    ! igor_v2_invoke configuration config_owner.preferences '{}'
+    run ! igor_v2_invoke configuration config_owner.preferences '{}'
 }
 
 @test "configuration declarations from disabled owners are absent" {
@@ -200,7 +201,7 @@ _basic_contract() {
 
     [ "$(igor_module_status disabled)" = disabled ]
     [ ! -e "$IGOR_DIR/sourced" ]
-    ! igor_v2_contribution_get knowledge disabled.data
+    run ! igor_v2_contribution_get knowledge disabled.data
 }
 
 @test "a new v2 package without a policy entry stays disabled" {
@@ -260,7 +261,7 @@ _basic_contract() {
     [ "$(igor_module_status provider)" = disabled ]
     [ "$(igor_module_status consumer)" = unavailable ]
     [[ "$(igor_module_reason consumer)" == *'required module provider is disabled'* ]]
-    ! igor_module_enabled provider
+    run ! igor_module_enabled provider
 }
 
 @test "hard module cycles remain unavailable with named dependency edges" {
@@ -314,7 +315,7 @@ _basic_contract() {
 @test "mixed v1 and v2 system knowledge has one canonical v2 contribution" {
     mkdir -p "$IGOR_DIR/modules/system"
     cp -R "$REPO_DIR/modules/system/." "$IGOR_DIR/modules/system/"
-    printf 'other=enabled\n' > "$IGOR_DIR/config/modules.conf"
+    printf 'system=enabled\nother=enabled\n' > "$IGOR_DIR/config/modules.conf"
 
     _load
 
@@ -376,55 +377,52 @@ assert not reference["module_knowledge"]
     [ "$count" -eq 1 ]
 }
 
-@test "omitted system policy is migrated once and explicit disable is preserved" {
+@test "system needs explicit activation and startup preserves existing policy" {
     mkdir -p "$IGOR_DIR/modules/system"
     cp -R "$REPO_DIR/modules/system/." "$IGOR_DIR/modules/system/"
     printf 'other=enabled\n' > "$IGOR_DIR/config/modules.conf"
     _load
-    grep -q '^system=enabled$' "$IGOR_DIR/config/modules.conf"
-    [ -f "$IGOR_DIR/config/modules.conf.pre-wave-c.bak" ]
-    grep -q '^other=enabled$' "$IGOR_DIR/config/modules.conf.pre-wave-c.bak"
-    run grep -q '^system=' "$IGOR_DIR/config/modules.conf.pre-wave-c.bak"
-    [ "$status" -ne 0 ]
+    [ "$(cat "$IGOR_DIR/config/modules.conf")" = 'other=enabled' ]
+    [ ! -e "$IGOR_DIR/config/modules.conf.pre-wave-c.bak" ]
+    [ "$(igor_module_status system)" = disabled ]
+    run ! igor_has_module system
+
+    igor_module_set_enabled system enabled
+    _restart_loader_state
+    _load
+    igor_has_module system
     [ "$(stat -c %a "$IGOR_DIR/config/modules.conf")" = 600 ]
+    grep -q '^other=enabled$' "$IGOR_DIR/config/modules.conf"
 
-    igor_discover_modules >/dev/null
-    [ "$(grep -c '^system=enabled$' "$IGOR_DIR/config/modules.conf")" -eq 1 ]
-
-    printf 'system=disabled\n' > "$IGOR_DIR/config/modules.conf"
-    unset _IGOR_MODULE_CONFIG_LOADED
-    _IGOR_MODULE_CONFIG_LOADED=0
-    unset '_IGOR_MODULE_STATE[system]'
-    unset '_IGOR_MODULE_STATUS[system]'
-    igor_discover_modules >/dev/null
+    igor_module_set_enabled system disabled
+    _restart_loader_state
+    _load
     [ "$(grep -c '^system=disabled$' "$IGOR_DIR/config/modules.conf")" -eq 1 ]
     [ "$(igor_module_status system)" = disabled ]
 }
 
-@test "failed system policy migration is inspectable and does not source code" {
+@test "missing policy neither activates system nor writes activation state" {
     mkdir -p "$IGOR_DIR/modules/system"
-    cp -R "$REPO_DIR/modules/system/." "$IGOR_DIR/modules/system/"
-    _ml_migrate_system_policy() { return 1; }
-
+    _manifest system
+    _module system '{"contract_version":1,"contributions":[]}' 'touch "$IGOR_DIR/sourced"'
     _load
-
-    [ "$(igor_module_status system)" = unavailable ]
-    [[ "$(igor_module_reason system)" == *'policy migration failed'* ]]
+    [ "$(igor_module_status system)" = disabled ]
+    [[ "$(igor_module_reason system)" == *'explicit enablement required'* ]]
     [ ! -e "$IGOR_DIR/config/modules.conf" ]
-    ! igor_has_module system
+    [ ! -e "$IGOR_DIR/sourced" ]
+    run ! igor_has_module system
 }
 
-@test "system policy migration refuses a symlinked policy file" {
+@test "a symlinked policy is inspectable and leaves all modules inactive" {
     mkdir -p "$IGOR_DIR/modules/system"
     cp -R "$REPO_DIR/modules/system/." "$IGOR_DIR/modules/system/"
-    printf 'unrelated=enabled\n' > "$IGOR_DIR/target.conf"
+    printf 'system=enabled\n' > "$IGOR_DIR/target.conf"
     ln -s "$IGOR_DIR/target.conf" "$IGOR_DIR/config/modules.conf"
-
     _load
-
-    [ "$(igor_module_status system)" = unavailable ]
-    [[ "$(igor_module_reason system)" == *'policy migration failed'* ]]
-    [ "$(cat "$IGOR_DIR/target.conf")" = 'unrelated=enabled' ]
+    [ "$(igor_module_status system)" = disabled ]
+    [[ "$(igor_module_reason system)" == *'policy unavailable or malformed'* ]]
+    [ "$(cat "$IGOR_DIR/target.conf")" = 'system=enabled' ]
+    run ! igor_has_module system
 }
 
 @test "required capability providers do not auto-enable and ambiguous providers fail" {
@@ -527,7 +525,7 @@ EOF
     [ "$(igor_contribution_state observer:platform.arch)" = unavailable ]
 }
 
-@test "v1 modules retain omitted enablement and section-blind manifest parsing" {
+@test "omitted legacy policy stays disabled without sourcing code" {
     mkdir -p "$IGOR_DIR/modules/legacy"
     cat > "$IGOR_DIR/modules/legacy/module.conf" <<'EOF'
 [metadata]
@@ -538,12 +536,14 @@ requires_core=1.0.0
 [dependencies]
 required_bins=
 EOF
-    printf 'legacy__register() { :; }\n' > "$IGOR_DIR/modules/legacy/module.sh"
+    printf 'touch "$IGOR_DIR/sourced"\nlegacy__register() { :; }\n' > "$IGOR_DIR/modules/legacy/module.sh"
 
     _load
 
-    [ "$(igor_module_status legacy)" = active ]
-    igor_module_enabled legacy
+    [ "$(igor_module_status legacy)" = disabled ]
+    [ ! -e "$IGOR_DIR/sourced" ]
+    [ ! -e "$IGOR_DIR/config/modules.conf" ]
+    run ! igor_module_enabled legacy
 }
 
 
@@ -554,7 +554,8 @@ EOF
     printf 'one\n' > "$IGOR_DIR/modules/fast/one.md"
     printf 'fast=enabled\n' > "$IGOR_DIR/config/modules.conf"
 
-    local real_python="$(_ml_python)"
+    local real_python
+    real_python="$(_ml_python)"
     local wrapper="$IGOR_DIR/count-python"
     local count_file="$IGOR_DIR/python-count"
     printf '0\n' > "$count_file"
@@ -574,7 +575,8 @@ EOF
     [ "$(igor_module_status fast)" = active ]
     [ "$(igor_contribution_state knowledge:fast.one)" = active ]
     [ "$_IGOR_MODULE_V2_CACHE_STATE" = miss ]
-    [ "$(cat "$count_file")" -eq 1 ]
+    # One policy read and one structural compilation per startup.
+    [ "$(cat "$count_file")" -eq 2 ]
 
     local cache="${IGOR_DATA_DIR:-$IGOR_DIR/data}/cache/module-registry-v2.json"
     [ -f "$cache" ]
@@ -585,7 +587,7 @@ EOF
     _load
 
     [ "$_IGOR_MODULE_V2_CACHE_STATE" = hit ]
-    [ "$(cat "$count_file")" -eq 2 ]
+    [ "$(cat "$count_file")" -eq 4 ]
     [ "$(igor_contribution_state knowledge:fast.one)" = active ]
 
     printf 'two\n' > "$IGOR_DIR/modules/fast/two.md"
@@ -594,7 +596,7 @@ EOF
     _load
 
     [ "$_IGOR_MODULE_V2_CACHE_STATE" = miss ]
-    [ "$(cat "$count_file")" -eq 3 ]
+    [ "$(cat "$count_file")" -eq 6 ]
     [ "$(igor_contribution_state knowledge:fast.two)" = active ]
 }
 

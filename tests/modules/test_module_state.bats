@@ -3,6 +3,7 @@
 load '../helpers/common'
 
 setup() {
+    bats_require_minimum_version 1.5.0
     setup_igor_tmpdir
     source "${BATS_TEST_DIRNAME}/../../core/lib/module_loader.sh"
     mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config"
@@ -15,12 +16,13 @@ _module() {
     mkdir -p "$IGOR_DIR/modules/$name"
     printf 'name=%s\n%s\n' "$name" "$conf" > "$IGOR_DIR/modules/$name/module.conf"
     printf '%s\n' "$body" > "$IGOR_DIR/modules/$name/module.sh"
+    printf '%s=enabled\n' "$name" >> "$IGOR_DIR/config/modules.conf"
 }
 
 @test "disabled modules remain installed but are not sourced, and required dependents are unavailable" {
     _module base '' 'base__register() { touch "$IGOR_DIR/base-sourced"; }'
     _module app 'required_modules=base' 'app__register() { touch "$IGOR_DIR/app-sourced"; }'
-    printf 'base=disabled\n' > "$IGOR_DIR/config/modules.conf"
+    printf 'base=disabled\napp=enabled\n' > "$IGOR_DIR/config/modules.conf"
 
     igor_load_all_modules
 
@@ -28,17 +30,17 @@ _module() {
     [ ! -e "$IGOR_DIR/app-sourced" ]
     [ "${_IGOR_MODULE_STATUS[base]}" = disabled ]
     [ "${_IGOR_MODULE_STATUS[app]}" = unavailable ]
-    ! igor_has_module base
-    ! igor_has_module app
+    run ! igor_has_module base
+    run ! igor_has_module app
 }
 
 @test "module state is parsed once and invalid duplicate entries fail closed" {
     _module demo '' 'demo__register() { :; }'
     printf '# comment\ndemo=enabled\ndemo=invalid\n' > "$IGOR_DIR/config/modules.conf"
     igor_discover_modules >/dev/null
-    ! igor_module_enabled demo
+    run ! igor_module_enabled demo
     printf 'demo=enabled\n' >> "$IGOR_DIR/config/modules.conf"
-    ! igor_module_enabled demo
+    run ! igor_module_enabled demo
 }
 
 @test "required_modules also controls load order" {
@@ -60,7 +62,7 @@ _module() {
     [ "$(igor_get_hooks probe)" = demo__probe ]
     igor_module_set_enabled demo disabled >/dev/null
     [ -z "$(igor_get_hooks probe)" ]
-    ! igor_dispatch_menu_item d
+    run ! igor_dispatch_menu_item d
 }
 
 @test "disabled module cannot contribute to runtime hook paths" {

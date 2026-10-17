@@ -1,6 +1,6 @@
 # Igor 2 delivery roadmap
 
-Status: **accepted direction and bounded M1 scope (D080/D081); runtime work not started**.
+Status: **accepted direction and bounded M1 scope (D080/D081); M1 implementation in progress**. See [STATUS](STATUS.md) for completed batches and remaining proof.
 
 Updated: 2026-10-17, source baseline `1aac86a`. This replaces the A–H/23-step
 planning structure, not historical acceptance or retained proof. The

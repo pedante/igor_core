@@ -360,11 +360,6 @@ _ml_load_v2() {
         _ml_load_v2_legacy "$@"
         return $?
     fi
-    if [ "$_name" = system ] && [ "${_IGOR_SYSTEM_POLICY_MIGRATION_FAILED:-0}" -eq 1 ]; then
-        _IGOR_MODULE_STATUS["$_name"]="unavailable"
-        _IGOR_MODULE_REASON["$_name"]="system policy migration failed; config/modules.conf is not writable"
-        return 1
-    fi
     if [ "${_IGOR_MODULE_API[$_name]:-}" != 2 ]; then
         _IGOR_MODULE_STATUS["$_name"]="unavailable"
         _IGOR_MODULE_REASON["$_name"]="unsupported or malformed module_api: ${_IGOR_MODULE_API[$_name]:-missing}"

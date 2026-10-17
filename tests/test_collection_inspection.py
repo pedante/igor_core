@@ -104,7 +104,7 @@ def test_authority_changes_reject_frozen_inspection(inspection, change):
 
 
 def test_explicit_inspection_provider_is_not_the_list_provider(inspection):
-    registry, _, selection, _, prepare, _ = inspection
+    registry, _, selection, _, prepare, root = inspection
     raw = registry._selected("system.service.status", "system").inspect()
     raw.pop("available", None)
     raw.update(provider="another", owner="another", handler="another__status")
@@ -112,6 +112,9 @@ def test_explicit_inspection_provider_is_not_the_list_provider(inspection):
     with pytest.raises(CapabilityError, match="^inspection_unavailable$"):
         prepare()
     explicit = dict(selection, inspection_provider="another")
+    with pytest.raises(CapabilityError, match="^inspection_unavailable$"):
+        prepare(explicit)
+    (root / "config/modules.conf").write_text("system=enabled\nanother=enabled\n")
     assert prepare(explicit)["target"]["provider"] == "another"
 
 

@@ -226,13 +226,25 @@ def test_concurrent_processes_atomic_global_capacity(ctx, tmp_path):
     assert Snapshots(runtime).inspect()["snapshots"] == 8
 
 
-@pytest.mark.parametrize("cause", ["disable", "session_end", "restart", "dead_reservation", "orphan"])
+@pytest.mark.parametrize("cause", ["disable", "policy_missing", "policy_malformed", "policy_duplicate",
+                                  "policy_symlink", "session_end", "restart", "dead_reservation", "orphan"])
 def test_lifecycle_and_abandoned_lease_recovery(ctx, tmp_path, cause):
     store = Snapshots(tmp_path / "runtime")
     first = store.build(ctx, 1, lambda: iter(rows(2)))
     revision = first["page"]["snapshot_revision"]
     if cause == "disable":
         (tmp_path / "config/modules.conf").write_text("system=disabled\n")
+    elif cause.startswith("policy_"):
+        policy = tmp_path / "config/modules.conf"
+        policy.unlink()
+        if cause == "policy_malformed":
+            policy.write_text("system=enabled\nother=maybe\n")
+        elif cause == "policy_duplicate":
+            policy.write_text("system=enabled\nsystem=disabled\n")
+        elif cause == "policy_symlink":
+            target = tmp_path / "external-policy"
+            target.write_text("system=enabled\n")
+            policy.symlink_to(target)
     elif cause == "session_end":
         store.release(session=ctx["session"])
     elif cause in {"restart", "dead_reservation"}:

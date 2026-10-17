@@ -7,8 +7,9 @@ setup() {
     source "${BATS_TEST_DIRNAME}/../../core/lib/module_loader.sh"
     source "${BATS_TEST_DIRNAME}/../../core/lib/config_loader.sh"
     mkdir -p "$IGOR_DIR/modules/example" "$IGOR_DIR/config/variables"
-    _IGOR_MODULE_DIRS[example]="$IGOR_DIR/modules/example"
+    _IGOR_MODULE_DIRS["example"]="$IGOR_DIR/modules/example"
     printf 'name=example\n' > "$IGOR_DIR/modules/example/module.conf"
+    printf 'example=enabled\n' > "$IGOR_DIR/config/modules.conf"
 }
 
 teardown() {
@@ -31,13 +32,13 @@ CONF
 @test "startup config validation ignores an inactive loaded owner" {
     printf 'variables_file=config/variables/missing.env\n' \
         >> "$IGOR_DIR/modules/example/module.conf"
-    _IGOR_LOADED_MODULES[example]=1
-    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_LOADED_MODULES["example"]=1
+    _IGOR_MODULE_STATUS["example"]=active
 
     run _cfg_validate_all_loaded_modules
     [[ "$output" == *"missing.env"* ]]
 
-    _IGOR_MODULE_STATUS[example]=disabled
+    _IGOR_MODULE_STATUS["example"]=disabled
     run _cfg_validate_all_loaded_modules
     [ "$status" -eq 0 ]
     [[ "$output" != *"missing.env"* ]]
@@ -48,7 +49,7 @@ CONF
     if igor_load_module example; then
         false
     fi
-    [ -z "${_IGOR_LOADED_MODULES[example]:-}" ]
+    [ -z "${_IGOR_LOADED_MODULES["example"]:-}" ]
 }
 
 @test "menu dispatch loads a discovered module and preserves callback status" {
@@ -63,7 +64,7 @@ MODULE
     local rc=0
     igor_dispatch_menu_item x || rc=$?
     [ "$rc" -eq 7 ]
-    [ "${_IGOR_LOADED_MODULES[example]:-}" = 1 ]
+    [ "${_IGOR_LOADED_MODULES["example"]:-}" = 1 ]
 }
 
 @test "menu dispatch does not call the menu after a failed legacy load" {
@@ -77,8 +78,8 @@ MODULE
 }
 
 @test "legacy lazy menu cannot load or run after its owner becomes inactive" {
-    _IGOR_LOADED_MODULES[example]=1
-    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_LOADED_MODULES["example"]=1
+    _IGOR_MODULE_STATUS["example"]=active
     _IGOR_REGISTERING_MODULE=example
     igor_register_menu_item l Legacy module legacy_file menu_example
     _IGOR_REGISTERING_MODULE=""
@@ -86,13 +87,13 @@ MODULE
     _igor_load_module() { touch "$IGOR_DIR/legacy-loaded"; }
     menu_example() { touch "$IGOR_DIR/menu-ran"; }
 
-    _IGOR_MODULE_STATUS[example]=disabled
+    _IGOR_MODULE_STATUS["example"]=disabled
     run igor_dispatch_menu_item l
     [ "$status" -eq 1 ]
     [ ! -e "$IGOR_DIR/legacy-loaded" ]
     [ ! -e "$IGOR_DIR/menu-ran" ]
 
-    _IGOR_MODULE_STATUS[example]=unavailable
+    _IGOR_MODULE_STATUS["example"]=unavailable
     run igor_dispatch_menu_item l
     [ "$status" -eq 1 ]
     [ ! -e "$IGOR_DIR/legacy-loaded" ]
@@ -118,7 +119,7 @@ MODULE
 }
 
 @test "capability catalog excludes declared actions without executable implementations" {
-    _IGOR_LOADED_MODULES[example]=1
+    _IGOR_LOADED_MODULES["example"]=1
     _IGOR_REGISTERING_MODULE=example
     example__capabilities() {
         cat <<'CAPS'
@@ -143,8 +144,8 @@ CAPS
 }
 
 @test "capability catalog advertises actions only while their owner is active" {
-    _IGOR_LOADED_MODULES[example]=1
-    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_LOADED_MODULES["example"]=1
+    _IGOR_MODULE_STATUS["example"]=active
     _IGOR_REGISTERING_MODULE=example
     example__capabilities() {
         cat <<'CAPS'
@@ -162,15 +163,15 @@ CAPS
     [ -n "${_IGOR_CAPABILITIES[owned_action]:-}" ]
     [ "${_IGOR_CAPABILITY_OWNERS[owned_action]}" = example ]
 
-    _IGOR_MODULE_STATUS[example]=disabled
+    _IGOR_MODULE_STATUS["example"]=disabled
     igor_load_capabilities
     [ -z "${_IGOR_CAPABILITIES[owned_action]:-}" ]
 }
 
 @test "legacy ai_tools prose cannot create an executable catalog action" {
     source "${BATS_TEST_DIRNAME}/../../core/ai/control.sh"
-    _IGOR_LOADED_MODULES[example]=1
-    _IGOR_MODULE_STATUS[example]=active
+    _IGOR_LOADED_MODULES["example"]=1
+    _IGOR_MODULE_STATUS["example"]=active
     _IGOR_REGISTERING_MODULE=example
     example__ai_tools() {
         printf '[{"name":"prose_only_action","description":"legacy text"}]'

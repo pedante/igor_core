@@ -24,6 +24,9 @@ can run without a reviewed Core adapter.
 
 Modules can stay installed while disabled. Use `bash igor.sh --modules` to inspect
 API version, activation state, unavailable reasons and owned contributions.
+Activation requires an explicit `enabled` entry in `config/modules.conf`, including
+for System. Use `bash igor.sh --enable system` or `--enable docker` to record that
+decision. Missing entries stay disabled; startup never adds an activation entry.
 Use `bash igor.sh --modules inspect system` for data-only JSON package inspection
 or `bash igor.sh --modules detach-plan system` for a read-only impact assessment.
 These commands source no module code or legacy configuration and do not refresh

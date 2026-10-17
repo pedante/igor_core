@@ -11,6 +11,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -22,6 +23,93 @@ CACHE_VERSION = 1
 
 class RegistryError(ValueError):
     """Unsafe or malformed derived registry state."""
+
+
+POLICY_NAME = re.compile(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*")
+
+
+def read_policy(root: Path) -> dict[str, str]:
+    """Read explicit activation without creating files or evaluating shell."""
+    directory = root / "config"
+    path = directory / "modules.conf"
+    if directory.is_symlink() or path.is_symlink():
+        raise RegistryError("module policy path must not be a symlink")
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+                raise RegistryError("module policy must be a bounded regular file")
+            raw = stream.read(65537)
+            if len(raw) > 65536:
+                raise RegistryError("module policy exceeds size limit")
+            lines = raw.decode("utf-8").splitlines()
+    except FileNotFoundError:
+        return {}
+    except (OSError, UnicodeError) as exc:
+        raise RegistryError("cannot read module policy") from exc
+    states: dict[str, str] = {}
+    for number, raw in enumerate(lines, 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        match = re.fullmatch(r"(" + POLICY_NAME.pattern + r")\s*=\s*(enabled|disabled)", line)
+        if not match:
+            raise RegistryError(f"module policy line {number} is malformed")
+        name, state = match.groups()
+        if name in states:
+            raise RegistryError(f"module policy has duplicate entry for {name}")
+        states[name] = state
+    return states
+
+
+def set_policy(root: Path, name: str, state: str) -> None:
+    """Atomically edit one explicit activation decision, retaining other entries."""
+    if not POLICY_NAME.fullmatch(name) or state not in {"enabled", "disabled"}:
+        raise RegistryError("invalid module activation decision")
+    package = root / "modules" / name
+    if ((root / "modules").is_symlink() or package.is_symlink()
+            or not (package / "module.conf").is_file()):
+        raise RegistryError("module is not installed")
+    directory = root / "config"
+    if directory.is_symlink():
+        raise RegistryError("module policy path must not be a symlink")
+    directory.mkdir(parents=True, exist_ok=True)
+    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = None
+    try:
+        fcntl.flock(directory_fd, fcntl.LOCK_EX)
+        states = read_policy(root)
+        path = directory / "modules.conf"
+        if path.exists():
+            info = path.stat()
+            if info.st_uid != os.geteuid() or info.st_nlink != 1:
+                raise RegistryError("module policy ownership is unsafe")
+        if states.get(name) == state:
+            return
+        lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+        found = False
+        for index, line in enumerate(lines):
+            if line.split("#", 1)[0].split("=", 1)[0].strip() == name:
+                comment = " #" + line.split("#", 1)[1] if "#" in line else ""
+                lines[index] = f"{name}={state}{comment}"
+                found = True
+        if not found:
+            lines.append(f"{name}={state}")
+        document = "\n".join(lines) + "\n"
+        if len(document.encode("utf-8")) > 65536:
+            raise RegistryError("module policy exceeds size limit")
+        fd, temporary = tempfile.mkstemp(prefix=".modules-", dir=directory)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(document)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.fsync(directory_fd)
+    finally:
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
+        os.close(directory_fd)
 
 
 def _json(value: Any) -> str:
@@ -590,6 +678,20 @@ def emit_registry(cache_path: Path, module_dirs: list[Path]) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if len(argv) >= 3 and argv[1] in {"policy", "policy-set"}:
+        try:
+            root = Path(argv[2]).absolute()
+            if argv[1] == "policy" and len(argv) == 3:
+                for name, state in sorted(read_policy(root).items()):
+                    print(f"{name}\t{state}")
+            elif argv[1] == "policy-set" and len(argv) == 5:
+                set_policy(root, argv[3], argv[4])
+            else:
+                raise RegistryError("invalid module policy command")
+            return 0
+        except (OSError, RegistryError):
+            print("module registry: module policy unavailable or malformed", file=sys.stderr)
+            return 1
     if len(argv) < 4 or argv[1] != "emit":
         print("usage: module_registry.py emit CACHE_PATH MODULE_DIR [MODULE_DIR ...]", file=sys.stderr)
         return 2

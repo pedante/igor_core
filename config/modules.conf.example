@@ -1,4 +1,4 @@
-# Installed modules omitted here remain enabled for compatibility.
+# Installed modules omitted here remain disabled; presence is not activation.
 # This is data, not shell: use only module_name=enabled or module_name=disabled.
 # Restart Igor sessions/workers after changing policy.
 system=enabled

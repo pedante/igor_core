@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from deployments import DeploymentError, DeploymentService
+from module_registry import RegistryError, read_policy
 from operational_history import HistoryError, OperationalHistory, project_inputs
 
 SOURCE = {"kind": "operator", "id": "core.deployments.adoption", "owner": "core"}
@@ -53,27 +53,10 @@ def _load_provider(root: Path, *, active: bool):
     package_version = package_fields.get("version", "")
     if not package_version or len(package_version) > 64:
         raise AttachmentError("attachment provider package version unavailable")
-    policy = root / "config" / "modules.conf"
-    if policy.is_symlink():
-        raise AttachmentError("attachment provider policy unavailable")
     try:
-        lines = policy.read_text(encoding="utf-8").splitlines() if policy.exists() else []
-    except (OSError, UnicodeError) as exc:
+        active = active and read_policy(root).get("nextcloud_docker") == "enabled"
+    except RegistryError as exc:
         raise AttachmentError("attachment provider policy unavailable") from exc
-    seen, explicitly_enabled = set(), None
-    for raw in lines:
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        match = re.fullmatch(r"([a-z][a-z0-9]*(?:[._-][a-z0-9]+)*)\s*=\s*(enabled|disabled)", line)
-        if not match or match.group(1) in seen:
-            raise AttachmentError("attachment provider policy is malformed")
-        name, state = match.groups()
-        seen.add(name)
-        if name == "nextcloud_docker":
-            explicitly_enabled = state == "enabled"
-    # Module API v1 retains the current implicit-enabled compatibility policy.
-    active = active and explicitly_enabled is not False
     if not active:
         raise AttachmentError("attachment provider unavailable")
     sys.path.insert(0, str(module_dir))

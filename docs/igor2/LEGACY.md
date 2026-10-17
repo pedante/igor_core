@@ -150,7 +150,13 @@ before the runtime sourcing paths are cut off.
   session-local domain events. The separate collection-only `bounded_handler.py`
   process wrapper is retired; its limits and negative tests migrate to the shared
   adapter. Canonical typed-output validation and approval/History remain upstream.
-- **Still required in M1:** Python activation/resolution/authorization/History
+- **Python activation policy (implemented; focused proof in STATUS):** the existing
+  registry owns parsing and atomic explicit changes in `config/modules.conf`.
+  Loader, inspection, attachment and collection consumers share it. Omitted
+  packages stay inactive; malformed policy fails closed. The startup System-policy
+  migration and v1 implicit activation are retired. Existing policy/backups remain
+  untouched until an explicit enable/disable command; no data import is implied.
+- **Still required in M1:** Python loading/resolution/authorization/History
   coordination and all consumers; selected package and configuration cutovers;
   offline data transition; retirement of v1 loader/hooks/actions/menus/startup
   sourcing; real System/Docker/Nextcloud proof and independent review.

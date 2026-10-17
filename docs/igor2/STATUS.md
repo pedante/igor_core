@@ -4,24 +4,32 @@ Last updated: 2026-10-17
 
 ## Current focus — M1 implementation from `21da2b5`
 
-- **Phase/candidate:** IMPLEMENTATION on `okigor2`, clean base `21da2b5`.
+- **Phase/candidate:** IMPLEMENTATION on `igor2`, clean base `21da2b5`.
   Owner explicitly requested M1 runtime implementation and internal commits.
   D080/D081 architecture is accepted; no roadmap redesign or delegation.
 - **Scope:** [selected operation/data inventory](LEGACY.md#m1-operation-disposition-at-21da2b5).
   Final Python execution/module coordination, selected System/Docker operations,
   Nextcloud attachment/configuration, offline preservation and v1 retirement.
   Existing roots remain; no production deployment or user-data mutation authorized.
-- **Batch:** Python isolated handler invocation shared by capability, observer and
+- **Committed batch `e269867`:** Python isolated handler invocation shared by capability, observer and
   check callers; remove the separate collection-only subprocess wrapper. Tests
   migrate the existing namespace/path/envelope/collection protections and add
   cancellation, bounded diagnostics, startup injection and child cleanup cases.
+- **Current batch:** shared Python activation-policy reader/writer; loader,
+  inspection, attachment and collection consumers migrated. Omitted modules stay
+  inactive. Startup System enablement migration removed; explicit policy writes
+  retain unrelated decisions and have atomic/idempotent/recovery proof.
 - **Validation:** Owner replied “continue” to the proposed 1,800-second allowance;
-  renewed once with that reason, retaining the ledger. **1455.629 s remain**,
+  renewed once with that reason, retaining the ledger. **1069.877 s remain**,
   240 s per subprocess. The initial focused pass took 56.327 s; corrected checks
   and canonical safety/History proof took 267.306 s; the approval-only environment
-  correction took 20.720 s. No broad/full suite or live deployment changes.
-- **Batch exit:** handler implementation, callers and focused safety proof complete;
-  author diff review and internal commit. Next: Python module/execution authority,
+  correction took 20.720 s. Activation-policy initial/correction runs took
+  269.928 s and 96.874 s; final lint/reference checks took 15.790 s.
+  No broad/full suite or live deployment changes.
+- **Batch exit:** handler implementation committed; activation-policy batch in
+  RELEASE_FREEZE with behavior, lint/reference checks and author diff review
+  complete; scoped internal commit/status verification closes this batch only.
+  Next: Python module/execution authority,
   selected package/configuration cutovers and v1 retirement. M1 remains open.
 - **Blockers for milestone acceptance:** disposable Nextcloud setup remains
   separately unauthorized/unavailable per the prior fixture record; no independent
@@ -31,11 +39,11 @@ Last updated: 2026-10-17
 
 | EXECUTION class | Current evidence / remaining proof |
 |---|---|
-| Contract | Shared Python handler and existing shell bridge tests PASS: namespace/path/input/envelope rejection, bounded output, TERM-ignoring timeout/cancellation, descendants, startup injection and private error handling |
-| Regression | Handler/collection/event/validation mapping, canonical dispatcher, exact approval and native privilege tests PASS. Two existing lint issues in touched tests corrected. No broad gate claimed |
-| Vertical-slice | Canonical History suite PASS, including real System memory READ and durable reopen, pre-effect History, interrupted CHANGE/no replay, refusal and failed verification. Full CLI/TUI/Docker and Nextcloud `2 → 3 → 2` remain open |
-| Inspection | Clean base, declarations/callers and final adapter diff reviewed by author; no independent review claimed |
-| Migration/recovery | Separate collection wrapper and bypass flags retired with caller/tests; interrupted-operation History proof PASS. Operation/data disposition recorded; persistent transition and v1 cutoff remain unimplemented |
+| Contract | Shared Python handler tests PASS for path/input/envelope, limits, cancellation, startup injection and private errors. Activation parser/writer tests PASS for omitted/malformed/duplicate/symlink/nonregular/oversized policy, explicit decisions, private writes and uninstalled targets |
+| Regression | Handler/collection/event/validation mapping, canonical dispatcher, exact approval and native privilege tests PASS. Policy consumers, loader activation/dependencies, attachment and collection leases/inspection PASS after fixture updates. No broad gate claimed |
+| Vertical-slice | Canonical History suite PASS, including real System memory READ, durable reopen, pre-effect History, interrupted CHANGE/no replay, refusal and failed verification. Real System observer and knowledge loading PASS after explicit activation; attachment CLI proof uses mocked native resources. Full CLI/TUI/Docker and Nextcloud `2 → 3 → 2` remain open |
+| Inspection | Clean base, declarations/callers and adapter diff reviewed by author; static inspection reports omitted packages inactive. Malformed policy is inspectable without source execution. No independent review claimed |
+| Migration/recovery | Separate collection wrapper, bypass flags, v1 implicit activation and automatic System-policy migration retired. Policy interruption preserves original; repeated decisions are idempotent; unrelated entries/comments retained; stale/disabled attachment and collection proof PASS. Broader persistent transition and v1 runtime cutoff remain unimplemented |
 
 The safety run initially failed one destructive-approval fixture because its
 workspace was under `/home`, which the unchanged deletion denylist correctly
@@ -49,6 +57,23 @@ Evidence summaries (initial failures retained):
 - `.igor-governor/evidence/m1-handler-focused-20261017/summary.json`; SHA-256 `8af6e13eaa2d761088465b61c72b71960a5fa27e678d994b39c10cc0819fdd1d`.
 - `.igor-governor/evidence/m1-handler-safety-20261017/summary.json`; SHA-256 `ec0b49c244866a3a40f5382e0c85a3501c255d9f6509653afc4adced899455b3`.
 - `/tmp/igor-m1-handler-approval-20261017/summary.json`; SHA-256 `20752af67495f528b81f5176e7e2a17999d2b6ddca92fe7b811476787f81b1a9`.
+
+Activation-policy evidence (initial failures retained):
+
+- `/tmp/igor-m1-policy-20261017/summary.json`; SHA-256 `ced553673cc2f27895646345d685ac8a026b793814d22e59156871986b78f49e`.
+- `/tmp/igor-m1-policy-corrected-20261017/summary.json`; SHA-256 `58de03a1b7b582806b367f1bce23dc60f10034a3e61cca8039e926ad27deaf9d`.
+- `/tmp/igor-m1-policy-final-20261017/summary.json`; SHA-256 `e704abf8f94f020b69e62d1af749fa6b6cc6d37ff8f57d21e95dd8053947b249`.
+
+Four behavior failures were obsolete implicit-activation/process-count fixtures:
+System knowledge, omitted v1 activation, the separate policy process and a second
+collection inspection provider. Fixtures now explicitly activate intended owners;
+the omitted-owner tests prove refusal. Lint failures were corrected, including
+ineffective BATS negation assertions, unused imports and UTC spelling. The final
+fixture array-index correction passes lint; affected BATS syntax checks pass.
+Combined retained evidence covers **200 distinct checks/test identities**, all
+passing, with zero remaining failures/skips/timeouts/unavailable tools. This
+excludes the removed implicit-v1 assertion and does not add rerun counts.
+No failure was waived; no production policy or user data was changed.
 
 ## Previous task — governance cleanup and accepted M1/M2 handoff
 

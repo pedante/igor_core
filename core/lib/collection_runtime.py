@@ -14,7 +14,7 @@ import secrets
 import signal
 import stat
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from capability_runtime import (
@@ -97,14 +97,13 @@ class Snapshots:
             tmp.unlink(missing_ok=True)
 
     def _enabled(self, entry):
-        # Disabled owners lose all leases even when another session still runs.
-        config = Path(entry["igor_dir"]) / "config/modules.conf"
-        if config.exists():
-            for line in config.read_text().splitlines():
-                key, _, value = line.partition("=")
-                if key.strip() == entry["owner"] and value.strip() == "disabled":
-                    return False
-        return True
+        # Fresh policy revokes leases even while an older session remains open.
+        from module_registry import RegistryError, read_policy
+
+        try:
+            return read_policy(Path(entry["igor_dir"])).get(entry["owner"]) == "enabled"
+        except RegistryError:
+            return False
 
     def _drop(self, state, revision):
         entry = state["entries"].get(revision)
@@ -246,7 +245,7 @@ class Snapshots:
         created = self.clock()
         desc = context["descriptor"]
         row_schema = validate_output_schema(desc["outputs"], collection=desc["collection"])["properties"]["rows"]["items"]
-        stamp = datetime.now(timezone.utc)
+        stamp = datetime.now(UTC)
         snapshot = {"resource_kind": desc["collection"]["resource_kind"],
                     "inventory": desc["collection"]["inventory"], "rows": [],
                     "freshness": {"observed_at": stamp.isoformat().replace("+00:00", "Z"),

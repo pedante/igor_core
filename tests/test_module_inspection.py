@@ -99,14 +99,15 @@ class ModuleInspectionTests(unittest.TestCase):
         self.assertIn("resource_bindings", detach["unknown"])
         self.assertIn("operational_history", detach["retained"])
 
-    def test_v1_metadata_is_best_effort_and_uses_compatibility_default(self):
+    def test_v1_metadata_is_best_effort_and_requires_explicit_activation(self):
         self.package(api=1, manifest_extra="display_name=From another section\n")
         runtime = {"contributions": [{"index_key": "hook:health", "owner": "fixture",
                                       "availability": "active", "descriptor": "legacy hook"}]}
         result = module_inspection.inspect_module(self.root, "fixture", runtime)
         self.assertEqual(result["module"]["api"], 1)
         self.assertEqual(result["module"]["validation"], "best_effort_unverified")
-        self.assertEqual(result["lifecycle"]["policy_state"], "enabled_compatibility_default")
+        self.assertEqual(result["lifecycle"]["policy_state"], "disabled_by_default")
+        self.assertFalse(result["lifecycle"]["enabled"])
         self.assertEqual(result["lifecycle"]["runtime_status"], "not_evaluated")
         self.assertIsNone(result["lifecycle"]["loaded"])
         self.assertEqual(result["declarations"][0]["id"], "health")

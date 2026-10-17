@@ -10,13 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import stat
 import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from module_contract import ValidationError, probe_api, validate_module
+from module_registry import RegistryError, read_policy
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 
@@ -76,37 +76,10 @@ def _safe_package(root: Path, name: str) -> tuple[Path, Path]:
 
 
 def _policy(root: Path) -> dict[str, str]:
-    config_dir = root / "config"
-    if config_dir.is_symlink():
-        raise InspectionError("module policy directory must not be a symlink")
-    path = config_dir / "modules.conf"
-    if path.is_symlink():
-        raise InspectionError("module policy file must not be a symlink")
     try:
-        mode = path.lstat().st_mode
-    except FileNotFoundError:
-        return {}
-    except OSError as exc:
-        raise InspectionError("cannot inspect module policy file") from exc
-    if not stat.S_ISREG(mode):
-        raise InspectionError("module policy path must be a regular file")
-    states: dict[str, str] = {}
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeError) as exc:
-        raise InspectionError("cannot read module policy file") from exc
-    for number, raw in enumerate(lines, 1):
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        match = re.fullmatch(r"([a-z][a-z0-9]*(?:[._-][a-z0-9]+)*)\s*=\s*(enabled|disabled)", line)
-        if not match:
-            raise InspectionError(f"module policy line {number} is malformed")
-        name, state = match.groups()
-        if name in states:
-            raise InspectionError(f"module policy has duplicate entry for {name}")
-        states[name] = state
-    return states
+        return read_policy(root)
+    except RegistryError as exc:
+        raise InspectionError(str(exc)) from exc
 
 
 def _v1_metadata(package: Path) -> dict[str, Any]:
@@ -165,12 +138,7 @@ def _module_data(root: Path, name: str) -> tuple[dict[str, Any], list[dict[str, 
         except ValidationError as exc:
             raise InspectionError(f"module v2 validation failed: {exc}") from exc
         manifest = validated["manifest"]
-        policy_state = policy.get(name)
-        if policy_state is None:
-            if name == "system":
-                policy_state = "migration_pending_unknown"
-            else:
-                policy_state = "disabled_by_default"
+        policy_state = policy.get(name, "disabled_by_default")
         module = {"id": name, "api": 2, "display_name": manifest["display_name"],
                   "package_version": manifest["version"], "package_path": str(package),
                   "manifest": manifest, "validation": "verified_by_module_api_v2_validator"}
@@ -186,7 +154,7 @@ def _module_data(root: Path, name: str) -> tuple[dict[str, Any], list[dict[str, 
         deps = {**meta["legacy_dependencies"],
                 "dependency_metadata_unknown_fields": meta["dependency_metadata_unknown_fields"],
                 "depends_on_ordering_only": meta["depends_on_ordering_only"]}
-        policy_state = policy.get(name, "enabled_compatibility_default")
+        policy_state = policy.get(name, "disabled_by_default")
         v1 = True
     else:
         raise InspectionError(f"unsupported or malformed module API: {api}")
@@ -407,7 +375,7 @@ def inspect_module(root: str | Path, name: str, runtime: Mapping[str, Any] | Non
         raise InspectionError("runtime module state must be an object")
     enabled: bool | None = None
     policy = static["policy_state"]
-    if policy in {"enabled", "enabled_compatibility_default"}:
+    if policy == "enabled":
         enabled = True
     elif policy in {"disabled", "disabled_by_default"}:
         enabled = False

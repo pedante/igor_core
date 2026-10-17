@@ -16,10 +16,25 @@ from attachment import NextcloudAttachmentProvider
 from deployment_attachment import (
     AttachmentError,
     DeploymentAttachment,
+    _load_provider,
     capability_records,
 )
 from deployments import DeploymentService
 from operational_history import OperationalHistory
+
+
+@pytest.mark.parametrize("policy", [None, "nextcloud_docker=disabled\n",
+                                    "nextcloud_docker=enabled\nother=invalid\n",
+                                    "nextcloud_docker=enabled\nnextcloud_docker=enabled\n"])
+def test_provider_requires_valid_explicit_activation(tmp_path, policy):
+    package = tmp_path / "modules/nextcloud_docker"
+    package.mkdir(parents=True)
+    (package / "module.conf").write_text("[module]\nname=nextcloud_docker\nversion=1.0.0\n")
+    if policy is not None:
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config/modules.conf").write_text(policy)
+    with pytest.raises(AttachmentError, match="provider (policy )?unavailable"):
+        _load_provider(tmp_path, active=True)
 
 
 def container(cid: str, *, name="nc-app", project="nc", created="2025-01-02T03:04:05Z"):
