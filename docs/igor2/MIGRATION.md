@@ -5,6 +5,11 @@ of original Igor on `master`. Internal pre-release contracts may change through
 complete tested migration without retaining obsolete parallel implementations.
 Migration is bounded work on Igor 2, not a requirement to reconcile Igor 1.
 
+D080 requires complete Igor 1 cutoff. [LEGACY](LEGACY.md) is the executable
+consumer/data/retirement plan. The [reset roadmap](ROADMAP.md) proposes a
+coherent shipped-module batch; new runtime architecture remains DISCOVERY until
+confirmed. Historical wave scope below is evidence, not a permanent restriction.
+
 ## Roadmap outcomes are not rebuild instructions
 
 The current `igor2` tree already implements substantial parts of the interaction runtime, privilege flow, module activation boundary, platform helpers, AI trust boundary and capability catalog.
@@ -75,13 +80,16 @@ Examples:
 - capability API authoritative -> remove duplicate interface-specific operations;
 - context engine authoritative -> remove equivalent ad-hoc context/prompt paths.
 
-### Final consolidation
+### No delayed compatibility cleanup gate
 
-Step 23 removes compatibility shims and obsolete contracts intentionally retained during migration.
+Old Step 23 is superseded. Remove each obsolete interface in the milestone that
+migrates its consumers/data; complete Igor 1 cutoff is a finite deliverable.
 
 ## Vertical-slice migration rule
 
-Do not migrate every domain at once.
+Bound migrations to named consumers and a usable result. The proposed M1 groups
+the three shipped packages and their ownership/execution consumers; it does not
+authorize adding new domains or simultaneously rewriting AI coordination.
 
 The completed Wave C boundary used this bounded scope (not a permanent
 compatibility obligation for later migrations):
@@ -90,7 +98,8 @@ compatibility obligation for later migrations):
 - use a small part of `system` as the mixed v1/v2 reference;
 - keep `nextcloud_docker` on v1 to prove compatibility.
 
-After Wave C is green, use bounded real slices rather than migrate every domain.
+The historical compatibility slice is complete. Later work uses real consumer
+proof within a coherent milestone, not another indefinite v1 coexistence stage.
 
 The current Nextcloud direction first proves brownfield recognition/attachment
 and one reversible adopted setting across ownership/configuration, module

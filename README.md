@@ -2,16 +2,20 @@
 
 **I Guard. Observe. Repair.**
 
-Igor is a modular Bash platform for operating self-hosted services on Linux.
-The core provides an AI assistant, a self-healing engine, diagnostics,
-notifications, and backup/restore. The service-agnostic split is still in progress:
-some core diagnostics retain application code behind capability checks.
-Modules plug into the core via a hook registry and add domain-specific logic.
+Igor is an unreleased Linux system operator implemented in Bash and Python.
+It provides an AI assistant, host/application operations, diagnostics, operational
+History and a curses TUI. The runtime is still mixed: v2 capabilities coexist
+with legacy hooks, menus and configuration. Some Core diagnostics retain
+application-specific code; canonical safety guarantees do not yet cover every
+legacy operation.
 
 `nextcloud_docker`, when present, manages a Nextcloud-on-Docker stack.
 Check `modules/` for the modules available in your checkout.
-The included `system` module monitors the host (CPU, RAM, disk, temperature).
-New modules can be added without touching core code.
+The included `system` module provides host operations and monitoring; `docker`
+provides a small v2 container-operation surface. New extension design uses the
+[v2 contract](docs/igor2/MODULE_API.md). General module independence is still
+being completed; declarations alone do not guarantee a new privileged operation
+can run without a reviewed Core adapter.
 
 > **Igor 2 development:** `igor2` is the sole independent unreleased development
 > baseline; `master` is the separate original Igor program. Follow the
@@ -49,8 +53,11 @@ inspects Core-owned desired state. See the
 [System workflow](docs/igor2/SYSTEM_MEMORY_WORKFLOW.md) for runtime evidence,
 failure handling and explicit recovery.
 
-> Built on a Raspberry Pi 3. Every design decision exists because something broke
-> first at 3am. Nothing is theoretical.
+> **Current safety limitation:** the legacy Nextcloud Services **NUKE** action
+> enumerates host-wide Docker volumes/images outside canonical approval/History.
+> Do not use it on a host containing data you need. Legacy service commands can
+> also report success after Docker failure. These source-confirmed defects and
+> their proposed replacement are documented in the [architectural audit](docs/igor2/ARCHITECTURE_READINESS.md).
 
 ---
 
@@ -69,8 +76,10 @@ or `b` to return to chat. Actions that need arguments prompt for them before
 running through the same command handler used by typed commands.
 
 Launch the full-screen AI chat with `bash igor.sh --ai-tui`. It uses Python 3's
-standard-library curses support and needs an interactive terminal. The classic
-line UI remains available through `bash igor.sh`; use it for initial provider
+standard-library curses support and needs an interactive terminal. A no-argument
+`bash igor.sh` also selects the TUI when stdin and stdout are terminals. This
+implemented routing does not close the broader Step 20C acceptance gate. The classic
+line UI remains available through `bash igor.sh --classic`; use it for initial provider
 setup or whenever the full-screen UI is unavailable. In the full-screen UI,
 activity scrolls above a fixed input area. Press Enter to send, Ctrl+O or
 Alt+Enter for another input line, and F1 for the full key list. Up/Down recall
@@ -456,7 +465,7 @@ unchanged. See [the lifecycle and recovery contract](docs/igor2/CONFIGURATION.md
 
 | Requirement | Notes |
 |-------------|-------|
-| Bash 4.2+ | Associative arrays required |
+| Bash 4.3+ syntax requirement | Associative arrays and namerefs; this is not a complete distro-support claim |
 | Python 3 | AI transport, tool validation, conversation processing, and rendering; CI uses 3.11 |
 | curl | API calls and health probes |
 | Linux with systemd | Debian-family is the primary current baseline. Arch-aware distro/package paths exist; Igor 2 will make Debian and Arch explicitly tested targets. |
@@ -465,7 +474,10 @@ unchanged. See [the lifecycle and recovery contract](docs/igor2/CONFIGURATION.md
 | fzf *(optional)* | Enhanced menus — plain text menus work without it |
 | bats *(optional)* | Running the test suite |
 
-Igor was developed on a **Raspberry Pi 3 (1 GB RAM)**. It is designed for Linux with Bash 4.2+, but broad distro compatibility is not yet a tested guarantee. The `system` module supports Pi-specific hardware readings
+Igor was developed on a **Raspberry Pi 3 (1 GB RAM)**. Current scripts require at
+least Bash 4.3 syntax; the Python minimum/support matrix still needs release
+verification beyond the CI baseline. Broad distro compatibility is not yet a
+tested guarantee. The `system` module supports Pi-specific hardware readings
 (vcgencmd temperature, undervoltage) with generic `/proc` fallbacks on other hardware.
 
 ---

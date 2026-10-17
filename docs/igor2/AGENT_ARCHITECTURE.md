@@ -1,5 +1,11 @@
 # Wave E agent architecture — Steps 11–12 contract
 
+D080 supersedes the historical Module API v1 preservation requirements in this
+document. They describe the original implementation boundary, not obligations
+for the [complete cutoff](LEGACY.md). Retain safety, activation, data and
+verification behavior while migrating all live consumers. Other schema/version
+axes called v1 are independent and are not blanket deletion targets.
+
 Status: **accepted contract with bounded Wave E implementation**. Wave D Steps
 7–10 remain the baseline. This contract extends the single Wave C contribution index, the
 current action catalog and dispatcher, Wave D System Model/health interfaces,

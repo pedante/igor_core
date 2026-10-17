@@ -4,8 +4,16 @@
 `igor2` as the independent unreleased baseline. Internal contracts may be
 deliberately replaced through complete tested consumer/data migration; the
 authority, identity, ownership, platform and safety invariants below remain
-mandatory. Proposed collections extend these contracts in
-[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md), currently DISCOVERY.
+mandatory. D080 requires a complete Igor 1 cutoff; see [LEGACY](LEGACY.md).
+Collections extend these contracts under accepted D079 in
+[COLLECTION_OPERATOR_RFC.md](COLLECTION_OPERATOR_RFC.md); acceptance remains
+increment-specific, with Increment E deferred/unaccepted.
+
+The [2026-10-17 audit](ARCHITECTURE_READINESS.md) recommends consolidating the
+control plane into Python, a small explicit task state machine and five delivery
+milestones. Those revised implementation choices remain DISCOVERY until Owner
+confirmation. This file retains accepted principles; it does not claim that
+today's runtime satisfies every invariant or that the proposed reset is implemented.
 
 ## Product definition
 

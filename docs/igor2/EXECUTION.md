@@ -6,10 +6,9 @@ with `master`. The five proof classes below are unchanged.
 
 ## Why this document exists
 
-Igor's broad architecture is now clearer than its completion gates. The main
-project risk is no longer choosing the wrong high-level direction; it is
-allowing a large wave to become "done by narrative" instead of done by
-evidence.
+Architecture and completion both require evidence. The reset audit challenges
+implementation complexity and sequencing; this document prevents a coherent
+milestone from becoming "done by narrative" rather than demonstrated behavior.
 
 This document defines how roadmap work is executed, inspected and closed.
 
@@ -138,7 +137,13 @@ record does not complete a roadmap feature.
 
 ## Thin-slice strategy
 
-Use the smallest real implementation that crosses the new boundary.
+Use a real operation to prove each new boundary inside a coherent milestone.
+A thin proof slice is not a requirement to divide a complete product change into
+many separately approved roadmap items. The proposed reset in [ROADMAP](ROADMAP.md)
+groups complete module/ownership/execution work; it remains DISCOVERY until
+architecture confirmation. D080 independently supersedes v1 retention obligations.
+The five proof classes above remain mandatory where applicable; one scenario
+ledger can satisfy several classes without rerunning the same work.
 
 ### Wave C
 

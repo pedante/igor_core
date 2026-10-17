@@ -9,18 +9,21 @@ platform/dependency support, lifecycle isolation, data recovery and safety.
 
 ## Assessment
 
-The manifest loader and hook registry are a sound basis for detachable modules.
+The explicit activation and owner-aware contribution model are useful foundations.
+The old hook registry is a migration input, not the final extension contract:
+D080 requires its retirement with all consumers in the [cutoff](igor2/LEGACY.md).
 Previously, however, discovery also implied activation. `required_modules` checked
 successful loading while only `depends_on` determined ordering. Check discovery,
 legacy menu-file loading, diagnostic phases, and AI fallback tools could bypass
 registration entirely. Removing a directory therefore did not reliably remove its
 operational assumptions.
 
-There are currently two modules: `system` and `nextcloud_docker`. Neither declares
-a mandatory module dependency. Nextcloud's `depends_on=system` is an ordering
-preference; its `optional_modules=system` declaration does not require system to
-be active. Both can be disabled independently. Core remains usable with neither
-active, although module-provided host checks disappear when system is disabled.
+There are three shipped manifests: `system` (mixed v1/v2), `docker` (v2) and
+`nextcloud_docker` (v1). `modules/samba/` contains a recognition adapter, not a
+complete module package. Nextcloud's `depends_on=system` is a legacy ordering
+preference; Docker declares optional System capability dependencies. Disabling
+an owner removes its contributions; dependent operations may become unavailable
+with a reason. It does not silently enable another module or stop native services.
 
 ## Policy and states
 

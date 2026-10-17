@@ -1,6 +1,10 @@
 # Igor 2 architectural decisions
 
-Accepted decisions should not be repeatedly reopened without new repository evidence. Open decisions are resolved at the roadmap stage where they become necessary.
+Accepted decisions should not be repeatedly reopened without new repository evidence.
+The Owner-requested 2026-10-16 reset explicitly supplies authority to review them.
+D080 accepts complete Igor 1 cutoff; Q025 records the recommended implementation
+architecture awaiting confirmation. Historical implementation evidence remains valid
+within its original scope, even where its future compatibility obligation is superseded.
 
 ## Accepted
 
@@ -81,6 +85,9 @@ validation clearly; they are not silently interpreted as Bash.
 
 ### D018 — Keep a small INI bootstrap manifest and use explicit JSON declarations (Q002)
 
+D080 supersedes the obligation to retain the v1 parser below. The strict INI/JSON
+choice remains accepted; current v1 behavior exists until the authorized cutoff.
+
 `module.conf` remains the discovery and identity file. A v2 manifest declares
 `module_api=2`, identity/version, handler runtime/entrypoint if needed, explicit
 contract file paths and module-wide requirements. V2 parsing is strict and
@@ -119,8 +126,10 @@ by this decision alone.
 
 ### D021 — V2 evolves one activation runtime with explicit compatibility
 
-Amended by D078 for internal pre-release coexistence/retirement; historical
-accepted boundary below is retained.
+**Compatibility direction superseded by D080.** The single activation authority,
+owner isolation and explicit unavailable states remain. V1 coexistence, keeping
+Nextcloud v1 and waiting until Step 23 are historical implementation choices,
+not requirements. The original accepted boundary below is retained for evidence.
 
 The current discovered/disabled/active/unavailable states and restart-based
 activation remain; no hot unload or new persistent state is needed. V2
@@ -1231,7 +1240,56 @@ subsequent evidence-only edits. Formal DISCOVERY closure and first READ-only
 EXECUTION readiness are recorded in STATUS. No runtime implementation is part
 of the 2026-10-12 closure checkpoint. Q022–Q024 are not reopened.
 
+### D080 — Complete Igor 1 cutoff
+
+**Accepted by explicit Owner instruction, 2026-10-16; recorded 2026-10-17.**
+Igor 2 is the sole target architecture. Remove v1 module compatibility, legacy
+adapters/manifests/parsers/hooks/registrations, old configuration fallback and
+duplicate loading, obsolete internal APIs/execution interfaces, and their tests
+and guides when the corresponding implementation is migrated. No indefinite
+coexistence or permanent runtime transition framework.
+
+This supersedes D018's retained v1 parser, D021's compatibility direction, old
+Wave C requirements to keep `nextcloud_docker` on v1, and a mandatory Step 23
+wait/deprecation period. D017's language-neutral data contract and useful Bash
+handlers, D019's dependency validation, D022's reviewed-code trust and explicit
+activation, and safety/ownership/data invariants remain. Old capability/History
+schema version numbers are independent of Module API v1 and are not blanket
+deletion targets.
+
+Preserve valuable functionality and deliberate export/import/manual transition
+for configuration, secrets and retained data. Never silently delete native
+application data or reinterpret historical operation results. One-shot offline
+transition tooling is permitted; runtime fallback is not the target.
+
+The [cutoff plan](LEGACY.md) inventories removal, replacement, retained code,
+module/data/test/doc changes and proof. The [audit](ARCHITECTURE_READINESS.md)
+and [roadmap](ROADMAP.md) propose implementation organization. D080 accepts the
+Owner's direction, not every newly proposed architecture or a runtime rewrite
+during this documentation task. Current source remains mixed v1/v2.
+
 ## Open decisions
+
+### Q025 — Confirm the audit's implementation architecture and milestone scope
+
+Recommendation: one Python application coordinator importing existing services,
+reviewed shell/Python leaf handlers, one canonical executor, a small durable Task
+state machine and explicit configuration/state/runtime roots. Keep strict v2
+INI/JSON and current safe storage authorities; no daemon, workflow framework,
+agent swarm or wholesale store rewrite. Deliver the five [roadmap](ROADMAP.md)
+milestones, beginning with the complete three-package v2/ownership cutover.
+
+Alternatives, costs and losses are evaluated in the [audit](ARCHITECTURE_READINESS.md#recommended-architecture).
+Python coordination replaces the Bash-first *control plane*, not the right to
+use Bash handlers. M1 retains the existing coordinator while removing v1; M2
+retires its orchestration without a permanent adapter. Proposed XDG roots require
+the explicit data migration protocol, not startup moves. These are substantial
+architecture/scope choices and need Owner confirmation before runtime work.
+Do not ask the Owner to select routine parser, class or file organization options.
+
+Acceptance would amend the relevant implementation portions of D015/D017 and
+the persistence sequencing in D036/D048, retaining their ownership/safety
+meaning. Until then accepted live contracts remain the implementation authority.
 
 ### Q019 — Initial S8 hardware/runtime identity
 

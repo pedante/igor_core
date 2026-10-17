@@ -5,7 +5,7 @@
 For current implementation details, start with:
 
 1. [README.md](README.md)
-2. [docs/module_creation.md](docs/module_creation.md) — current Module API v1
+2. [docs/igor2/MODULE_API.md](docs/igor2/MODULE_API.md) for Igor 2 extensions; [docs/module_creation.md](docs/module_creation.md) only when tracing still-live legacy v1 consumers
 3. [docs/module_lifecycle.md](docs/module_lifecycle.md) — current activation/runtime semantics
 4. [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
 
@@ -106,11 +106,11 @@ A roadmap item may already be partly or substantially implemented. Inspect befor
 - Persistent layout changes require explicit migration, idempotency, verification and recovery semantics.
 - Secret values do not enter AI context by default; secret-value access should be auditable where practical.
 - Rollback is capability-specific. Do not promise generic undo for arbitrary system operations.
-- During Wave C, use `system` as the incremental v2 reference and keep `nextcloud_docker` on v1.
+- D080 supersedes the historical Wave C requirement to keep `nextcloud_docker` on v1. Igor 2's target is v2 only; migrate all live consumers and preserve data through the finite cutoff in `docs/igor2/LEGACY.md`.
 - Do not freeze current mixed config/secret/state storage assumptions into Module API v2; broad module migration waits for the Ownership Foundation gate.
 - If an unresolved decision would create a durable public contract, stop and surface the decision.
 
-## Current Module API v1
+## Still-live legacy Module API v1
 
 `igor.sh` starts the Bash platform; `core/` owns shared infrastructure and Python helpers. Current modules live under `modules/<name>/` with `module.conf` and `module.sh`.
 
@@ -120,7 +120,9 @@ Loading follows discovery → activation policy → dependency ordering/checks �
 
 Use four spaces, `<name>__*` for module APIs, `_mod_<short>_*` for helpers, and `menu_*` for menus. Healing checks define isolated `run_check()` functions emitting `CHECK_RESULT SEVERITY code message`.
 
-Do not extend v1 hooks merely to mimic the future Module API v2 unless the migration plan calls for it.
+Do not extend v1 hooks. The v2 contract already exists; D080 requires the complete
+consumer/data cutoff in `docs/igor2/LEGACY.md`. This section describes current
+legacy code, not new-module guidance.
 
 ## Configuration and secrets
 

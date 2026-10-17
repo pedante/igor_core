@@ -1,6 +1,6 @@
 # Igor 2 development policy
 
-Status: **authoritative Project Owner policy, accepted 2026-10-10 (D078)**.
+Status: **authoritative Project Owner policy; D078, amended by D080 on 2026-10-16**.
 
 This is the single development-policy authority for Igor 2. It governs branch
 selection and pre-release compatibility obligations alongside
@@ -29,6 +29,23 @@ revision. They select changed-file coverage, not cross-program equivalence.
 CI subscriptions for other branches do not impose a reconciliation gate.
 
 ## Pre-release contract changes
+
+### Complete Igor 1 cutoff (D080)
+
+The Owner requires Igor 2 to support only its own architecture. Eliminate Igor 1
+module parsing, adapters, hooks/registrations, configuration fallback and obsolete
+execution interfaces in the coherent cutoff described in [LEGACY](LEGACY.md).
+Keeping Nextcloud on v1, waiting for old Step 23, a deprecation period or proving
+Igor 1 interface parity is no longer a requirement. Useful implementations and
+user functionality are migration inputs, not automatic deletion candidates.
+
+Preserve/export existing configuration and persistent data with explicit,
+verified, recoverable transition. An offline one-shot importer or documented
+manual transition is allowed; a permanent runtime compatibility framework is not.
+The audit changes documentation only. Revised implementation architecture and
+the broader cutoff batch still require Owner confirmation before runtime work.
+
+### Coherent internal migration
 
 Igor 2 is unreleased and has no released internal backward-compatibility promise.
 Capability contracts, schemas, registries, module interfaces and contribution

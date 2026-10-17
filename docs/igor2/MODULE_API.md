@@ -1,7 +1,9 @@
 # Module Platform v2 — selected design
 
-Status: **accepted Wave C contract with the first implementation complete**. V1
-remains the compatibility API for modules that have not migrated. The existing
+Status: **accepted v2 contract; current runtime still contains v1 migration paths**.
+D080 requires their complete removal, including Nextcloud's v1 interface, in the
+[cutoff plan](LEGACY.md). V1 sections below document live/historical consumers,
+not a supported extension direction or obligation to retain compatibility. The existing
 loader remains the single activation authority; the strict validator,
 owner-aware contribution index and Bash adapter implement the initial v2 path.
 The kind-specific observer and check result/ingestion contract selected for
@@ -315,11 +317,14 @@ declare configuration/state/secret needs, but canonical paths, mutable
 machine-specific storage and secret-value access are owned by Igor services,
 not by arbitrary paths inside a module package.
 
-Wave C uses a small part of `system` as the incremental v2 reference and keeps
-`nextcloud_docker` on v1. Completion follows `EXECUTION.md`: strict contract
+The historical Wave C boundary used a small part of `system` as the incremental
+v2 reference and kept `nextcloud_docker` on v1. D080 supersedes that future
+compatibility obligation. Its recorded completion followed `EXECUTION.md`: strict contract
 proof, regression proof, a real `system` slice, module inspection, and any
-required migration/recovery proof. Broad application-module migration waits
-for the Ownership Foundation gate in `ROADMAP.md`.
+required migration/recovery proof. Broad application-module cutover must satisfy
+the Ownership Foundation semantics in `EXECUTION.md`; the proposed roadmap
+integrates ownership and the shipped-module migration in M1 instead of treating
+them as indefinitely separated foundations.
 
 | Option | Repository consequence | Decision |
 |---|---|---|
@@ -599,13 +604,14 @@ installation with an explicit `system=enabled` policy entry; never override an
 existing disabled entry. Keep its current `systemctl` requirement initially
 so this migration does not silently change activation. Step 7 can move that
 requirement to service-specific contributions after platform helpers support
-it. `nextcloud_docker` stays an unchanged v1 module with its soft
+it. At that historical boundary, `nextcloud_docker` stayed a v1 module with its soft
 `depends_on=system`, menus, action catalog and combined deployment.
 
-V1 removal in Step 23 requires: migrated bundled modules; no live consumers
-of v1-only hooks/menus/check-file conventions; equivalent behavior and
-activation tests; documented external module usage/migration; and a release
-deprecation period. Compatibility is temporary, not a second permanent API.
+D080 replaces the old Step 23/deprecation gate: migrate shipped modules and all
+live consumers together, preserve useful behavior and retained data, prove
+activation/safety/recovery, and remove v1 in that cutoff. No Igor 1 external-module
+compatibility or mandatory deprecation period remains. Explicit supported
+third-party/platform contracts retain their own scope under DEVELOPMENT_POLICY.
 
 ## Core versus `system`
 
@@ -647,7 +653,7 @@ handler protocol failures and both Debian/Arch platform gates. Assert that
 inactive owners contribute nothing through knowledge, checks, capabilities,
 configuration, menus, backup/restore or notifications.
 
-## Wave C implementation sequence and current boundary
+## Historical Wave C implementation sequence
 
 1. `core/lib/module_loader.sh` now performs v1/v2 dispatch, formal state and
    reason queries, staged v2 activation and owner filtering while preserving

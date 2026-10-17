@@ -1,4 +1,10 @@
-# Igor Module Development Guide
+# Legacy Module API v1 reference
+
+D080 requires complete removal of this interface from Igor 2. This guide is
+retained to explain still-live code during migration, **not for authoring new
+modules**. Use [Module API v2](igor2/MODULE_API.md) and the
+[cutoff plan](igor2/LEGACY.md). M1 replaces this guide with the sole v2 author
+guide when the implementation and its consumers migrate together.
 
 Igor 2 follows [Development Policy / D078](igor2/DEVELOPMENT_POLICY.md).
 The live compatibility mechanisms described here are migration inputs, not
@@ -21,7 +27,7 @@ depend on installation-local learned files.
 2. [Module Directory Layout](#module-directory-layout)
 3. [module.conf — Manifest File](#moduleconf--manifest-file)
 4. [module.sh — The Module Shell Script](#modulesh--the-module-shell-script)
-5. [The `__register()` Function](#the-register-function)
+5. [The `__register()` Function](#the-__register-function)
 6. [Lifecycle Hook Functions](#lifecycle-hook-functions)
 7. [All Registered Hooks — Reference](#all-registered-hooks--reference)
    - [health](#hook-health)

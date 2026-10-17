@@ -1,5 +1,11 @@
 # Wave D host-intelligence contract — design gate
 
+D080 supersedes the historical Module API v1 preservation requirements in this
+document. They describe the original implementation boundary, not obligations
+for the [complete cutoff](LEGACY.md). Retain safety, activation, data and
+verification behavior while migrating all live consumers. Other schema/version
+axes called v1 are independent and are not blanket deletion targets.
+
 Status: **accepted design; implemented for the Wave D boundary**. Steps 7–10 use the Wave C
 Module API v2 loader, contribution index and Bash handler envelope. The
 implementation evidence for the five proof classes is in [STATUS.md](STATUS.md).

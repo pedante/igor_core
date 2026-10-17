@@ -1,355 +1,598 @@
-# Architecture integration review and readiness assessment
+# Igor 2 architectural audit and development reset
 
-Status: **historical review snapshot; not current implementation authority**.
+Status: **audit delivered; recommended architecture remains DISCOVERY**.
 
-Reviewed on 2026-10-01 against local `igor2` commit `d6229f0`, after 15B,
-D055, 15UI, 15C and 15D. The checkout was clean at review start.
+Completed: 2026-10-17. Source baseline: local `igor2`, `1aac86a`, initially clean.
+This replaces the 2026-10-01 review at this path; that review remains in Git.
+The Owner's complete Igor 1 cutoff is accepted as D080. The architecture and
+milestones below are recommendations, not runtime implementation authorization.
+See [decisions](DECISIONS.md), [roadmap](ROADMAP.md), [cutoff plan](LEGACY.md)
+and [current status](STATUS.md).
 
-**Assessment:** the bounded foundations compose without giving AI or the UI
-operational authority. They support further interface consolidation now. They
-do not yet prove readiness to make the TUI the default for normal system and
-application administration. Configuration ownership and a representative
-application workflow, together with default-launch cutover evidence, remain
-the principal readiness gaps.
+## Executive verdict
 
-**This architecture integration review is complete.** It is a dated readiness
-snapshot, not roadmap Step 16 and not current implementation authority. The
-later [Step 16 learning/knowledge track](ROADMAP.md) has its own contracts and
-status. This review accepts no new architecture and authorizes no later work.
-The read-only review is preserved here; current implementation state belongs in
-[STATUS.md](STATUS.md) and [ROADMAP.md](ROADMAP.md). Runtime code and
-configuration were unchanged by the review. Existing test evidence is attributed to
-[STATUS.md](STATUS.md), not presented as tests rerun during this review. No
-live-provider, terminal usability, remote Git freshness or deployment test was
-performed. Recommendations below require their own owner-scoped work.
+**Retain the safety and ownership semantics; substantially simplify the runtime
+that implements them.** Igor is a capable experimental Linux operator with useful
+machinery. It is not yet a coherent, reliably resumable system operator. Its best
+path is neither a greenfield rewrite nor another layer over shell orchestration.
 
-## 1. Current architecture map
+The strongest work is deterministic capability admission, explicit activation,
+native privilege handling, verification separate from command success, private
+History, and separation of reference material from authority. These are real
+advantages, not architectural decoration.
 
-| Component | Owned meaning and implemented boundary | Inspection and limits |
+The weakest work is integration: old menus can operate outside those boundaries;
+configuration has competing loaders; application logic leaks into Core; machine
+facts are process-local; and sophisticated evidence services feed a conversation
+loop whose topic/answer continuity still relies on text heuristics. Development
+has optimized individual foundations beyond the maturity of the end-to-end product.
+Passing contract tests cannot establish guarantees for paths outside the contract.
+
+The five most important changes are:
+
+1. **Finish one safe, v2-only module platform.** Migrate shipped modules and live
+   callers together; eliminate legacy execution and configuration fallback.
+   Prove actual Nextcloud operations, not another metadata-only interface.
+2. **Use Python for structured coordination and shell at the edges.** Reuse
+   existing Python services and reviewed command implementations. Retire
+   shell/JSON/subprocess plumbing and dynamic function patching as consumers move.
+3. **Make the assistant a bounded, explicit task state machine.** Persist the
+   question asked, selected target, operation outcomes and next step. The model
+   proposes; deterministic code authorizes, executes and verifies.
+4. **Remember the machine independently of conversation.** Persist last-observed
+   facts with source and time, distinguish desired values and responsibility,
+   and connect existing investigations to ordinary operator work.
+5. **Deliver five substantial milestones with one evidence ledger each.** Keep
+   critical safety tests, replace historical implementation assertions with
+   behavioral coverage, and stop repeating system validation for prose.
+
+History, configuration, investigations, collection validation and platform
+adapters are reusable. Additional generic frameworks, helper agents and future
+integration contracts would delay the missing product capabilities.
+
+## Scope, method and limits
+
+Evidence labels:
+
+- **S — source-confirmed:** inspected implementation/call path or mechanically
+  counted tracked files; not a live reproduction.
+- **R — recorded:** prior candidate-bound validation/acceptance in repository
+  records; not rerun or independently certified by this audit.
+- **J — judgment:** interpretation, recommendation or planning estimate.
+- **H — hypothesis:** plausible risk requiring a bounded experiment.
+
+Investigation covered the tracked-file inventory, architecture/current contracts,
+activation/execution/configuration/secret call paths, shipped manifests and
+contribution sets, AI transport/conversation paths, frontend/backend boundaries,
+persistence services, validation infrastructure, connected representative tests,
+and recent history. It did **not** read every line of every fixture or execute
+every test. Line references name the source baseline.
+
+No host-changing operation, Docker operation, privileged command, live AI call,
+benchmark or destructive test was run. No subagent/delegate capability was
+available in the exposed tools; this is one integrated author review, not an
+independent multi-reviewer consensus. The governor had 46.028 seconds remaining
+at entry; no renewal was requested. Documentation validation is in STATUS.
+
+### Size and shape
+
+Tracked physical lines at the audit baseline, not complexity scores:
+
+| Area | Inventory | Meaning |
+|---|---:|---|
+| `core/`, `modules/`, `igor.sh` | 258 files; 82,008 lines including data/assets/docs | 46,462 Bash + 27,581 Python = 74,043 executable source lines |
+| `docs/` | 61 files; 28,243 lines | STATUS 4,486; module creation 1,785; roadmap 1,021 |
+| `tests/` | 164 files; 39,214 lines | Includes fixtures, scripts and deprecated copies |
+| Python tests | 82 `test_*.py` files; 1,003 definitions | AST definitions, not parameter-expanded collected cases |
+| BATS | 59 files; 638 `@test` cases | Separate from Python counts |
+| Validation/governor implementation | Approximately 2,049 lines | Useful infrastructure, substantial for this project |
+
+Large coordination files: `core/ai/core.sh` 5,473 lines, curses TUI 3,222,
+module loader 2,256, AI safety 1,700, `igor.sh` 1,630. Size alone is not a defect;
+the issue is that these coordinate services already implemented in Python.
+
+### Actual capability versus target
+
+| Area | Implemented evidence | Limit |
 |---|---|---|
-| System Model | Current structured facts keyed by object, property and state class; separate responsibility, source, owner, availability and expiry. Validated observers publish observed facts; named source adapters publish intent/inference. | `--model` exposes facts, observers and health. Runtime snapshots are process-local, not a general durable inventory. The implemented memory domain is narrower than the target inventory. |
-| Operational History | Durable canonical capability attempts, frozen inputs, authority metadata, execution, verification, outcomes and interruption/reconciliation evidence. | `--history` queries versioned records. SQLite is private. Explicit recovery may query a matching verifier; inspection never executes, refreshes or retries. Legacy raw/v1 operations retain the command journal. |
-| Investigations | Durable local questions, lifecycle, hypotheses, supporting/contradicting evidence, validated judgment attachments, findings and uncertainty. | Python/headless data operations and a read-only panel. Private atomic JSON; scope comes through History's service. Findings remain investigation-scoped. |
-| Judgment Contract | Bounded model interpretation, exact input/reference binding, invocation provenance, abstain/unknown, validation and failure/fallback distinctions. | In-memory interface and validators; attachments expose records. No production live-provider judgment generation or dedicated live judgment feed. |
-| Context and role routing | Eligible reference candidates, bounded deterministic selection, optional validated within-tier ranking and administrator-owned model bindings. | CLI preview/latest retained decision and the 15UI projection show inclusion/exclusion and role rule/reason. Provenance is operational metadata, not durable knowledge. |
-| Interaction Surface | Session presentation, scrolling/focus/selection, bounded inspection rendering and typed value proposals. | Existing TUI/PTY/backend events. AI settings are the concrete editable integration. No generic configuration writer or subsystem authority lives in the UI. |
-| Capabilities, policy and privilege | Active provider resolution, input/precondition validation, deterministic READ/CHANGE/DESTROY policy, approval, exact privileged execution and verification. | Shared catalog/inspection and bounded structured plans. The actual memory READ is canonical; service CHANGE coverage is an isolated fixture, not an application migration. |
-| Domain events and automation | Separate transient operational signals and durable operator-enabled scheduling/claims. | Existing inspection; unattended execution is bounded unprivileged READ. Neither frontend events nor learned evidence activates automation. |
+| Host operations | System: 40 capabilities across host/storage/access/network, seven observers, two checks. Docker: four capabilities (S). | Availability depends on platform/dependencies/privilege; declaration count is not hardware support proof. |
+| Operator UI | CLI/curses System package accepted at `5efca3d`; swap-health increment at `73a4c06` (R). | Broader application/configuration acceptance and Step 20C remain open. Source already selects TUI for interactive no-argument launch. |
+| Canonical execution | Reprepare, authority/owner checks, approval, reviewed privilege adapters, History and independent verification (S). | Not universal across menus, raw commands and v1 actions. |
+| Modules | Strict v2 and lifecycle filtering; System mixed v1/v2, Docker v2, Nextcloud v1 (S). | Detach assessment is inspection, not safe uninstall. Samba is an adapter, not a complete module. |
+| Configuration/secrets | Desired-state service, `ai.verbose`, System warning setting, managed OpenRouter credential lifecycle (S/R). | Other credentials/settings retain legacy sources/exports. |
+| Machine memory | Typed facts, freshness, observers/checks; durable deployments/operation records (S). | General observed-fact memory is process-local. |
+| Investigations/learning | Durable evidence/hypotheses/findings, reviewed learning, patterns/procedures and interchange validators (S/R). | Natural-language recovery and relevant automatic recall remain incomplete. |
+| AI | Anthropic/OpenRouter/Ollama, transaction-safe tools, bounded continuation, context/model-role selection (S). | No proven durable task loop or automatic cheap/strong escalation. OpenAI-named files do not prove a direct transport. |
+| Nextcloud | Large operational script library, 12 v1 AI actions, recognition and metadata attachment (S). | Desired loglevel/apply/readback incomplete; prepared fixture does not prove `2 → 3 → 2`. |
+| Automation/plans | Bounded sequential capability plans; durable READ-only scheduling/slot claims (S). | No general safe restart/resume of multi-step changes. |
+
+## Prioritized technical findings
+
+P1: release-blocking safety/reliability issue or central product gap.
+P2: substantial integration/maintenance cost. P3: bounded cleanup.
+Unexecuted exploits are not presented as demonstrated compromises.
+
+### F01 — P1 / S: application menu can delete unrelated Docker data
+
+[`_mod_services_nuke`, services.sh:50–67](../../modules/nextcloud_docker/menus/services.sh#L50)
+is reachable from `menu_services` at lines 227/255. Lines 62–63 enumerate **all**
+Docker volumes/images instead of the attached deployment. It uses
+[`confirm`, ui.sh:48](../../core/lib/ui.sh#L48), accepting `y`, outside the canonical
+exact destructive `YES` and History boundary. Errors are ignored and completion
+announced. The menu warns about broad deletion; the defect is scope/authority,
+not absence of a warning. In-use resources may resist deletion, but unrelated
+unused data remains at risk.
+
+**Action:** remove this host-wide action in M1. Any replacement must name only
+bound deployment resources, require exact approval, declare recovery limits
+and verify the result. Do not add generic Docker cleanup as an incidental feature.
+No destructive invocation was performed.
+
+### F02 — P1 / S: service failures can be reported as success
+
+[`_mod_services_start/stop/restart`, services.sh:14–47](../../modules/nextcloud_docker/menus/services.sh#L14)
+do not inspect Docker exit status before success messages and `OK` journal
+entries. Normal non-errexit callers can record success after failure. Operations
+also rely on Compose working-directory discovery, unlike the explicit status-pane
+path. **Action:** canonical bound target, explicit Compose locator, propagate
+failure and verify state. A fake failing Docker process can prove this safely.
+
+### F03 — P1 / S,H: legacy credential diagnostics are unsafe
+
+[`_cfg_source_env`, config_loader.sh:82–120](../../core/lib/config_loader.sh#L82)
+continues after permission warnings, evaluates files with `source`, exports their
+assignments, redirects errors to fixed `/tmp/_igor_cfg_src_err`, and prints those
+errors without a scrub boundary. Defaults and module loading use similar fixed
+files. Errors can echo credential-bearing source lines; concurrent processes can
+clobber diagnostics. Symlink/truncation exploitation depends on OS protections
+and was not tested. Executable local configuration is an existing trust contract,
+not itself proof of remote code execution.
+
+The managed OpenRouter pre-evaluation projection/fail-closed guard is valuable;
+it covers selected aliases, not all configuration. **Action:** data-only config,
+exact-consumer secret resolution, private captures, and scrubbing before display.
+Prove sentinel non-exposure in errors, logs, AI requests and child environments.
+
+### F04 — P1 / S: sourcing configuration relocates user data
+
+[`_detect_config_dir`, config.sh:48–104](../../core/lib/config.sh#L48) moves old
+HOME data/configuration/GPG trees into project paths, then moves selected secrets
+again. It ignores errors and runs while configuration is sourced.
+[`igor.sh:377`](../../igor.sh#L377) loads this before the newer loader. There is
+no independently verified versioned migration/recovery record for these moves.
+**Action:** explicit offline inventory/import; copy/verify before cutover; no
+startup moves. Preserve credentials, History, learned state, backups, GPG and
+native application data. See LEGACY.
+
+### F05 — P1 / S,J: canonical authority is incomplete and placed under AI
+
+[`capability.sh:16`](../../core/lib/capability.sh#L16) loads AI safety;
+[`igor_capability_execute_plan:83`](../../core/lib/capability.sh#L83) and automation
+use `ai_execute_tool`. CLI/automation authority depends on an AI-named subsystem,
+while menus, `run_igor_action`, host/OCC/container tools have other conventions.
+
+The contribution index, catalog and frontend views are **not all duplicate
+authorities**. Many correctly project one registry. The duplication is competing
+invocation/lifecycle contracts. **Action:** one application executor, all
+interfaces submit the same typed intent; move deterministic policy ownership
+without weakening or duplicating it.
+
+### F06 — P1 / S,J: task continuity is too weak for substantial work
+
+[`_ai_input_continues_topic`, core.sh:1879](../../core/ai/core.sh#L1879) uses word
+overlap; `_ai_prepare_user_topic` can clear context. Pending choices are inferred
+from prose/list/question patterns around lines 1932–2010. Continuation later
+interprets textual RESULT/OUTCOME completion and uses a short bounded loop.
+An unrelated-looking answer or restart is not a reliable continuation contract.
+
+Structured plans already resolve 1–16 canonical steps and stop on failure.
+**Action:** reuse that executor with a durable Task record: typed pending
+questions, stable choices, target refs, admitted steps and operation IDs. Only
+verified operations complete execution steps. Cancellation and unknown effects
+are explicit; do not build a second planner or trust a completion sentence.
+
+### F07 — P1 / S,J: general machine inventory is not durable
+
+[`observation.sh:1–35`](../../core/lib/observation.sh#L1) creates a private,
+process-owned runtime model file. The typed observed/desired/responsibility
+separation is sound, but durable History/deployments do not persist observations.
+**Action:** bounded last-observed facts, stale on restart until refreshed. Expose
+source, age, native locator and responsibility. No graph database, embeddings
+service or chat-derived facts. Disabled modules stop contributing active context
+and refreshes; historical records remain inspectable with unavailable provenance.
+
+### F08 — P2 / S,J: configuration and secret ownership remain split
+
+[`config.sh`](../../core/lib/config.sh),
+[`config_loader.sh`](../../core/lib/config_loader.sh),
+[`configuration.py`](../../core/lib/configuration.py), and
+[`secret_refs.py`](../../core/lib/secret_refs.py) coexist. Defaults, root/project
+env files, HOME fallbacks, key files and native settings have different precedence
+and writers. `set -a` exposes credentials to unrelated children. A schema service
+for a few settings is not a complete cutover.
+
+**Action:** package defaults → one scoped desired authority; secrets by reference
+at the exact consumer. Native settings stay external unless adopted. One effective
+value/source inspector; conflicts reported explicitly. Retain sound stores.
+
+### F09 — P2 / S,J: Bash coordinates structured application state
+
+[`module_loader_fast.sh`](../../core/lib/module_loader_fast.sh) adds 582 lines
+over a 2,256-line loader, copying seven functions using `declare -f`/`eval` and
+overriding them. Shell maps and child interpreters repeatedly transfer/parse
+structured state. The cache has valuable authority fences and measured performance
+history; deleting it alone would regress startup.
+
+**Action:** Python imports services and owns in-memory state; shell handles
+bounded OS/application work. Replace the paired loader once, retaining digest,
+activation and resource constraints. Profile representative launches before
+claiming gains; no new performance measurement was made here.
+
+### F10 — P2 / S,J: dispatch repeats domain identity knowledge
+
+[`capability.sh`](../../core/lib/capability.sh#L226) repeats System-specific
+switches across prepare/precondition/invoke/verify;
+[`module_contract.py`](../../core/lib/module_contract.py#L255) and
+[`module_registry.py`](../../core/lib/module_registry.py) also know selected
+identities. Finite privileged allowlists are legitimate; repeated binding logic
+is not necessary. **Action:** one reviewed adapter table for privileged mechanics,
+module-owned domain semantics and shared validation. Never replace this with
+module-supplied arbitrary root commands or a generic workflow DSL.
+
+### F11 — P2 / S,J: application logic remains in Core
+
+[`deployment_attachment._load_provider:30`](../../core/lib/deployment_attachment.py#L30)
+hardcodes Nextcloud and separately reads activation metadata.
+[`diagnose/phases.sh`](../../core/diagnose/phases.sh),
+[`recovery/apps.sh`](../../core/recovery/apps.sh), recovery/journal helpers and
+[`helpers.sh`](../../core/lib/helpers.sh) retain application meaning. Several
+paths check owners; this is not evidence that every disabled-module boundary fails.
+**Action:** move application diagnosis, recovery, recognition and native settings
+to Nextcloud, resolve through the admitted module. Keep generic Linux mechanics
+in Core. Do not split the Nextcloud stack into five micro-modules without reuse.
+
+### F12 — P2 / S,J: provider/context mechanisms exceed effective AI behavior
+
+[`ai_engine.mode_call:608`](../../core/ai/ai_engine.py#L608) is 465 lines behind
+thin provider shell launchers and another router. Native tool transactions and
+request privacy are valuable. Internal XML/marker/environment conventions add
+conversion cost. Anthropic/OpenRouter/Ollama exist; direct OpenAI is not established.
+
+[`context.sh`](../../core/ai/context.sh) retains broad probes/hooks;
+[`request_context.evidence_sources:42`](../../core/ai/request_context.py#L42)
+resolves explicitly selected evidence. Three role names do not prove automatic
+cheap-model selection, active ranking or consistent helper isolation. Some
+knowledge summaries retain inherited reasoner conventions.
+
+**Action:** one model gateway, small provider adapters, one internal typed message
+format. Deterministic relevant references, incremental task context, bounded tool
+output and transaction-aware summaries. Explicit ordinary/strong bindings and
+visible escalation; no silent cross-provider disclosure or agent swarm.
+
+### F13 — P2 / S,J: foundations advanced ahead of real application proof
+
+Recent history adds collection contracts/rendering/inspection, F0, System CLI
+and swap fixes while Step 19 still lacks real setting apply/readback. HEAD
+prepares a fixture; its record establishes no working Docker endpoint or complete
+application cycle. Increment E remains deferred/unaccepted. This is sequencing
+evidence, not a claim that collection safety work was unnecessary.
+**Action:** every milestone closes UI/configuration/execution/verification and
+cleanup around a useful workflow. Do not defer the first real consumer again.
+
+### F14 — P2 / R,J: validation cost conflicts with the operating budget
+
+The retained [controlled comparison](VALIDATION_PERFORMANCE.md) reports
+2,900.139 → 2,523.572 seconds: 12.98% less wall time, 12.18% more child CPU.
+It classified 1,816 identities including baseline/new failures and environment
+skips; it was **not a clean release result**. Local Learning took 412.489/494.772
+seconds. These are historical environment-specific measurements, not current ones.
+
+Default 900-second total/240-second command governance cannot accommodate some
+groups without planned supported partitioning. Whole-tree fingerprints also
+invalidate reuse on unrelated edits. The runner, timeouts, raw logs, isolation
+and process cleanup are useful. **Action:** focused checks during edits; one
+final affected gate; one broad release gate in CI. Plan the Owner's budget from
+a dry run and prior durations. Never self-renew or waive critical proof.
+
+### F15 — P2 / S,J: some tests preserve history rather than behavior
+
+[`test_documentation_health.py`](../../tests/test_documentation_health.py)
+requires exact phrases in the first 80 STATUS lines and old Step 18/20 roadmap
+headings. [`test_module_registration_timing.py`](../../tests/test_module_registration_timing.py)
+asserts internal phase names. Shell integration repeatedly sources substantial
+startup state, yet F01/F02 remain outside canonical guarantees.
+**Action:** replace obsolete wording/phase tests when migrating their subjects;
+retain privacy, policy, recovery and budget behavior. This audit does not edit
+runtime tests to manufacture a green suite. Its gate is scoped reference/policy
+validation; historical roadmap-wording assertions need replacement in M1.
+
+### F16 — P2 / S,J: development rules are duplicated
+
+AGENTS, `.codex/README.md`, the long `.codex/config.toml` instruction string and
+Lead_Eng config repeat lifecycle/model/governor policy. Delegation is disabled;
+agent definitions do not demonstrate agent benefit. The pre-tool hook matches
+command text; it is a convenience policy, not an OS security boundary or a
+reliable interpretation of task intent.
+**Action:** short AGENTS, one development policy, one runner. Owner chooses the
+root model. One agent owns integration; specialists are explicitly authorized
+for independent risky review or useful parallel reads. Remove duplicate roles
+and lexical policing only through an authorized tooling change; current limits
+remain in force during this audit.
+
+### F17 — P2 / S,J: documentation exaggerates coherence and complicates entry
+
+README says line UI is default, but
+[`igor_operator_default_frontend`, operator_cli.sh:79](../../core/lib/operator_cli.sh#L79)
+selects TUI for interactive no-argument launch. Some architecture prose calls
+approved collections DISCOVERY; full runtime acceptance is also not established.
+Dozens of specs and 79 decisions require historical interpretation. New extension
+instructions teach v1 while target contracts prescribe v2.
+**Action:** actual behavior in user docs; accepted principles separate from
+proposals; short STATUS and one roadmap. Declare real installation requirements:
+Bash 4.2 conflicts with nameref use (4.3+); derive Python's floor from used APIs
+and CI, not “Python 3.” Archive evidence, not uncertainty.
+
+### F18 — P3 / S,H: concrete deletion candidates and an unsafe dormant helper
+
+SHA-256 equality confirms 2,942 redundant lines: duplicate `run_canary.sh` (87)
+and four copies under `tests/test module scripts depreciated?` (372/811/830/842).
+Check callers before deletion. The 313-line Textual
+[`core/lib/igor_tui.py`](../../core/lib/igor_tui.py) has no tracked caller found;
+the real frontend is `core/ai/tui.py`. The two `ai_render.py` files have different
+responsibilities and are not deletion duplicates.
+
+[`igor_resolve_path`, path_resolution.sh:76](../../core/lib/path_resolution.sh#L76)
+interpolates a path into Python source and uses lexical prefixes, not robust
+symlink-aware containment. A quote can break the generated source. Only wrapper
+references were found, not a hostile-input product path. Delete the dormant chain
+after a caller check, or repair/test before exposure. This is distinct from the
+validated active AI file reader.
+
+## Recommended architecture
+
+### An application, not another framework
+
+| Option | Benefit | Cost/loss | Verdict |
+|---|---|---|---|
+| Expand Bash coordination | Least immediate movement | Environment/global-state coupling, subprocess churn, brittle continuity | Reject long term |
+| Python application, existing services, shell leaf handlers | Direct structured calls, explicit task state, fewer conversions | Substantial migration; preserve PTY/transactions | **Recommend** |
+| New daemon/RPC/workflow engine/multi-agent platform | Possible future remote flexibility | Another deployment/security lifecycle without a present consumer | Defer beyond 2.0 |
+| Rewrite all stores/schemas/modules | Superficial uniformity | Discards correct safety/data work and multiplies risk | Reject |
+
+Python is already required and hosts structured services. One application process
+owns the interactive session; headless CLI imports the same components. Private
+persistence/locks coordinate separate invocations. A terminal child/PTY still
+runs exact privileged commands. No persistent daemon is required. The existing
+Bash coordinator can remain through M1; M2 replaces it without a permanent bridge API.
 
 ```mermaid
-flowchart TD
-    Modules[Active module declarations] --> Observers[Validated observers and checks]
-    Observers --> Model[System Model: current state]
-    Modules --> Catalog[Capability registry]
-    Catalog --> Execution[Policy, approval, privilege, execution and verification]
-    Execution --> History[Operational History: what happened]
-    History --> Investigation[Investigations: evidence references]
-    Judgment[Validated judgments: reference only] --> Investigation
-    Judgment --> Context[Deterministic Context Engine]
-    Investigation --> Context
-    History --> Context
-    Model --> Context
-    Modules --> Context
-    Context --> Request[Existing privacy and request boundary]
-    Routing[Administrator bindings and deterministic role rules] --> Request
-    Request --> AI[Configured model]
-    AI --> Proposal[Untrusted explanation or operation proposal]
-    Proposal --> Execution
-    Model --> Inspection[Owning inspection contracts]
-    History --> Inspection
-    Investigation --> Inspection
-    Routing --> Inspection
-    Context --> Inspection
-    Inspection --> UI[UI projections and headless interfaces]
+flowchart TB
+    UI[CLI and curses TUI] --> App[Python application: session and task state]
+    App --> Context[Bounded reference selection]
+    Context --> Gateway[Configured model adapter]
+    Gateway --> Proposal[Untrusted proposal or question]
+    Proposal --> App
+    App --> Exec[One executor: resolve, policy, approval, privilege]
+    Registry[Active module declarations] --> Exec
+    Exec --> Handler[Reviewed module handler or platform adapter]
+    Handler --> OS[Linux and application interfaces]
+    OS --> Verify[Independent verification]
+    Verify --> Exec
+    Exec --> History[Durable operation History]
+    Exec --> App
+    App --> Records[Configuration, facts, tasks, investigations]
+    Records --> Context
+    Registry --> Context
+    Records --> UI
 ```
 
-Arrows express consumption, not delegation of authority. Judgment arrows are
-conditional consumers of supplied records, not automatic model calls. AI output
-cannot write facts, refresh observations, register operations or bypass policy.
-Operational capability providers and AI inference providers are different
-registries and meanings, even though both use the word “provider.”
+These are responsibilities/imports, not deployed services or mandatory class
+hierarchies. Keep boundaries that prevent actual errors; remove JSON shuttles.
 
-Primary evidence: [Architecture](ARCHITECTURE.md), [D033–D057](DECISIONS.md),
-[System Model](../../core/lib/system_model.py),
-[observer boundary](../../core/lib/observation.sh),
-[capability lifecycle](../../core/lib/capability.sh),
-[Operational History](../operational_history.md),
-[Investigations](INVESTIGATIONS.md), [Judgments](JUDGMENT_CONTRACT.md),
-[Context Routing](CONTEXT_ROUTING.md) and
-[Interaction Surface](INTERACTION_SURFACE.md).
+### Five understandable concepts
 
-## 2. Completed foundations
+1. **Module:** replaceable reviewed domain code/declarations/reference knowledge.
+   Installation delivers files; activation is explicit policy.
+2. **Capability:** a named module operation. A module is not a second action
+   registry. Inputs, availability, tier, privilege, effect, verifier and recovery
+   are inspectable. Observers/checks remain distinct because ingestion differs;
+   not every fact needs to be an action.
+3. **Machine records:** facts, desired values, bindings and evidence with distinct
+   owners/lifetimes. This does not mean merging every store into one document.
+4. **Task:** durable objective, pending question, admitted steps and operation
+   references. Investigation enriches diagnosis, not another executor/transcript.
+5. **Interface/model adapter:** projects state and submits intent; owns no
+   execution, truth, approval or success.
 
-The completed milestones are bounded contracts, not full implementations of
-every target architecture layer.
+### Smallest clean module contract
 
-- **15B:** durable pre-effect identity, canonical lifecycle hand-offs, interruption
-  uncertainty, explicit verification-only reconciliation, inspection and versioned
-  export/restore/reset. History does not depend on frontend/domain event delivery.
-- **D055:** provider-neutral judgment request/result envelope, injected tool-free
-  adapter, validation and deterministic fallback. Schema validity is not truth.
-- **15UI:** extends the existing TUI rather than creating another interaction
-  runtime; preserves backend approvals, pending choices and native sudo PTY input.
-- **15C:** durable investigation lifecycle and validated attachments with scoped
-  references, bounded private persistence and recovery. No finding-to-fact path.
-- **15D:** extends the existing Context Engine and request boundary; deterministic
-  eligibility/budgets, explicit evidence selection, three roles and inspectable
-  routing/context decisions. No context database or automatic ranking invocation.
+Keep strict v2 `module.conf` INI identity/bootstrap and explicitly named JSON
+contributions. Switching to YAML/TOML would add migration without solving the
+problem. Remove permissive v1 parsing, implicit activation, `compat.v1_hooks`,
+registration callbacks and legacy action/tool grammars. One admitted index
+provides capability/observer/check/knowledge/configuration views; no plugin
+manager daemon, module-side registry or dependency solver.
 
-The earlier active-owner module index, host-memory observer/check, canonical
-capability dispatcher, structured plans, domain bus and READ-only automation
-provide real integration seams. [STATUS](STATUS.md) records contract,
-regression, vertical-slice, inspection and migration/recovery evidence under
-[EXECUTION](EXECUTION.md). Its 15D gate includes 388 Python tests plus 321
-subtests, affected validation after a provenance correction, and corrected
-Bash assertions. It also records baseline lint debt and the whole-file
-`core.sh` ShellCheck resource limitation. These are inherited evidence and
-limitations, not new review validation or proof of default-TUI readiness.
+One-shot handlers use bounded typed I/O, timeouts, cancellation and explicit
+availability. Retain useful Bash implementations. Existing Python recognition
+providers justify a small direct Python adapter; neither adapter accepts arbitrary
+module-supplied privileged shell. Reviewed executable modules are trusted local
+code, **not sandboxed plugins**.
 
-## 3. Remaining gaps
+Dependencies are exact required modules/capabilities/platform conditions.
+Missing/ambiguous providers report unavailable; never auto-enable. Disable fences
+new operations, observations, knowledge, checks and automation; in-flight work
+finishes/cancels by declared policy. Package removal does not delete applications
+or retained evidence. Uninstall uses an impact report and explicit resource
+disposition, not teardown hooks.
 
-### Architecture composition and ownership
+### Ownership and storage
 
-| Finding | Current evidence | Consequence |
+| Data | Authority/location direction | Rule |
 |---|---|---|
-| Canonical coverage is incomplete | [LEGACY](LEGACY.md), [capabilities](../../core/lib/capability.sh), v1 Nextcloud actions and Diagnose/recovery callers | History's canonical guarantees do not cover every menu, raw shell or v1 workflow. Audit, journal and chat remain different records, not interchangeable operational truth. |
-| Current-state reuse is domain- and process-bounded | [observation.sh](../../core/lib/observation.sh) creates a private runtime file; [health_runner.sh](../../core/lib/health_runner.sh) can ensure required facts are fresh | A separately spawned CLI process cannot be assumed to share the live session's facts. Future inspection must preserve snapshot ownership/time and distinguish querying from refresh. Other domains still perform direct probes. |
-| Persistence references share identity but not one store | [InvestigationService](../../core/lib/investigations.py) uses History status/ensure_scope and requires matching scope on restore | This is intentional service coupling. Restore order and unavailable/pruned targets must remain visible; resetting one store must not be interpreted as resetting all memory. |
-| Configuration and secret ownership are distributed | [config_loader.sh](../../core/lib/config_loader.sh), [config.sh](../../core/lib/config.sh), [helpers.sh](../../core/lib/helpers.sh) | Multiple loaders, direct application paths and environment exports remain migration inputs; no universal effective-value/source inspector or mediated setting writer exists. |
-| Inspection consolidation is incomplete | [panel_sections](../../core/ai/tui.py) currently exposes session, AI, settings, history, investigations, routing and latest result | Modules, facts, capabilities, plans and automation have backend surfaces but are not all dedicated panel sections. Bounded recent/list views do not replace full record inspection. |
+| Code/defaults/schemas/reference knowledge | Installed packages | Replaceable, no machine-specific mutable values |
+| Desired settings/enablement | Configuration Service under one declared local root | Typed, revision/source/owner inspector; no sourced env fallback |
+| Secrets | Private secret service; config holds references | Resolve for exact consumer, not general inherited environment |
+| Native application data/settings | Application API/files, bound deployment | External authority until explicit scoped adoption |
+| Observed facts | System Model plus bounded durable last-observed storage | Source/time/freshness, never inferred truth |
+| Operations | Existing private History | Pre-effect intent, result, verification, unknown/recovery |
+| Tasks/investigations/learning | Typed records referencing facts/History | Retain safe stores; no duplicate authoritative results |
+| Runtime | Private run directory | Locks/PTY/cache, disposable rather than memory |
 
-These are coverage and coupling gaps. The review found no intentional authority
-transfer from History, Investigations, judgments or context decisions into
-execution policy. This is a code/document review finding, not a new security
-certification. Reviewed local modules are executable trusted code; owner tags
-and isolated handler processes do not sandbox an untrusted module.
+Recommend explicit per-user XDG config/state/runtime roots for ordinary use and
+a declared system-installation profile when needed. Retain explicit roots for
+tests/installations. This is a **proposed layout migration** requiring LEGACY's
+export/import/recovery protocol, never startup relocation. Do not replace safe
+SQLite/atomic JSON stores merely for one universal database.
 
-### AI flow, roles and judgments
+### Execution and recovery
 
-The shared production path is `_nexus_api_call`/`_nexus_api_call_raw` →
-`_ai_prepare_transport` → provider adapter/router → `ai_engine.mode_call` →
-`request_boundary.prepare` → HTTP. Direct engine calls also validate routing.
-Implemented transports accepted here are Anthropic, OpenRouter and Ollama;
-an OpenAI-named engine directory/proposal is not proof of a working transport.
-See [api.sh](../../core/ai/api.sh), [ai_engine.py](../../core/ai/ai_engine.py),
-[role_transport.py](../../core/ai/role_transport.py) and
-[request_boundary.py](../../core/ai/request_boundary.py).
+```mermaid
+sequenceDiagram
+    participant U as User/interface
+    participant A as Task coordinator
+    participant E as Executor
+    participant H as History
+    participant O as OS/application
+    U->>A: Objective or answer to question ID
+    A->>E: Capability, typed inputs, bound target
+    E->>E: Resolve owner; prepare and validate effect
+    E->>U: Required approval for exact operation
+    U->>E: Approve or decline
+    E->>E: Recheck authority, target, digest, privilege
+    E->>H: Durable intent before effect
+    E->>O: Exact reviewed invocation via native privilege
+    E->>O: Independent readback
+    E->>H: Execution and verification outcomes
+    E->>A: Verified success, failure or unknown
+    A->>U: Result, next step or specific question
+```
 
-| AI usage | Role/context/judgment coverage today |
+After interruption, inspect operation references and fresh target state. Never
+retry a change because chat text is missing. Unknown effects require verifier
+reconciliation or explicit recovery. Approval expires when its binding changes.
+Preserve native sudo-through-PTY; credentials do not pass through AI. Recovery
+is capability-specific, with no generic undo promise.
+
+### AI loop and cost
+
+Use one bounded observe/propose/execute/verify loop around a task state machine,
+not a swarm or separately authoritative planner. A model can propose several
+steps; deterministic code resolves each. Ordinary questions need no plan.
+
+Persist objective, state, selected refs, pending question with stable choices,
+steps/operation IDs, last outcome and next-action reason. Start with running,
+waiting-user, waiting-external, blocked/unknown, complete and cancelled. Bound
+steps/time/tokens/output and repeated identical failures. Continue a task after
+new evidence instead of resetting chat. A completion sentence cannot create success.
+
+Retrieve by active module, target, capability, time and investigation references.
+Record token consumption and inclusion reasons. Summarize explanatory text while
+preserving complete tool transactions and authoritative references. Do not reload
+broad diagnostics each turn. Use configured ordinary/strong models with visible
+explicit escalation and the existing validated cheap summarizer. Local models
+are optional, not a reliability claim. Use recorded scenarios for target selection,
+questions, refusals, recovery and completion; opt-in live smoke tests have explicit
+provider/data/cost budgets.
+
+## Simplification and deletion economics
+
+| Change | Reduction | Risk/benefit |
+|---|---|---|
+| Exact deprecated script/canary copies | 2,942 duplicate lines measured | Low after caller check; one fix location |
+| Dormant Textual UI/unsafe helper chain | 313 UI lines plus helpers, subject to caller audit | Low/medium; remove misleading interfaces |
+| v1 parser/hooks/action catalogs/menu execution | Thousands touched; net not yet measured | High consumer risk; removes dual-contract burden |
+| Bash coordination → Python imports | Planning range 5–12k net executable lines across M1/M2, **not promised** | High PTY/state risk; fewer subprocesses/parsers |
+| Provider launchers/internal grammars | Small direct deletion; fewer state conversions | Medium provider parity risk |
+| Archive status/replace roadmap | Thousands fewer active entry-document lines | Low; retain historical proof |
+| Consolidate test setup/wording assertions | No arbitrary target count | Coverage mapping required |
+
+Do not add these rows: they overlap. A shorter opaque shell script is not the
+objective. Measure net maintained code, operational paths and developer time.
+
+## Smaller testing strategy
+
+| Retain | Consolidate/rewrite | Remove with retired subject |
+|---|---|---|
+| Tiers, exact `YES`, declined sudo, exact argv, reference injection | Parametrized authority matrix across interfaces | v1 parsing/hooks/implicit enablement and dual-contract expectations |
+| Secret non-exposure, private permissions, symlink boundaries | Shared hermetic handler/provider fixtures | Duplicate scripts, obsolete frontend/launchers |
+| Disabled/stale owner refusal, invalidation | One real lifecycle scenario per representative module | `_legacy` names and instrumentation phase assertions |
+| History before effect, unknown, concurrency, migration/recovery | One scenario ledger across proof classes | Roadmap-number/status-substring assertions |
+| Complete native tool transactions/privacy | Recorded provider envelopes plus opt-in smoke | Internal XML/env grammar tests after migration |
+| Real System/Nextcloud readback/attach isolation | Small Debian/Arch adapter matrix + PTY smoke | Prose-only claims used instead of consumers |
+
+Mocks are appropriate for Docker failure, privilege refusal and provider errors.
+They cannot prove OCC user identity, native readback, terminal authentication or
+installation. One disposable application fixture proves the real cycle; pure
+parser edits should not rerun it. Reuse evidence only with equivalent inputs,
+affected code and environment. Preserve all EXECUTION proof classes as five rows
+in one milestone record, not five separate ceremonies. If required real evidence
+cannot run, the milestone remains incomplete.
+
+## Development and documentation model
+
+One owner-selected agent normally inspects, implements, tests and integrates a
+coherent milestone. Use a short scope/architecture decision, then sustained work.
+Internal commits do not become new roadmap items. Independent review is useful
+for authority/migration/concurrency, not as an automatic model hierarchy.
+
+Retain lifecycle, caps, failure inspection and freeze/stop. Remove repeated
+narration, repeat approval of accepted architecture, per-file mini-milestones,
+and updates in every overlapping spec. Current governance is not disabled by
+this recommendation.
+
+| Document | Continuing role |
 |---|---|
-| Ordinary conversation, continuation, retry and tool follow-up | Default `conversation` rule selects reasoner. With `IGOR_REFERENCE_V1`, the boundary selects reference candidates, explicit scoped evidence and read-only runtime snapshots. Minimal policy suppresses reference resolution. No D055 envelope wraps ordinary conversational/tool responses; existing transaction/tool validation remains their boundary. |
-| Foreground conversation compaction | Explicit `summarize` request in [core.sh](../../core/ai/core.sh), tool-free summarizer, own excerpt only, existing transaction-safe failure fallback. No judgment output contract. |
-| Session-log and WIP summaries | [knowledge.sh](../../core/ai/knowledge.sh), `_ai_knowledge_save_log_entry` and `_ai_knowledge_save_wip`, still call the shared API without the summarizer/text-only tags. They default to reasoner and export vendor-specific summary model guesses. Without an explicit reasoner binding those exports become the inherited primary model. They do not receive the same explicit helper-role isolation as compaction. This is an uneven migration, not a second gateway or evidence of unauthorized execution. |
-| Optional relevance ranking | [select_request_context](../../core/ai/context_engine.py) accepts a supplied D055 record bound to the exact request/digest. It may reorder optional candidates within policy tiers; abstain, invalid or low-confidence records retain deterministic selection. No production caller automatically invokes `context_ranker`. |
-| Investigation judgments | [investigations.py](../../core/lib/investigations.py) validates attachments; [request_context.py](../../core/ai/request_context.py) revalidates them as reference candidates when an investigation is explicitly selected. No live judgment generation or recursive evidence collection. |
-| Local commands/inspection | Handled locally. Recognized role rules are contracts, not proof that every request type has a live caller; ordinary operational conversations still generally use the default reasoner rule. |
+| Root README/practical guides | Actual behavior, install, operate, troubleshoot |
+| AGENTS | Short read order, invariants, task/validation links |
+| `.codex/README.md`, DEVELOPMENT_POLICY, EXECUTION | Lifecycle, compatibility/data policy, evidence model; config links rather than repeats |
+| ARCHITECTURE/DECISIONS | Accepted boundaries/rationale; explicit supersession |
+| MODULE_API/subsystem docs | Live contracts, read for the affected subsystem |
+| ROADMAP/short STATUS/LEGACY | Milestones, current work/evidence, finite retirement/data plan |
+| This report | Dated findings/proposal, not another permanent normative layer |
+| Archive/explorations | Evidence/optional ideas, not default reading or authorization |
 
-Role selection is inspectable with rule/reason, binding and constraints.
-`prepared` means a request was assembled, not that its provider succeeded.
-Invocation outcomes require the correlated response/audit evidence. Availability
-is administrator configuration, not a health probe. Retention depends on the
-existing optional audit; `--context last` may return `not_recorded`. Early
-preparation failures do not all emit a new full selection record, so a previously
-displayed decision must not be taken as the outcome of every later request.
+After confirmation, fold the recommendation into ARCHITECTURE and retire
+superseded target prose in AGENT_ARCHITECTURE, OPERATOR_INTERFACES and
+RESUMABLE_WORK as implementation migrates. Preserve precise live contracts until
+then. AI_SPECIALISTS, MODEL_ROLES and COMMUNICATIONS are 2.x research, not gates.
+Collection E stays unaccepted when its notes move into historical evidence.
 
-Legacy live `ai_context` hooks/probes and labeled aggregate categories remain
-outside migrated domains. Assembly depends on shell environment snapshots and
-the renderer's reference marker. Arbitrary prompts without that marker are
-still routed/scrubbed but do not resolve machine/investigation references.
-The policy is explicit; universal semantic relevance extraction, judgment
-transport and helper-role coverage are not implemented. Broader role ideas in
-[MODEL_ROLES](MODEL_ROLES.md) and [AI_SPECIALISTS](AI_SPECIALISTS.md) remain
-proposals, not enabled routes.
+## External comparisons
 
-### Configuration and property foundation
+[ServerMind](https://github.com/AjjlalAhmed/servermind) illustrates focused
+operational chat with a server-enforced read-only/armed boundary. Borrow its
+focus on useful actions, not an arm switch in place of typed approval/verification.
+[Steward](https://github.com/braedonsaunders/steward) illustrates persistent
+inventory and investigations. Its broader missions/gateways/agent mechanisms
+are unnecessary for single-machine Igor. These are README/design comparisons,
+not audits of either project's security or performance.
 
-| Value class | Location/owner today | Missing generic contract |
-|---|---|---|
-| Secrets | Ignored `secrets/*.env` and `.key`, some legacy root-file fallbacks; loader, scrubber and declared module secret metadata | Central reference/value-access mediation is incomplete; permission checks in `_cfg_source_env` warn and continue. No generic secret UI editor or complete access-audit service. |
-| Paths | `IGOR_DIR`, relocation environment variables, `_igor_resolve_dir`, plus direct module/application paths | Unified ownership/portability and migration mapping. Defaults disagree for some legacy knowledge/pattern paths. |
-| Environment variables | Committed `config/variables/*.env`, core defaults, secret overrides and deprecated root env files, exported into the current shell | Canonical identity, types, effective source/scope and validated merge/write boundaries. Shell sourcing remains executable configuration. Deprecated files load later and may override earlier values. |
-| Runtime configuration/state | Session AI settings, disposable `data/runtime`/temporary snapshots, subsystem stores and exports | One generic configuration API does not exist; subsystem operational state must remain distinct from preferences/intent. |
-| Module configuration | V1 manifest `variables_file`/`secrets_files`, env values, `config_validate`, menus and generated application files; activation policy in `config/modules.conf` | Uniform namespaced setting schema, value/query/update/apply contract and source-to-target migration. Activation policy is not a property editor. |
-| UI-visible properties | Backend AI settings snapshots plus [interaction.py](../../core/ai/interaction.py) typed text/enum/boolean/number primitives | Presentation/schema validation is implemented; generic owning-backend binding, persistence, apply and verification are not. Secret values are masked and cannot submit proposals. |
+[Current Codex guidance on pruning accumulated instructions](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
+and [scoped AGENTS guidance](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+support shorter, task-relevant instructions. Neither proves a model choice or
+multi-agent arrangement is better for Igor; the Owner retains that choice.
 
-Igor has a useful **foundation for** a generic property/configuration system:
-typed presentation, active owner metadata, capability apply/verification and
-inspection conventions. It does **not have** that system today.
-[CONFIGURATION.md](CONFIGURATION.md) is explicitly a proposal; its canonical
-IDs, scopes, storage choices and richer surfaces are not runtime guarantees.
-The [Ownership Foundation gate](EXECUTION.md#ownership-foundation-gate) remains
-required before broad module/value migration. Q012 in [DECISIONS](DECISIONS.md)
-also distinguishes documented RAM settings from the actually executed hardcoded
-thresholds; a UI must not label those env values as effective editable policy.
+## Challenge to the recommendation
 
-### Module contracts
+- **Could Bash remain?** Yes at leaf operations and through M1. Rewriting correct
+  platform algorithms solely into Python is waste; structured coordination earns
+  the migration cost.
+- **Is Task another framework?** It must be a small record/loop reusing plans,
+  History and investigations, deleting the prose-based mechanisms at cutover.
+- **Is M1 too large?** It is high risk, bounded to three shipped packages and
+  their existing surface. Use internal integration commits, not new domains,
+  marketplace work or a simultaneous AI rewrite.
+- **Are stores too separate?** Shared plumbing can shrink, but facts, intent,
+  evidence and secrets require distinct authority/recovery rules.
+- **Could fewer tests hide bugs?** Yes; map invariants before removal. Preserve
+  authorization, secret, privilege, History and recovery proof.
+- **Why not release now?** F01–F04 plus incomplete application/configuration and
+  continuation paths make a broad reliable-operator claim premature. Existing
+  bounded System functionality is useful and should be described honestly.
 
-The same loader supports v1 and strict v2 declarations, activation/dependency
-checks, active-owner contribution indexing, availability reasons, inspection
-and an isolated JSON Bash handler envelope. `system` is the mixed v1/v2 proof;
-`nextcloud_docker` remains v1. See [Module API](MODULE_API.md),
-[current module creation](../module_creation.md),
-[lifecycle](../module_lifecycle.md),
-[module validator](../../core/lib/module_contract.py) and
-[system declarations](../../modules/system/contracts/host.json).
-
-- **Capabilities:** implemented structured contracts and deterministic dispatch;
-  incomplete/unsupported declarations remain unavailable. Broad application
-  coverage and reviewed privileged/secret-consuming adapters remain missing.
-- **Knowledge:** active static contributions and v1 hooks exist; richer domain
-  relevance metadata is uneven. Module packages own reference semantics.
-- **Configuration schemas:** a contribution kind/seam exists, but recognizing
-  that kind is not an implemented generic settings schema/value service.
-- **Inspection:** module/contribution ownership and availability are exposed;
-  general semantic configuration and application effective-state inspection
-  still need owning contracts.
-- **Lifecycle:** activation and restart semantics plus v1 install/upgrade/remove
-  functions exist. Reserved v2 lifecycle contributions do not constitute a
-  generic setup/apply/resume workflow or migration engine.
-- **Ownership:** loader stamps contribution owner/source; modules define domain
-  meaning. Mutable settings, secrets, state and learning still need complete
-  owning-service contracts before broad v2 migration freezes their layout.
-
-### Knowledge boundaries
-
-Module knowledge describes how a domain works. System Model facts describe the
-current known machine with state class/source/time. History describes retained
-execution and verification evidence. Investigations organize hypotheses and
-findings with uncertainty. AI context is a selected, scrubbed reference view;
-its decisions are operational provenance only. These are not interchangeable
-forms of authoritative memory.
-
-Legacy primer/WIP/session-log text under installation `knowledge/` and recorded
-repair patterns still exist alongside investigations. They retain compatibility
-purposes; there is no automatic import or equivalence to an investigation or
-canonical episode. [knowledge.sh](../../core/ai/knowledge.sh) uses that direct
-path, while `_igor_resolve_dir knowledge` defaults to `config/knowledge`.
-[patterns.sh](../../core/healing/patterns.sh) uses `data/patterns`, while the
-resolver defaults to `config/patterns`. Pattern counts/`AUTO_ELIGIBLE` are not
-execution authority: the current pattern module explicitly has no automatic
-fix executor. These are ownership/path gaps for later work, not completed
-Step 16 baselines or permission for unattended CHANGE.
-
-## 4. Risks and evidence limits
-
-| Risk | Why it matters | Required interpretation |
-|---|---|---|
-| Partial workflow coverage presented as complete integration | The actual canonical system slice is memory; Nextcloud and some recovery/diagnostic paths remain legacy | Do not promise universal verified changes, canonical history or generic undo. Require an application slice before default-interface claims. |
-| Displayed/inferred material promoted into authority | Findings, summaries, schema-valid judgments, confidence and prior success can sound conclusive | Preserve state class, freshness, source and uncertainty in every projection. None approves, refreshes, registers or executes. |
-| Process/transport coupling hidden by the UI | Bash env state, marker parsing, subprocess inspection and PTY interaction underpin current composition | Prove the session's actual backend state is displayed; do not infer freshness or operation success from a cached panel. `/stop` is not proven mid-call cancellation. |
-| Configuration advertised ahead of its owner | Typed properties and reserved contribution kinds can resemble a complete settings system | Expose only backend-supported edits; distinguish configured/desired/effective values and unavailable settings. |
-| Knowledge package reproducibility | `system` declares `knowledge/host.md`; `git ls-files` reports it untracked and `.gitignore`'s `knowledge/` rule ignores it | Current local presence is not clean-checkout/package proof. Resolve delivery and prove clean-install availability before relying on that contribution in a default workflow. No asset was added by this review. |
-| Stale documentation implies a different implementation | Architecture/HOST_INTELLIGENCE retain historical Q003-open wording; D048 resolves it. Operational History's closing hold predates later STATUS gates. MODEL_ROLES lists OpenAI although current transport validation rejects it | Use accepted decision order, current code and dated STATUS evidence. Older milestone deferrals do not supersede later D056/D057. No broad documentation cleanup is performed here. |
-| Validation mistaken for usability/readiness | Milestone tests prove bounded backend/fixture behavior; known lint/tool limitations remain | Step 20 needs its own workflow, terminal/PTY, migration and recovery evidence. This review neither reruns nor retroactively closes older tooling gates. |
-
-## 5. Recommended next milestones
-
-These are proposed work boundaries, not accepted contracts or instructions to
-implement them now. They preserve existing foundations and roadmap ordering.
-
-1. **Bound the Step 20 workflow and ownership gate.** Agree which existing
-   system/application tasks must work before default launch, and which legacy
-   surfaces remain explicit compatibility routes. Identify their backend owners
-   and falsifiable inspection/approval/verification/recovery checks.
-2. **Establish a bounded configuration/ownership slice.** Confirm the service
-   contract using existing Module API and typed presentation seams. Demonstrate
-   one non-secret setting with source/scope, desired/effective distinction,
-   validated edit, capability apply/verification and idempotent recovery.
-   Mediate secrets only where a real reviewed consumer requires them; do not
-   migrate every env file or select a universal database through this review.
-3. **Prove a narrow application workflow.** As required by
-   [EXECUTION](EXECUTION.md#thin-slice-strategy), use a bounded Nextcloud workflow
-   across ownership/configuration, module contribution, capability, approval,
-   privilege where needed, deterministic verification, state and history.
-   Preserve the working v1 deployment. This does not require decomposing it.
-4. **Close scoped readiness discrepancies.** For the agreed workflow, address
-   package knowledge delivery, supported helper role tagging/isolation,
-   effective-setting documentation and inspection coverage. Do not turn this
-   into provider expansion, optimization or broad cleanup.
-5. **Then assess the Step 20 cutover evidence.** Consolidate mature inspection
-   surfaces in the existing TUI, prove normal workflows and failure/recovery,
-   and separately approve the launcher/default transition with CLI and
-   `--ai-tui` compatibility. No Step 20 implementation begins in this review.
-
-### Historical relationship/deployment prerequisites (now owner-scoped Step 19)
-
-Before the work now tracked under [Step 19](ROADMAP.md), the review required
-owner confirmation for its bounded contract and workflow
-scope. Reuse Step 15A scoped identities and preserve relationship source claims
-and reconciliation across discovered, configured, installer-created,
-user-declared and AI-proposed evidence. Configuration ownership, effective
-source/scope inspection and migration/recovery semantics must be established
-for the selected workflow before broad application-module migration.
-
-Use the representative application slice to prove structured plans, capability
-selection, approval/privilege, deterministic verification and retained
-deployment/relationship evidence under [EXECUTION](EXECUTION.md). Preserve v1
-Nextcloud compatibility. Durable external waits need their own accepted
-resumption contract if the selected workflow requires them. At review time
-these were later design and evidence gates; subsequent accepted Step 19
-contracts and current STATUS evidence supersede this timing statement.
-
-## 6. Step 20 readiness assessment
-
-**Ready to build on:** existing full-screen UI, typed presentation, backend
-choice/approval/PTY lifecycle, canonical command registry, public inspection
-services, history/investigation durability and deterministic context/role
-provenance. Additional views can consume those contracts without another
-executor, configuration writer, context database or UI-owned policy.
-
-**Not established:** readiness to change `./igor.sh`'s default launch. The
-[roadmap](ROADMAP.md) explicitly requires
-normal workflows to use shared backend foundations. The current launcher still
-has the classic menu path, and the panel consolidates only part of the backend
-inspection set. Recent milestone completion supplies dependencies, not that
-workflow/default-cutover proof.
-
-### Required before the default-launch cutover
-
-- Owner-confirmed workflow scope and a real system/application vertical slice
-  through the shared backend, with declared legacy compatibility boundaries.
-- Configuration/property ownership and apply/verify semantics for every setting
-  offered in that scope; unsupported properties must remain unavailable.
-- Honest consolidated inspection of active owners, freshness, capability
-  availability, approval/privilege, execution versus verification and retained
-  evidence. Context decisions must remain distinguishable from provider success.
-- Reproducible required module assets and supported AI-call contracts for that
-  workflow; no dependence on unexplained local untracked knowledge.
-- Step 20's own five [EXECUTION](EXECUTION.md) proofs: malformed/cancel/approval
-  boundaries; applicable regressions; normal terminal workflows; inspection;
-  launcher compatibility and failure/recovery without stale approval replay.
-  Preserve CLI/headless/recovery and the `--ai-tui` migration alias. Explicitly
-  cover resize, pending choice, sudo PTY, unavailable providers and UI restart.
-
-### Can evolve later, unless the selected workflow requires it
-
-All-domain observations and semantic relevance metadata; broader v2 module
-migration; complete generic settings/type catalogs; dedicated investigation
-editors/live judgment feeds; optional ranking transport and richer telemetry;
-relationship/deployment reconciliation; durable external waits/resumable work.
-A workflow claiming restart-safe external waits must first supply that contract.
-None of these should be inferred from existing presentation primitives.
-
-At review time, roadmap Step 16 baselines and Steps 17–19 were not treated as
-automatic prerequisites for an explicitly bounded Step 20 interface cutover.
-Their later completion/implementation state is recorded in STATUS and ROADMAP
-and supersedes this dated schedule snapshot. This assessment still does not
-authorize work beyond its own review boundary.
-
-## 7. Explicitly deferred items
-
-No code changes, feature implementation, module migration, default-launch
-change, new database, broad cleanup or new architecture decision accompanied
-this review. At the review date, deferred items included baselines/local
-learning, autonomous agents/gathering or recursive reasoning,
-embeddings/compression services, automatic rankers/scouts, provider
-marketplace/optimizer/expansion, Jet/Laya, hidden background AI, unrestricted
-tools, automatic remediation or unattended CHANGE, generic workflow/resume
-engine, Nextcloud decomposition, remote approval and Step 20 itself. Later
-accepted decisions and current STATUS/ROADMAP entries supersede this dated
-deferral list.
-
-Further work must retain one backend authority, explicit owner approval for
-new contracts and the [migration](MIGRATION.md) and
-[orchestration](../../.codex/README.md) gates. The immediate outcome is clearer
-readiness evidence, not permission for any deferred implementation.
+The remaining Owner gate is confirmation of the proposed runtime architecture
+and scope, especially Python coordination and the full v2 cutoff batch. Ordinary
+file/adapter choices need no further architectural vote. The already accepted
+no-Igor-1-compatibility decision needs no repeat approval. No runtime fixes or
+new milestone implementation occurred in this documentation audit.

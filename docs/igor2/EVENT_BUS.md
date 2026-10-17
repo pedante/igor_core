@@ -1,5 +1,11 @@
 # Step 13 — Domain Event Bus implementation contract
 
+D080 supersedes the historical Module API v1 preservation requirements in this
+document. They describe the original implementation boundary, not obligations
+for the [complete cutoff](LEGACY.md). Retain safety, activation, data and
+verification behavior while migrating all live consumers. Other schema/version
+axes called v1 are independent and are not blanket deletion targets.
+
 Status: **accepted design; Step 13 implemented**. This is the bounded Step
 13 contract, subordinate to [ARCHITECTURE.md](ARCHITECTURE.md) and D041–D043 in
 [DECISIONS.md](DECISIONS.md). The existing Wave E capability result and Wave C

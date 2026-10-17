@@ -1,109 +1,69 @@
-# Igor 2 architecture package
+# Igor 2 design and development
 
-This directory is the repository-resident design authority for Igor 2 on the
-independent `igor2` development baseline. `master` is the separate original Igor
-program. [DEVELOPMENT_POLICY.md](DEVELOPMENT_POLICY.md) is the single authoritative
-branch/pre-release policy; it supersedes older reconciliation and internal
-backward-compatibility obligations.
+Igor is an unreleased Linux-native assisted system operator. `igor2` is its
+independent baseline; `master` is the separate original program. Follow
+[DEVELOPMENT_POLICY](DEVELOPMENT_POLICY.md), including the accepted complete
+Igor 1 cutoff. Current source behavior and proposed changes are different claims.
 
-It exists so maintainers and coding agents can work from durable repository context instead of reconstructing the architecture from chat history.
+## Start here
 
-## Read order
+1. [STATUS](STATUS.md): current work, accepted evidence and open gates.
+2. [ARCHITECTURE](ARCHITECTURE.md): accepted principles/authority boundaries.
+3. [ROADMAP](ROADMAP.md): proposed five substantial milestones and exact first batch.
+4. [Architectural audit](ARCHITECTURE_READINESS.md): evidence, verdict, design
+   alternatives, testing/development recommendations and limits.
+5. [LEGACY](LEGACY.md): finite cutoff, preservation/import and deletion proof.
 
-For most Igor 2 work:
-
-1. `DEVELOPMENT_POLICY.md` and `ARCHITECTURE.md` — development obligations,
-   stable target principles and authority boundaries.
-2. Read the **current-focus section at the top of `STATUS.md`**. Older sections are retained implementation evidence, not a required linear read.
-3. Read only the task-relevant contract, review or exploration document.
-4. Before implementation/closure, read `EXECUTION.md`; before migration or ownership changes, also read `MIGRATION.md`.
-
-Do not treat every file in this directory as equal authority. The lifecycle rules below determine how each document may be used.
-
-Task-relevant documents:
-- `ROADMAP.md` — stable step names, development waves and current implementation status.
-- `MODULE_API.md` — target Module API v2.
-- `COLLECTION_OPERATOR_RFC.md` — D079-approved Step 18 typed collections and Step 20
-  generic renderer/direct invocation extension; DISCOVERY closed, first READ-only
-  EXECUTION milestone ready, runtime acceptance open.
-- `HOST_INTELLIGENCE.md` — accepted Wave D design and implementation gate for Steps 7–10.
-- `AGENT_ARCHITECTURE.md` — accepted Wave E contract for the bounded Steps 11–12 implementation.
-- `EVENT_BUS.md` — accepted and implemented Step 13 Domain Event Bus contract.
-- `AUTOMATION_ENGINE.md` — accepted and implemented Step 14 Automation Engine contract.
-- `PERSISTENT_MEMORY.md` — accepted Step 15A persistent identity, System Model persistence, durable-reference and memory-ownership contract; [Operational History](../operational_history.md) documents the Step 15B service.
-- `INVESTIGATIONS.md` — accepted Step 15C durable local investigation lifecycle, typed references, hypotheses, scoped findings, private persistence and read-only inspection.
-- `CONTEXT_ROUTING.md` — accepted Step 15D bounded context relevance, optional judgment ranking, provider-neutral roles, explicit bindings and operational provenance.
-- `BASELINES.md` — implemented Step 16A bounded explainable projections over retained Operational History.
-- `LOCAL_LEARNING.md` — approved Step 16B candidate, reviewed snapshot, lifecycle, persistence, Context and authority contract.
-- `INTERACTION_SURFACE.md` — implemented Step 15UI interaction foundation: scrolling, selection/focus, toggleable control panel, schema-driven inputs/properties and backend-reported AI role visibility.
-- `OPERATOR_SURFACE.md` — initial contract-driven operator projection and `:` namespace explorer over existing module/capability/configuration registries; no parallel execution or menu authority.
-- `SYSTEM_ADMIN_EXPERIMENT.md` — experimental System 2.3.0 administration surface: distro-neutral host/package/service/log semantics over Debian/Arch platform mechanics and reviewed privileged adapters.
-- `CONFIGURATION.md` — accepted D059 Core-owned configuration foundation: versioned schemas, scoped desired values, private persistence, references-only secrets, precedence, inspection and the bounded `ai.verbose` cutover; richer surfaces and deployments remain deferred.
-- `BROWNFIELD_ADOPTION.md` — accepted D061 brownfield discovery/adoption refinement: existing machine resources remain independent of modules, adoption is explicit, and configuration values retain concrete storage/source locators.
-- `RESOURCE_RECOGNITION.md` — explicit future seam between low-level observation and adoption: domain recognition, ephemeral evidence-bound candidates, exact user hints and no implicit authority.
-- `ATTACHMENT.md` — Step 19 Boundary 2 deterministic brownfield discovery, metadata attachment, scoped release and service prerequisites.
-- `DEPLOYMENTS.md` — accepted D063 owner-scoped Step 19: application-neutral deployment identity, typed relationships, explicit scoped responsibility, private transactional persistence and three separately gated implementation boundaries.
-- `PROVISIONING.md` — future Igor 2 greenfield installation/provisioning completion gate over capabilities, Deployment Service, Configuration and History; no workflow-engine authority.
-- `OPERATOR_INTERFACES.md` — Step 20A/B/C direction for a first-class CLI, completed backend-driven TUI and later default-launch cutover over one shared authority.
-- `COMMUNICATIONS.md` — design proposal for unified notifications/reports/email transport, authenticated remote conversation and bounded remote administration.
-- `RESUMABLE_WORK.md` — design proposal for durable `WAITING_USER` / `WAITING_EXTERNAL` plan states and safe continuation across restarts.
-- `MODEL_ROLES.md` — design exploration for optional role-based helper models such as a semantic scout; records open questions, not an accepted implementation contract.
-- `JUDGMENT_CONTRACT.md` — accepted bounded provider-neutral, reference-only model judgment record/interface; no role routing, transport or persistence.
-- `AI_SPECIALISTS.md` — design exploration for cheap/local AI specialist roles, bounded agents, module use, risks and open questions.
-- `MIGRATION.md` — compatibility, persistent migration and cleanup policy.
-- `EXECUTION.md` — evidence gates, vertical slices, inspection and scope discipline.
-- `PERFORMANCE_INVESTIGATION.md` — Boundary A–P performance retrospective, measured gains, architectural lessons, stopping rule and remaining low-priority opportunities.
-- `PERFORMANCE_AUDIT_PROMPT.md` — reusable Codex prompt for systematically finding the same classes of performance antipattern without weakening authority.
-- `INFLUENCES.md` — ServerMind/Steward/AOH lessons intentionally adopted by Igor.
-- `KNOWLEDGE_ARCHITECTURE.md` — accepted long-term knowledge model, portable Knowledge Artifact boundary, deterministic retrieval direction and optional OKF-compatible interchange without making external formats authority.
-- `KNOWLEDGE_IMPORT.md` — accepted direction for normalizing docs, scripts, Agent Skills/AOH, ServerMind, Steward and local learning into Igor-managed knowledge/module candidates without granting execution authority.
-- `DECISIONS.md` — accepted and unresolved architectural decisions.
-- `LEGACY.md` — significant current paths that must be kept, adapted or retired.
-- `PERFORMANCE_INVESTIGATION.md` — completed Boundary A–P performance investigation: measurements, architectural fixes, stopping point and remaining opportunities.
-- `PERFORMANCE_AUDIT_PROMPT.md` — reusable Codex prompt for systematically finding the same classes of performance antipattern without weakening Igor authority boundaries.
-
-## Current implementation versus target
-
-The root README, current subsystem docs, code and tests describe how Igor works today.
-
-The files here describe where Igor is going and how to migrate safely.
-
-Important current foundations already exist. Igor 2 must **not** recreate them under parallel names merely because the roadmap originally described them as future work. The current TUI/runtime, safety/privilege flow, module activation boundary, platform helpers, AI trust boundary and capability catalog are migration inputs.
-
-`docs/module_creation.md` remains the current Module API v1 reference until v2 is implemented and adopted. `docs/module_lifecycle.md` documents the current module activation model.
-
-## Design goal
-
-Igor is a local AI-assisted operating layer for Linux. It should maintain typed machine memory, discover the host deterministically, distinguish observed state from desired state and responsibilities, gain domain knowledge and abilities through modules, preserve durable investigations, plan installation/configuration work through structured capabilities, execute safely, verify changes deterministically, retain useful operational history and local learning, and let users operate the machine without needing to know the underlying commands.
-
-The Codex-like TUI is the primary interactive-interface direction, while the
-CLI is a first-class headless/operator interface. Natural-language one-shot,
-structured CLI commands, TUI interaction, automation and later external
-interfaces must use the same backend state/capability engine rather than
-implement parallel operating logic.
+For implementation, read [EXECUTION](EXECUTION.md), [MIGRATION](MIGRATION.md)
+and only affected contracts. The reset architecture remains DISCOVERY until
+Owner confirmation; D080's no-v1-compatibility direction is already accepted.
+Documentation edits do not implement or validate a runtime migration.
 
 ## Document lifecycle and authority
 
-These documents have different jobs:
+- **Development obligations:** DEVELOPMENT_POLICY, repository AGENTS and
+  [.codex/README](../../.codex/README.md).
+- **Accepted architecture:** ARCHITECTURE → accepted DECISIONS → MIGRATION →
+  EXECUTION → ROADMAP → implementation documentation. A proposed roadmap cannot
+  override an accepted contract; confirmation records the changed decision first.
+- **Current behavior:** source, tests and current operator/subsystem docs. A green
+  fixture or old acceptance proves its named boundary, not universal readiness.
+- **Proposal:** explicitly proposed/future/exploratory text is input, never runtime
+  authorization. New reset recommendations stay in the audit/roadmap until accepted.
+- **History:** [archived STATUS](archive/STATUS_2026-10-16.md), dated reviews and Git
+  preserve evidence. Old phase statements, approvals and budgets do not resume work.
 
-- **Normative authority** — `DEVELOPMENT_POLICY.md` for development obligations; `ARCHITECTURE.md`, accepted decisions in `DECISIONS.md`, `MIGRATION.md` and `EXECUTION.md`. These define durable architecture, migration and proof rules.
-- **Current coordination** — the current-focus section of `STATUS.md`, plus `ROADMAP.md` and `LEGACY.md`. These describe what is active, complete, deferred or still compatible; they do not override normative authority.
-- **Implemented/accepted subsystem contracts** — task-specific contracts such as `MODULE_API.md`, `CONFIGURATION.md` or `PERSISTENT_MEMORY.md`. Their stated boundary is authoritative only within the accepted decision/architecture order above.
-- **Proposal / future / exploration** — documents explicitly labeled proposal, future, direction or exploration are design input, not implementation authority.
-- **Historical review / evidence** — dated reviews, investigations and older status evidence explain how a conclusion was reached; later accepted decisions and current status supersede their timing statements.
+Use one top-level Status marker. Update the owning document instead of adding a
+parallel specification. Current STATUS stays short and links to the task ledger.
+The prior 23-step roadmap and 2026-10-01 readiness review remain available in Git.
 
-A document that uses a top-level `Status:` marker must have exactly one current marker near the top. Do not leave a second contradictory status line in the same document. When a dated review becomes historical, label it as such instead of rewriting its original evidence to look current.
+## Read contracts only when needed
 
-## Documentation discipline
+| Work | Primary contract/evidence |
+|---|---|
+| Module/operation/lifecycle | [MODULE_API](MODULE_API.md), [current lifecycle](../module_lifecycle.md), [AGENT_ARCHITECTURE](AGENT_ARCHITECTURE.md) |
+| Settings, secrets, paths | [CONFIGURATION](CONFIGURATION.md), [ownership inventory](OWNERSHIP_FOUNDATION_PROPOSAL.md), [LEGACY](LEGACY.md) |
+| Machine facts/health | [HOST_INTELLIGENCE](HOST_INTELLIGENCE.md), [PERSISTENT_MEMORY](PERSISTENT_MEMORY.md) |
+| History/investigations/context/learning | [History](../operational_history.md), [INVESTIGATIONS](INVESTIGATIONS.md), [CONTEXT_ROUTING](CONTEXT_ROUTING.md), [LOCAL_LEARNING](LOCAL_LEARNING.md) |
+| Application identity/adoption | [DEPLOYMENTS](DEPLOYMENTS.md), [ATTACHMENT](ATTACHMENT.md), [BROWNFIELD_ADOPTION](BROWNFIELD_ADOPTION.md) |
+| CLI/curses/collections | [OPERATOR_INTERFACES](OPERATOR_INTERFACES.md), [COLLECTION_OPERATOR_RFC](COLLECTION_OPERATOR_RFC.md), [interaction](../interaction_surface.md) |
+| Events/scheduling | [EVENT_BUS](EVENT_BUS.md), [AUTOMATION_ENGINE](AUTOMATION_ENGINE.md) |
+| Validation/performance | [VALIDATION](VALIDATION.md), [measured validation costs](VALIDATION_PERFORMANCE.md), [runtime retrospective](PERFORMANCE_INVESTIGATION.md) |
+| Architecture rationale | [DECISIONS](DECISIONS.md), [INFLUENCES](INFLUENCES.md) |
 
-These files are architectural memory, not a second implementation.
+`docs/module_creation.md` documents the still-live legacy interface and is marked
+accordingly. New extension design uses v2; M1 replaces the legacy author guide.
+Existing contracts remain useful while their actual consumers exist. Their old
+wave labels do not require preserving v1 after D080.
 
-- Branch/pre-release obligations belong only in `DEVELOPMENT_POLICY.md`.
-- Stable principles belong in `ARCHITECTURE.md`.
-- Execution/completion rules belong in `EXECUTION.md`.
-- Adopted external design lessons belong in `INFLUENCES.md`; they do not override accepted Igor decisions.
-- Accepted/open decisions belong in `DECISIONS.md`.
-- Current migration focus belongs at the top of `STATUS.md`; older sections may remain as scoped implementation evidence while consolidation is bounded, but they never override current focus or accepted authority.
-- Significant compatibility/debt belongs in `LEGACY.md`.
-- Current implementation details belong next to current code/tests/docs.
-- Git history is the archive for superseded planning/handoff documents; stale copies should not remain in active docs merely for history.
+## Optional research, not entry requirements
+
+AI_SPECIALISTS, MODEL_ROLES, COMMUNICATIONS, PROVISIONING, RESUMABLE_WORK,
+KNOWLEDGE_IMPORT and RESOURCE_RECOGNITION contain future or bounded directions.
+Read them for the named task, not before every edit. Accepted parts remain tied
+to their decisions; unimplemented ideas are not a backlog commitment. Generalized
+imports, remote operation, marketplaces and agent networks are Igor 2.x candidates.
+
+After reset confirmation/implementation, consolidate overlapping target prose into
+ARCHITECTURE and the live contracts. Keep the useful reasons in DECISIONS and Git;
+do not force developers to reconstruct the project's full evolution.

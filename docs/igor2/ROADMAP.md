@@ -1,1021 +1,354 @@
-# Igor 2 roadmap
-
-The numbered step names are stable references. They describe outcomes, not instructions to rebuild functionality that already exists.
-
-Status labels describe the current `igor2` baseline:
-
-- **CURRENT** — substantially present; audit/formalize rather than rebuild.
-- **PARTIAL** — useful implementation exists but target contract is incomplete.
-- **FUTURE** — target architecture is not yet established.
-
-The moving current-work cursor lives in [STATUS.md](STATUS.md), not in stable
-roadmap step headings. This prevents an old `NOW` label from becoming false
-after later boundaries advance.
-
-## Execution gates
-
-Roadmap prose does not make a wave complete. Each foundation/wave closes with
-evidence for the five proof classes in [EXECUTION.md](EXECUTION.md):
-
-1. contract proof;
-2. regression proof;
-3. a real vertical slice;
-4. inspection/observability proof;
-5. migration/recovery proof where persistent data or contracts change.
-
-Exit conditions should be scriptable/falsifiable wherever practical. The
-existing green baseline for retained contracts remains part of every later
-wave's regression gate; authorized replacements migrate expectations and preserve
-equivalent safety/behavior coverage under D078.
-
-[Development Policy / D078](DEVELOPMENT_POLICY.md) establishes the actual `igor2`
-tree as the independent unreleased baseline. No `master` reconciliation gate
-applies. Complete authorized internal consumer migrations replace mandatory
-obsolete coexistence; all five proof classes and safety/data obligations remain.
-
-## Development waves
-
-- **Wave A — Foundation:** Steps 1–2
-- **Wave B — Runtime & Safety:** Steps 3–4
-- **Wave C — Extensible Module and Capability Foundation:** Steps 5–6
-- **Wave D — Machine Memory, Discovery and Desired State:** Steps 7–10
-- **Wave E — Plans, Configuration, Installation and Verification:** Steps 11–12
-- **Wave F — Durable Investigations and Operational Learning:** Steps 13–16 and 19
-- **Wave G — Composable Igor:** Steps 17–18 and 20–22
-- **Wave H — Consolidation:** Step 23
-- **Later — Packs, Adapters and Ecosystem:** post-2.0 distribution/integration.
-
-These Owner-aligned direction labels preserve the established numbered steps,
-completed boundaries and cross-cutting gates. Older wave labels in dated
-evidence remain historical; no completed wave is restarted or renumbered.
-
-Recent work means Waves B and parts of C/D/E already have substantial foundations. The roadmap must preserve and generalize them rather than create parallel systems.
-
-Several **cross-cutting completion gates** now sit between the stable numbered
-steps without renumbering them: Resource Discovery & Domain Recognition,
-Configuration & Secrets completion, Provisioning & Installation, Resumable Work
-runtime implementation, and the Step 20A/B/C operator-interface cutover. These
-make previously implicit Igor 2 requirements explicit while preserving the
-existing step references.
-
-## Cross-cutting Ownership Foundation
-
-Before broad Module v2 migration, Igor must establish one authoritative
-ownership model for:
-
-- canonical paths;
-- user configuration;
-- secrets and secret references/access;
-- persistent state;
-- machine memory;
-- knowledge;
-- learned local artifacts;
-- investigations;
-- operational history;
-- disposable runtime.
-
-Every important persistent value should have an owner, source, scope,
-lifecycle, migration/reset behavior and appropriate inspection surface.
-Imported knowledge/module candidates additionally retain source kind, upstream
-project/document identity, version/tag/commit or retrieval point, license/provenance
-where applicable and the transformation that produced the Igor-managed artifact.
-
-The configuration foundation in [CONFIGURATION.md](CONFIGURATION.md) now has an
-implemented Core-owned Configuration Service: versioned schemas, private
-SQLite desired values, revision/state-token authority, the `ai.verbose` Core
-slice, and the first real module-owned System memory-warning workflow. Modules
-describe configuration meaning; Igor owns mutable values, validation,
-persistence and migration. Secrets remain references-only and the broader
-configuration/secret migration gate is not yet complete.
-
-This remains a hard architectural gate, not a new wave name. Early
-non-conflicting Wave C loader/contract work may proceed, but Wave C must not
-freeze the remaining mixed config/secret/state layout into the public Module v2
-contract. Broad application-module migration still waits for the unfinished
-ownership/secret/binding work, even though the Configuration Service foundation
-itself is now real and exercised.
-
-## Igor 2.0 scope boundary
-
-The A-H roadmap through Step 23 defines Igor 2.0. The knowledge/module import
-foundation in [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md) is part of that direction:
-Igor 2 should preserve source provenance, keep portable package content separate
-from machine binding/configuration, accept Agent Skills-style knowledge as a
-bounded input, and give module developer tooling a normal import/normalize/
-validate path.
-
-Igor 2.0 also requires explicit closure for the reusable
-[Resource Recognition](RESOURCE_RECOGNITION.md) seam, one real
-[Provisioning/Installation](PROVISIONING.md) workflow, the owned
-configuration/secret migration gate, a bounded
-[Resumable Work](RESUMABLE_WORK.md) runtime slice, and the shared
-[CLI/TUI operator interface](OPERATOR_INTERFACES.md). These are completion gates,
-not new authorities or permission systems.
-
-A full public marketplace/registry, third-party signing infrastructure,
-sophisticated dependency solving, hot unload, a second handler-language adapter
-and live AOH/ServerMind/Steward interoperability remain post-2.0 unless a
-concrete requirement moves one into scope.
-
----
-
-## Step 1 — Legacy Audit & Cleanup Map — COMPLETE / HISTORICAL FOUNDATION
-
-Audit the **current** repository against Igor 2 invariants.
-
-Classify significant architecture paths as:
-
-- KEEP;
-- ADAPT;
-- REPLACE;
-- REMOVE;
-- TEMPORARY COMPATIBILITY.
-
-Also classify roadmap requirements as already implemented, partial, implemented differently-but-acceptably, or missing.
-
-Update `LEGACY.md` and `STATUS.md` with evidence. Establish the test/lint baseline. Make only small, clearly safe baseline/doc fixes; do not start later architecture.
-
-## Step 2 — Architecture Rules — PARTIAL
-
-The repository-resident architecture package exists.
-
-Complete this step by turning critical invariants into focused regression tests where practical and reconciling accepted decisions with Step 1 evidence.
-
-## Step 3 — Interaction Runtime — CURRENT / HARDEN
-
-The structured TUI, event stream, command registry, session states, approvals and pending conversational choices already exist.
-
-Audit and harden:
-
-- explicit pending interaction state;
-- deterministic replies such as `3`, `logs`, `yes`, `continue`, `cancel`;
-- conversation/approval state transitions;
-- frontend/backend ownership;
-- reuse by future interfaces.
-
-Do not replace this runtime with a second state machine merely to satisfy the roadmap.
-
-## Step 4 — Privilege Boundary — CURRENT / HARDEN
-
-Native sudo authentication through the backend PTY and privilege events already separate OS authentication from AI autonomy.
-
-Formalize the general contract:
-
-- privilege metadata belongs to capabilities/runtime;
-- exact approved operation is preserved;
-- authentication never enters model context/history/events;
-- Executive never grants blanket root;
-- failures close safely.
-
-Extend only where current behavior does not cover general capabilities/interfaces.
-
-## Step 5 — Module Runtime v2 — COMPLETE FOR WAVE C
-
-Current code already has:
-
-- installed/discovered modules;
-- explicit enable/disable policy in `config/modules.conf`;
-- active/unavailable state;
-- owner-aware hooks, menus and capabilities;
-- active-module filtering in major subsystems;
-- regression tests.
-
-Do not introduce a parallel loader or rename states without value.
-
-The Wave C implementation extends the existing loader in place. It preserves
-the lifecycle vocabulary and restart semantics while adding strict v2
-preflight, staged owner-aware contributions, typed requirement failures and
-inspection queries. Contract, regression, inspection and policy migration
-evidence is recorded in `STATUS.md`.
-
-Restart-based activation is acceptable; hot unload is not a requirement.
-
-Wave C completion must prove at minimum:
-
-- invalid v2 metadata fails before handler execution;
-- inactive/unavailable owners contribute no active v2 behavior or reference
-  data;
-- one owner-stamped contribution index serves v2 plus temporary v1 consumer
-  views;
-- the Bash adapter executes the language-neutral handler envelope;
-- `system` exercises a small mixed v1/v2 slice;
-- `nextcloud_docker` remains working on v1;
-- current Wave B interaction/approval/privilege regressions remain green;
-- module state, API version, ownership and unavailable reasons are inspectable.
-
-## Step 6 — Module API v2 — INITIAL CONTRACT COMPLETE FOR WAVE C
-
-Define and validate a versioned contract based on durable concepts rather than an expanding hook list:
-
-- identity;
-- knowledge;
-- observers;
-- capabilities;
-- checks;
-- domain events;
-- automations;
-- relationships;
-- configuration;
-- lifecycle.
-
-The Wave C design gate selected the contract in `MODULE_API.md` and D017–D022.
-The initial Bash adapter, strict validator and JSON contribution path are now
-implemented. The `system` slice proves knowledge and observer declarations;
-kind-specific consumers and broader migration remain future work.
-
-The initial optional-contract/v1 path is implemented evidence. Live v1 consumers
-remain until their authorized migration; D078 does not require indefinite
-coexistence or internal deprecation periods once all consumers/data migrate.
-
-Implementation follows D017–D022: one loader, strict v2 validation, one
-owner-aware contribution index and Bash as the first handler adapter.
-`system` is the incremental v2 reference module during Wave C;
-`nextcloud_docker` stays on v1 throughout the wave.
-
-## Step 7 — Platform Abstraction — WAVE D BOUNDARY COMPLETE
-
-Current `distro.sh`, `pkg.sh` and Python resolution already include Debian/Arch-aware behavior and additional family mappings.
-
-Audit and generalize rather than replace.
-
-Target at minimum:
-
-- tested distro/platform detection;
-- package query/install/remove/update abstractions;
-- systemd service operations;
-- host identity and common user/filesystem/network operations needed by capabilities;
-- tests for Debian and Arch behavior.
-
-Do not claim full derivative support merely from `ID_LIKE` or package mappings.
-
-The Wave D design in [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md) keeps the
-existing helpers and limits immediate additions to read/query mechanisms and
-tested package/service mutation argv resolution. Actual new privileged
-execution remains behind the current gate and Step 11 generalization. New
-normalized resolution fails closed on unknown families; preserve legacy
-`pkg_install` callers until their cutover. Move Docker
-post-install behavior with its domain capability, not into `system`.
-
-## Step 8 — System Model — INITIAL CONTRACT COMPLETE FOR WAVE D
-
-Create Igor-owned structured state for host, OS, storage, networking, services/packages, Igor runtime/modules, domain instances and relationships.
-
-Facts distinguish:
-
-- observed;
-- configured;
-- inferred;
-- user-declared;
-- desired;
-- responsibility/maintain-watch intent;
-- known/unknown/stale.
-
-Machine memory also links relevant installation/deployment records,
-investigation findings and deterministic verification outcomes without turning
-chat history into state.
-
-Every fact/intent record should expose owner, source/provenance and freshness as
-applicable. Start with stable interfaces and simple storage; do not choose a
-large persistence system prematurely.
-
-Wave D implementation uses the accepted D033/D036 record, availability,
-responsibility and source-backed intent contract in
-[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md). Observed facts are rebuildable
-in the first slice; Q003 remains open for later durable observed history.
-
-## Step 9 — Observation Framework — INITIAL CONTRACT COMPLETE FOR WAVE D
-
-Standardize observers that populate the System Model.
-
-Observers declare ownership, output types, cost/freshness, privilege, timeout and dependencies as needed.
-
-Problem discovery is a deterministic Igor function: observers/checks can detect
-unhealthy, drifting or surprising state before the model explains it. AI may
-choose follow-up questions or capabilities, but should not be the only sensor.
-
-Consumers should query Igor state instead of repeatedly issuing their own
-probes. Observer/fact provenance and freshness must be inspectable from the
-first authoritative implementation.
-
-Wave D extends the existing Wave C observer adapter with declared typed
-properties, runtime validation, atomic System Model updates and deterministic
-failure/staleness semantics. The invocation and inspection contract is in
-[HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md); no general scheduler is added.
-
-## Step 10 — Unified Health — INITIAL CONTRACT COMPLETE FOR WAVE D
-
-Diagnostics and healing share an active-owner check runner and structured
-result contract while keeping separate user workflows. V1 line adapters
-remain during module migration.
-
-Unify the underlying structured observation/check result while keeping Diagnose and Self-healing as different user workflows.
-
-One check result should be reusable by health score, diagnosis, AI, healing, notifications and history.
-
-The Wave D gate selects one active-owner runner and structured result with
-v1 line adapters. Keep the distinct workflows, suppress a legacy check when
-its canonical v2 result becomes authoritative, and prove one execution per
-pass. See [HOST_INTELLIGENCE.md](HOST_INTELLIGENCE.md).
-
-## Step 11 — Capability System v2 — BOUNDED WAVE E IMPLEMENTED
-
-The current action catalog, `run_igor_action`, ownership and safety metadata are the seed.
-
-**The bounded Wave E runtime is implemented.** D037–D038 and
-[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define identity/provider
-resolution, typed inputs, deterministic policy/privilege/preconditions,
-postcondition verification, recovery, affected objects, secret references,
-Q010 shell fallback, inspection and the minimal resolved-plan contract.
-The implementation extends the owner-aware catalog and existing dispatcher.
-The real READ slice is `system.host.memory.refresh`; an isolated
-`system.service.restart` fixture proves CHANGE/privilege/verification,
-including the `unverified_change` result. V1 actions remain compatible;
-additional privileged and secret-using providers need reviewed adapters.
-
-The bounded runtime now exposes Igor's canonical operational API with structured:
-
-- inputs;
-- owner;
-- safety;
-- privilege;
-- preconditions;
-- execution;
-- deterministic verification where practical;
-- per-capability recovery semantics rather than universal rollback;
-- affected objects;
-- platform requirements;
-- secret-reference/access requirements where applicable.
-
-The minimal structured plan model supports ordered capability steps for
-installation, configuration, repair and migration proposals. A plan composes capabilities, exposes preconditions,
-approval/privilege points, recovery semantics and verification before
-execution. AI may propose/explain a plan; Igor resolves providers, authorizes,
-executes and verifies it.
-
-TUI, CLI, automation, healing and future external interfaces should invoke the same capabilities.
-
-## Step 12 — Knowledge & Context Engine — BOUNDED WAVE E IMPLEMENTED
-
-The current request boundary/reference envelope is a strong trust foundation. Preserve it.
-
-**The bounded memory-domain Context Engine is implemented.** D039 and
-[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md) define bounded deterministic
-selection, source kinds/provenance, active-owner filtering, sensitive-field
-exclusion and inspection inside the current `IGOR_REFERENCE_V1` pipeline.
-The memory slice selects current fact/health/capability/knowledge items without
-dumping unrelated machine/module data. Other domains retain labeled legacy
-context until their corresponding authoritative source and relevance mapping
-are available.
-Core context routing stays domain-neutral: modules/knowledge own domain vocabulary and semantic metadata, while model-derived topic/object hints remain non-authoritative inputs to deterministic retrieval. Adding a new domain must not require a new Core keyword/synonym routing branch (D040).
-
-Extend the memory-domain cutover over time with composition of relevant:
-
-- core operating guidance;
-- System Model facts;
-- active module knowledge;
-- relationships;
-- capabilities;
-- relevant history.
-
-Disabled modules contribute nothing. Reference material never becomes authorization policy.
-
-Keep shipped/module knowledge separate from local learned artifacts. Evidence-
-backed runbooks, patterns and successful investigation procedures may become
-local learning with provenance, but they do not become executable authority
-merely because the AI produced or used them.
-
-Imported documentation, Agent Skills/AOH material and other external knowledge
-must enter through the same reference-data boundary. Source provenance survives
-normalization; imported scripts/tool manifests remain candidate/reference
-material until explicitly promoted through the normal Module API/capability
-contract. See [KNOWLEDGE_IMPORT.md](KNOWLEDGE_IMPORT.md).
-
-## Step 13 — Domain Event Bus — COMPLETE
-
-Do not confuse this with the existing AI frontend event stream.
-
-The bounded contract is [EVENT_BUS.md](EVENT_BUS.md), accepted in D041–D043.
-Core now validates a session-local domain bus and projects one
-`capability.completed` signal from each committed canonical Wave E result.
-Active v2 modules can declare owned event types and request publication
-through the handler boundary. Read-only type and recent-event inspection is
-available through `--events`. The real memory refresh and disposable service
-failure fixture prove the first slice; [STATUS.md](STATUS.md) records the five
-proof classes. Wave F remains incomplete.
-
-Later structured operational event types may include:
-
-- service.failed;
-- container.stopped;
-- disk.threshold_exceeded;
-- backup.failed;
-- capability.completed (including failed and unverified outcomes);
-- module.enabled/disabled.
-
-Events include Core-stamped source/owner, related objects, times, bounded
-evidence references and correlation. They cannot authorize execution.
-
-## Step 14 — Automation Engine — COMPLETE
-
-The bounded implementation contract is
-[AUTOMATION_ENGINE.md](AUTOMATION_ENGINE.md), accepted in D044–D047. Q008 is
-resolved: modules propose; Igor's explicit administrator/runtime policy
-activates. Step 14 owns durable configured intent, scheduling and bounded
-run state. Every run enters the canonical capability dispatcher; only
-unprivileged READ may run unattended in this step. Inspection precedes TUI
-presentation. Step 13 events are transient signals, never approval or replay.
-
-The version-1 registry, explicit operator activation, module proposal
-boundary, persistence and read-only inspection were established in 14A.
-One-time, periodic, event and typed `fact_equals` condition READ triggers
-were added in 14B–14E. A condition tick uses an existing fresh, known System
-Model fact and never refreshes an observer to make a predicate true. Every
-admitted run retains the durable claim and canonical dispatcher boundary.
-The five proof classes and regression results are recorded in
-[STATUS.md](STATUS.md). Retries beyond one attempt and unattended CHANGE
-require later explicit contracts; Step 15 owns durable history.
-
-## Step 15 — Operational History — 15A ACCEPTED; 15B/JUDGMENT/15UI IMPLEMENTED; 15C COMPLETE; 15D IMPLEMENTED
-
-Step 15A is the persistence/identity gate in
-[PERSISTENT_MEMORY.md](PERSISTENT_MEMORY.md). D048–D054 resolve Q003 and
-establish the rules that later history, investigations, resumable work,
-deployments and learning must share without collapsing into one database or
-authority.
-
-The implementation sequence is deliberately bounded:
-
-- **15A — Persistent Identity & Memory Foundation:** architecture only. Define
-  scoped durable references, System Model persistence semantics, provider and
-  correlation identity, evidence/provenance, ownership/lifecycle/reset and the
-  canonical history hand-off. No broad runtime store is introduced.
-- **15B — Operational History:** implemented through a versioned Igor-owned
-  episode service with private SQLite persistence, pre-effect durable attempt
-  identity, interruption/verification-only reconciliation, read-only CLI
-  inspection and export/recovery/reset. The AI audit is a compatibility
-  projection; the recovery journal retains noncanonical legacy callers. See
-  [Operational History](../operational_history.md) and evidence in
-  [STATUS.md](STATUS.md).
-- **Decision/Judgment Contract gate:** the accepted D055
-  [contract](JUDGMENT_CONTRACT.md) supplies a versioned, provider-neutral
-  in-memory schema/interface with explicit abstain/unknown, provenance,
-  validation and deterministic fallback. It has no operational authority,
-  live transport, persistence, role/model selection or routing policy. See
-  [STATUS.md](STATUS.md) for validation evidence.
-- **15UI — Interaction Surface Foundation:** implemented after the judgment
-  contract and before 15C: mouse scrolling, keyboard navigation/movable
-  selection, explicit focus, a toggleable control panel and reusable typed
-  schema/property rendering extend the existing TUI. The UI consumes backend
-  inspection/edit contracts; it does not own configuration, history, AI
-  routing, safety or authority. See [INTERACTION_SURFACE.md](INTERACTION_SURFACE.md).
-- **15C — Durable Investigations:** implemented under D056 with a versioned
-  local lifecycle, bounded hypotheses, evidence/history references, validated
-  judgment attachments, investigation-scoped findings and unresolved questions.
-  Private atomic JSON, export/restore, headless data operations and read-only
-  15UI inspection grant no operational or current-state authority. See
-  [INVESTIGATIONS.md](INVESTIGATIONS.md) and [STATUS.md](STATUS.md).
-- **15D — Context Relevance and Model Role Routing:** bounded D057 implementation
-  extends the existing Context Engine with deterministic selection, optional
-  validated judgment ranking, explicit scoped history/investigation retrieval,
-  reasoner/summarizer/context_ranker roles and administrator model bindings.
-  Included/excluded reasons and routing rules are read-only CLI/15UI operational
-  provenance, never durable knowledge or authority. No automatic ranker call,
-  provider optimization or new context database. See [CONTEXT_ROUTING.md](CONTEXT_ROUTING.md)
-  and final evidence in [STATUS.md](STATUS.md).
-
-Chat history is not operational memory. Step 13 events remain transient
-signals and are not the only durability path. Persistent records refer to
-scoped objects and canonical contracts/providers rather than handlers, paths
-or UI names.
-
-## Step 16 — Baselines, Local Learning and Portable Knowledge — COMPLETE
-
-The owner-scoped **Step 16 — Architecture Integration Review and Readiness
-Assessment** is complete; see [ARCHITECTURE_READINESS.md](ARCHITECTURE_READINESS.md)
-and [closure evidence](STATUS.md#step-16-architecture-integration-review-and-readiness-assessment--complete).
-The architecture integration review is complete. The bounded learning/knowledge
-foundation is also complete through Step 16F: explainable baselines, explicit
-reviewed local learning, typed Investigation evidence, cross-incident patterns,
-evidence-backed reference procedures and portable OKF-compatible Knowledge
-Artifact interchange are all implemented with focused/affected evidence.
-
-This closes the Step 16 learning/knowledge track. It does **not** make the
-repository-wide release gate green or complete later Igor 2 ownership,
-application, provisioning, resumable-work or operator-interface gates; see
-[STATUS.md](STATUS.md).
-
-Use transparent operational history to learn normal ranges/behavior for this machine.
-
-Step 16B adds recurring outcome and Investigation-backed finding candidates,
-with explicit operator review and durable reference-only snapshots outside
-installed module packages. Causal patterns and verified runbook derivation are
-deferred until source contracts support those claims. See
-[BASELINES.md](BASELINES.md) and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
-
-Step 16C is also implemented: durable Investigations carry typed
-`symptom`, `cause`, `action` and `verification` findings with explicit evidence
-bindings and v1→v2 migration. Local Learning now consumes **supported** typed
-findings through a distinct reviewable candidate path when their supporting
-evidence resolves to retained canonical History. This preserves incident-scoped
-meaning and stable finding identity without automatic causal inference,
-acceptance or runbook generation. See [INVESTIGATIONS.md](INVESTIGATIONS.md)
-and [LOCAL_LEARNING.md](LOCAL_LEARNING.md).
-
-Step 16D adds deterministic **cross-incident symptom/cause pattern
-candidates** over already accepted typed incident learning. At least three
-distinct Investigations must contribute an exact matching reviewed symptom/cause
-pair with matching object scope and compatibility. The pattern remains
-reference-only and requires its own explicit review. Similar prose is not merged
-automatically; reference procedures/runbooks remain deferred.
-
-Step 16E adds deterministic **evidence-backed reference procedure
-candidates** over an accepted current pattern. At least three pattern incidents
-must contribute the same exact reviewed action/verification pair; in each
-incident both findings must bind the same canonical successful History operation
-with passed verification. The procedure requires another explicit review and
-remains reference-only. Multi-step sequencing, semantic action equivalence and
-executable runbook/capability promotion remain deferred.
-
-Step 16F adds **portable Knowledge Artifact interchange**. Accepted Local
-Learning may be exported as a one-concept OKF v0.2 bundle. Import validates and
-normalizes either an Igor-extended artifact or a generic bounded OKF concept as
-untrusted reference material, with no persistence or Context admission. OKF is
-an interchange format only; it does not become Igor memory or authority. See
-[KNOWLEDGE_ARTIFACTS.md](KNOWLEDGE_ARTIFACTS.md).
-
-Local experience may later be crystallized into a candidate Agent Skill/runbook
-or module contribution through the same import/promotion pipeline used for
-external knowledge. Promotion creates a reviewable candidate first; it does not
-let Igor silently rewrite its installed executable modules.
-
-Begin with explainable statistics and rules, not opaque ML. A learned baseline
-describes evidence about normal behavior; a candidate does not establish
-causality. Reviewed learning artifacts remain reference material under D053
-until a future, explicit authoritative transition exists.
-
-### Post-foundation knowledge improvements — deferred until measured need
-
-The repository already has the important memory foundations: current System
-Model state, Operational History, durable Investigations and bounded context
-retrieval. Do not schedule another generic "memory foundation" or replace those
-services with one database.
-
-The Step 16 memory/learning/portability foundation is complete. The following
-are optional later improvements, not blockers for continuing the Igor 2 main
-roadmap:
-
-| Missing outcome | Focused engineering effort | Needed now | Impact | Foundation / dependency | Timing |
-|---|---:|---:|---:|---:|---|
-| Step 16A explainable baselines over retained history | implemented | 5/5 | 5/5 | 4/5 | bounded first slice |
-| Step 16B evidence-backed local learning review lifecycle | implemented | 4/5 | 5/5 | 4/5 | bounded reviewed-reference slice |
-| Step 16F Portable Knowledge Artifact import/export, OKF v0.2-compatible profile | implemented | 3/5 | 4/5 | 3/5 | bounded interchange slice |
-| Deterministic knowledge discovery/index improvements | 2–4 days | 2/5 | 4/5 | 3/5 | defer until real corpus/retrieval pain appears |
-| Semantic/vector derived index | 3–6 days | 1/5 | 3/5 | 1/5 | post-foundation; only with measured need |
-| Automatic learning/promotion into executable capability candidates | 8–15+ days | 1/5 | 4/5 | 2/5 | post-2.0 unless explicitly reprioritized |
-
-These are rough focused-development estimates including focused tests and
-documentation, not elapsed-time commitments.
-
-The implementation rule is:
-
-> Igor owns memory and knowledge semantics; SQLite, files, OKF documents and
-> future semantic indexes are replaceable implementations or interchange
-> formats.
-
-Knowledge/runbook interchange may use a Markdown/front-matter representation
-compatible with Open Knowledge Format (OKF) where practical. This applies only
-to reference artifacts. It does not move System Model, Configuration,
-Operational History, secrets, approval/privilege or runtime authority into OKF.
-
-## Step 17 configuration foundation — owner-scoped bounded implementation
-
-After the Architecture Readiness Review, the Project Owner accepted Step 17A's
-configuration architecture (D059) and authorized the foundation plus one Core
-slice, `ai.verbose`. [CONFIGURATION.md](CONFIGURATION.md) defines schema/value
-ownership, separate desired/effective/observed values, private SQLite hybrid
-persistence, secret references, explicit precedence and migration/recovery.
-[STATUS.md](STATUS.md) records the bounded implementation and evidence gate.
-
-Configuration does not replace System Model, Operational History or canonical
-application/verification. 15UI remains a typed proposal/inspection layer. This
-step does not migrate module settings, Nextcloud, secrets, host thresholds or
-broad environment variables, and adds no generic settings UI, inheritance,
-external secret managers, agents or Steps 18/19/20. It does not close Q007 or
-the whole Ownership Foundation.
-
-The original Relationships & Deployments outcome below now proceeds under the
-owner-scoped Step 19 architecture and separate implementation gates (D063).
-
-## Original Step 17 — Relationships & Deployments — moved to owner-scoped Step 19
-
-Separate:
-
-- module/domain knowledge;
-- instances on this machine;
-- relationships;
-- deployments.
-
-Treat pre-existing/brownfield resources as normal machine-state participants even
-when Igor did not provision them. Discovery may establish objects/facts and
-relationship claims, while domain modules enrich interpretation; neither
-discovery nor module activation silently creates adoption, desired state or
-responsibility. File-backed configuration participating in a deployment must
-retain a concrete file + stable selector locator, while non-file-backed values
-identify their actual storage/source authority. See
-[BROWNFIELD_ADOPTION.md](BROWNFIELD_ADOPTION.md).
-
-The approved [Step 19 contract](DEPLOYMENTS.md) now defines provenance,
-identity, claims/reconciliation and responsibility. Durable participants reuse
-the scoped-reference contract from Step 15A. Boundary 1 implements only the
-application-neutral foundation; attachment and application proof remain later
-separately gated boundaries.
-
-Installation/configuration workflows use structured plans and leave an
-inspectable deployment/relationship record plus verification outcome, rather
-than only a command transcript. [CONFIGURATION.md](CONFIGURATION.md) proposes
-how canonical settings and deployment/instance scopes attach to this model.
-[RESUMABLE_WORK.md](RESUMABLE_WORK.md) proposes durable waiting/resumption when
-a workflow depends on OAuth, DNS propagation, reboot, user action or another
-external condition. Neither proposal is runtime implementation yet.
-
-## Step 18 — Composable Modules — architecture approved; bounded execution
-
-The Project Owner approved Step 18A discovery (D060). Execution proceeds through
-three boundaries, stopping with evidence after each:
-
-1. **Contract completion:** versioned capability outputs and consumer migration,
-   structured module inspection, reproducible package knowledge and explicit
-   read-only detach accounting.
-2. **Composition prerequisites:** the owner-authorized integration proof uses
-   the existing System package to cross registration, typed capability discovery,
-   knowledge/context candidates, test-only configuration schema discovery and
-   structured inspection through the existing 15UI renderer. It adds no production
-   setting, application migration or live Modules panel.
-
-   The required ownership/binding, relationship, storage, configuration
-   source/target locator, secret and recovery seams remain bounded prerequisites
-   for future composition workflows. D063 now settles Q007's architecture under
-   Step 19; general application binding/adoption still requires its Boundary 2
-   proof. The bounded Step 17 `ai.verbose` slice does not establish a complete
-   ownership model.
-3. **First reversible module configuration proof:** the owner-selected System
-   memory warning threshold (`system.memory.warning_threshold_mib`, D062),
-   default 150 MiB and range 81–4096 MiB. Desired validation/commit, module
-   application, independent runtime readback, verification, History and explicit
-   same-path recovery prove one real process-local consumer. Critical remains
-   80 MiB; legacy `SYSTEM_RAM_WARN_MB` is not imported. Nextcloud, brownfield
-   deployment/adoption and generic bindings remain later application work.
-
-Contract completion does not certify real detach, migrate module settings,
-implement instance/deployment authority or authorize broad splitting. The
-implementation/evidence status is recorded in [STATUS.md](STATUS.md).
-
-The [Collection Results and Operator Interface RFC](COLLECTION_OPERATOR_RFC.md)
-is the D079-approved **Step 18 output-contract extension**. It evolves
-`system.service.list` under its existing ID/shared validator into bounded typed
-collections; all internal consumers/pins/fixtures migrate together. D078 removes
-indefinite scalar coexistence. Q022–Q024 are settled and source-fidelity integrity
-is verified; DISCOVERY is closed and the first READ-only EXECUTION milestone is
-ready. Runtime acceptance remains open; existing Step 18 proof is not reopened.
-
-The initial [contract-driven Operator Surface](OPERATOR_SURFACE.md) is an
-interaction/composition aid over those same registries: active v2 contributions,
-capabilities and configuration declarations become discoverable through one
-read-only projection and the TUI `:` namespace explorer. It does **not** add a
-Module API menu kind, infer deployment ownership or make UI selection an
-authority. Capability leaves re-enter the canonical dispatcher; required inputs
-are never guessed. Rich generated module screens may build on this projection as
-the relevant Step 18 contracts mature.
-
-Broader application proof may later use the existing `nextcloud_docker`
-deployment after its workflow-specific ownership prerequisites are satisfied.
-It is not part of Boundary 3. The Operator Surface itself does not establish
-deployment ownership, resource binding or recovery semantics.
-
-Evaluate coherent independent domains such as Nextcloud, Docker and Cloudflare. Do not split PostgreSQL/Redis/etc. merely for purity.
-
-A coherent Igor module/package may be authored natively or synthesized from
-reviewed source material: installation documents, scripts, guides/runbooks,
-Agent Skills/AOH, ServerMind/Steward material, other open-source projects or
-local Igor learning. The source format is not the runtime contract. Import
-normalizes material into Igor-managed knowledge/contribution candidates with
-provenance, then the ordinary Module API/capability/compatibility rules apply.
-
-Keep reusable package content separate from its machine binding. A module may
-ship configuration schema and deployment knowledge, but instance paths, secret
-references, selected providers, local relationships and mutable user intent
-remain Igor-owned machine configuration/state.
-
-Preserve the working v1 deployment during migration.
-
-## Resource Discovery & Domain Recognition — FUTURE FOUNDATION GATE
-
-The current Observer Framework establishes typed low-level facts, and Step 19's
-Nextcloud attachment provider proves one narrow deterministic discovery path.
-What is still missing is a reusable middle layer between observation and
-adoption.
-
-[RESOURCE_RECOGNITION.md](RESOURCE_RECOGNITION.md) defines the direction:
-
-```text
-observation -> domain recognition -> ephemeral candidate
-            -> deterministic inspection -> frozen adoption proposal
-```
-
-A domain module/provider knows how to recognize the technologies it understands;
-Core validates/co-ordinates candidates but does not hard-code what "looks like"
-Nextcloud, Samba, Caddy, SSH tunnels or similar domains. A user may either ask
-Igor to find a domain or point Igor at an exact candidate. A user hint narrows
-selection; it is not machine truth or authorization.
-
-This gate explicitly does **not** require a universal background scanner,
-network-wide discovery, a persistent candidate database or AI-only recognition.
-Start with targeted/user-hinted and bounded domain discovery. Inventory/event
-driven recognition can grow later.
-
-The existing Nextcloud B2 provider remains a valid narrow slice. Before that
-shape becomes the template for additional domains, prove a reusable candidate
-contract with Nextcloud plus one materially different resource/domain. Recognition
-creates no deployment, desired state, responsibility or execution authority.
-
-## Step 19 — Representative Application Workflow / Relationships and Deployment Ownership
-
-The Project Owner approved [D063](DECISIONS.md) and [DEPLOYMENTS.md](DEPLOYMENTS.md)
-after discovery. This owner-scoped step takes the original Relationships and
-Deployments outcome; it does not start self-healing or Step 20.
-
-One application-neutral Core-owned Deployment Service owns opaque scoped
-identity, bindings, the small typed relationship vocabulary and positive,
-explicit scoped responsibility. Its private transactional registry remains
-separate from configuration, current observations, capability execution and
-Operational History. Discovery/binding/observation/provisioned origin implies
-no duty. Metadata-only adoption and resource-retaining release remain separate
-from provisioning and destruction.
-
-Implement three boundaries, stopping with evidence after each:
-
-1. **Identity, relationships and responsibility:** generic registry, exact
-   reference reuse/enrollment, preserved claims, transactional conflicts/CAS,
-   idempotency, inspection and export/recovery. No application semantics.
-2. **Brownfield attachment and composition prerequisites:** deterministic
-   selection/inspection, metadata-only adoption, exact configuration locator,
-   deployment target admission and bounded release/fencing proof.
-3. **Reversible Nextcloud `loglevel` workflow and legacy cutover:** isolated real
-   application proof of configuration, approved capability execution, native
-   readback, History, prior-state recovery and release. Competing Igor writers
-   for that adopted setting delegate or refuse.
-
-Provisioning execution, general destruction, application upgrades, whole-module
-migration, generic workflows, agents, self-healing and Step 20 are excluded.
-See [STATUS.md](STATUS.md) for evidence, not merely architecture acceptance.
-
-## Provisioning & Installation — FUTURE COMPLETION GATE
-
-Brownfield adoption proves Igor can understand/manage selected parts of something
-that already exists. Igor 2 must also have an explicit greenfield path for
-creating external resources.
-
-[PROVISIONING.md](PROVISIONING.md) owns this missing roadmap outcome:
-
-```text
-request -> preflight/frozen proposal -> approval
-        -> canonical capability effects -> bind real native identities
-        -> configure -> independently verify -> record deployment/history
-```
-
-Reviewed composite capabilities may implement bounded synchronous portions, but
-provisioning is not a new workflow engine and does not add blind retry,
-automatic rollback or a public executable plan API. Unknown effects reconcile
-before another changing request. External waits use Resumable Work.
-
-Provisioning follows the real Step 19 brownfield/application proof rather than
-preceding it. The first provisioning vertical slice is separately selected and
-must prove durable pre-effect intent, identity binding, verification, failure/
-interruption reconciliation and explicit responsibility.
-
-## Configuration & Secrets completion — FUTURE COMPLETION GATE
-
-Step 17 established the correct Configuration Service architecture and bounded
-real settings, but it deliberately did not migrate all module/application
-configuration, secrets or legacy mutable sources. Boundary L/O/P later narrowed
-and coalesced startup reads without creating a second configuration authority:
-write/readback CAS and state-token proof remain on the full service path. See
-[PERFORMANCE_INVESTIGATION.md](PERFORMANCE_INVESTIGATION.md) for the completed
-performance pass and stopping rule.
-
-Before Igor 2 consolidation, close the Ownership Foundation with evidence for:
-
-- canonical configuration/source ownership across migrated Core/module settings;
-- explicit source/target locators for application-backed values;
-- secret references rather than secret values in ordinary configuration,
-  context, History and UI;
-- one real secret import/store/update/access/redaction/audit vertical slice;
-- migration/cutover from selected existing secret/config sources without leaving
-  competing writable authorities;
-- inspectable desired/resolved/applied/observed distinctions;
-- explicit reset/recovery behavior.
-
-External secret-manager integrations are not required for Igor 2. The core
-requirement is one authoritative local contract and safe migration.
-
-[Ownership Foundation Boundary A](OWNERSHIP_FOUNDATION_PROPOSAL.md) retains the
-implementation inventory. Its B1–B5 choices were accepted as D069, and the
-OpenRouter lifecycle implementation/evidence is recorded in STATUS. The whole
-Ownership Foundation still requires its scoped completion evidence; the original
-proposal alone does not close it. D078 supersedes the former intended-master
-reconciliation prerequisite. No broader application work is authorized here.
-
-## Resumable Work — FUTURE IMPLEMENTATION GATE
-
-[RESUMABLE_WORK.md](RESUMABLE_WORK.md) already defines the architecture for
-legitimate waits such as reboot, OAuth/device authorization, DNS propagation,
-external readiness and user action. It still lacks a runtime proof.
-
-This is separate from composite capabilities:
-
-```text
-composite capability = bounded operation happening now
-resumable work       = durable work whose next step legitimately happens later
-```
-
-Implement one bounded vertical slice only after a real workflow needs it.
-Persistent waiting state cannot grant future approval/privilege, replay unknown
-effects or become a generic scheduler. Resume always revalidates dependencies,
-providers, bindings and current policy.
-
-## Original Step 19 — Self-Healing v2 — deferred, separately gated
-
-Rebuild self-healing on normal Igor primitives:
-
-```text
-observation -> check -> incident -> diagnosis -> capability
-            -> policy -> execution -> verification -> history
-```
-
-Automatic recovery considers safety, confidence, user policy, privilege, retries
-and prior outcomes. Before Self-Healing may perform unattended CHANGE, a future
-self-healing gate must accept an explicit unattended-CHANGE authority contract;
-responsibility, Executive mode, automation eligibility, prior success or learned
-confidence do not themselves grant that authority. Owner-scoped Step 19 does
-not implement or approve that gate.
-
-## Step 20 — Operator Interfaces / Igor TUI as Default — PARTIAL
-
-The full-screen Codex-like TUI is already a strong interface, but Step 20 must
-finish the operator experience rather than merely flip the default launcher.
-[OPERATOR_INTERFACES.md](OPERATOR_INTERFACES.md) defines one backend contract
-shared by CLI, TUI, automation and later APIs.
-
-The current source already provides structured CLI `capability run`, the
-operator explorer, `:system`/`:sys`, provider ambiguity and default-TUI routing.
-These foundations do not by themselves close Step 20's representative workflow
-acceptance. The [collection RFC](COLLECTION_OPERATOR_RFC.md) is the D079-approved
-**Step 20 generic renderer and identical typed/explorer invocation extension**,
-with DISCOVERY closed and first READ-only EXECUTION readiness recorded for
-list/select/details/back/refresh and a second unrelated synthetic provider.
-Neither is implemented by the closure checkpoint. Mutation is a separate later
-approved-action proof.
-
-### Step 20A — First-class CLI
-
-Make Igor usable directly from the command line without creating a parallel
-command/permission system.
-
-Target shapes include natural-language one-shot use, structured commands and
-machine-readable output, for example:
-
-```bash
-igor "check why Nextcloud is slow"
-igor discover nextcloud
-igor deployments list
-igor capability inspect docker.install
-igor --json deployments list
-```
-
-Structured `capability run` syntax already exists; further CLI work extends
-that canonical route. Interactive CLI may enter the normal
-approval/PTY privilege flow; noninteractive use must return approval-required
-rather than answer approval/authentication on the user's behalf. CLI/headless
-paths remain available after the TUI becomes default.
-
-### Step 20B — TUI completion
-
-Consolidate mature backend surfaces for:
-
-- conversation plus clearly distinct capability/tool/activity/result output;
-- pending questions, approval and privilege state;
-- System facts/health;
-- modules and availability;
-- discovery/recognition candidates and ambiguity;
-- deployments/relationships/responsibility;
-- configuration with source/desired/applied/observed distinctions;
-- capabilities/proposals;
-- History and Investigations;
-- resumable waiting work when implemented.
-
-Color/style may distinguish user input, Igor text, commands/actions, results and
-warnings, but meaning must not depend on color alone. Generated module/domain
-views consume shared backend contracts; modules do not regain custom menu/UI
-authority. Empty, stale, unavailable, failed-refresh and permission-required
-states must be visibly different.
-
-### Step 20C — Default-launch cutover
-
-Only once representative system/module/application workflows use those shared
-backend contracts should `./igor.sh` launch the full-screen TUI by default.
-
-The current source has an interactive default-TUI route. Keep explicit frontend
-selection while needed by current consumers; D078 permits alias retirement with
-a complete internal migration, rather than indefinite pre-release compatibility. Keep CLI/headless
-paths for scripting, recovery, tests and automation.
-
-## Step 21 — Integration Rules — FUTURE
-
-Support lightweight knowledge/check/capability rules that only make sense when specific domains interact.
-
-Avoid combinatorial giant modules.
-
-## Step 22 — Module Developer Tooling & External Interfaces — PARTIAL/FUTURE
-
-After Module API v2 is proven:
-
-- converge module create/validate/test/inspect tooling on one supported path;
-- generate v2 module skeletons;
-- add a bounded import/normalize/inspect path for external operational material,
-  beginning with documentation/Agent Skills/reference assets and preserving
-  source/license/provenance;
-- allow scripts, ServerMind tool manifests, Steward/AOH material and local learned
-  procedures to produce **candidate** observers/checks/capabilities/playbooks
-  without becoming executable merely by import;
-- show the normalized candidate/diff and validation/eval results before any
-  reviewed promotion into executable Module API contributions;
-- evaluate AOH-inspired source locks, owned-file manifests, safe-tree hygiene and
-  convergent/crash-safe install semantics for the future package installer
-  without making AOH a runtime dependency;
-- remove duplicate/experimental validators;
-- make notification transports consume shared domain events;
-- evolve notification/report delivery and authenticated email into the shared
-  Admin Communications direction in [COMMUNICATIONS.md](COMMUNICATIONS.md): one
-  transport/configuration foundation, replay-resistant authenticated inbound
-  requests, and no parallel shell dispatcher;
-- route future remote conversation and administration through shared
-  capabilities, configuration, policy, privilege, verification and history;
-- future API/webhook interfaces use the same engine and may also provide
-  authenticated readiness callbacks for resumable work.
-
-The current repository does not contain the old `core/mailcmd/` implementation;
-do not plan a migration of code that is not present. Preserve the product intent
-while replacing the old verb/command architecture with the shared external
-interface. Remote privileged CHANGE and remote approval remain explicit Q011 /
-Step 22 design work.
-
-## Step 23 — Igor 2 Consolidation — FUTURE
-
-Before declaring Igor 2 complete:
-
-- remove remaining obsolete v1 migration paths (retire proven replacements
-  during their own migration; do not defer them solely until Step 23);
-- remove dead hooks/helpers and duplicate validators;
-- remove deprecated configuration paths only after the Configuration Service
-  migration has an explicit source/target cutover and recovery proof;
-- remove duplicate state/execution paths;
-- update primary documentation to the final architecture;
-- verify core is application-agnostic;
-- run architecture-level regression suites;
-- prove the Ownership Foundation and persistent migrations on an existing-style
-  installation fixture;
-- prove at least one real application workflow end-to-end through ownership,
-  module/capability, approval/privilege, execution, verification and history;
-- confirm every authoritative subsystem has an inspection surface and explicit
-  ownership/provenance;
-- confirm secret values stay out of normal AI context and secret access follows
-  the secret-service/audit contract;
-- confirm irreversible/best-effort recovery semantics are surfaced rather than
-  hidden behind a generic rollback promise.
-
-Additional Igor 2 completion evidence must also:
-
-- prove reusable recognition/candidate selection without conflating it with
-  adoption, using at least two materially different domains;
-- prove one real provisioning/install path creates/binds/verifies resources
-  without treating origin as blanket responsibility;
-- prove one secret-consuming workflow keeps values outside ordinary
-  context/History/UI while preserving inspectable references/audit;
-- prove one durable wait/resume workflow across process restart without replaying
-  a committed effect or reusing stale authority;
-- prove the first-class CLI and default TUI use the same backend/capability
-  semantics, including noninteractive approval refusal and structured output.
-
-No compatibility path survives indefinitely without an explicit reason.
-
-## Post-2.0 horizons
-
-Keep extension points for, but do not staff as Igor 2.0 requirements:
-
-- broad automatic promotion of learned/AI-generated capability candidates into
-  trusted executable code beyond the reviewed candidate path;
-- public module/knowledge registry or marketplace and third-party
-  signing/distribution infrastructure;
-- live richer external adapters/interoperability with AOH, ServerMind, Steward
-  and other control planes;
-- sophisticated dependency resolution beyond demonstrated need.
+# Igor 2 delivery roadmap
+
+Status: **proposed reset (DISCOVERY); implementation awaits architecture confirmation**.
+
+Updated: 2026-10-17, source baseline `1aac86a`. This replaces the A–H/23-step
+planning structure, not historical acceptance or retained proof. The
+current-work cursor lives in [STATUS.md](STATUS.md). The recommendation and
+tradeoffs are in [the audit](ARCHITECTURE_READINESS.md); accepted policy is in
+[DEVELOPMENT_POLICY.md](DEVELOPMENT_POLICY.md) and [DECISIONS.md](DECISIONS.md).
+The Owner has accepted complete Igor 1 cutoff (D080); the proposed runtime
+organization below is not accepted merely because this file was rewritten.
+
+## Delivery rule
+
+Five milestones deliver complete usable results. Each includes implementation,
+callers, essential tests, practical docs and retirement of replaced paths.
+Internal integration commits are encouraged; they are not new architecture
+phases or independent roadmap items. No milestone may claim completion from
+schemas, prose, mocked execution or passing unit tests alone.
+
+Use [EXECUTION](EXECUTION.md)'s contract, regression, vertical-slice, inspection
+and migration/recovery proof classes in one concise scenario ledger. Size the
+Owner-approved validation budget from a dry run and existing durations. Reuse
+unchanged proof; one final affected gate and an explicitly needed broad CI gate.
+Do not renew the governor or waive missing real-consumer evidence.
+
+## Sequence
+
+| Milestone | Usable result | Main deletion | Complexity |
+|---|---|---|---|
+| M1 — One module and operation platform | Inspect and operate System, Docker and an attached Nextcloud through the same safe CLI/TUI path | v1 loader/hooks/actions, legacy configuration sources and direct menu execution | High: cross-cutting consumer/data migration |
+| M2 — A reliable conversational operator | Complete a bounded task, answer its questions, recover after interruption; one Python coordinator | Bash control-plane plumbing, prose-based continuation, provider launch wrappers | High: PTY, transaction and state parity |
+| M3 — A machine that Igor remembers | Persistent stale-aware inventory and continuing investigations with relevant evidence | Redundant probes, chat/WIP files used as machine memory | Medium/high: retention and provenance |
+| M4 — Substantial verified work | Resume installation/configuration procedures safely with explicit recovery | Ad-hoc install/recovery scripts as independent controllers | High: irreversible effects and real environments |
+| M5 — Installable, supportable Igor 2 | Documented Debian/Arch release with onboarding, diagnostics, upgrades and bounded resource use | Remaining obsolete docs/helpers and unreleased scaffolding | Medium/high: release integration |
+
+M1 is already a useful operator for existing machines; M2 makes natural
+interaction dependable. M3/M4 add memory and substantial work. Packaging and
+installation instructions are maintained from M1; M5 closes the full release
+matrix, not the first opportunity to run the software.
+
+## M1 — One module and operation platform
+
+**Purpose:** close the authority, lifecycle and ownership gaps before adding
+more operations. Finish the clean module system in one coherent batch.
+
+**User-visible result:** the user can inspect active modules and their settings,
+operate System/Docker, attach an existing Nextcloud, read/change/verify a setting,
+and use retained application operations through CLI and the same generic TUI.
+Disabling a module removes its active behavior/context without deleting its data.
+Every operation reports actual execution and verification, never unconditional OK.
+
+**Architecture and implementation:**
+
+- Keep strict v2 INI + explicit JSON declarations; one admitted contribution
+  index. Migrate System's remaining hooks and all Nextcloud registrations.
+  Docker stays v2. Samba remains an unadvertised recognition adapter until needed.
+- Route all shipped operational entry points through canonical dispatch, including
+  menus, diagnosis/healing, recovery, automation and AI. Retain the current Bash
+  coordinator for this milestone; move deterministic policy ownership out of AI
+  and remove competing invocation contracts. No new parallel backend.
+- Finish one configuration/secret/path ownership model for shipped consumers.
+  Reuse Configuration, Secret and Deployment services. Module packages carry
+  no mutable machine values. Native application settings remain bound external
+  authority; desired values and apply/readback are distinct.
+- Move application-specific diagnosis/recovery/provider loading out of Core.
+  Keep Nextcloud-on-Docker as one coherent application module; Docker's generic
+  operations remain reusable. Do not split nginx/Redis/PostgreSQL/tunnel modules.
+- Inventory and preserve useful existing operations. Replace interactive menu
+  orchestration with typed inputs and generated presentation; reuse correct leaf
+  scripts. Remove the host-wide NUKE action, replacing only a scoped operation
+  when its resource/recovery contract is justified.
+- Apply the finite data transition and no-old-interface proof in [LEGACY](LEGACY.md).
+  Existing process sessions cannot straddle the cutover; require explicit restart.
+
+**Scope:** the three shipped packages, live consumers, existing operations,
+configuration/secret ownership, immediate F01–F04 defects, one real Nextcloud
+configuration cycle. Includes a short install/doctor path for the declared roots.
+Excludes new domains, remote control, third-party marketplace, hot unload,
+generic rollback, full AI-loop rewrite, and new background automation behavior.
+
+**Dependencies:** Owner confirmation of the reset architecture/scope; reviewed
+current operation inventory and private data inventory; disposable Nextcloud
+runtime supplied without altering the Owner's production stack. The existing
+Step 19 fixture/runbook is reusable, but its host setup remains unexecuted.
+The prior narrow loglevel execution architecture remains useful; the broader
+cutoff is a new scope, not silently covered by that approval.
+
+**Completion criteria:**
+
+1. No v1 manifest/registration/action/hook consumer is executable in the Igor 2
+   tree. No compatibility mode or fallback reactivates it. All shipped modules
+   validate and require explicit activation; disabled/stale proposals fail closed.
+2. Every retained operation has exactly one owner/provider, input contract,
+   effect tier, privilege route, outcome and verification/recovery definition.
+   A parity table accounts for all former menu/action functions. Valuable
+   functionality is retained; any proposed removal beyond obsolete/unsafe paths
+   is surfaced as an explicit scope change, never silently dropped.
+3. User can inspect effective config source/owner and secret reference without
+   exposing values. No normal startup sources legacy env files or moves data.
+   Conflicts require explicit import decisions. Re-entry and recovery work.
+4. Actual CLI and curses operation: attach fixture, read loglevel `2`, approve
+   `3`, independently read `3`, approve return to `2`, read `2`, inspect History.
+   OCC runs as the intended application user; no unbound deployment is touched.
+5. System/Docker/Nextcloud disabling removes operations, checks, observations,
+   active knowledge and automation; retained records remain historical. Re-enable
+   recovers availability without inventing responsibility or applying settings.
+6. No success result after a failed service command; no global Docker-volume
+   enumeration in application destruction; all destructive approval is exact.
+
+**Small meaningful validation set:** one shared authorization/secret/History
+matrix; strict-v2/lifecycle contract tests; migration interruption/conflict tests;
+one real System operation and the real Nextcloud cycle through CLI/TUI; affected
+regressions for changed execution/storage/AI boundaries. Preserve targeted safety
+edge cases. One broad integration run is justified by this cross-cutting cutoff,
+preferably governed CI, not repeated after every correction. Lack of a real
+application environment blocks closure, not implementation of independent code.
+
+**Cleanup:** v1 parser, `compat.v1_hooks`, `__register`, hook registries and
+`legacy.<owner>.<action>` dispatch; legacy env writers/fallbacks; direct menu
+execution; obsolete v1 tests/guides; exact duplicate deprecated scripts; dormant
+Textual frontend after caller check. Data import is an offline one-shot utility,
+not an installed compatibility service. Keep existing collection validation;
+Increment E's deferred acceptance is not automatically closed by M1.
+
+**Expected complexity:** high, the largest migration. The finite boundary is
+three packages/current operations. No calendar estimate is credible before the
+operation mapping; do not disguise this as a small patch or enlarge it with M2.
+
+### Immediate implementation batch — exact handoff
+
+This is the first batch after architecture confirmation, not another open-ended
+audit. Implement all of M1 with the following dependency order:
+
+1. **Freeze a parity/data inventory at the implementation base.** Enumerate
+   `module.sh` registrations, manifest menus, AI actions, diagnose/recovery hooks,
+   configuration writes and data locations. Use the tables in LEGACY as the
+   seed; append each remaining callable menu operation. For every row name
+   retained v2 capability/check/observer/knowledge/config owner or explicit
+   approved retirement. No broad additional architecture study is needed.
+2. **Fix the dangerous legacy edges while converting their consumers.**
+   `modules/nextcloud_docker/menus/services.sh`: start/stop/restart must report
+   failures; eliminate `_mod_services_nuke`'s global resource selection. Preserve
+   a failure fixture. `config_loader.sh`/`module_loader.sh`: eliminate fixed
+   diagnostic captures and raw secret error output as those paths are retired.
+   These are integrated fixes, not an excuse to ship the rest of the cutoff later.
+3. **Complete data ownership and explicit import first.** Extend
+   `configuration.py`, `secret_refs.py`, `openrouter_import.py`, `deployments.py`
+   and declared path resolution only where shipped consumers require it.
+   Select the proposed roots once; preserve supported explicit overrides.
+   Implement dry-run inventory, conflict decisions, private staged copy,
+   verification, atomic cutover marker, idempotent re-entry and recovery.
+   Disable startup moves/source fallback in the same candidate.
+4. **Convert the packages and consumers together.** Touch
+   `modules/system/module.conf`, `module.sh` and contracts; Nextcloud manifest,
+   contracts, `lib/` providers and menu leaf functions; Docker consumers as needed.
+   The 12 existing Nextcloud AI actions are: health check, full diagnostic,
+   services status, scan files, flush Redis, flush caches, repair, full repair,
+   fix permissions, DB maintenance, permission inspection and native config
+   injection. Also cover service lifecycle/logs, apps, configuration, backup,
+   restore and installation workflows currently reachable through menus/hooks.
+   Typed parameterization replaces hardcoded broad commands, not a generic
+   shell-string escape hatch. Do not turn all verbs into a new mini-language.
+5. **Unify dispatch and visibility.** Update `module_contract.py`,
+   `module_registry.py`, `module_loader.sh`, `module_loader_fast.sh`,
+   `module_handler.sh`, `capability.sh`, AI catalog/tool dispatch, operator CLI,
+   TUI projection, health/diagnose, recovery and automation. Move Nextcloud
+   provider selection out of `deployment_attachment.py`'s hardcoded import.
+   Keep one live implementation per operation; cache invalidation/owner checks
+   must survive removal of old views. Do not add another fast-loader override.
+6. **Prove the complete application slice.** Use
+   `tests/fixtures/step19-nextcloud/`; bind exact endpoint/project/application
+   identity. Extend the existing approved narrow Nextcloud setting adapter for
+   desired/apply/readback with canonical History. Run `2 → 3 → 2`, rejection,
+   stale/disabled refusal and external-drift handling. Inject command failure
+   without touching production Docker. Never install host dependencies merely
+   to satisfy the audit; implementation setup has its own explicit authority.
+7. **Retire and close.** Delete obsolete runtime paths and associated tests/docs,
+   run the cutoff proof, required affected/CI gates once, update actual operator
+   instructions and status, inspect final diff, commit and stop. No M2 work.
+
+**Affected safety tests to retain/adapt, not simply delete:** module contract/
+capability runtime, approval/privilege BATS, request/transaction privacy,
+configuration/secret references, deployment/Nextcloud attachment, History,
+module lifecycle and actual CLI/curses integration. Document-wording tests may
+be replaced with link/authority checks; legacy invocation tests become canonical
+behavior tests. Map removed cases to retained invariants in the single ledger.
+
+**First-batch stopping rule:** missing real fixture, unsafe data transition,
+unknown operation parity or exhausted validation budget means incomplete M1.
+No successful unit count or documentation change substitutes for those gates.
+
+## M2 — A reliable conversational operator
+
+**Purpose/result:** users can state an objective, answer the exact question Igor
+asked, see progress, cancel, and continue after a failure/restart without losing
+the target or silently repeating a change. CLI and TUI share one application.
+
+**Implementation:** Python owns session/task/registry/context orchestration and
+imports existing services. Retain curses and native PTY authentication. Adopt
+one typed internal model/tool transaction format and small provider adapters.
+Reuse structured capability plans; persist task objective, pending question,
+selected refs, steps/operation IDs, outcomes and explicit wait/unknown states.
+Fresh authority/target checks remain in the executor. Persist bounded state,
+not the whole conversation as operational truth. Consolidate policy under the
+application executor and retire Bash orchestration together with its consumers.
+
+**Scope/dependencies:** M1 contracts and operation parity. Anthropic, OpenRouter,
+Ollama parity; configured ordinary/strong bindings; bounded context and accounting.
+No autonomous multi-agent system, new provider requirement, arbitrary workflow
+DSL, background daemon or remote approval. Native provider differences remain
+inside adapters, not a universal least-common-denominator loss of tool safety.
+
+**Completion:** same operations/results through CLI/TUI/AI; a pronoun/short choice
+answer resumes the correct pending question; provider timeout/invalid response
+preserves task; restart after effect but before response does not repeat effect;
+unknown is visible; cancellation is honored; model cannot assert execution success.
+A task shows model, selected context, token use, next action and reason.
+
+**Validation:** recorded scenario corpus for question continuity, multistep work,
+refusal, tool errors, exhausted budget and restart; existing provider native
+transaction fixtures; real PTY approval/decline; actual M1 application workflow
+through the assistant. Opt-in live-provider smoke for advertised transports,
+with separate budget/privacy authorization. One affected gate for final candidate.
+
+**Cleanup:** `core/ai/core.sh` control-plane loop, duplicated first/follow-up tool
+dispatch, prose-based choices/completion, provider shell launchers/router, dynamic
+loader patching and shell-JSON state transports. Retain useful shell handlers,
+validated schemas, secret/History stores and provider boundary tests.
+**Complexity:** high; cancellation, PTY and crash consistency are principal risks.
+
+## M3 — A machine that Igor remembers
+
+**Purpose/result:** Igor remembers installed/attached resources, last observed
+health, settings and responsibility across sessions. A user can reopen an
+investigation and see evidence, hypotheses, attempts and outstanding questions.
+Stale evidence is clearly distinguished from current measurement.
+
+**Implementation:** persist bounded last-observed System Model records with
+provenance/age; reuse Deployment, Investigation and History identities. Refresh
+explicitly/on declared policy; deterministic observation never becomes desired
+configuration or adoption. Bind tasks to investigations rather than duplicating
+results. Retrieve relevant facts/evidence/approved learning by target/capability
+and time; support retention/export/delete with reference-unavailable handling.
+
+**Scope/dependencies:** M1 ownership, M2 tasks. Existing System/Docker/Nextcloud
+resources, current investigation/learning services. No semantic graph, mandatory
+vector database, fleet inventory, external knowledge ingestion or new recognizer
+framework. A second recognition domain is used only to validate existing generic
+assumptions, not to start Samba product development.
+
+**Completion:** restart preserves inventory with stale labels; refresh updates
+only eligible owner facts; disabled module supplies no active knowledge/behavior;
+missing/pruned sources are explicit; user distinguishes observed/desired/native
+configuration/responsibility; reopen a diagnosed failure without rereading chat.
+A learned procedure is reference material and cannot activate itself.
+
+**Validation:** one restart/freshness/disable inventory scenario; one continuing
+investigation; poisoned/reference-data refusal; bounded retention and interrupted
+migration/export/restore; targeted existing investigation/learning/History tests.
+**Cleanup:** redundant domain probes and WIP/chat summaries used as machine state;
+merge redundant serialization helpers where demonstrated. Keep domain-meaning
+separation. **Complexity:** medium/high, mostly integration and data lifecycle.
+
+## M4 — Substantial verified work
+
+**Purpose/result:** Igor can install/configure a supported application using a
+reviewable procedure, preflight, per-step verification and explicit recovery. Work
+can wait for a user/external prerequisite and resume without replaying effects.
+
+**Implementation:** extend the existing bounded plans and M2 task records, not a
+second workflow engine. Package-owned procedures reference canonical capabilities;
+freeze plan revision/inputs/target/requirements; record step operation IDs and
+checkpoints. Revalidate before continuation, stop on drift or unknown outcomes.
+Declare rollback only where a concrete compensating operation is safe. Integrate
+configuration, secrets, dependency preparation and deployment responsibility.
+
+**Scope/dependencies:** M1–M3, disposable test environments. First full procedure:
+Nextcloud-on-Docker installation/configuration and bounded recovery, using retained
+working implementation. Current one-shot installation operations remain useful;
+this milestone makes the complete sequence durable/verifiable. No arbitrary
+DAG scheduler, universal undo, automatic internet-script execution or remote fleet.
+
+**Completion:** install from declared prerequisites; verify application/user/storage;
+interrupt at meaningful checkpoints; resume safely; fail a step and preserve
+recovery options; never claim successful install from command exit alone; export
+plan/evidence without secrets. User can inspect what remains before approval.
+
+**Validation:** disposable clean install and configuration cycle; representative
+crash before/after effect, drift and credential refusal; restore/recovery on a
+fixture; targeted plan/authority/History tests. Platforms tested explicitly, no
+blanket Debian/Arch native integration claim from mocks.
+**Cleanup:** wizard/restore/install scripts as independent control planes,
+subsystem-specific resume markers, duplicate preflight/verification logic.
+**Complexity:** high; data integrity and irreversible effects dominate.
+
+## M5 — Installable, supportable Igor 2
+
+**Purpose/result:** a fresh supported machine can install Igor, configure a
+provider, inspect capabilities, perform useful work and diagnose failures with
+clear resource/cost limits. Existing users have an explicit data transition.
+
+**Implementation:** close dependency/runtime-version and Debian/Arch support
+matrix; package read-only code separately from machine data; onboarding and doctor;
+private logs with operation/task correlation; reliable upgrade/export/recovery;
+measure startup, ordinary READ, task latency, subprocess counts and context tokens.
+Tune demonstrated bottlenecks only. Validate existing READ-only automation and
+reviewed learning as optional features through the same authority, not new engines.
+
+**Scope/dependencies:** M1–M4 complete, required live evidence available. No new
+feature families or new provider obligations. Keep advanced unattended CHANGE,
+remote communications, marketplaces, multi-machine management, helper-agent
+networks and generalized knowledge imports in Igor 2.x.
+
+**Completion:** clean install/upgrade in declared distro environments; documented
+minimum versions; no repo write permission needed for ordinary operation; privacy,
+approval, History and migration acceptance; practical troubleshooting and extension
+guide; bounded startup/runtime/context targets measured on declared hardware.
+Set numeric budgets from M1/M2 measurements, not invented audit targets.
+
+**Validation:** one governed full release regression on final candidate, distro
+installation smoke, real CLI/TUI/privilege/application slices, data transition and
+recovery, provider smoke with authorized secrets/costs. Failure classifications
+remain visible; baseline debt is not a clean pass.
+**Cleanup:** final obsolete interfaces/docs, inert agents/config duplication,
+unused helpers verified by callers. No deferred core cleanup gate: earlier
+milestones already remove the paths they replace.
+**Complexity:** medium/high integration; enter RELEASE_FREEZE after evidence,
+commit and stop rather than add another architecture round.
+
+## Mapping old work to this roadmap
+
+Historical completion is scoped evidence, not completion of a new milestone.
+
+| Old work | Actual disposition |
+|---|---|
+| Steps 1–6 / Wave C | Step 1 historical audit complete; Step 2 invariants partial; 3/4 interaction/privilege substantially present; 5/6 bounded Wave C complete. Mixed v1/v2 means M1 incomplete |
+| Steps 7–10 / Wave D | Typed model/observation/check foundation; persistent machine inventory belongs to M3 |
+| Steps 11–12 / Wave E | Canonical execution and bounded plans retained; assistant/task continuity M2, durable procedures M4 |
+| Steps 13–14 | Domain events and READ-only automation retained; no new event/scheduler architecture |
+| Steps 15–16 | History, investigations, context, learning/pattern/procedure services reused in M2/M3; no wholesale rebuild |
+| Step 17 / Ownership boundaries | Partial setting/credential cutovers; complete shipped-consumer ownership in M1 |
+| Step 18 / collections | Contracts and accepted increments retained; [collection RFC](COLLECTION_OPERATOR_RFC.md) and deferred E evidence remain binding within scope |
+| Step 19 | Deployment/attachment code reusable; real setting cycle open and required by M1; provisioning M4 |
+| Step 20 | Bounded System CLI/TUI and swap accepted; broad acceptance and 20C open; work absorbed into M1/M2/M5 |
+| Step 21 / integration rules | Future generic rule packaging deferred; actual cross-module consumers use existing capability requirements |
+| Step 22 / module tooling and external interfaces | Consolidate validator/author guidance in M1/M5; external imports, communications and remote interfaces deferred to 2.x |
+| Original Step 19 / self-healing v2 | Separate deferred scope; retain current READ-only automation. Unattended CHANGE requires a future explicit authority decision |
+| Step 23 | Removed as a late cleanup stage; retirement is part of each replacement milestone |
+| F0 | Accepted development improvements remain; no repeat pilot required |
+
+The prior roadmap is available with `git show 1aac86a:docs/igor2/ROADMAP.md`.
+[Archived status](archive/STATUS_2026-10-16.md) preserves detailed acceptance,
+failures and deferred work. No old wave is reopened solely by renaming the plan.
