@@ -30,7 +30,7 @@ EOF
     [[ "$output" == *'"answer": 42'* ]]
 }
 
-@test "canonical capability bridge skips duplicate Python and syntax validation" {
+@test "canonical capability bridge delegates invocation to one Python runtime" {
     write_handler
     local real_python wrapper counter
     real_python="$(command -v python3)"
@@ -44,8 +44,6 @@ exec "$real_python" "\$@"
 EOF
     chmod 700 "$wrapper"
 
-    V2_HANDLER_SYNTAX_VALIDATED=1 \
-    V2_HANDLER_INPUT_CANONICAL=1 \
     V2_HANDLER_DOMAIN_EVENTS=0 \
     V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
     IGOR_PYTHON="$wrapper" \
@@ -53,7 +51,7 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ "$output" == *'"status":"ok"'* ]]
-    [ ! -s "$counter" ]
+    [ "$(wc -l < "$counter")" -eq 1 ]
 }
 
 @test "canonical capability bridge still fails closed if validated source becomes invalid" {
@@ -62,8 +60,6 @@ system__observe() {
     printf '{"status":"ok","result":{}}'
 # missing closing brace
 EOF
-    V2_HANDLER_SYNTAX_VALIDATED=1 \
-    V2_HANDLER_INPUT_CANONICAL=1 \
     V2_HANDLER_DOMAIN_EVENTS=0 \
     V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
         run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
@@ -72,10 +68,8 @@ EOF
 
 @test "canonical capability bridge still enforces entrypoint containment" {
     write_handler
-    printf 'system__observe() { printf "%s\\n" '"'"'{"status":"ok","result":{}}'"'"'; }\n' > "$IGOR_DIR/outside.sh"
+    printf 'system__observe() { printf "%%s\\n" '"'"'{"status":"ok","result":{}}'"'"'; }\n' > "$IGOR_DIR/outside.sh"
     V2_HANDLER_ENTRYPOINT='../outside.sh' \
-    V2_HANDLER_SYNTAX_VALIDATED=1 \
-    V2_HANDLER_INPUT_CANONICAL=1 \
     V2_HANDLER_DOMAIN_EVENTS=0 \
     V2_HANDLER_DEFER_RESPONSE_VALIDATION=1 \
         run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
@@ -105,7 +99,8 @@ system__observe() { printf '{"status":"error","error":{"code":"unavailable","mes
 EOF
     run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
     [ "$status" -ne 0 ]
-    [[ "$output" == *'sensor missing'* ]]
+    [[ "$output" == *'handler reported an error'* ]]
+    [[ "$output" != *'sensor missing'* ]]
 
     cat > "$IGOR_DIR/module/module.sh" <<'EOF'
 system__observe() { printf '{"status":"ok","result":{},"tier":"READ"}'; }

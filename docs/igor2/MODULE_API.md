@@ -522,12 +522,21 @@ module's configuration values migrate.
 
 V2 handlers use one backend invocation boundary. The runtime first checks
 active ownership, contribution requirements, safety/approval and privilege
-policy where applicable. The Bash adapter loads the declared entrypoint in an
-isolated process and calls the named function with one JSON request on stdin.
+policy where applicable. The Python adapter in `core/lib/module_handler.py`
+loads the declared Bash entrypoint in an isolated process and calls the named
+function with one JSON request on stdin. The remaining shell bridge forwards
+session-local domain events; it does not implement subprocess execution policy.
 The function must use the owning module's `<name>__*` prefix; a handler name
 is never evaluated as shell text. It accepts exactly one JSON response on
 stdout; stderr is diagnostic only.
 Timeout, nonzero exit, malformed JSON or unsupported result shape fail closed.
+Python bounds input to 128 KiB, ordinary responses to 1 MiB, collection responses
+to their existing 96 KiB ceiling, and diagnostics to 16 KiB. Provider diagnostics
+are not echoed by this boundary. Timeout/cancellation and normal exit terminate
+remaining descendants in the invocation process group. Bash startup hooks and
+exported functions are excluded from its environment. Typed capability output
+validation stays in the canonical result path, including its distinct invalid
+output classification; handler metadata cannot grant approval or privilege.
 Unlike v1's copied-function hook runner, this allows package-local helpers to
 be sourced deliberately and never relies on parent shell mutation.
 

@@ -673,8 +673,6 @@ PY
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
     IGOR_COLLECTION_CONTEXT="$_collection_context" \
     V2_HANDLER_ENTRYPOINT="$_entrypoint" \
-    V2_HANDLER_SYNTAX_VALIDATED=1 \
-    V2_HANDLER_INPUT_CANONICAL=1 \
     V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
     V2_HANDLER_DEFER_RESPONSE_VALIDATION="$_defer" \
         _ml_bash_handler_invoke \

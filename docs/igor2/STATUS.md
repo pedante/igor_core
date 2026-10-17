@@ -2,7 +2,55 @@
 
 Last updated: 2026-10-17
 
-## Current focus — governance cleanup and accepted M1/M2 handoff
+## Current focus — M1 implementation from `21da2b5`
+
+- **Phase/candidate:** IMPLEMENTATION on `okigor2`, clean base `21da2b5`.
+  Owner explicitly requested M1 runtime implementation and internal commits.
+  D080/D081 architecture is accepted; no roadmap redesign or delegation.
+- **Scope:** [selected operation/data inventory](LEGACY.md#m1-operation-disposition-at-21da2b5).
+  Final Python execution/module coordination, selected System/Docker operations,
+  Nextcloud attachment/configuration, offline preservation and v1 retirement.
+  Existing roots remain; no production deployment or user-data mutation authorized.
+- **Batch:** Python isolated handler invocation shared by capability, observer and
+  check callers; remove the separate collection-only subprocess wrapper. Tests
+  migrate the existing namespace/path/envelope/collection protections and add
+  cancellation, bounded diagnostics, startup injection and child cleanup cases.
+- **Validation:** Owner replied “continue” to the proposed 1,800-second allowance;
+  renewed once with that reason, retaining the ledger. **1455.629 s remain**,
+  240 s per subprocess. The initial focused pass took 56.327 s; corrected checks
+  and canonical safety/History proof took 267.306 s; the approval-only environment
+  correction took 20.720 s. No broad/full suite or live deployment changes.
+- **Batch exit:** handler implementation, callers and focused safety proof complete;
+  author diff review and internal commit. Next: Python module/execution authority,
+  selected package/configuration cutovers and v1 retirement. M1 remains open.
+- **Blockers for milestone acceptance:** disposable Nextcloud setup remains
+  separately unauthorized/unavailable per the prior fixture record; no independent
+  reviewer designated. Neither is treated as a waiver or an implementation pass.
+
+### M1 evidence ledger
+
+| EXECUTION class | Current evidence / remaining proof |
+|---|---|
+| Contract | Shared Python handler and existing shell bridge tests PASS: namespace/path/input/envelope rejection, bounded output, TERM-ignoring timeout/cancellation, descendants, startup injection and private error handling |
+| Regression | Handler/collection/event/validation mapping, canonical dispatcher, exact approval and native privilege tests PASS. Two existing lint issues in touched tests corrected. No broad gate claimed |
+| Vertical-slice | Canonical History suite PASS, including real System memory READ and durable reopen, pre-effect History, interrupted CHANGE/no replay, refusal and failed verification. Full CLI/TUI/Docker and Nextcloud `2 → 3 → 2` remain open |
+| Inspection | Clean base, declarations/callers and final adapter diff reviewed by author; no independent review claimed |
+| Migration/recovery | Separate collection wrapper and bypass flags retired with caller/tests; interrupted-operation History proof PASS. Operation/data disposition recorded; persistent transition and v1 cutoff remain unimplemented |
+
+The safety run initially failed one destructive-approval fixture because its
+workspace was under `/home`, which the unchanged deletion denylist correctly
+protects. The same approval file passed all 25 tests using isolated `/tmp` targets
+(`m1-disposable-tmp-v1`). This was an environment correction, not a safety waiver.
+The corrected evidence plus that targeted run covers 183 distinct checks/test
+identities; do not add rerun counts to claim extra coverage.
+
+Evidence summaries (initial failures retained):
+
+- `.igor-governor/evidence/m1-handler-focused-20261017/summary.json`; SHA-256 `8af6e13eaa2d761088465b61c72b71960a5fa27e678d994b39c10cc0819fdd1d`.
+- `.igor-governor/evidence/m1-handler-safety-20261017/summary.json`; SHA-256 `ec0b49c244866a3a40f5382e0c85a3501c255d9f6509653afc4adced899455b3`.
+- `/tmp/igor-m1-handler-approval-20261017/summary.json`; SHA-256 `20752af67495f528b81f5176e7e2a17999d2b6ddca92fe7b811476787f81b1a9`.
+
+## Previous task — governance cleanup and accepted M1/M2 handoff
 
 - **Task/base:** finish interrupted governance work on `igor2` at `dd5d0ac`.
   Preserved the six pre-existing changes to AGENTS, Codex config/workflow, removed

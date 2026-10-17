@@ -8,6 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AffectedDomainTests(unittest.TestCase):
+    def test_handler_cutover_keeps_collection_and_domain_event_proof(self):
+        domains, tests = affected_tests(["core/lib/module_handler.py",
+                                         "core/lib/bounded_handler.py"], ROOT)
+        self.assertEqual(domains, ["module"])
+        self.assertTrue({"tests/test_module_handler.py", "tests/test_collection_snapshots.py",
+                         "tests/test_collection_transport.py", "tests/modules/test_module_handler.bats",
+                         "tests/modules/test_domain_event_bus.bats"}.issubset(tests))
+
     def test_learning_mapping_retains_source_context_and_authority_regressions(self):
         domains, tests = affected_tests(["core/lib/local_learning.py"], ROOT)
         self.assertEqual(domains, ["learning"])

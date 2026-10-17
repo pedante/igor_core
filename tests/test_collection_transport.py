@@ -58,9 +58,12 @@ def test_selected_secret_redacted_before_event_publication(tmp_path):
     assert "PRIVATE_SENTINEL" not in stream.read_text() + result.stdout + result.stderr
 
 
-def test_handler_deadline_kills_term_ignoring_fixture():
-    result = subprocess.run([sys.executable, str(ROOT / "core/lib/bounded_handler.py"),
-                             "timeout", "--signal=TERM", "0.2s", "bash", "-c", 'trap "" TERM; sleep 10'],
-                            capture_output=True, check=False, timeout=3)
+def test_handler_deadline_kills_term_ignoring_fixture(tmp_path):
+    (tmp_path / "module.sh").write_text(
+        'fixture__run() { trap "" TERM; sleep 10; }\n')
+    result = subprocess.run([sys.executable, str(ROOT / "core/lib/module_handler.py"),
+                             str(tmp_path), "fixture", "fixture__run", "fixture.run", "1"],
+                            input=b"{}", capture_output=True, check=False, timeout=3)
     assert result.returncode == 124
-    assert not result.stdout and not result.stderr
+    assert not result.stdout
+    assert result.stderr.strip() == b"module handler: handler timed out"

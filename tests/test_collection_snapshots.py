@@ -150,13 +150,13 @@ def test_exact_snapshot_byte_ceiling(ctx, tmp_path, delta):
     for row in data:
         row["detail"] = ""
     # The UTC text is a fixed length when microseconds are nonzero; freeze it.
-    from datetime import datetime, timezone
+    from datetime import UTC, datetime
 
     import collection_runtime
     class Stamp:
         @staticmethod
         def now(tz):
-            return datetime(2026, 10, 12, microsecond=123456, tzinfo=timezone.utc)
+            return datetime(2026, 10, 12, microsecond=123456, tzinfo=UTC)
     from unittest.mock import patch
     base = {"resource_kind": "service", "inventory": "loaded_system_services", "rows": data,
             "freshness": {"observed_at": "2026-10-12T00:00:00.123456Z", "expires_at": "2026-10-12T00:00:30.123456Z"}}
@@ -296,9 +296,13 @@ def test_missing_systemd_never_becomes_empty_success(tmp_path, monkeypatch):
 
 
 def test_bounded_handler_rejects_before_bash_capture(tmp_path):
-    result = subprocess.run([sys.executable, str(ROOT / "core/lib/bounded_handler.py"), sys.executable,
-                             "-c", 'import sys; sys.stdout.buffer.write(b"SECRET_REJECTED"*10000)'],
-                            capture_output=True, timeout=5, check=False)
+    (tmp_path / "module.sh").write_text(
+        "fixture__run() { \"$IGOR_PYTHON\" -c 'import sys; "
+        "sys.stdout.buffer.write(b\"SECRET_REJECTED\"*10000)'; }\n")
+    result = subprocess.run([sys.executable, str(ROOT / "core/lib/module_handler.py"),
+                             str(tmp_path), "fixture", "fixture__run", "fixture.run", "5",
+                             "--collection", "--defer-response-validation"],
+                            input=b"{}", capture_output=True, timeout=5, check=False)
     assert result.returncode == 0
     assert json.loads(result.stdout)["error"]["code"] == "collection_limit_exceeded"
     assert b"SECRET_REJECTED" not in result.stdout + result.stderr

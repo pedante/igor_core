@@ -61,30 +61,102 @@ Do not split Nextcloud's PostgreSQL, Redis, web proxy and tunnel into independen
 module products merely to satisfy a diagram. Domain decomposition needs actual
 reuse and independent lifecycle value. Docker already supplies generic substrate.
 
-### Operation disposition inventory seed
+### M1 operation disposition at `21da2b5`
 
-The implementation agent completes this finite inventory from current registrations
-and menu entry points before deleting code; this is data-safety and scope
-accounting, not a feature-parity gate or design wave.
+This is the implementation inventory for the Owner-authorized M1 task, not
+an acceptance claim. Selected operations keep their existing IDs, versions,
+typed results, privilege requirements and verification semantics. The eight
+unselected System mutations remain reusable source material until their old
+callable interfaces are retired during the M1 cutoff; no native state is removed.
 
-| Existing behavior | Target |
+| Capability | Tier | M1 disposition |
+|---|---|---|
+| `docker.container.list` | READ | Retain |
+| `docker.container.restart` | CHANGE | Retain |
+| `docker.install` | CHANGE | Retain |
+| `docker.status` | READ | Retain |
+| `system.groups.list` | READ | Retain |
+| `system.groups.status` | READ | Retain |
+| `system.host.memory.refresh` | READ | Retain |
+| `system.host.runtime.status` | READ | Retain |
+| `system.host.summary` | READ | Retain |
+| `system.logs.summary` | READ | Retain |
+| `system.memory.warning.apply` | CHANGE | Retain |
+| `system.memory.warning.readback` | READ | Retain |
+| `system.network.dns.status` | READ | Retain |
+| `system.network.interface.status` | READ | Retain |
+| `system.network.interfaces.list` | READ | Retain |
+| `system.network.routes.list` | READ | Retain |
+| `system.network.summary` | READ | Retain |
+| `system.network.wifi.connect_known` | CHANGE | Defer |
+| `system.network.wifi.profiles.list` | READ | Retain |
+| `system.network.wifi.scan` | READ | Retain |
+| `system.network.wifi.status` | READ | Retain |
+| `system.package.cache.clean` | CHANGE | Defer |
+| `system.package.cleanup.preview` | READ | Retain |
+| `system.package.install` | CHANGE | Retain |
+| `system.package.updates.list` | READ | Retain |
+| `system.package.upgrade` | CHANGE | Defer |
+| `system.permissions.group.set` | CHANGE | Defer |
+| `system.permissions.mode.set` | CHANGE | Defer |
+| `system.permissions.owner.set` | CHANGE | Defer |
+| `system.permissions.path.status` | READ | Retain |
+| `system.service.enable` | CHANGE | Retain |
+| `system.service.list` | READ | Retain |
+| `system.service.restart` | CHANGE | Retain |
+| `system.service.start` | CHANGE | Retain |
+| `system.service.status` | READ | Retain |
+| `system.storage.filesystem.status` | READ | Retain |
+| `system.storage.filesystems.list` | READ | Retain |
+| `system.storage.mount` | CHANGE | Defer |
+| `system.storage.mount.status` | READ | Retain |
+| `system.storage.mounts.list` | READ | Retain |
+| `system.storage.summary` | READ | Retain |
+| `system.storage.unmount` | CHANGE | Defer |
+| `system.users.list` | READ | Retain |
+| `system.users.status` | READ | Retain |
+
+Nextcloud retains recognition and explicit metadata attachment plus the bounded
+`nextcloud_docker.loglevel` desired-state/commit/apply/readback/recovery workflow.
+Core configuration and deployment capability IDs retain their existing meaning;
+application-specific provider selection moves to the Nextcloud package in M1.
+The new native-setting operation declarations will be recorded with their package
+conversion, before exposing them through the shared executor.
+
+| Former interface group | M1 disposition / data handling |
 |---|---|
-| System host/package/service/log/storage/access/network operations | Select useful integrated operations; retain canonical IDs/semantics and exact privilege adapters where correct |
-| Docker lifecycle/read operations | Existing v2 capabilities with explicit endpoint/target binding |
-| Nextcloud health/full diagnostic/status/permission inspection | Only reads required by attachment/configuration in M1; broader diagnosis/repair deferred |
-| scan files, flush Redis/caches, repair/full repair, permission fix, DB maintenance, config injection | Outside M1 except the selected bounded configuration apply; preserve useful implementation for later explicit scope |
-| Service start/stop/restart/logs | Generic Docker operations only in M1; broader Nextcloud service administration deferred; no failed command reported successful |
-| App enable/disable/update and maintenance/upgrade menus | Outside M1; inventory and retire old callable interfaces, preserve useful source material |
-| Configure/wizard/install/backup/restore/recovery | Only selected Nextcloud setting configuration in M1; installation/recovery procedures belong to M4, other verbs require explicit later scope |
-| Native Nextcloud loglevel setting | Desired proposal/commit, canonical apply, OCC readback and explicit recovery |
-| Notify/status/AI knowledge hooks | Typed domain signals or read projections and module reference knowledge; no authority from prose |
-| Mail-control hooks with absent Core consumer | Remove unused registration; communications is a later product decision |
-| Global Docker NUKE | Remove unsafe host-wide operation; no automatic generic replacement |
+| System health, diagnose and AI-context hooks | Replace selected observations/checks/knowledge with existing v2 declarations; no duplicate hook registration |
+| System mail, notify, recovery hooks and legacy menus | Remove callable interfaces; retained native configuration stays in place |
+| Docker four v2 capabilities | Retain through Python execution; install composes selected System capabilities and still needs explicit authorization |
+| Nextcloud health/status/diagnosis/permission reads | Retain only recognition/attachment/configuration reads; defer broader diagnostics |
+| Nextcloud scan, cache flush, repair, permission repair and database maintenance actions | Defer; retire v1 actions, preserve useful implementation in source history |
+| Nextcloud services start/stop/restart/logs | Generic selected Docker operations only; defer application-wide administration |
+| Nextcloud app, maintenance, upgrade and configuration menus | Defer except loglevel; no replacement callable menu or fallback |
+| Nextcloud setup/wizard/install/backup/restore/recovery | Defer to explicitly authorized later work; preserve existing backups and native application data |
+| Nextcloud notify/mail/AI tooling/tier/pattern/knowledge/health-gate/role/alert/config/rollback/menu-header hooks | Remove registrations; selected reference knowledge and configuration belong to v2 declarations |
+| Host-wide Nextcloud NUKE | Remove without a replacement; never enumerate/delete native volumes or images as migration |
 
-Every former callable operation receives a retain/defer/remove disposition and
-data-safety treatment. Omission from M1 is allowed by D081 and does not require
-another parity approval. Do not leave an executable v1 adapter for deferred work
-or delete user/native application data because an interface is retired.
+Data sources, conflicts, private export, idempotency and recovery follow the
+source-family table and offline migration protocol below. This task changes no
+production deployment, policy file, personal configuration or data store. Existing
+declared roots remain authoritative. Unsupported values must be preserved offline
+before the runtime sourcing paths are cut off.
+
+### M1 implementation batches
+
+- **Python handler process boundary (implemented; focused proof in STATUS):** `module_handler.py` owns
+  isolated invocation, request/path validation, bounded pipes, deadline and process
+  cleanup. `module_handler.sh` only transports remaining shell callers and forwards
+  session-local domain events. The separate collection-only `bounded_handler.py`
+  process wrapper is retired; its limits and negative tests migrate to the shared
+  adapter. Canonical typed-output validation and approval/History remain upstream.
+- **Still required in M1:** Python activation/resolution/authorization/History
+  coordination and all consumers; selected package and configuration cutovers;
+  offline data transition; retirement of v1 loader/hooks/actions/menus/startup
+  sourcing; real System/Docker/Nextcloud proof and independent review.
+
+The remaining shell coordination is the pre-existing implementation being migrated
+inside M1, not a new runtime to be carried into M2. No M1 completion is claimed.
 
 ## Configuration and retained data transition
 

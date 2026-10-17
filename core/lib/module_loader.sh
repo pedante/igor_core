@@ -1803,7 +1803,6 @@ igor_v2_invoke() {
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
     V2_HANDLER_ENTRYPOINT="$_entrypoint" \
-    V2_HANDLER_SYNTAX_VALIDATED=1 \
     V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
         _ml_bash_handler_invoke \
         "${_IGOR_MODULE_DIRS[$_owner]}" "$_owner" "$_handler" "$_id" "$_timeout" "$_input"
