@@ -2,11 +2,47 @@
 
 Status: **bounded M1 cutoff and Python coordination accepted (D080/D081); not implemented**.
 
-Updated: 2026-10-17. Baseline `1aac86a`. This plan replaces the earlier legacy
+Updated: 2026-10-18. Inventory baseline `1aac86a`. This plan replaces the earlier legacy
 inventory; original evidence remains in Git and [archived STATUS](archive/STATUS_2026-10-16.md).
 [Development policy](DEVELOPMENT_POLICY.md) protects data, platforms and safety,
 not obsolete Igor 1 interfaces. [M1](ROADMAP.md#m1--one-module-and-operation-platform)
 is the finite cutoff milestone; later cleanup is not permission to keep v1 alive.
+
+## Unprivileged execution continuation from `2ad217b` — implemented boundary
+
+The current source extends the existing Python capability runtime with module
+admission against the loader's active owner/handler/timeout/version facts, exact
+proposal fencing, atomic unprivileged History claim and isolated invocation.
+Core configuration/deployment adapters use the same Python claim before effects.
+Python finalizes proposal status/version/digest and evaluates owner-active and
+contained path-existence preconditions. The previous shell implementations of
+those checks/claim are removed in this candidate; no parallel executor or registry
+is added. Verification-only readbacks retain their bounded READ invocation.
+
+Shell still supplies the active contribution index and admission snapshot,
+platform argv preparation and live configuration/service/package/model probes,
+approval/native sudo PTY, collection leases/context and synchronous event delivery.
+It also owns Core service adapter dispatch, the approved process-local memory
+consumer, verifier selection, provider completion/result publication, plan and
+composite sequencing. These responsibilities remain M1 work; native OS privilege
+and terminal handling stay where they are until a concrete consumer requires change.
+
+The exact prior 447 identities pass; additional affected, fixture-consumer,
+frontend event/native PTY and targeted final runtime/History/collection/CLI/
+process-local configuration checks pass. The final transport distinguishes
+unclaimed setup/launch refusal from post-claim provider failure; neither duplicate
+nor unknown attempts replay or overwrite prior results. Context stays on stdin,
+outside child environments, and raw-handler error status remains unchanged.
+See the five-class ledger and stage-attributed counts in [STATUS](STATUS.md).
+The final runtime correction has targeted proof, not a fresh repository-wide run.
+
+Existing History records keep their meaning and are not reinterpreted or replayed.
+Changed pending proposals must reprepare and pass normal approval/fencing. There
+is no data/schema/root migration. Historical ownership/evidence below describes
+its named committed baseline; this paragraph owns the newer boundary. Remaining
+Python index/loading, live preparation/authorization, verification/publication
+and plan coordination need their own coherent consumer cutovers. No package/config
+migration, offline data transition, v1 retirement or M1 completion is claimed.
 
 ## Target and non-goals
 

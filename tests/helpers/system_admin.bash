@@ -22,6 +22,7 @@ setup() {
 #!/usr/bin/env bash
 if [ "$1 $2" = "-s upgrade" ]; then
     [ -e "$ADMIN_UPDATE_STATE" ] && printf 'Inst curl [1] (2 repo)\nInst openssl [1] (2 repo)\n'
+    exit 0
 elif [ "$1 $2" = "-s autoremove" ]; then
     printf 'Remv old-kernel [1]\nRemv unused-lib [1]\n'
 elif [ "$1" = update ] && [ "$#" -eq 1 ]; then

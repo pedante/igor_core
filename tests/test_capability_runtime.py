@@ -1,8 +1,11 @@
 import copy
 import json
+import os
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -13,11 +16,16 @@ from capability_runtime import (
     CapabilityError,
     CapabilityPlan,
     CapabilityRegistry,
+    ProviderExecutionError,
     SecretReference,
     _privileged_commands,
+    admit_handler,
     execute_privileged,
+    execute_unprivileged,
     execution_fence,
     execution_result,
+    finalize_preparation,
+    local_preconditions,
     nonexecution_result,
     validate_inputs,
     validate_output_schema,
@@ -40,6 +48,155 @@ def descriptor(**changes):
 
 
 class CapabilityRuntimeTests(unittest.TestCase):
+    def unprivileged_attempt(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        registry = CapabilityRegistry()
+        registry.register(descriptor(privilege="none", handler="system__read"))
+        proposal = finalize_preparation(registry.prepare("system.service.restart", {"unit": "demo.service"}), [], "satisfied", "1.0.0")
+        admission = {"owner": "system", "state": "active", "handler": "system__read", "timeout": 30,
+                     "entrypoint": "module.sh", "package": str(root), "source_version": "1.0.0"}
+        history = OperationalHistory(root / "data")
+        episode = history.prepare(proposal, correlation_id="corr-unprivileged-runtime",
+                                  provenance={"actor": "operator", "interface": "capability_api", "request_id": None})
+        request = {"proposal": proposal, "fresh": copy.deepcopy(proposal), "digest": proposal["digest"],
+                   "admission": admission, "operation_id": episode["operation_id"], "approval": "approved",
+                   "collection": False, "data_dir": str(root / "data")}
+        return request, history, root
+
+    def test_unprivileged_sequence_claims_before_source_and_cannot_replay(self):
+        request, history, _ = self.unprivileged_attempt()
+
+        def observe(*args, **options):
+            row = history.inspect(request["operation_id"])
+            self.assertEqual([item["state"] for item in row["transitions"]], ["admitted", "authority", "running"])
+            self.assertEqual(row["privilege"]["result"], "not_required")
+            self.assertEqual(args[1:5], ("system", "system__read", "system.service.restart", 30))
+            self.assertEqual(json.loads(args[5]), request["fresh"]["inputs"])
+            self.assertNotIn("V2_HANDLER_EXECUTION_CONTEXT", options["env"])
+            return b'{"status":"ok","result":{}}'
+
+        with patch("module_handler.invoke", side_effect=observe) as run:
+            self.assertIn(b'"ok"', execute_unprivileged(request, history))
+            with self.assertRaises(HistoryError):
+                execute_unprivileged(request, history)
+            self.assertEqual(run.call_count, 1)
+
+    def test_unprivileged_refuses_changed_admission_fence_or_authority_before_effect(self):
+        for kind in ("owner", "state", "handler", "timeout", "entrypoint", "package", "source_version",
+                     "approval", "digest", "drift", "precondition", "privilege", "commands", "history"):
+            with self.subTest(kind=kind):
+                request, history, _ = self.unprivileged_attempt()
+                if kind in request["admission"]:
+                    request["admission"][kind] = 1 if kind == "timeout" else "" if kind in {"entrypoint", "package"} else "changed"
+                elif kind == "approval":
+                    request["approval"] = "cancelled"
+                elif kind == "digest":
+                    request["digest"] = "wrong"
+                elif kind == "drift":
+                    request["fresh"]["inputs"]["unit"] = "other.service"
+                elif kind == "precondition":
+                    request["fresh"]["precondition_status"] = "failed"
+                elif kind == "privilege":
+                    request["fresh"]["privilege"] = "required"
+                elif kind == "commands":
+                    request["fresh"]["privileged_argv"] = ["true"]
+                else:
+                    request["operation_id"] = "op-" + "0" * 32
+                with patch("module_handler.invoke") as run, self.assertRaises((CapabilityError, HistoryError)):
+                    execute_unprivileged(request, history)
+                run.assert_not_called()
+
+    def test_unprivileged_partial_effect_failure_stays_claimed_and_never_replays(self):
+        request, history, root = self.unprivileged_attempt()
+        marker = root / "effect"
+        (root / "module.sh").write_text(f"system__read() {{ touch '{marker}'; return 7; }}\n")
+        with self.assertRaises(ProviderExecutionError):
+            execute_unprivileged(request, history)
+        self.assertTrue(marker.exists())
+        self.assertEqual(history.inspect(request["operation_id"])["lifecycle"], "running")
+        with self.assertRaises(HistoryError):
+            execute_unprivileged(request, history)
+
+    def test_unprivileged_malformed_requests_fail_before_claim_without_leaking(self):
+        request, history, _ = self.unprivileged_attempt()
+        for change in ({"collection": "false"}, {"extra": "private-sentinel"}):
+            with self.subTest(change=change), self.assertRaises(CapabilityError):
+                execute_unprivileged({**request, **change}, history)
+        for descriptor_value in (None, 42, "private-sentinel"):
+            malformed = copy.deepcopy(request)
+            malformed["fresh"]["descriptor"] = descriptor_value
+            with self.subTest(descriptor=descriptor_value), self.assertRaises(CapabilityError):
+                execute_unprivileged(malformed, history)
+        self.assertEqual(history.inspect(request["operation_id"])["lifecycle"], "admitted")
+        for raw in ("private-sentinel", "[]", '{"x":1,"x":2}', '{"data_dir":"private-sentinel"}'):
+            result = subprocess.run([sys.executable, "core/lib/capability_runtime.py", "execute-unprivileged"],
+                                    input=raw, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertFalse(result.stdout)
+            self.assertNotIn("private-sentinel", result.stderr)
+
+    def test_unprivileged_cli_cancellation_reaps_child_and_retains_unknown_claim(self):
+        request, history, root = self.unprivileged_attempt()
+        child = root / "child"
+        (root / "module.sh").write_text(f"system__read() {{ trap '' TERM; sleep 30 & echo $! > '{child}'; wait; }}\n")
+        process = subprocess.Popen([sys.executable, "core/lib/capability_runtime.py", "execute-unprivileged"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pid = None
+        try:
+            process.stdin.write(json.dumps(request).encode())
+            process.stdin.close()
+            process.stdin = None
+            deadline = time.monotonic() + 3
+            while not child.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(child.exists())
+            pid = int(child.read_text())
+            process.send_signal(signal.SIGTERM)
+            stdout, stderr = process.communicate(timeout=3)
+            self.assertEqual(process.returncode, 3)
+            self.assertFalse(stdout)
+            self.assertIn(b"cancelled", stderr)
+            row = history.inspect(request["operation_id"])
+            self.assertEqual(row["execution_status"], "running")
+            with self.assertRaises(HistoryError):
+                execute_unprivileged(request, history)
+            stat = Path(f"/proc/{pid}/stat")
+            self.assertTrue(not stat.exists() or stat.read_text().rsplit(") ", 1)[1].startswith("Z "))
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.communicate()
+            if pid is not None:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_python_preparation_preconditions_and_digest(self):
+        request, _, root = self.unprivileged_attempt()
+        proposal = request["fresh"]
+        proposal["preconditions"] = [{"kind": "owner_active"}, {"kind": "path_exists", "input": "path"}]
+        proposal["descriptor"]["inputs"]["properties"]["path"] = {"type": "path", "root": str(root)}
+        proposal["inputs"]["path"] = "present"
+        self.assertFalse(local_preconditions(proposal, True))
+        (root / "present").touch()
+        self.assertTrue(local_preconditions(proposal, True))
+        self.assertFalse(local_preconditions(proposal, False))
+        (root / "link").symlink_to(root / "present")
+        for value in ("link", "../escape", "/etc/passwd"):
+            proposal["inputs"]["path"] = value
+            self.assertFalse(local_preconditions(proposal, True))
+        finalized = finalize_preparation(proposal, [], "failed", "1.0.0")
+        self.assertEqual(finalize_preparation(finalized, [], "failed", "1.0.0"), finalized)
+        self.assertEqual(execution_fence(finalized, finalized, finalized["digest"]), "precondition_failed")
+        with self.assertRaises(CapabilityError):
+            finalize_preparation(proposal, ["sudo"], "satisfied", "1.0.0")
+        for state in ("inactive", "unavailable", "unknown"):
+            with self.assertRaises(CapabilityError):
+                admit_handler(request["fresh"], {**request["admission"], "state": state})
+
     def privileged_attempt(self, proposal=None):
         proposal = proposal or self.execution_proposal()
         directory = tempfile.TemporaryDirectory()

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Transport for remaining shell consumers of the Python Module API adapter.
-# Admission/approval remain in the canonical dispatcher. Domain-event callbacks
+# Capability admission/claims belong to Python; approval stays in the dispatcher.
+# Domain-event callbacks
 # stay in the owning session until that consumer moves to the Python executor.
 
 _ml_bash_handler_python() {
@@ -13,6 +14,12 @@ _ml_bash_handler_run_process() {
     local _handler="$6" _id="$7" _event_dir="$8" _event_schemas="$9"
     local _root="${_IGOR_LOADER_DIR:-}" _adapter
     _adapter="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/module_handler.py" || return 1
+    if [ -n "${V2_HANDLER_EXECUTION_CONTEXT:-}" ]; then
+        printf '%s' "$V2_HANDLER_EXECUTION_CONTEXT" | _IGOR_LOADER_DIR="$_root" \
+            _IGOR_DOMAIN_REQUEST_DIR="$_event_dir" _IGOR_DOMAIN_SCHEMAS_FILE="$_event_schemas" \
+            "$_py" "${_root}/core/lib/capability_runtime.py" execute-unprivileged
+        return $?
+    fi
     local -a _options=(--entrypoint "${V2_HANDLER_ENTRYPOINT:-module.sh}")
     if [ -n "${IGOR_COLLECTION_CONTEXT:-}" ] || [ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ]; then
         _options+=(--collection)
@@ -29,14 +36,19 @@ _ml_bash_handler_invoke() {
     local _module_dir="${1:-}" _owner="${2:-}" _handler="${3:-}"
     local _contribution_id="${4:-}" _timeout="${5:-}" _input="${6:-}"
     local _py _response _rc _event_dir="" _event_schemas="" _event_key _event_id _event_data
-    local _event_index=1 _event_pid _event_error
-    _py="$(_ml_bash_handler_python)" || return 1
+    local _event_index=1 _event_pid _event_error _unstarted=1
+    local V2_HANDLER_EXECUTION_CONTEXT="${V2_HANDLER_EXECUTION_CONTEXT:-}"
+    # Keep the potentially large proposal on stdin, out of every child environment.
+    export -n V2_HANDLER_EXECUTION_CONTEXT
+    [ -z "$V2_HANDLER_EXECUTION_CONTEXT" ] || _unstarted=2
+    _py="$(_ml_bash_handler_python)" || return "$_unstarted"
+    command -v "$_py" >/dev/null 2>&1 || return "$_unstarted"
     [ -n "$_input" ] || _input='{}'
 
     if [ "${V2_HANDLER_DOMAIN_EVENTS:-auto}" != 0 ] &&
        declare -F igor_v2_contribution_get >/dev/null 2>&1 &&
        [ -n "${_IGOR_LOADER_DIR:-}" ] && [ -n "${IGOR_DOMAIN_EVENT_FILE:-}" ]; then
-        _event_dir="$(mktemp -d "${TMPDIR:-/tmp}/igor-domain-handler.XXXXXXXX")" || return 1
+        _event_dir="$(mktemp -d "${TMPDIR:-/tmp}/igor-domain-handler.XXXXXXXX")" || return "$_unstarted"
         chmod 700 -- "$_event_dir"
         _event_schemas="$_event_dir/schemas"
         : > "$_event_schemas"
@@ -90,6 +102,16 @@ PY
         _response="$(_ml_bash_handler_run_process "$_input" "$_py" "$_timeout" "$_module_dir" "$_owner" "$_handler" "$_contribution_id" "" "")"
         _rc=$?
     fi
-    [ "$_rc" -eq 0 ] || return 1
+    if [ -n "$V2_HANDLER_EXECUTION_CONTEXT" ]; then
+        # Only Python's post-claim failure is a provider result; transport errors
+        # leave durable state uncertain and must never rewrite an older attempt.
+        case "$_rc" in
+            0) ;;
+            3) return 1 ;;
+            *) return 2 ;;
+        esac
+    else
+        [ "$_rc" -eq 0 ] || return 1
+    fi
     printf '%s\n' "$_response"
 }

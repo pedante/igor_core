@@ -409,17 +409,8 @@ PY
     fi
     _igor_capability_preconditions "$_proposal" "$_id" "$_base_owner" "$_base_inputs" || _precondition_status=failed
     _source_version="${_IGOR_MODULE_VERSION[$_base_owner]:-}"
-    _proposal="$("$(_ml_python)" - "$_proposal" "$_spec" "$_precondition_status" "$_source_version" <<'PY'
-import hashlib, json, sys
-value = json.loads(sys.argv[1])
-value["privileged_argv"] = json.loads(sys.argv[2])
-value["precondition_status"] = sys.argv[3]
-if sys.argv[4]:
-    value["provider_source_module_version"] = sys.argv[4]
-value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-print(json.dumps(value, sort_keys=True, separators=(",", ":")))
-PY
-)" || return 1
+    _proposal="$("$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+        finalize-preparation "$_proposal" "$_spec" "$_precondition_status" "$_source_version")" || return 1
     printf '%s\n' "$_proposal"
 }
 
@@ -469,17 +460,15 @@ PY
 
 _igor_capability_preconditions() {
     local _proposal="$1" _id="${2:-}" _owner="${3:-}" _known_inputs="${4:-}"
-    local _row _kind _arg _object _property _expected _state _value _root _inputs _request
+    local _kind _arg _object _property _expected _state _value _inputs _request _active=false
+    [ -n "$_owner" ] || _owner="$(_igor_capability_field "$_proposal" owner)" || return 1
+    _ml_owner_active "$_owner" && _active=true
+    "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+        local-preconditions "$_proposal" "$_active" || return 1
     _igor_configuration_precondition "$_proposal" "$_id" "$_known_inputs" || return 1
     while IFS=$'\t' read -r _kind _arg _object _property _expected; do
         [ -n "$_kind" ] || continue
         case "$_kind" in
-            owner_active)
-                if [ -n "$_owner" ]; then
-                    _ml_owner_active "$_owner" || return 1
-                else
-                    _ml_owner_active "$(_igor_capability_field "$_proposal" owner)" || return 1
-                fi ;;
             service_exists)
                 _value="$(_igor_capability_field "$_proposal" "inputs.$_arg")" || return 1
                 declare -f svc_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
@@ -488,22 +477,6 @@ _igor_capability_preconditions() {
                 _value="$(_igor_capability_field "$_proposal" "inputs.$_arg")" || return 1
                 declare -f pkg_query >/dev/null 2>&1 || source "${_IGOR_LOADER_DIR}/core/lib/pkg.sh"
                 pkg_query "$_value" >/dev/null || return 1 ;;
-            path_exists)
-                _value="$(_igor_capability_field "$_proposal" "inputs.$_arg")" || return 1
-                _root="$(_igor_capability_field "$_proposal" "descriptor.inputs.properties.$_arg.root")" || return 1
-                "$(_ml_python)" - "$_root" "$_value" <<'PY' || return 1
-from pathlib import Path
-import sys
-base = Path(sys.argv[1]).resolve(strict=True)
-path = base / sys.argv[2]
-if not path.exists() or path.is_symlink():
-    raise SystemExit(1)
-try:
-    path.resolve(strict=True).relative_to(base)
-except ValueError:
-    raise SystemExit(1)
-PY
-                ;;
             trusted_validator)
                 _inputs="$_known_inputs"
                 [ -n "$_inputs" ] || _inputs="$(_igor_capability_field "$_proposal" inputs)" || return 1
@@ -563,6 +536,8 @@ PY
 import json, sys
 p = json.load(sys.stdin)
 for x in p["preconditions"]:
+    if x.get("kind") in {"owner_active", "path_exists"}:
+        continue
     if x.get("kind") == "capability_available":
         arg = x.get("capability_id")
     elif x.get("kind") == "trusted_validator":
@@ -574,8 +549,8 @@ for x in p["preconditions"]:
 }
 
 _igor_capability_invoke_handler() {
-    local _proposal="$1" _id="${2:-}" _owner="${3:-}" _handler="${4:-}" _timeout="${5:-}" _input="${6:-}" _defer="${7:-0}"
-    local _key _entrypoint _indexed_handler _indexed_timeout _field_text
+    local _proposal="$1" _id="${2:-}" _owner="${3:-}" _handler="${4:-}" _timeout="${5:-}" _input="${6:-}" _defer="${7:-0}" _approved="${8:-}"
+    local _key _entrypoint _field_text _admission _execution_context=""
     local -a _fields=()
     if [ -z "$_id" ] || [ -z "$_owner" ] || [ -z "$_input" ]; then
         _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
@@ -589,35 +564,57 @@ print(d.get("timeout_seconds",30))
 print(json.dumps(p["inputs"],sort_keys=True,separators=(",",":")))
 print("ok")
 PY
-)" || return 1
+)" || return 2
         mapfile -t _fields <<< "$_field_text"
-        [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 1
+        [ "${#_fields[@]}" -eq 6 ] && [ "${_fields[5]}" = ok ] || return 2
         _id="${_fields[0]}"
         _owner="${_fields[1]}"
         _handler="${_fields[2]}"
         _timeout="${_fields[3]}"
         _input="${_fields[4]}"
     fi
-    if [ "$_owner" = core ] && [[ "$_id" = core.configuration.* ]]; then
-        _igor_configuration_invoke "$_proposal"
-        return $?
-    fi
-    if [ "$_owner" = core ] && [[ "$_id" = core.deployments.* ]]; then
-        _igor_deployment_attachment_invoke "$_proposal"
-        return $?
+    if [ "$_owner" = core ]; then
+        if [ -n "$_approved" ]; then
+            "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+                claim-unprivileged "$_approved" "$_proposal" "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" \
+                "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$IGOR_HISTORY_OPERATION_ID" \
+                "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" || return 2
+        fi
+        case "$_id" in
+            core.configuration.*) _igor_configuration_invoke "$_proposal" || return 1; return 0 ;;
+            core.deployments.*) _igor_deployment_attachment_invoke "$_proposal" || return 1; return 0 ;;
+            *) return 2 ;;
+        esac
     fi
     _key="capability:${_id}"
     [ "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" = "$_owner" ] || _key="${_key}@${_owner}"
-    [ "$(igor_contribution_state "$_key")" = active ] || return 1
-
-    # Exact handler/timeout fencing remains loader-owned. Static metadata is
-    # compiled once at module load instead of reparsing the descriptor here.
-    _indexed_handler="${_IGOR_HANDLER_FUNCTION[$_key]:-}"
-    _indexed_timeout="${_IGOR_HANDLER_TIMEOUT[$_key]:-30}"
-    [ -n "$_handler" ] && [ "$_handler" = "$_indexed_handler" ] || return 1
-    [ -n "$_timeout" ] && [ "$_timeout" = "$_indexed_timeout" ] || return 1
     _entrypoint="${_IGOR_MODULE_ENTRYPOINT[$_owner]:-}"
-    [ -n "$_entrypoint" ] || return 1
+    _admission="$("$(_ml_python)" - \
+        "${_IGOR_CONTRIBUTION_OWNER[$_key]:-}" "$(igor_contribution_state "$_key")" \
+        "${_IGOR_HANDLER_FUNCTION[$_key]:-}" "${_IGOR_HANDLER_TIMEOUT[$_key]:-30}" \
+        "$_entrypoint" "${_IGOR_MODULE_DIRS[$_owner]:-}" "${_IGOR_MODULE_VERSION[$_owner]:-}" <<'PYADMIT'
+import json,sys
+owner,state,handler,timeout,entrypoint,package,version=sys.argv[1:]
+print(json.dumps(dict(owner=owner,state=state,handler=handler,timeout=int(timeout),
+                     entrypoint=entrypoint,package=package,source_version=version),separators=(",", ":")))
+PYADMIT
+)" || return 2
+    "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+        handler-admission "$_proposal" "$_admission" || return 2
+    if [ -n "$_approved" ]; then
+        _execution_context="$("$(_ml_python)" - "$_approved" "$_proposal" "$_admission" \
+            "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" \
+            "$IGOR_HISTORY_OPERATION_ID" "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+            "$([ -n "${IGOR_COLLECTION_INSPECTION_FILE:-}" ] && printf true || printf false)" <<'PYEXEC'
+import json,sys
+proposal,fresh,admission=map(json.loads,sys.argv[1:4])
+digest,data_dir,operation_id,approval,inspection=sys.argv[4:]
+print(json.dumps(dict(proposal=proposal,fresh=fresh,admission=admission,digest=digest,
+                     data_dir=data_dir,operation_id=operation_id,approval=approval,
+                     collection=bool(fresh["descriptor"].get("collection")) or inspection=="true"),separators=(",", ":")))
+PYEXEC
+)" || return 2
+    fi
 
     # Boundary O defers the expensive global configuration proof during normal
     # System startup. An explicit memory-warning readback acquires that proof
@@ -628,27 +625,28 @@ PY
        [ "$_owner" = system ] &&
        [ "$_handler" = system__read_memory_warning ]; then
         local _memory_revision _memory_state
-        _memory_revision="$(_igor_capability_field "$_proposal" inputs.revision)" || return 1
-        _memory_state="$(_igor_capability_field "$_proposal" inputs.state)" || return 1
+        _memory_revision="$(_igor_capability_field "$_proposal" inputs.revision)" || return 2
+        _memory_state="$(_igor_capability_field "$_proposal" inputs.state)" || return 2
         if [ "${IGOR_SYSTEM_MEMORY_WARNING_REVISION:-}" != "$_memory_revision" ] ||
            [ "${IGOR_SYSTEM_MEMORY_WARNING_STATE:-}" != "$_memory_state" ]; then
-            _igor_configuration_memory_warning_load "$_memory_revision" "$_memory_state" || return 1
+            _igor_configuration_memory_warning_load "$_memory_revision" "$_memory_state" || return 2
         fi
     fi
 
     local _collection_context="" _invoke_rc
     if [ "$(_igor_capability_field "$_proposal" capability_version)" = 3 ] &&
        [ -n "$(_igor_capability_field "$_proposal" descriptor.collection.resource_kind 2>/dev/null)" ]; then
-        _collection_context="$(mktemp "${TMPDIR:-/tmp}/igor-collection-context.XXXXXXXX")" || return 1
+        _collection_context="$(mktemp "${TMPDIR:-/tmp}/igor-collection-context.XXXXXXXX")" || return 2
         chmod 600 -- "$_collection_context"
         printf '%s' "$_proposal" | "$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/collection_runtime.py" \
             context "$IGOR_CAPABILITY_RESULT_OWNER" "$IGOR_CAPABILITY_RESULT_FILE" > "$_collection_context" || {
             rm -f -- "$_collection_context"
-            return 1
+            return 2
         }
     fi
     # shellcheck source=core/lib/module_handler.sh
     source "${_IGOR_LOADER_DIR}/core/lib/module_handler.sh"
+    V2_HANDLER_EXECUTION_CONTEXT="$_execution_context" \
     IGOR_COLLECTION_CONTEXT="$_collection_context" \
     V2_HANDLER_ENTRYPOINT="$_entrypoint" \
     V2_HANDLER_DOMAIN_EVENTS="${_IGOR_OWNER_HAS_DOMAIN_EVENTS[$_owner]:-0}" \
@@ -835,7 +833,7 @@ PY
 # dispatcher. Re-resolution binds the same owner, descriptor, inputs and argv.
 igor_capability_execute() {
     local _proposal="$1" IGOR_HISTORY_OPERATION_ID="${IGOR_HISTORY_OPERATION_ID:-}" _id _provider _inputs _fresh _digest _envelope _exec=failed _verify=not_applicable _evidence='{}' _spec _result _tier _version _output_status=not_applicable _domain_result='null'
-    local _fence _fresh_privilege _fresh_owner _fresh_handler _fresh_timeout _fresh_outputs _fresh_collection _field_text _output_rc
+    local _fence _fresh_owner _fresh_handler _fresh_timeout _fresh_outputs _fresh_collection _field_text _output_rc
     local -a _proposal_fields=() _fresh_fields=()
     _field_text="$("$(_ml_python)" - "$_proposal" <<'PY'
 import json,sys
@@ -886,7 +884,6 @@ PY
 )" || return 1
     mapfile -t _fresh_fields <<< "$_field_text"
     [ "${#_fresh_fields[@]}" -eq 8 ] && [ "${_fresh_fields[7]}" = ok ] || return 1
-    _fresh_privilege="${_fresh_fields[0]}"
     _spec="${_fresh_fields[1]}"
     _fresh_owner="${_fresh_fields[2]}"
     _fresh_handler="${_fresh_fields[3]}"
@@ -933,10 +930,7 @@ PY
             "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$IGOR_HISTORY_OPERATION_ID" \
             "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_DISTRO_FAMILY:-unknown}")" || return 1
     else
-        _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" \
-            "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-            "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
-        if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" -ge 2 ] && printf 1 || printf 0)")"; then
+        if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" -ge 2 ] && printf 1 || printf 0)" "$_proposal")"; then
             _exec=succeeded
             if [[ "$_id" = core.deployments.* ]]; then
                 _domain_result="$_envelope"
@@ -987,6 +981,10 @@ PY
                 _exec=failed
                 _igor_configuration_memory_warning_apply "$_fresh" "$_domain_result" && _exec=succeeded
             fi
+        else
+            _output_rc=$?
+            # Refused admission/claim is not a result for a prior running attempt.
+            [ "$_output_rc" -ne 2 ] || return 1
         fi
     fi
     # Failure here is diagnostic after an effect: never rewrite the provider

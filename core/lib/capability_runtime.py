@@ -1,8 +1,8 @@
 """Resolution, execution fencing and results for the owned capability index.
 
 The remaining Bash adapter supplies approval/native PTY and verifier observations.
-Privileged native dispatch claims existing History authority before any effect;
-module handlers continue through the shared isolated handler runtime.
+Native and unprivileged dispatch claim existing History authority before effects;
+module admission feeds the shared isolated handler runtime.
 """
 
 from __future__ import annotations
@@ -32,6 +32,10 @@ COLLECTION_RESULT_BYTES = 96 * 1024
 
 class CapabilityError(ValueError):
     """A deterministic contract or invocation failure."""
+
+
+class ProviderExecutionError(CapabilityError):
+    """An unprivileged provider failed after its durable execution claim."""
 
 
 def _json(value: Any) -> Any:
@@ -1057,6 +1061,89 @@ def execution_fence(proposal: dict[str, Any], fresh: dict[str, Any],
     return "ready"
 
 
+def local_preconditions(proposal: dict[str, Any], owner_active: bool) -> bool:
+    """Evaluate data/filesystem checks; session/platform probes stay upstream."""
+    for condition in proposal["preconditions"]:
+        if condition["kind"] == "owner_active" and not owner_active:
+            return False
+        if condition["kind"] == "path_exists":
+            name = condition["input"]
+            spec = proposal["descriptor"]["inputs"]["properties"][name]
+            try:
+                value = _validate_path(proposal["inputs"][name], spec)
+                if not (Path(spec["root"]) / value).exists():
+                    return False
+            except (CapabilityError, OSError):
+                return False
+    return True
+
+
+def finalize_preparation(proposal: dict[str, Any], commands: Any, status: str,
+                         source_version: str) -> dict[str, Any]:
+    if status not in {"satisfied", "failed"}:
+        raise CapabilityError("invalid preparation status")
+    if proposal["privilege"] == "none" and commands != []:
+        raise CapabilityError("unprivileged proposal has native commands")
+    value = copy.deepcopy(proposal)
+    value.pop("digest", None)
+    value.update(privileged_argv=commands, precondition_status=status)
+    if source_version:
+        value["provider_source_module_version"] = source_version
+    value["digest"] = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return value
+
+
+def admit_handler(proposal: dict[str, Any], admission: dict[str, Any]) -> None:
+    """Compare current loader facts with the frozen module invocation."""
+    if (not isinstance(proposal, dict) or not isinstance(admission, dict) or
+            not isinstance(proposal.get("descriptor"), dict)):
+        raise CapabilityError("invalid module admission")
+    descriptor = proposal["descriptor"]
+    if (proposal["owner"] == "core" or admission["owner"] != proposal["owner"] or
+            admission["state"] != "active" or descriptor.get("available") is not True or
+            not descriptor.get("handler") or admission["handler"] != descriptor["handler"] or
+            type(admission["timeout"]) is not int or
+            admission["timeout"] != descriptor.get("timeout_seconds", 30) or
+            any(not isinstance(admission[key], str) or not admission[key]
+                for key in ("entrypoint", "package")) or
+            admission["source_version"] != proposal.get("provider_source_module_version", "")):
+        raise CapabilityError("module admission changed")
+
+
+def claim_unprivileged(proposal: dict[str, Any], fresh: dict[str, Any], approved_digest: str,
+                       history: Any, operation_id: str, approval: str) -> None:
+    if (execution_fence(proposal, fresh, approved_digest) != "ready" or
+            fresh["privilege"] != "none" or fresh.get("privileged_argv") != []):
+        raise CapabilityError("unprivileged execution is unavailable")
+    history.running(operation_id, proposal=fresh, approval=approval, privilege="not_required")
+
+
+def execute_unprivileged(request: dict[str, Any], history: Any) -> bytes:
+    """Admit, claim once, then invoke through the existing isolated runtime."""
+    import os
+
+    from module_handler import invoke
+
+    if (not isinstance(request, dict) or set(request) != {
+            "proposal", "fresh", "admission", "digest", "operation_id", "approval", "collection", "data_dir"
+    } or type(request["collection"]) is not bool):
+        raise CapabilityError("invalid unprivileged execution request")
+    fresh, admission = request["fresh"], request["admission"]
+    admit_handler(fresh, admission)
+    claim_unprivileged(request["proposal"], fresh, request["digest"], history,
+                       request["operation_id"], request["approval"])
+    env = dict(os.environ)
+    env.pop("V2_HANDLER_EXECUTION_CONTEXT", None)
+    try:
+        return invoke(Path(admission["package"]), fresh["owner"], admission["handler"],
+                      fresh["capability_id"], admission["timeout"],
+                      json.dumps(fresh["inputs"], separators=(",", ":")).encode(),
+                      entrypoint=admission["entrypoint"], collection=request["collection"], env=env,
+                      defer_response_validation=fresh["capability_version"] >= 2)
+    except (OSError, ValueError) as exc:
+        raise ProviderExecutionError("handler invocation failed") from exc
+
+
 def _result_base(proposal: dict[str, Any], operation_id: str,
                  approval: str, privilege: str) -> dict[str, Any]:
     return {
@@ -1263,6 +1350,58 @@ def execute_privileged(proposal: dict[str, Any], fresh: dict[str, Any], approved
 def _cli() -> int:
     """Deterministic runtime bridge; never prompts or authenticates."""
     import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "execute-unprivileged":
+        import signal
+
+        from module_handler import HandlerError
+        from operational_history import OperationalHistory
+
+        def cancelled(_signum, _frame):
+            raise HandlerError("handler cancelled")
+
+        signal.signal(signal.SIGTERM, cancelled)
+        signal.signal(signal.SIGINT, cancelled)
+        try:
+            if len(sys.argv) != 2:
+                raise CapabilityError("invalid unprivileged execution arguments")
+            request = _decode(sys.stdin.read())
+            response = execute_unprivileged(request, OperationalHistory(Path(request["data_dir"])))
+            sys.stdout.buffer.write(response)
+            return 0
+        except ProviderExecutionError:
+            print("capability runtime: handler failed or cancelled", file=sys.stderr)
+            return 3
+        except (ValueError, OSError, KeyError, TypeError, RecursionError):
+            # A refused claim must not become a provider result for an older attempt.
+            print("capability runtime: unprivileged execution unavailable", file=sys.stderr)
+            return 2
+
+    if len(sys.argv) > 1 and sys.argv[1] in {"local-preconditions", "finalize-preparation", "handler-admission", "claim-unprivileged"}:
+        try:
+            command = sys.argv[1]
+            if command == "local-preconditions" and len(sys.argv) == 4:
+                if sys.argv[3] not in {"true", "false"}:
+                    raise CapabilityError("invalid activation observation")
+                return 0 if local_preconditions(_decode(sys.argv[2]), sys.argv[3] == "true") else 1
+            if command == "finalize-preparation" and len(sys.argv) == 6:
+                value = finalize_preparation(_decode(sys.argv[2]), _decode(sys.argv[3]), *sys.argv[4:])
+                print(json.dumps(value, sort_keys=True, separators=(",", ":")))
+                return 0
+            if command == "handler-admission" and len(sys.argv) == 4:
+                admit_handler(_decode(sys.argv[2]), _decode(sys.argv[3]))
+                return 0
+            if command == "claim-unprivileged" and len(sys.argv) == 8:
+                from operational_history import OperationalHistory
+
+                proposal, fresh = map(_decode, sys.argv[2:4])
+                digest, data_dir, operation_id, approval = sys.argv[4:]
+                claim_unprivileged(proposal, fresh, digest, OperationalHistory(Path(data_dir)), operation_id, approval)
+                return 0
+            raise CapabilityError("invalid coordination arguments")
+        except (ValueError, OSError, KeyError, TypeError, RecursionError):
+            print("capability runtime: preparation or admission unavailable", file=sys.stderr)
+            return 1
 
     if len(sys.argv) > 1 and sys.argv[1] == "execute-privileged":
         from operational_history import OperationalHistory

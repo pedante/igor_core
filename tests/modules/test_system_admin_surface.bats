@@ -142,7 +142,7 @@ PY
         python3 -c '
 import json,subprocess,sys
 tool=sys.argv[1]
-parts=sys.stdin.buffer.read().split(b"\\0")
+parts=sys.stdin.buffer.read().split(b"\0")
 if parts[-1:]==[b""]: parts.pop()
 payload=dict(zip(("modules","contributions","capabilities","configurations"),
                  (json.loads(part) for part in parts)))

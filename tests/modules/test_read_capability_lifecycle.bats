@@ -69,6 +69,125 @@ _fresh_read_session() {
     '
 }
 
+@test "unprivileged operation claims before module source and duplicate attempt preserves History" {
+    proposal="$(igor_capability_prepare fixture.read '{}' fixture 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$proposal")"
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_HISTORY_OPERATION_ID
+    cat > "$IGOR_DIR/modules/fixture/module.sh" <<'EOF'
+"$IGOR_PYTHON" - "$IGOR_DATA_DIR" "$IGOR_HISTORY_OPERATION_ID" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__import__('os').environ['REPO_DIR']) / 'core/lib'))
+from operational_history import OperationalHistory
+row = OperationalHistory(Path(sys.argv[1])).inspect(sys.argv[2])
+assert row['lifecycle'] == 'running'
+assert row['privilege']['result'] == 'not_required'
+PY
+[ "$?" -eq 0 ] || return 1
+fixture__read() {
+    printf 'read\n' >> "$FIXTURE_CALLS"
+    printf '%s\n' '{"status":"ok","result":{"observed":true}}'
+}
+EOF
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"outcome":"success"'* ]]
+    before="$(igor_capability_result "$IGOR_HISTORY_OPERATION_ID")"
+    episode_before="$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")"
+    run igor_capability_execute "$proposal"
+    [ "$status" -ne 0 ]
+    [ "$(wc -l < "$FIXTURE_CALLS")" -eq 1 ]
+    [ "$(igor_capability_result "$IGOR_HISTORY_OPERATION_ID")" = "$before" ]
+    [ "$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")" = "$episode_before" ]
+}
+
+@test "changed module admission after fresh preparation refuses before source or running claim" {
+    proposal="$(igor_capability_prepare fixture.read '{}' fixture 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$proposal")"
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_HISTORY_OPERATION_ID
+    sources_before="$(wc -l < "$FIXTURE_SOURCES")"
+    eval "$(declare -f _igor_capability_invoke_handler | sed '1s/_igor_capability_invoke_handler/_fixture_original_invoke/')"
+    _igor_capability_invoke_handler() {
+        # Change this session's admission after the proposal fence.
+        _IGOR_MODULE_STATE["fixture"]=disabled
+        _fixture_original_invoke "$@"
+    }
+    run igor_capability_execute "$proposal"
+    [ "$status" -ne 0 ]
+    [ ! -s "$FIXTURE_CALLS" ]
+    [ "$(wc -l < "$FIXTURE_SOURCES")" -eq "$sources_before" ]
+    episode="$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")"
+    [[ "$episode" == *'"execution_status":"not_executed"'* ]]
+    [[ "$episode" != *'"state":"running"'* ]]
+}
+
+@test "transport setup refusal cannot publish a provider result before the History claim" {
+    proposal="$(igor_capability_prepare fixture.read '{}' fixture 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$proposal")"
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_HISTORY_OPERATION_ID
+    _IGOR_OWNER_HAS_DOMAIN_EVENTS["fixture"]=1
+    mktemp() {
+        [ "${1:-}" != -d ] || return 1
+        command mktemp "$@"
+    }
+    run igor_capability_execute "$proposal"
+    [ "$status" -ne 0 ]
+    [ ! -s "$FIXTURE_CALLS" ]
+    [ ! -s "$IGOR_CAPABILITY_RESULT_FILE" ]
+    episode="$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")"
+    [[ "$episode" == *'"execution_status":"not_executed"'* ]]
+    [[ "$episode" != *'"state":"running"'* ]]
+}
+
+@test "runtime launch failure preserves unclaimed History without a fabricated provider result" {
+    local real_python wrapper
+    real_python="$(command -v python3)"
+    wrapper="$IGOR_DIR/runtime-failure-python"
+    proposal="$(igor_capability_prepare fixture.read '{}' fixture 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$proposal")"
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_HISTORY_OPERATION_ID
+    cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+[ "\${*: -1}" != execute-unprivileged ] || exit 1
+exec "$real_python" "\$@"
+EOF
+    chmod 700 "$wrapper"
+    IGOR_PYTHON="$wrapper" run igor_capability_execute "$proposal"
+    [ "$status" -ne 0 ]
+    [ ! -s "$FIXTURE_CALLS" ]
+    [ ! -s "$IGOR_CAPABILITY_RESULT_FILE" ]
+    episode="$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")"
+    [[ "$episode" == *'"execution_status":"not_executed"'* ]]
+    [[ "$episode" != *'"state":"running"'* ]]
+}
+
+@test "unprivileged partial provider failure persists one failed result without replay" {
+    cat > "$IGOR_DIR/modules/fixture/module.sh" <<'EOF'
+fixture__read() {
+    printf 'partial\n' >> "$FIXTURE_CALLS"
+    return 7
+}
+EOF
+    proposal="$(igor_capability_prepare fixture.read '{}' fixture 2)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    IGOR_HISTORY_OPERATION_ID="$(_igor_history_begin "$proposal")"
+    export IGOR_CAPABILITY_APPROVED_DIGEST IGOR_HISTORY_OPERATION_ID
+    run igor_capability_execute "$proposal"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"outcome":"failed"'* ]]
+    episode="$(_igor_history_call inspect "{\"operation_id\":\"$IGOR_HISTORY_OPERATION_ID\"}")"
+    [[ "$episode" == *'"lifecycle":"terminal"'* ]]
+    [[ "$episode" == *'"execution_status":"failed"'* ]]
+    run igor_capability_execute "$proposal"
+    [ "$status" -ne 0 ]
+    [ "$(wc -l < "$FIXTURE_CALLS")" -eq 1 ]
+    [ "$(wc -l < "$IGOR_CAPABILITY_RESULT_FILE")" -eq 1 ]
+}
+
 @test "registered READ dispatch refuses disabled owner and recovers in a fresh session" {
     [ "$(igor_module_status fixture)" = active ]
     run ai_execute_tool "$READ_REQUEST"

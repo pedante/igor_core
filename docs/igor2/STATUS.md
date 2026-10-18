@@ -2,7 +2,144 @@
 
 Last updated: 2026-10-18
 
-## Current focus — privileged execution coordination from `4fa4abb`
+## Current focus — unprivileged execution coordination from `2ad217b`
+
+- **Phase/candidate:** RELEASE_FREEZE on `igor2` from clean `2ad217b`.
+  The authorized internal boundary, behavior proof and final documentation/diff
+  checks are complete; scoped commit and commit/status verification close this
+  task. One agent; author review only. M1 is not complete.
+- **Python ownership:** the existing capability runtime finalizes proposal
+  status/version/digest, checks owner-active and contained path preconditions,
+  validates current loader admission against the frozen owner/handler/timeout/
+  module version, then fences, atomically claims History once and invokes the
+  existing isolated unprivileged handler. Core service adapters use the same
+  Python unprivileged claim. Native privileged execution remains Python-owned
+  from the previous commit; no parallel executor, registry or storage was added.
+- **Shell ownership retained:** active index/snapshots and fresh resolution,
+  reviewed native argv preparation, live configuration/platform/model probes,
+  approval/native sudo PTY, collection leases/context and synchronous events,
+  Core service adapters and process-local memory effects, verification,
+  provider completion/result publication, plans/composites. These remain named
+  M1 migration dependencies, not completed Python coordination.
+- **Contracts:** exact proposal/approval drift and failed preconditions prevent
+  effects. Disabled/changed admission cannot source a module. A successful atomic
+  History claim precedes module source; duplicate attempts cannot execute or
+  overwrite the prior result/History. Reserved runtime exit statuses distinguish
+  post-claim provider failure from refusal/launch failure. Unknown process loss
+  retains uncertainty without replay. Context stays on stdin, outside child
+  environments; raw-handler error exit behavior and typed output remain intact.
+- **Regression result:** all **447 previous baseline identities** were executed
+  and passed in the 45-group affected/consumer run (no missing identities).
+  That run had 750 PASS, three BASELINE_FIXED and two additional reviewed
+  fixture failures. The fixtures were corrected, not waived: NUL framing in
+  operator projection and successful empty fake apt output. All three shared
+  fixture consumers pass. A stale System version assertion now compares with
+  the package manifest while preserving the metadata/procedure/process bounds.
+- **Final correction proof:** the final source candidate passes 17 focused
+  groups: 351 PASS plus Ruff BASELINE_FIXED, zero failures/skips/timeouts/tools
+  unavailable, 292.501 s. Runtime, isolated handlers, launch/setup refusal,
+  cancellation, duplicate/partial effects, History, collections, public CLI and
+  full process-local configuration/recovery proof executed freshly. Earlier
+  unaffected approval/native PTY/events/composition and fixture-consumer proof
+  is retained with stage provenance; this is not a fresh full 447-identity run
+  after the final error-status correction. Counts are not treated as equivalent
+  coverage. Latest evidence combines **790 distinct passing identities/checks**
+  (785 PASS, five BASELINE_FIXED), without counting reruns as extra coverage.
+- **Triage:** two new test C408 diagnostics and one quoted associative-key
+  ShellCheck warning were corrected. Initial failed logs remain. Source review
+  added missing transport/refusal, malformed-admission and large-context proof;
+  post-claim failure versus unclaimed launch failure is explicitly tested.
+  No baseline metadata, approval/privilege/History or safety expectation weakened.
+- **Allowance/limits:** Owner explicitly renewed 1,800 seconds once, retaining
+  the governor ledger. 226.742 seconds remain before closing documentation
+  checks. The broader affected gate executed; full repository mode was only
+  planned, not run within the remaining allowance. No production deployments,
+  user configuration/data/secrets, native services or live Nextcloud changed.
+- **Acceptance still open:** independent implementation review, repository-wide
+  full gate, real privileged host/Docker/Nextcloud operations and interactive
+  curses acceptance; sole Python module/execution authority, selected package/
+  configuration cutovers, offline preservation and v1 retirement. No automatic
+  next milestone, deployment or push follows this scoped local commit.
+
+### Unprivileged coordination evidence ledger
+
+| EXECUTION class | Evidence / limitation |
+|---|---|
+| Contract | PASS: exact fence/authority, active owner/handler/timeout/version admission, local preconditions/path containment, pre-source claim, duplicate refusal, provider-failure versus refusal/launch distinction, cancellation/descendant cleanup and typed outputs |
+| Regression | Previous 447 identities compared by suite/identity, all PASS; 45-group affected pass plus targeted fixture/final corrections. Latest union: 790 passing identities/checks, zero unresolved failures/skips/timeouts/unavailable tools; no full repository pass |
+| Vertical-slice | Disposable module through canonical dispatcher and durable History; real System READ via public CLI; private desired/commit/apply/readback/mismatch/recovery for the actual process consumer PASS. Native PTY uses fake sudo; no real host mutations, Docker/Nextcloud or curses acceptance |
+| Inspection | Author reviewed connected production callers, existing registry/History projections and final diff; authority/provider/operation identity remain inspectable. No independent review claimed |
+| Migration/recovery | Old shell local checks/finalizer/module-admission comparisons and unprivileged claim removed at this boundary. Existing isolated/verification consumers retained coherently; no store/schema/root/import move. Partial/unknown claims do not replay; broader offline data/v1 cutoff remains open |
+
+Evidence under `/tmp/igor-m1-unprivileged-<stage>-20261018/summary.json`
+(SHA-256; initial failures retained):
+
+- `preflight`: `cdd4ff9dd9ee3e8818999a13e12073a05f2808ca8495c8b680a8ccb463430d19`; 5.468 s.
+- `focused`: `c5a5cd530cd4a48b8db8307bede0b89ffd4dda7c140f688317c6e26d2e22ecf7`; 71.939 s.
+- `regression`: `a6c974053861e5518b1623af9d32f638c550b6e65aa0df879148ec2915725cdb`; 884.452 s.
+- `corrections`: `fac92a7983017347911d3138333d9a8e244f6dfd9d2b4ebb33bcbbb0384684ed`; 324.336 s.
+- `final`: `c188f3d2dcb629cb20b18ac578ef2125ad5df09daad9e7b2146a85ae5150f9d4`; 292.501 s.
+- `closing`: `844667769d4035c07b56381373a6893683fb30ee0b052c05ba30c3998d9ad7de`; 3.380 s, 11 PASS (repeated structure/documentation identities).
+
+Closing governor allowance: **220.865 seconds**. Final author diff/reference
+review is complete; the closing ledger/phase annotation changes no runtime,
+policy or reference target. No further validation or budget renewal.
+
+`/tmp/igor-m1-unprivileged-coverage-20261018.json` retains all stage summaries,
+latest identity dispositions and the exact 447-identity comparison (447 observed,
+zero missing, zero nonpassing). The final focused command and selection are
+`/tmp/igor-m1-unprivileged-final-command.json` and
+`/tmp/igor-m1-unprivileged-final-plan.json`; explicitly excluded groups remain
+unexecuted by that final run, with earlier evidence attributed above.
+
+Exact executed suite files across these stages (individual identities and raw
+logs are in the summaries/coverage manifest):
+
+```text
+tests/core/test_ai_approval.bats
+tests/core/test_ai_event_integration.bats
+tests/core/test_ai_privilege.bats
+tests/core/test_ai_safety_events.bats
+tests/core/test_ai_transactions.bats
+tests/core/test_safety.bats
+tests/core/test_safety_dispatch.bats
+tests/modules/test_domain_event_bus.bats
+tests/modules/test_loader_regressions.bats
+tests/modules/test_module_conf.bats
+tests/modules/test_module_contracts.bats
+tests/modules/test_module_handler.bats
+tests/modules/test_module_state.bats
+tests/modules/test_module_v2.bats
+tests/modules/test_operational_history_dispatch.bats
+tests/modules/test_read_capability_lifecycle.bats
+tests/modules/test_s9_cross_module_reuse.bats
+tests/modules/test_step18_module_composition.bats
+tests/modules/test_step18_module_contract.bats
+tests/modules/test_subsystem_activation.bats
+tests/modules/test_system_admin_actions.bats
+tests/modules/test_system_admin_surface.bats
+tests/modules/test_system_collection.bats
+tests/modules/test_wave_e_capability_dispatch.bats
+tests/test_ai_privilege_pty.py
+tests/test_ai_tui_operator.py
+tests/test_capability_runtime.py
+tests/test_collection_inspection.py
+tests/test_collection_snapshots.py
+tests/test_collection_transport.py
+tests/test_docker_module.py
+tests/test_documentation_health.py
+tests/test_input_candidates.py
+tests/test_module_contract.py
+tests/test_module_handler.py
+tests/test_module_inspection.py
+tests/test_module_registry.py
+tests/test_operational_history.py
+tests/test_operator_cli.py
+tests/test_operator_surface.py
+tests/test_system_configuration_workflow.py
+```
+
+## Previous privileged execution coordination from `4fa4abb`
 
 - **Phase/candidate:** RELEASE_FREEZE on `igor2` from clean `4fa4abb`. Owner
   authorizes remaining M1 execution migration; D080/D081 apply. One agent.

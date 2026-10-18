@@ -54,6 +54,32 @@ EOF
     [ "$(wc -l < "$counter")" -eq 1 ]
 }
 
+@test "capability execution context stays on stdin beyond the environment string limit" {
+    local real_python wrapper payload
+    real_python="$(command -v python3)"
+    wrapper="$IGOR_DIR/context-python"
+    printf -v payload '%*s' 150000 ''
+    cat > "$wrapper" <<EOF
+#!$real_python
+import os,sys
+assert "V2_HANDLER_EXECUTION_CONTEXT" not in os.environ
+assert sys.argv[-1] == "execute-unprivileged"
+assert len(sys.stdin.read()) == 150000
+print('{"status":"ok","result":{}}')
+EOF
+    chmod 700 "$wrapper"
+    _large_context_call() {
+        _IGOR_LOADER_DIR="${BATS_TEST_DIRNAME}/../.." \
+        V2_HANDLER_DOMAIN_EVENTS=0 \
+        V2_HANDLER_EXECUTION_CONTEXT="$payload" \
+        IGOR_PYTHON="$wrapper" \
+            _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 5 '{}'
+    }
+    run _large_context_call
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'"status":"ok"'* ]]
+}
+
 @test "canonical capability bridge still fails closed if validated source becomes invalid" {
     cat > "$IGOR_DIR/module/module.sh" <<'EOF'
 system__observe() {
@@ -123,6 +149,6 @@ EOF
 system__observe() { sleep 2; printf '{"status":"ok","result":{}}'; }
 EOF
     run _ml_bash_handler_invoke "$IGOR_DIR/module" system system__observe host.memory 1 '{}'
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 1 ]
     [[ "$output" == *"timed out"* ]]
 }
