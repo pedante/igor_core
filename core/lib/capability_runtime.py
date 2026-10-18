@@ -1,7 +1,7 @@
-"""Pure resolution and input validation for the owned Wave E capability index.
+"""Resolution, execution fencing and results for the owned capability index.
 
-The Bash dispatcher owns approval, privilege, execution and verification.
-This module cannot invoke a handler or authorize an operation.
+The remaining Bash adapter supplies approval, privilege, provider and verifier
+observations. This module cannot invoke a handler or grant authority.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
@@ -465,7 +465,7 @@ def _validate_collection_value(value: dict[str, Any], *, scope_id: str | None) -
         text = value["freshness"][key]
         if not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z", text):
             raise CapabilityError("invalid collection timestamp")
-        times.append(datetime.fromisoformat(text.replace("Z", "+00:00")))
+        times.append(datetime.fromisoformat(text))
     if (times[1] - times[0]).total_seconds() != 30:
         raise CapabilityError("invalid collection lifetime")
 
@@ -1029,9 +1029,122 @@ def _registry_from_records(records):
     return registry
 
 
+def execution_fence(proposal: dict[str, Any], fresh: dict[str, Any],
+                    approved_digest: str, *, inspection: bool = False) -> str:
+    """Bind current execution to the exact proposal admitted by the dispatcher."""
+    if not isinstance(proposal, dict) or not isinstance(fresh, dict):
+        raise CapabilityError("invalid execution proposal")
+    if not approved_digest or approved_digest != proposal.get("digest"):
+        raise CapabilityError("execution proposal is not approved")
+    if fresh.get("precondition_status") not in {"satisfied", "failed"}:
+        raise CapabilityError("invalid execution precondition status")
+    pending_content = {key: value for key, value in proposal.items() if key != "digest"}
+    fresh_content = {key: value for key, value in fresh.items() if key != "digest"}
+    if fresh["precondition_status"] == "failed":
+        pending_content.pop("precondition_status", None)
+        fresh_content.pop("precondition_status")
+    unchanged = json.dumps(pending_content, sort_keys=True, allow_nan=False) == json.dumps(fresh_content, sort_keys=True, allow_nan=False)
+    if fresh["precondition_status"] == "failed":
+        if not unchanged:
+            raise CapabilityError("execution proposal changed")
+        return "precondition_failed"
+    if proposal["digest"] != fresh.get("digest") or not unchanged:
+        if inspection:
+            return "inspection_unavailable"
+        raise CapabilityError("execution proposal changed")
+    return "ready"
+
+
+def _result_base(proposal: dict[str, Any], operation_id: str,
+                 approval: str, privilege: str) -> dict[str, Any]:
+    return {
+        "operation_id": operation_id,
+        **{key: copy.deepcopy(proposal[key]) for key in (
+            "capability_id", "capability_version", "provider", "owner", "privilege",
+            "safety", "precondition_status", "affected_objects", "recovery")},
+        "approval_status": approval, "privilege_status": privilege,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def nonexecution_result(proposal: dict[str, Any], reason: str, approval: str,
+                        privilege: str, operation_id: str, detail: str = "") -> dict[str, Any]:
+    privilege = privilege or ("not_requested" if proposal["privilege"] == "required" else "not_required")
+    result = _result_base(proposal, operation_id, approval, privilege)
+    result.update(execution_status="not_executed", verification_status="not_applicable",
+                  outcome=reason, verification_evidence=(
+                      [{"source": "capability.inspection", "reason": detail}] if detail else []))
+    if reason == "precondition_failed":
+        result["precondition_status"] = "failed"
+    return result
+
+
+def execution_result(proposal: dict[str, Any], execution: str, verification: str,
+                     evidence: dict[str, Any], approval: str, operation_id: str,
+                     output_status: str, domain_result: Any) -> dict[str, Any]:
+    """Derive outcome from deterministic observations, never a provider's claim."""
+    if execution not in {"succeeded", "failed"} or verification not in {
+        "not_applicable", "passed", "failed", "unknown", "unavailable"
+    } or output_status not in {"valid", "invalid", "not_applicable"}:
+        raise CapabilityError("invalid execution observation")
+    outcome = "failed"
+    if execution == "succeeded":
+        if output_status == "invalid" or (proposal["capability_version"] >= 2 and
+                                          (output_status != "valid" or not isinstance(domain_result, dict))):
+            outcome, verification, domain_result, output_status = "invalid_output", "unknown", None, "invalid"
+        elif verification in {"failed", "unknown", "unavailable"}:
+            outcome = "unverified_result" if proposal["safety"]["tier"] == "READ" else "unverified_change"
+        elif proposal["safety"]["tier"] != "READ" and verification != "passed":
+            outcome, verification = "unverified_change", "unavailable"
+        else:
+            outcome = "success"
+    privilege = "authenticated" if proposal["privilege"] == "required" else "not_required"
+    result = _result_base(proposal, operation_id, approval, privilege)
+    result.update(execution_status=execution, verification_status=verification,
+                  outcome=outcome, verification_evidence=[evidence] if evidence else [])
+    if proposal["capability_version"] >= 2:
+        result.update(output_status=output_status, result=domain_result)
+    if proposal["capability_version"] == 3:
+        try:
+            _validate_result(result)
+        except CapabilityError as exc:
+            reason = "collection_limit_exceeded" if str(exc) == "collection_limit_exceeded" else "invalid_domain_output"
+            result.update(output_status="invalid", result=None, verification_status="unknown", outcome="invalid_output",
+                          verification_evidence=[{"source": "capability.output_validation", "reason": reason}])
+    return result
+
+
 def _cli() -> int:
-    """JSON stdin bridge for shell-owned loaders (resolution only)."""
+    """Deterministic runtime bridge; never prompts or invokes a provider."""
     import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] in {"execution-fence", "execution-result", "nonexecution-result"}:
+        try:
+            lengths = {"execution-fence": 6, "execution-result": 9, "nonexecution-result": 8}
+            if len(sys.argv) != lengths[sys.argv[1]]:
+                raise CapabilityError("invalid coordination arguments")
+            if sys.argv[1] == "execution-fence":
+                if sys.argv[5] not in {"0", "1"}:
+                    raise CapabilityError("invalid inspection context")
+                proposal, fresh = map(_decode, sys.argv[2:4])
+                print(execution_fence(proposal, fresh, sys.argv[4], inspection=sys.argv[5] == "1"))
+            elif sys.argv[1] == "nonexecution-result":
+                result = nonexecution_result(_decode(sys.argv[2]), *sys.argv[3:])
+                print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+            else:
+                proposal = _decode(sys.argv[2])
+                execution, verification, evidence_raw, approval, operation_id, output_status = sys.argv[3:]
+                try:
+                    evidence = _decode(evidence_raw)
+                except ValueError:
+                    evidence = {"reason": "verification_failed"}
+                result = execution_result(proposal, execution, verification, evidence, approval,
+                                          operation_id, output_status, _decode(sys.stdin.read()))
+                print(json.dumps(result, ensure_ascii=proposal["capability_version"] != 3, sort_keys=True, separators=(",", ":")))
+            return 0
+        except (ValueError, KeyError, TypeError, IndexError, RecursionError):
+            print("capability runtime: invalid execution coordination", file=sys.stderr)
+            return 1
 
     if len(sys.argv) in {5, 6, 7} and sys.argv[1] in {"inspection-prepare", "inspection-check"}:
         from collection_runtime import inspection_cli

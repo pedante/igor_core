@@ -1,8 +1,87 @@
 # Igor 2 current status
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
-## Current focus — M1 implementation from `21da2b5`
+## Current focus — execution coordination from `730e75e`
+
+- **Phase/candidate:** RELEASE_FREEZE on `igor2` from clean `730e75e`; history
+  confirms the two handoff commits. D080/D081 and the existing M1 disposition
+  remain authoritative. One agent; no production/configuration/data changes.
+- **Slice:** move execution-fence comparison and canonical terminal-result
+  construction/outcome selection for single operations into existing
+  `capability_runtime.py`; retire
+  their shell implementations. Shared capability callers (CLI/TUI/AI/plans/
+  automation), typed outputs/collections and History consume the same results.
+  Keep approval/native PTY and in-process System configuration effects intact.
+- **Acceptance/plan:** test exact approved content, drift and precondition
+  refusal; provider failure, invalid output and failed/unavailable verification;
+  canonical approval/privilege/History ordering, collection and process-local
+  configuration consumers. Governed focused selection, then bounded affected
+  safety/consumer proof; 1069.877 seconds available, 240 per subprocess, with
+  closing reserve. No renewed budget or full-suite claim.
+- **Remaining M1 dependencies:** full Python loading/authorization/execution/
+  History integration; selected package/configuration and offline data cutovers;
+  consumer proof before v1 retirement. Real Docker/Nextcloud acceptance, broad
+  integration and independent review remain required and unverified.
+- **Exit:** implementation, applicable tests, author review and closing
+  documentation references complete; scoped commit and commit/status verification remain.
+  No further runtime work in this slice; no M1 completion claim.
+- **Initial evidence:** the first preflight stopped on an inherited Ruff
+  timestamp diagnostic; corrected without a rule suppression. Subsequent focused
+  run completed with 183 PASS plus one `BASELINE_FIXED` (Ruff), zero failures,
+  skips or timeouts in 270.822 seconds. Author review then tightened comparison
+  to serialized JSON equality (Python equality conflates `true` and `1`);
+  final affected safety/consumer checks must include that correction.
+- **Expanded evidence:** final runtime candidate completed the 23-group consumer
+  pass in 383.633 seconds: 400 PASS, one `BASELINE_FIXED` (Ruff), five new fixture
+  assertion failures and one reviewed baseline fixture failure. Raw failures are
+  retained. System is actually 2.12.0; older Step 18 tests assumed 2.11.0 (including
+  a substitution that no longer changed the manifest). The static CLI fixture
+  omitted `module_registry.py`; the privileged-output fixture duplicated the
+  shipped service capability ID and never reached its intended adapter check.
+  Fixtures now read package version, corrupt the version independently of its
+  number, include the authoritative policy reader and use a unique negative
+  capability ID. Safety assertions remain; final targeted proof below passes.
+- **Fixture correction evidence:** composition, privileged-output refusal,
+  transaction and safety-dispatch checks pass. The static CLI test then exposed
+  its obsolete `migration_pending_unknown` assertion; explicit policy ownership
+  now reports `disabled_by_default`. It now asserts that state, false enablement,
+  unevaluated runtime and disabled declarations, retaining all no-source/no-write
+  markers. Final targeted proof covers both corrected fixture files.
+- **Final result:** 447 distinct retained check/test identities pass (445 `PASS`,
+  two `BASELINE_FIXED`); no remaining failures, skips, timeouts or unavailable
+  tools. Combine the final runtime run with transaction/safety-dispatch evidence
+  and the final two fixture files; do not count reruns as additional coverage.
+  No baseline metadata or safety rule was changed. The governor reports 240.706
+  seconds remaining before the closing documentation reference check; no renewal.
+
+### Coordination evidence ledger
+
+| EXECUTION class | Evidence / remaining proof |
+|---|---|
+| Contract | Exact approved content/JSON-type comparison, precondition refusal, result state matrix, malformed private input and bounded collection-result tests PASS |
+| Regression | Canonical approval/native privilege, transactions/safety dispatch, module contracts/activation, History, typed outputs/collections and System configuration PASS; 447 retained identities including tool checks, no repository-wide gate |
+| Vertical-slice | Real System memory READ and private process-local desired/commit/apply/readback/recovery PASS; public CLI READ/disable/re-enable/JSON/History and simulated generic TUI projections PASS. Privileged effects are mocked; Docker package contracts only, no real Docker/Nextcloud or interactive curses acceptance |
+| Inspection | Provider/owner/operation identity and verification evidence retained in canonical results/History; author diff/caller review, no independent reviewer |
+| Migration/recovery | Replaced shell fence/result implementations removed; no persistent format/root/import change. Historical records, interrupted CHANGE/no replay and explicit configuration recovery PASS; whole-M1 data/v1 cutoff pending |
+
+Evidence summaries (initial failures preserved; SHA-256):
+
+- `/tmp/igor-m1-coordination-20261018/summary.json` — `fa9ac7e12965939e716cabbda4d7c551415263ea182e38fadfb5690bbbaae8cf` (incomplete preflight).
+- `/tmp/igor-m1-coordination-behavior-20261018/summary.json` — `98abfb6b735ac5c568468d9bbb521a72e4f6dbdb934f302f7e2a5b963e7383bc` (initial behavior pass; superseded by final runtime proof).
+- `/tmp/igor-m1-coordination-final-20261018/summary.json` — `f702273462386186df8e08c929f07ab8d3d28c875c93afcdcd452092573d0897` (final runtime; fixture failures superseded below).
+- `/tmp/igor-m1-coordination-fixtures-20261018/summary.json` — `0d66a2b51b415b888925adaaac33df35dda1b4e9453a394bdf04fc4167430f3b` (transaction/safety-dispatch PASS; obsolete policy-state assertion subsequently fixed).
+- `/tmp/igor-m1-coordination-fixtures-final-20261018/summary.json` — `b728b6a7718ecfcc63eeaa754d8ecf0ff6233393ff829f503594caf67bc77787` (both final fixture files PASS).
+
+No production deployments, actual user configuration, secrets or live Nextcloud
+data were changed. Final phase/evidence annotations change no validated policy
+or reference target. Independent implementation review and all unexecuted M1
+acceptance remain open; this author review is not independent review.
+
+## Prior M1 batches from `21da2b5`
+
+The following is retained evidence for the preceding batches, not the current
+phase or validation allowance.
 
 - **Phase/candidate:** IMPLEMENTATION on `igor2`, clean base `21da2b5`.
   Owner explicitly requested M1 runtime implementation and internal commits.

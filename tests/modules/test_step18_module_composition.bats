@@ -8,6 +8,8 @@ setup() {
     export IGOR_DATA_DIR="$IGOR_DIR/data"
     mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config"
     cp -a "$REPO_DIR/modules/system" "$IGOR_DIR/modules/system"
+    FIXTURE_SYSTEM_VERSION="$(sed -n 's/^version=//p' "$IGOR_DIR/modules/system/module.conf")"
+    export FIXTURE_SYSTEM_VERSION
     printf 'system=enabled\n' > "$IGOR_DIR/config/modules.conf"
     # Exercise the Step 17 consumer with a declaration in the copied package.
     # This is test data, not a new production setting or apply operation.
@@ -76,7 +78,7 @@ _composition_rejected() {
     schemas="$(igor_configuration_declarations)"
     inspection="$(igor_module_inspect system)"
     python3 - "$REPO_DIR" "$IGOR_DATA_DIR" "$capability" "$knowledge" "$schemas" "$inspection" <<'PY'
-import json,sys
+import json,os,sys
 from pathlib import Path
 root=Path(sys.argv[1]); sys.path[:0]=[str(root/"core/ai"),str(root/"core/lib")]
 from configuration import ConfigurationService
@@ -91,7 +93,7 @@ assert provider["descriptor"]["outputs"]["required"]==["observer_id"]
 assert len(candidates)==1
 candidate=candidates[0]
 assert candidate["id"]=="host.basics" and candidate["owner"]=="system"
-assert candidate["source_version"]=="2.11.0" and "# Host basics" in candidate["content"]
+assert candidate["source_version"]==os.environ["FIXTURE_SYSTEM_VERSION"] and "# Host basics" in candidate["content"]
 assert len(schemas)==2 and {field["id"] for row in schemas for field in row["schema"]["fields"]}=={
     "system.composition.note", "system.memory.warning_threshold_mib"}
 assert schemas[0]["source"]=="contracts/host.json"
@@ -104,7 +106,7 @@ assert fixture["schema_owner"]=="system" and fixture["desired"]["status"]=="abse
 assert fixture["resolved"]=={"status":"resolved","value":"fixture","source":"default"}
 assert warning["schema_owner"]=="system" and warning["resolved"]["value"]==150
 assert service.status()["availability"]=="not_created"
-assert view["module"]["api"]==2 and view["module"]["package_version"]=="2.11.0"
+assert view["module"]["api"]==2 and view["module"]["package_version"]==os.environ["FIXTURE_SYSTEM_VERSION"]
 assert view["lifecycle"]["runtime_status"]=="active" and view["lifecycle"]["loaded"] is True
 assert view["capabilities"][0]["owner"]=="system"
 assert view["knowledge"][0]["availability"]=="active"
@@ -115,10 +117,10 @@ selected,routing=assemble({"context_candidates":candidates},{"ids":["host.basics
     active_owners=["core","system"],include_runtime=False)
 item=selected["context_items"][0]
 assert item["kind"]=="module_knowledge" and item["authority_class"]=="reference"
-assert item["owner"]=="system" and item["source_version"]=="2.11.0"
+assert item["owner"]=="system" and item["source_version"]==os.environ["FIXTURE_SYSTEM_VERSION"]
 assert item["provenance"] and routing["items"][0]["id"]=="host.basics"
 # Exercise existing generic panels directly; no module-specific/live panel.
-for key,expected in [("module","2.11.0"),("lifecycle","active"),
+for key,expected in [("module",os.environ["FIXTURE_SYSTEM_VERSION"]),("lifecycle","active"),
         ("capabilities","system.host.memory.refresh"),("knowledge","host.basics"),
         ("configuration","system.composition.note"),
         ("configuration","system.memory.warning_threshold_mib")]:
@@ -140,7 +142,7 @@ PY
 
 @test "invalid package version is rejected before source and all composition discovery" {
     _composition_source_marker
-    sed -i 's/version=2.11.0/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
+    sed -i 's/^version=.*/version=not-a-version/' "$IGOR_DIR/modules/system/module.conf"
     _composition_rejected
     [[ "$(igor_module_reason system)" == *version* ]]
 }
@@ -209,12 +211,12 @@ PY
     history="$(igor_history_cli recent 1)"
     fact="$(igor_model_read host:local memory.available_bytes observed)"
     python3 - "$history" "$fact" <<'PY'
-import json,sys
+import json,os,sys
 history=json.loads(sys.argv[1]); fact=json.loads(sys.argv[2])
 assert len(history)==1
 row=history[0]
 assert row["capability"]["version"]==2
-assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]=="2.11.0"
+assert row["provider"]["id"]=="system" and row["provider"]["source"]["module_version"]==os.environ["FIXTURE_SYSTEM_VERSION"]
 assert row["outcome"]=="success" and row["verification"]["status"]=="passed"
 assert row["approval"]["result"]=="not_required" and row["privilege"]["result"]=="not_required"
 assert fact["availability"]=="known" and fact["owner"]=="system"

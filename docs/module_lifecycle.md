@@ -50,8 +50,9 @@ contribution owner, source contract and contribution availability/reason. A
 v2 package is validated as data before its entrypoint can be sourced, so
 inspection of a disabled or malformed package does not execute module code.
 
-Unspecified v1 modules remain enabled for compatibility with existing installations.
-New v2 packages require an explicit `name=enabled` entry.
+Every package, including System and still-live v1 packages, requires an explicit
+`name=enabled` entry. Omitted entries stay disabled; malformed policy fails closed.
+Python owns policy parsing and atomic explicit writes across all consumers.
 Use explicit disabled entries for installed modules you do not manage. Policy
 changes apply to subsequent Igor processes; restart existing sessions and workers.
 Disabling does not stop containers, delete data, uninstall packages, or reverse
@@ -71,14 +72,10 @@ and explicit JSON contract validation. An enabled package with invalid or
 unsupported metadata is `Unavailable` with a precise reason. A contribution
 can be unavailable while its owner remains active when only that contribution
 has an unmet requirement. New v2 packages require an explicit enabled policy
-entry; the bundled `system` migration records one for installations that used
-the v1 omitted-entry default and preserves an explicit disabled entry.
-The policy change is idempotent. If `config/modules.conf` already existed, its
-pre-migration contents are saved once as `config/modules.conf.pre-wave-c.bak`
-before the explicit `system=enabled` entry is written. Verify the policy with
-`bash igor.sh --modules`; use `bash igor.sh --disable system` to opt out under
-v2. To revert a package upgrade to v1, restore the saved policy file (or
-remove the generated entry if no file existed) together with the v1 package.
+entry. Startup never writes policy or enables System. Use
+`bash igor.sh --enable system` to record that decision explicitly and
+`bash igor.sh --modules` to inspect it. Any previously created policy backup
+remains untouched; there is no automatic restore or migration on startup.
 
 Availability is derived, not another persistent registry to maintain. Runtime
 service health is separate: an active module can manage an application that is

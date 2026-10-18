@@ -156,6 +156,13 @@ before the runtime sourcing paths are cut off.
   packages stay inactive; malformed policy fails closed. The startup System-policy
   migration and v1 implicit activation are retired. Existing policy/backups remain
   untouched until an explicit enable/disable command; no data import is implied.
+- **Python execution fencing/results (implemented; focused proof in STATUS):** the existing
+  capability runtime compares exact frozen/live proposal content and derives
+  single-operation terminal outcomes from provider/output/verifier observations. The shared shell adapter
+  transports those observations and retains current approval/native PTY, History
+  ordering and process-local configuration effects; no competing executor exists.
+  Focused evidence covers approval, privilege, History, CLI, typed outputs,
+  collections and process-local configuration; broader M1 acceptance stays open.
 - **Still required in M1:** Python loading/resolution/authorization/History
   coordination and all consumers; selected package and configuration cutovers;
   offline data transition; retirement of v1 loader/hooks/actions/menus/startup

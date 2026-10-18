@@ -8,6 +8,8 @@ setup() {
     export IGOR_DATA_DIR="$IGOR_DIR/data"
     mkdir -p "$IGOR_DIR/modules" "$IGOR_DIR/config"
     cp -a "$REPO_DIR/modules/system" "$IGOR_DIR/modules/system"
+    FIXTURE_SYSTEM_VERSION="$(sed -n 's/^version=//p' "$IGOR_DIR/modules/system/module.conf")"
+    export FIXTURE_SYSTEM_VERSION
     printf 'system=enabled\n' > "$IGOR_DIR/config/modules.conf"
     source "$REPO_DIR/core/lib/module_loader.sh"
     _ml_log() { :; }
@@ -26,10 +28,10 @@ teardown() { teardown_igor_tmpdir; }
     [[ "$output" == *'"result":{"observer_id":"host.memory"}'* ]]
     history="$(igor_history_cli recent 1)"
     python3 - "$history" <<'PY'
-import json,sys
+import json,os,sys
 row=json.loads(sys.argv[1])[0]
 assert row["capability"]["version"] == 2
-assert row["provider"]["source"]["module_version"] == "2.11.0"
+assert row["provider"]["source"]["module_version"] == os.environ["FIXTURE_SYSTEM_VERSION"]
 assert row["outcome"] == "success" and row["verification"]["status"] == "passed"
 PY
 }
@@ -64,7 +66,7 @@ PY
 @test "static CLI never initializes runtime or migrates omitted system policy" {
     mkdir -p "$IGOR_DIR/core/lib"
     cp "$REPO_DIR/igor.sh" "$IGOR_DIR/igor.sh"
-    for script in module_inspection.py module_contract.py capability_runtime.py configuration_schema.py input_candidates.py; do
+    for script in module_inspection.py module_registry.py module_contract.py capability_runtime.py configuration_schema.py input_candidates.py; do
         cp "$REPO_DIR/core/lib/$script" "$IGOR_DIR/core/lib/$script"
     done
     printf 'touch "$IGOR_DIR/source-marker"\n' >> "$IGOR_DIR/modules/system/module.sh"
@@ -73,7 +75,14 @@ PY
     before_data="$(rg --files --hidden --sort path "$IGOR_DIR/data" || true)"
     run bash "$IGOR_DIR/igor.sh" --modules inspect system
     [ "$status" -eq 0 ]
-    [[ "$output" == *'migration_pending_unknown'* ]]
+    python3 - "$output" <<'PY'
+import json,sys
+view=json.loads(sys.argv[1])
+assert view["lifecycle"]["policy_state"] == "disabled_by_default"
+assert view["lifecycle"]["enabled"] is False
+assert view["lifecycle"]["runtime_status"] == "not_evaluated"
+assert all(row["availability"] == "owner_disabled" for row in view["declarations"])
+PY
     [ ! -e "$IGOR_DIR/source-marker" ]
     [ ! -e "$IGOR_DIR/config/modules.conf" ]
     [ "$(rg --files --hidden --sort path "$IGOR_DIR/data" || true)" = "$before_data" ]
@@ -128,15 +137,15 @@ import json,sys
 from pathlib import Path
 path=Path(sys.argv[1]); data=json.loads(path.read_text())
 cap=next(r for r in data["contributions"] if r["kind"]=="capability")
-cap.update(id="system.service.restart",privilege="required")
+cap.update(id="system.fixture.privileged",privilege="required")
 path.write_text(json.dumps(data))
 PY
     run bash -c '
         source "$1/core/lib/module_loader.sh"
         _ml_log() { :; }
         igor_load_all_modules >/dev/null
-        igor_capability_inspect system.service.restart
-        igor_capability_prepare system.service.restart
+        igor_capability_inspect system.fixture.privileged
+        igor_capability_prepare system.fixture.privileged
     ' _ "$REPO_DIR"
     [ "$status" -ne 0 ]
     [[ "$output" == *'typed_privileged_output_adapter_unavailable'* ]]

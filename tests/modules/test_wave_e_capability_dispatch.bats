@@ -228,6 +228,17 @@ teardown() { teardown_igor_tmpdir; }
     [ ! -s "$FIXTURE_TRACE" ]
 }
 
+@test "execution fence rejects changed approved content even when its digest is retained" {
+    proposal="$(igor_capability_prepare system.service.restart '{"unit":"igor-wave-e-fixture.service"}' fixture_service)"
+    IGOR_CAPABILITY_APPROVED_DIGEST="$(_igor_capability_field "$proposal" digest)"
+    export IGOR_CAPABILITY_APPROVED_DIGEST
+    tampered="$(printf '%s' "$proposal" | python3 -c 'import json,sys; p=json.load(sys.stdin); p["privileged_argv"][-1]="other.service"; print(json.dumps(p))')"
+    run igor_capability_execute "$tampered"
+    [ "$status" -ne 0 ]
+    [ ! -s "$FIXTURE_TRACE" ]
+    [ "$(igor_domain_event_recent)" = '[]' ]
+}
+
 @test "plan inspection is read-only and execution stops after failed verification" {
     plan='{"plan_version":1,"intended_outcome":"fixture active","steps":[{"capability_id":"system.service.restart","provider":"fixture_service","inputs":{"unit":"igor-wave-e-fixture.service"}},{"capability_id":"system.service.restart","provider":"fixture_service","inputs":{"unit":"igor-wave-e-fixture.service"}}]}'
     run igor_capability_plan_resolve "$plan"

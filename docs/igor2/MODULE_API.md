@@ -38,6 +38,14 @@ Python leaf handlers. The detailed Bash-first and mixed-loader sections below
 describe current/historical contracts until that coherent migration. No new
 parallel registry, generic plugin framework or speculative contribution API.
 
+The current Python capability runtime owns frozen-proposal comparison at the
+execution fence and canonical terminal-result construction/outcome selection.
+The remaining shell adapter supplies live resolution/preconditions, existing
+approval/native PTY, provider/verifier observations and History publication;
+Python fencing grants no approval or privilege. The adapter retains process-local
+System configuration effects until its session consumer migrates. This is an
+increment within M1, not completion of the Python coordinator or v1 cutoff.
+
 ## First-class module boundary (Step 18A)
 
 A module is a portable reviewed package that teaches and operates a coherent

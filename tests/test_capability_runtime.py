@@ -1,3 +1,4 @@
+import copy
 import json
 import subprocess
 import sys
@@ -12,6 +13,9 @@ from capability_runtime import (
     CapabilityPlan,
     CapabilityRegistry,
     SecretReference,
+    execution_fence,
+    execution_result,
+    nonexecution_result,
     validate_inputs,
     validate_output_schema,
     validate_outputs,
@@ -32,6 +36,93 @@ def descriptor(**changes):
 
 
 class CapabilityRuntimeTests(unittest.TestCase):
+    def execution_proposal(self, *, tier="CHANGE", version=1):
+        registry = CapabilityRegistry()
+        registry.register(descriptor())
+        proposal = registry.prepare("system.service.restart", {"unit": "demo.service"})
+        proposal.update(precondition_status="satisfied", privileged_argv=["sudo", "-n", "--", "systemctl", "restart", "demo.service"])
+        proposal["safety"]["tier"] = tier
+        proposal["capability_version"] = version
+        return proposal
+
+    def test_execution_fence_requires_approval_and_exact_content_even_with_same_digest(self):
+        proposal = self.execution_proposal()
+        self.assertEqual(execution_fence(proposal, copy.deepcopy(proposal), proposal["digest"]), "ready")
+        for approval in ("", "another-digest"):
+            with self.assertRaises(CapabilityError):
+                execution_fence(proposal, proposal, approval, inspection=True)
+        for field in ("owner", "provider", "inputs", "descriptor", "safety", "privilege", "privileged_argv", "affected_objects", "recovery", "source"):
+            with self.subTest(field=field):
+                fresh = {**proposal, field: "changed"}
+                with self.assertRaises(CapabilityError):
+                    execution_fence(proposal, fresh, proposal["digest"])
+                self.assertEqual(execution_fence(proposal, fresh, proposal["digest"], inspection=True), "inspection_unavailable")
+        with self.assertRaises(CapabilityError):
+            execution_fence(proposal, {**proposal, "capability_version": True}, proposal["digest"])
+
+    def test_execution_fence_allows_only_precondition_status_to_change_on_refusal(self):
+        proposal = self.execution_proposal()
+        fresh = {**proposal, "precondition_status": "failed", "digest": "new-digest"}
+        self.assertEqual(execution_fence(proposal, fresh, proposal["digest"]), "precondition_failed")
+        for changes in ({"privileged_argv": []}, {"owner": "other"}, {"precondition_status": "unknown"}):
+            with self.assertRaises(CapabilityError):
+                execution_fence(proposal, {**fresh, **changes}, proposal["digest"], inspection=True)
+
+    def test_execution_outcomes_derive_from_execution_output_and_verification(self):
+        cases = [
+            ("READ", "succeeded", "not_applicable", "success"),
+            ("READ", "succeeded", "failed", "unverified_result"),
+            ("READ", "succeeded", "unknown", "unverified_result"),
+            ("CHANGE", "succeeded", "passed", "success"),
+            ("DESTROY", "succeeded", "passed", "success"),
+            ("CHANGE", "succeeded", "failed", "unverified_change"),
+            ("CHANGE", "succeeded", "not_applicable", "unverified_change"),
+            ("CHANGE", "succeeded", "unavailable", "unverified_change"),
+            ("CHANGE", "failed", "passed", "failed"),
+        ]
+        for tier, execution, verification, outcome in cases:
+            for version in (1, 2, 3):
+                with self.subTest(tier=tier, execution=execution, verification=verification, version=version):
+                    proposal = self.execution_proposal(tier=tier, version=version)
+                    result = execution_result(proposal, execution, verification, {"source": "test"}, "approved", "op-test", "valid", {"count": 1})
+                    self.assertEqual(result["outcome"], outcome)
+                    self.assertEqual(result["operation_id"], "op-test")
+                    self.assertEqual(result["verification_evidence"], [{"source": "test"}])
+                    self.assertEqual(result["privilege_status"], "authenticated")
+                    self.assertEqual("result" in result, version >= 2)
+
+    def test_unusable_typed_output_preserves_effect_and_never_claims_success(self):
+        for version in (2, 3):
+            for output, domain in (("invalid", {"count": 1}), ("not_applicable", None), ("valid", None)):
+                result = execution_result(self.execution_proposal(version=version), "succeeded", "passed", {}, "approved", "op-test", output, domain)
+                self.assertEqual(result["execution_status"], "succeeded")
+                self.assertEqual(result["outcome"], "invalid_output")
+                self.assertEqual(result["verification_status"], "unknown")
+                self.assertIsNone(result["result"])
+        oversized = execution_result(self.execution_proposal(version=3), "succeeded", "passed", {}, "approved", "op-test", "valid", {"text": "x" * 100000})
+        self.assertEqual(oversized["outcome"], "invalid_output")
+        self.assertEqual(oversized["verification_evidence"][0]["reason"], "collection_limit_exceeded")
+        with self.assertRaises(CapabilityError):
+            execution_result(self.execution_proposal(), "running", "passed", {}, "approved", "op-test", "valid", {})
+
+    def test_nonexecution_preserves_identity_and_refusal_without_inventing_effect(self):
+        proposal = self.execution_proposal(version=2)
+        for reason, approval, privilege in (("approval_denied", "denied", ""), ("privilege_failed", "approved", "failed"), ("precondition_failed", "approved", "")):
+            result = nonexecution_result(proposal, reason, approval, privilege, "op-test", "inspection_unavailable")
+            self.assertEqual(result["outcome"], reason)
+            self.assertEqual(result["execution_status"], "not_executed")
+            self.assertEqual(result["verification_status"], "not_applicable")
+            self.assertEqual(result["privilege_status"], privilege or "not_requested")
+            self.assertEqual(result["precondition_status"], "failed" if reason == "precondition_failed" else "satisfied")
+            self.assertNotIn("result", result)
+        self.assertEqual(proposal["precondition_status"], "satisfied")
+
+    def test_coordination_cli_rejects_malformed_private_input_without_echoing_it(self):
+        for args in (("execution-fence", '{"private":"SENTINEL","private":2}', "{}", "digest", "1"), ("execution-fence", "[]", "{}", "digest", "1"), ("execution-result", "SENTINEL"), ("nonexecution-result", "SENTINEL")):
+            result = subprocess.run([sys.executable, "core/lib/capability_runtime.py", *args], text=True, capture_output=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("SENTINEL", result.stdout + result.stderr)
+
     def test_version_two_requires_closed_typed_output_and_exact_consumer_version(self):
         outputs = {"schema_version": 1, "properties": {"observer_id": {"type": "enum", "enum": ["host.memory"]}}, "required": ["observer_id"], "additionalProperties": False}
         cap = descriptor(capability_version=2, outputs=outputs)
