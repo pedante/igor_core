@@ -2,7 +2,65 @@
 
 Last updated: 2026-10-18
 
-## Current focus — execution coordination from `730e75e`
+## Current focus — privileged execution coordination from `4fa4abb`
+
+- **Phase/candidate:** RELEASE_FREEZE on `igor2` from clean `4fa4abb`. Owner
+  authorizes remaining M1 execution migration; D080/D081 apply. One agent.
+- **Slice:** move the remaining inline privileged argv validator/executor into
+  `capability_runtime.py`, including its atomic pre-effect History claim. Keep
+  existing shell approval/native PTY, common verifier/result publication and
+  process-local configuration consumers. No new executor, storage or data move.
+- **Reach:** `igor_capability_execute`, shared AI/CLI/TUI/plan/automation callers,
+  existing privileged System adapters, runtime and canonical dispatcher tests.
+- **Acceptance/validation:** exact proposal fence before effects; reviewed argv
+  only, ordered stop on first failure, noninteractive sudo, duplicate claim
+  refusal and pre-effect History. Runtime/History Python tests, canonical
+  dispatch/approval/privilege and PTY regressions; dry-run selection bounded by
+  235.761 seconds remaining, 240 per subprocess. Prior dispatch 33.723 s,
+  History Python 24.528 s; reserve time for final references and corrections.
+  Full 447-identity regression cannot fit; no renewal authorized.
+- **Result:** the inline native executor is removed. Python validates reviewed
+  argv and the exact approved proposal, claims the existing History operation
+  before effects, runs commands in order and stops on failure. The shared shell
+  adapter still performs verification/provider-complete/result publication.
+  Detailed lifecycle ownership, smallest continuation and remaining M1 readiness
+  are in [LEGACY](LEGACY.md#execution-ownership-and-remaining-cutover-at-4fa4abb).
+- **Evidence:** final bounded safety run passes 199 distinct check/test identities
+  (198 PASS and Ruff BASELINE_FIXED), zero failures/skips/timeouts/unavailable
+  tools, in 204.511 seconds. The initial 12.328-second run passed runtime behavior
+  but found two new test lint defects under the broad reviewed Ruff identity;
+  both were fixed, not accepted as baseline debt. Final runtime tests executed
+  freshly. No baseline metadata changed; no double-counting of the first run.
+- **Boundary:** 18.917 seconds remain before closing documentation checks; no
+  renewal. The prior 447-identity suite, automatic affected selection and full
+  gate were not rerun. No production deployments, user data/secrets, actual host
+  services or live Nextcloud changed. Scoped commit and commit/status verification
+  close this internal slice; full execution migration and M1 remain incomplete.
+
+### Privileged coordination evidence ledger
+
+| EXECUTION class | Evidence / limitation |
+|---|---|
+| Contract | PASS: exact content/digest/precondition fence, denied authority/failed authentication, malformed arguments/argv, native adapter matrix, ordered failure/timeout/missing executable and same-operation duplicate refusal |
+| Regression | PASS: runtime/result/output matrix, approval Explain/No/Stop/exact YES, native privilege/PTY, History service and canonical dispatcher; no full retained regression claim |
+| Vertical-slice | PASS: fake sudo/service through real dispatcher and durable History; real System memory READ, reopen and plan references; native PTY uses fake sudo, no real privileged host/Docker/Nextcloud effects or interactive curses acceptance |
+| Inspection | Author reviewed connected callers and final diff; provider/operation/authority/results remain inspectable through existing History and projections. Independent review pending |
+| Migration/recovery | Inline executor retired with shared caller cutover; pre-effect claim failure blocks execution; interruption remains unknown without replay; post-effect persistence failure preserves canonical result. No format/root/data transition; offline migration and v1 retirement pending |
+
+Raw summaries (SHA-256; initial failures retained):
+
+- `/tmp/igor-m1-native-runtime-20261018/summary.json`:
+  `a573cbba9533896480062645a0c291059c43c670297dcf569704d88e6550b9b3`.
+- `/tmp/igor-m1-native-safety-20261018/summary.json`:
+  `56c8c7b6d4e65249faf83ac45f3cb4988cc0185a5a71687f87cc69f649fad8b5`.
+- Closing references/documentation proof: `/tmp/igor-m1-native-closing-20261018/summary.json`.
+  SHA-256 `c9b41591fc65c40b1b106f7a120616619f05078efe634850fdac7cb0217f441e`;
+  11 PASS including the repeated structure check. Combined final evidence has
+  **209 distinct passing identities/checks**, no remaining failures or skips.
+  Governor allowance after closeout: 11.531 seconds; no further validation.
+  Final author diff/reference review complete; no independent review claimed.
+
+## Previous execution coordination from `730e75e`
 
 - **Phase/candidate:** RELEASE_FREEZE on `igor2` from clean `730e75e`; history
   confirms the two handoff commits. D080/D081 and the existing M1 disposition

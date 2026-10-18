@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, "core/lib")
 from capability_runtime import (
@@ -13,6 +14,8 @@ from capability_runtime import (
     CapabilityPlan,
     CapabilityRegistry,
     SecretReference,
+    _privileged_commands,
+    execute_privileged,
     execution_fence,
     execution_result,
     nonexecution_result,
@@ -20,6 +23,7 @@ from capability_runtime import (
     validate_output_schema,
     validate_outputs,
 )
+from operational_history import HistoryError, OperationalHistory
 
 
 def descriptor(**changes):
@@ -36,6 +40,112 @@ def descriptor(**changes):
 
 
 class CapabilityRuntimeTests(unittest.TestCase):
+    def privileged_attempt(self, proposal=None):
+        proposal = proposal or self.execution_proposal()
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        history = OperationalHistory(Path(directory.name))
+        episode = history.prepare(proposal, correlation_id="corr-native-runtime",
+                                  provenance={"actor": "operator", "interface": "capability_api", "request_id": None})
+        return proposal, history, episode["operation_id"]
+
+    def test_privileged_runtime_claims_history_before_effect_and_refuses_duplicate(self):
+        proposal, history, ident = self.privileged_attempt()
+
+        def observe(argv, **options):
+            row = history.inspect(ident)
+            self.assertEqual([item["state"] for item in row["transitions"]], ["admitted", "authority", "running"])
+            self.assertEqual(row["privilege"]["result"], "authenticated")
+            self.assertEqual(argv, proposal["privileged_argv"])
+            self.assertEqual(options, {"check": False, "stdin": subprocess.DEVNULL,
+                                       "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "timeout": 1800})
+            return subprocess.CompletedProcess(argv, 0)
+
+        with patch("capability_runtime.subprocess.run", side_effect=observe) as run:
+            self.assertEqual(execute_privileged(proposal, proposal, proposal["digest"], history, ident, "approved", "debian"), "succeeded")
+            with self.assertRaises(HistoryError):
+                execute_privileged(proposal, proposal, proposal["digest"], history, ident, "approved", "debian")
+            self.assertEqual(run.call_count, 1)
+        self.assertEqual(history.inspect(ident)["lifecycle"], "running")
+
+    def test_privileged_runtime_refuses_drift_bad_argv_and_authority_before_effect(self):
+        for kind in ("digest", "drift", "precondition", "privilege", "argv", "approval", "authentication", "history"):
+            with self.subTest(kind=kind):
+                proposal, history, ident = self.privileged_attempt()
+                fresh = copy.deepcopy(proposal)
+                digest, approval = proposal["digest"], "approved"
+                if kind == "digest":
+                    digest = "wrong"
+                elif kind == "drift":
+                    fresh["inputs"]["unit"] = "other.service"
+                elif kind == "precondition":
+                    fresh["precondition_status"] = "failed"
+                elif kind == "privilege":
+                    proposal["privilege"] = fresh["privilege"] = "none"
+                elif kind == "argv":
+                    proposal["privileged_argv"] = fresh["privileged_argv"] = ["sudo", "sh", "-c", "bad"]
+                elif kind == "approval":
+                    approval = "denied"
+                elif kind == "authentication":
+                    history.authority(ident, "approved", "failed")
+                elif kind == "history":
+                    ident = "op-" + "0" * 32
+                with patch("capability_runtime.subprocess.run") as run, self.assertRaises((CapabilityError, HistoryError)):
+                    execute_privileged(proposal, fresh, digest, history, ident, approval, "debian")
+                run.assert_not_called()
+
+    def test_privileged_sequence_is_ordered_and_stops_on_failure_or_unavailable_process(self):
+        commands = [["sudo", "-n", "--", "apt-get", "update"], ["sudo", "-n", "--", "apt-get", "upgrade", "-y"]]
+        for failure in (None, 17, FileNotFoundError(), subprocess.TimeoutExpired(commands[0], 1800)):
+            with self.subTest(failure=type(failure).__name__):
+                proposal = self.execution_proposal()
+                proposal.update(capability_id="system.package.upgrade", inputs={}, privileged_argv=commands)
+                proposal, history, ident = self.privileged_attempt(proposal)
+                effect = failure if isinstance(failure, Exception) else None
+                result = subprocess.CompletedProcess(commands[0], failure or 0)
+                with patch("capability_runtime.subprocess.run", side_effect=effect, return_value=result) as run:
+                    status = execute_privileged(proposal, proposal, proposal["digest"], history, ident, "approved", "debian")
+                self.assertEqual(status, "failed" if failure is not None else "succeeded")
+                self.assertEqual([call.args[0] for call in run.call_args_list], commands[:1] if failure is not None else commands)
+                self.assertEqual(history.inspect(ident)["lifecycle"], "running")
+
+    def test_privileged_adapter_matrix_preserves_exact_native_commands(self):
+        prefix = ["sudo", "-n", "--"]
+        cases = [("system.service." + verb, "unknown", [prefix + ["systemctl", verb, "demo.service"]], False)
+                 for verb in ("start", "restart", "enable")]
+        cases.extend([
+            ("system.storage.mount", "unknown", [prefix + ["mkdir", "-p", "--", "/mnt/demo"], prefix + ["mount", "--", "/dev/demo", "/mnt/demo"]], True),
+            ("system.storage.unmount", "unknown", [prefix + ["umount", "--", "/mnt/demo"]], True),
+            ("system.network.wifi.connect_known", "unknown", [prefix + ["nmcli", "--wait", "30", "connection", "up", "uuid", "12345678-1234-1234-1234-123456789abc", "ifname", "wlan0"]], True),
+        ])
+        for field, command, value in (("owner", "chown", "1000"), ("group", "chgrp", "1000"), ("mode", "chmod", "0750")):
+            cases.append((f"system.permissions.{field}.set", "unknown", [prefix + [command, "--", value, "/srv/demo"]], True))
+        for family, install, upgrade, clean in (
+            ("debian", ["apt-get", "install", "-y", "demo"], [["apt-get", "update"], ["apt-get", "upgrade", "-y"]], ["apt-get", "clean"]),
+            ("arch", ["pacman", "-S", "--noconfirm", "demo"], [["pacman", "-Syu", "--noconfirm"]], ["pacman", "-Sc", "--noconfirm"]),
+        ):
+            cases.extend([("system.package.install", family, [prefix + install], False),
+                          ("system.package.upgrade", family, [prefix + row for row in upgrade], True),
+                          ("system.package.cache.clean", family, [prefix + clean], True)])
+        for ident, family, commands, nested in cases:
+            with self.subTest(ident=ident, family=family):
+                spec = commands if nested else commands[0]
+                self.assertEqual(_privileged_commands(spec, ident, family), commands)
+                for bad in (None, [], "sudo", ["sudo", "sh"], commands + [["sudo", "sh"]]):
+                    with self.assertRaises(CapabilityError):
+                        _privileged_commands(bad, ident, family)
+        for bad in ([prefix + ["umount", "--", "/mnt/../etc"]], [prefix + ["umount", "--", "/etc"]]):
+            with self.assertRaises(CapabilityError):
+                _privileged_commands(bad, "system.storage.unmount", "unknown")
+
+    def test_privileged_cli_rejects_malformed_arguments_without_exposing_them(self):
+        for args in ([], ["private-sentinel"] * 7, ['{"x":1,"x":2}'] * 7):
+            result = subprocess.run([sys.executable, "core/lib/capability_runtime.py", "execute-privileged", *args], capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, "")
+            self.assertNotIn("private-sentinel", result.stderr)
+            self.assertIn("privileged execution unavailable", result.stderr)
+
     def execution_proposal(self, *, tier="CHANGE", version=1):
         registry = CapabilityRegistry()
         registry.register(descriptor())

@@ -163,6 +163,13 @@ before the runtime sourcing paths are cut off.
   ordering and process-local configuration effects; no competing executor exists.
   Focused evidence covers approval, privilege, History, CLI, typed outputs,
   collections and process-local configuration; broader M1 acceptance stays open.
+- **Python privileged dispatch (implemented; bounded proof in STATUS):** the
+  capability runtime now validates the reviewed native argv, repeats the exact
+  approved-proposal fence, atomically claims the admitted History operation and
+  executes its ordered commands with noninteractive sudo. Claim failure prevents
+  effects; duplicate claims cannot replay. The former inline shell executor is
+  removed. Approval/native PTY and common verification/publication stay upstream
+  and downstream respectively; this is not full execution-coordinator migration.
 - **Still required in M1:** Python loading/resolution/authorization/History
   coordination and all consumers; selected package and configuration cutovers;
   offline data transition; retirement of v1 loader/hooks/actions/menus/startup
@@ -170,6 +177,39 @@ before the runtime sourcing paths are cut off.
 
 The remaining shell coordination is the pre-existing implementation being migrated
 inside M1, not a new runtime to be carried into M2. No M1 completion is claimed.
+
+### Execution ownership and remaining cutover at `4fa4abb`
+
+The operation path is shared: AI tool parsing/native transaction validation,
+operator CLI/backend requests, collection selections and automation submit
+`run_capability` to `ai_execute_tool` in `core/ai/safety.sh`. No frontend result
+grants execution authority. The current ownership boundaries after this batch are:
+
+| Stage | Current authority / remaining shell responsibility |
+|---|---|
+| Admission and proposal | Python `module_contract.py`, `module_registry.py` and `CapabilityRegistry` validate policy/descriptors/inputs/resolution/composition; shell loader still builds the active contribution index. `igor_capability_prepare` binds reviewed platform argv, evaluates live preconditions and stamps provider version/digest |
+| Identity and approval | Python `OperationalHistory` owns durable identity, transitions, binding, export and interrupted-state recovery. Shell `_igor_history_begin` sequences recovery/admission before approval; `ai_execute_tool` selects deterministic mode/tier policy, freezes pending content, handles Explain/No/Stop/exact YES and records authority |
+| Privilege | Existing native sudo PTY stays in `safety.sh`; refusal never authenticates. Python native dispatch uses only reviewed `sudo -n --` commands and claims History before effects |
+| Execution | Python exact fence and privileged command sequence; shared Python `module_handler.py` isolates Bash leaf handlers. Shell still re-resolves availability/preconditions, checks collection leases, selects Core configuration/deployment handlers, claims unprivileged operations and applies process-local memory configuration/observer/check effects |
+| Verification and result | Shell selects and invokes deterministic current verifiers and sends provider-complete observations to History. Python validates typed output/collections and constructs canonical single-operation outcomes. Plan sequencing/final checks and composite result construction remain in `capability.sh`/`safety.sh` |
+| Publication and projection | Shell `_igor_capability_publish_result` writes the session result, finishes Python History and publishes domain events; dispatcher projects status/audit/events. CLI and generic Python TUI consume the same result/History. Durable History stays authoritative across restart; session result files are projections |
+
+Smallest safe continuation: migrate preparation/preconditions/platform binding
+and the admitted index to Python, then move shared authorization and single-
+operation sequencing using the existing PTY transport and configuration services.
+The process-local memory consumer must be migrated with its callers: executing
+it in a disposable Python/Bash child would lose the approved session effect.
+Move verification/History/publication and plan/composite sequencing with their
+consumers; remove each old coordinator at its tested cutover. M2 conversation
+state is not required for these deterministic execution changes.
+
+| Remaining M1 work | Dependency / readiness |
+|---|---|
+| Selected System/Docker operations | Existing disposition above is frozen; declarations and useful handlers exist. Sole Python index/executor and CLI/TUI/disabled-owner proof must precede removal of System compatibility hooks; deferred mutations need no new features |
+| Nextcloud configuration | Recognition/metadata attachment services exist, but the package is still v1. Needs v2 bound configuration contracts, desired/commit/apply/readback and exact deployment/application-user checks before real loglevel acceptance |
+| Offline transition | Source families/protocol below are defined; complete offline inventory/import/export/conflict/interruption/re-entry/recovery tooling and sentinel startup proof are not implemented. Reuse declared roots; no new layout or native-data moves authorized |
+| V1 retirement | Blocked on selected consumers and offline preservation: loader/fast-loader, registrations/hooks/actions/menus, startup sourcing/moves and Core Nextcloud coupling remain reachable. Search-only evidence cannot justify deletion |
+| Acceptance | Needs real System/Docker and CLI/curses/native PTY slices, disposable Nextcloud attach and `2 → 3 → 2`, one broad integration pass and Owner-designated independent review. Existing fixture/mocked proof is not closure; production data remains excluded |
 
 ## Configuration and retained data transition
 

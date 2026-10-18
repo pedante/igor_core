@@ -1,7 +1,8 @@
 """Resolution, execution fencing and results for the owned capability index.
 
-The remaining Bash adapter supplies approval, privilege, provider and verifier
-observations. This module cannot invoke a handler or grant authority.
+The remaining Bash adapter supplies approval/native PTY and verifier observations.
+Privileged native dispatch claims existing History authority before any effect;
+module handlers continue through the shared isolated handler runtime.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import hashlib
 import json
 import math
 import re
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -1114,9 +1116,168 @@ def execution_result(proposal: dict[str, Any], execution: str, verification: str
     return result
 
 
+def _privileged_commands(spec: Any, ident: str, family: str) -> list[list[str]]:
+    """Accept only the reviewed native adapters; never run a model command."""
+    if ident in {"system.service.restart","system.service.start","system.service.enable"}:
+        operation={
+            "system.service.restart":"restart",
+            "system.service.start":"start",
+            "system.service.enable":"enable",
+        }[ident]
+        if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl",operation]:
+            raise CapabilityError("invalid privileged command")
+        commands=[spec]
+    elif ident=="system.storage.mount":
+        if not isinstance(spec,list) or len(spec)!=2 or any(not isinstance(row,list) for row in spec):
+            raise CapabilityError("invalid privileged command")
+        mkdir_cmd,mount_cmd=spec
+        if not (len(mkdir_cmd)==7 and
+                mkdir_cmd[:6]==["sudo","-n","--","mkdir","-p","--"]):
+            raise CapabilityError("invalid privileged command")
+        target=mkdir_cmd[6]
+        if not isinstance(target,str):
+            raise CapabilityError("invalid privileged command")
+        if not (target.startswith(("/mnt/","/media/","/srv/")) and
+                ".." not in target.split("/") and
+                all(ord(ch)>=32 for ch in target)):
+            raise CapabilityError("invalid privileged command")
+        if (len(mount_cmd)!=7 or mount_cmd[:5]!=["sudo","-n","--","mount","--"] or
+                mount_cmd[6]!=target):
+            raise CapabilityError("invalid privileged command")
+        device=mount_cmd[5]
+        if not isinstance(device,str) or not re.fullmatch(r"/dev/[A-Za-z0-9_./+@:-]+",device):
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    elif ident=="system.storage.unmount":
+        if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+            raise CapabilityError("invalid privileged command")
+        argv=spec[0]
+        if len(argv)!=6 or argv[:5]!=["sudo","-n","--","umount","--"]:
+            raise CapabilityError("invalid privileged command")
+        target=argv[5]
+        if (not isinstance(target,str) or
+                not target.startswith(("/mnt/","/media/","/srv/")) or
+                ".." in target.split("/") or any(ord(ch)<32 for ch in target)):
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    elif ident in {"system.permissions.owner.set","system.permissions.group.set","system.permissions.mode.set"}:
+        if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+            raise CapabilityError("invalid privileged command")
+        argv=spec[0]
+        command={
+            "system.permissions.owner.set":"chown",
+            "system.permissions.group.set":"chgrp",
+            "system.permissions.mode.set":"chmod",
+        }[ident]
+        if len(argv)!=7 or argv[:5]!=["sudo","-n","--",command,"--"]:
+            raise CapabilityError("invalid privileged command")
+        value,path=argv[5:7]
+        if (not isinstance(path,str) or not path.startswith("/") or
+                any(ord(ch)<32 for ch in path) or ".." in path.split("/")):
+            raise CapabilityError("invalid privileged command")
+        roots=("/home/","/srv/","/opt/","/mnt/","/media/","/usr/local/","/var/lib/","/var/www/")
+        if not path.startswith(roots):
+            raise CapabilityError("invalid privileged command")
+        if ident in {"system.permissions.owner.set","system.permissions.group.set"}:
+            if not isinstance(value,str) or not value.isdigit():
+                raise CapabilityError("invalid privileged command")
+        elif not isinstance(value,str) or re.fullmatch(r"0[0-7]{3}",value) is None:
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    elif ident=="system.network.wifi.connect_known":
+        if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
+            raise CapabilityError("invalid privileged command")
+        argv=spec[0]
+        expected=["sudo","-n","--","nmcli","--wait","30","connection","up","uuid"]
+        if len(argv)!=12 or argv[:9]!=expected or argv[10]!="ifname":
+            raise CapabilityError("invalid privileged command")
+        profile,interface=argv[9],argv[11]
+        uuid_re=r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        if re.fullmatch(uuid_re,profile) is None:
+            raise CapabilityError("invalid privileged command")
+        if re.fullmatch(r"[^\s/:]{1,32}",interface) is None:
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    elif ident=="system.package.install":
+        if (not isinstance(spec,list) or len(spec)!=7 or
+                not isinstance(spec[-1],str) or
+                not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", spec[-1])):
+            raise CapabilityError("invalid privileged command")
+        expected_prefix={
+            "debian":["sudo","-n","--","apt-get","install","-y"],
+            "arch":["sudo","-n","--","pacman","-S","--noconfirm"],
+        }.get(family)
+        if expected_prefix is None or spec[:-1]!=expected_prefix:
+            raise CapabilityError("invalid privileged command")
+        commands=[spec]
+    elif ident=="system.package.upgrade":
+        expected={
+            "debian":[["sudo","-n","--","apt-get","update"],
+                      ["sudo","-n","--","apt-get","upgrade","-y"]],
+            "arch":[["sudo","-n","--","pacman","-Syu","--noconfirm"]],
+        }.get(family)
+        if spec!=expected:
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    elif ident=="system.package.cache.clean":
+        expected={
+            "debian":[["sudo","-n","--","apt-get","clean"]],
+            "arch":[["sudo","-n","--","pacman","-Sc","--noconfirm"]],
+        }.get(family)
+        if spec!=expected:
+            raise CapabilityError("invalid privileged command")
+        commands=spec
+    else:
+        raise CapabilityError("invalid privileged command")
+    if not commands or any(not isinstance(argv, list) or not argv or
+                           any(not isinstance(arg, str) or not arg or "\0" in arg for arg in argv)
+                           for argv in commands):
+        raise CapabilityError("invalid privileged command")
+    return commands
+
+
+def execute_privileged(proposal: dict[str, Any], fresh: dict[str, Any], approved_digest: str,
+                       history: Any, operation_id: str, approval: str, family: str) -> str:
+    """Claim once in History before dispatching the exact approved native argv."""
+    if execution_fence(proposal, fresh, approved_digest) != "ready" or fresh["privilege"] != "required":
+        raise CapabilityError("privileged execution is unavailable")
+    commands = _privileged_commands(fresh.get("privileged_argv"), fresh["capability_id"], family)
+    history.running(operation_id, proposal=fresh, approval=approval, privilege="authenticated")
+    command_timeout = 120 if fresh["capability_id"] in {
+        "system.storage.mount", "system.storage.unmount",
+        "system.permissions.owner.set", "system.permissions.group.set",
+        "system.permissions.mode.set", "system.network.wifi.connect_known",
+    } else 1800
+    for argv in commands:
+        try:
+            result = subprocess.run(argv, check=False, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    timeout=command_timeout)
+        except (OSError, subprocess.TimeoutExpired):
+            return "failed"
+        if result.returncode:
+            return "failed"
+    return "succeeded"
+
+
 def _cli() -> int:
-    """Deterministic runtime bridge; never prompts or invokes a provider."""
+    """Deterministic runtime bridge; never prompts or authenticates."""
     import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "execute-privileged":
+        from operational_history import OperationalHistory
+        try:
+            if len(sys.argv) != 9:
+                raise CapabilityError("invalid privileged execution arguments")
+            proposal, fresh = map(_decode, sys.argv[2:4])
+            digest, data_dir, operation_id, approval, family = sys.argv[4:]
+            status = execute_privileged(
+                proposal, fresh, digest, OperationalHistory(Path(data_dir)), operation_id, approval, family)
+            print(status)
+            return 0
+        except (ValueError, OSError, KeyError, TypeError, RecursionError):
+            print("capability runtime: privileged execution unavailable", file=sys.stderr)
+            return 1
 
     if len(sys.argv) > 1 and sys.argv[1] in {"execution-fence", "execution-result", "nonexecution-result"}:
         try:

@@ -925,145 +925,17 @@ PY
     # The AI dispatcher has already persisted final approval+privilege. For
     # direct callers, History atomically records that authority together with
     # running before any provider effect. No caller-controlled marker is trusted.
-    _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" \
-        "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
-        "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
     if [ "$_spec" != '[]' ]; then
-        # Exact reviewed argv. Authentication has already been handled by
-        # safety.sh; -n prevents a hidden prompt here. Package administration
-        # may freeze a small ordered sequence, but only for named Core adapters.
-        if "$(_ml_python)" - "$_spec" "$_id" "${IGOR_DISTRO_FAMILY:-unknown}" <<'PY'
-import json, subprocess, sys
-spec=json.loads(sys.argv[1])
-ident,family=sys.argv[2:4]
-if ident in {"system.service.restart","system.service.start","system.service.enable"}:
-    operation={
-        "system.service.restart":"restart",
-        "system.service.start":"start",
-        "system.service.enable":"enable",
-    }[ident]
-    if not isinstance(spec,list) or len(spec)!=6 or spec[:5]!=["sudo","-n","--","systemctl",operation]:
-        raise SystemExit(1)
-    commands=[spec]
-elif ident=="system.storage.mount":
-    if not isinstance(spec,list) or len(spec)!=2 or any(not isinstance(row,list) for row in spec):
-        raise SystemExit(1)
-    mkdir_cmd,mount_cmd=spec
-    if not (len(mkdir_cmd)==7 and
-            mkdir_cmd[:6]==["sudo","-n","--","mkdir","-p","--"]):
-        raise SystemExit(1)
-    target=mkdir_cmd[6]
-    if not isinstance(target,str):
-        raise SystemExit(1)
-    if not (target.startswith(("/mnt/","/media/","/srv/")) and
-            ".." not in target.split("/") and
-            all(ord(ch)>=32 for ch in target)):
-        raise SystemExit(1)
-    if (len(mount_cmd)!=7 or mount_cmd[:5]!=["sudo","-n","--","mount","--"] or
-            mount_cmd[6]!=target):
-        raise SystemExit(1)
-    device=mount_cmd[5]
-    if not isinstance(device,str) or not __import__("re").fullmatch(r"/dev/[A-Za-z0-9_./+@:-]+",device):
-        raise SystemExit(1)
-    commands=spec
-elif ident=="system.storage.unmount":
-    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
-        raise SystemExit(1)
-    argv=spec[0]
-    if len(argv)!=6 or argv[:5]!=["sudo","-n","--","umount","--"]:
-        raise SystemExit(1)
-    target=argv[5]
-    if (not isinstance(target,str) or
-            not target.startswith(("/mnt/","/media/","/srv/")) or
-            ".." in target.split("/") or any(ord(ch)<32 for ch in target)):
-        raise SystemExit(1)
-    commands=spec
-elif ident in {"system.permissions.owner.set","system.permissions.group.set","system.permissions.mode.set"}:
-    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
-        raise SystemExit(1)
-    argv=spec[0]
-    command={
-        "system.permissions.owner.set":"chown",
-        "system.permissions.group.set":"chgrp",
-        "system.permissions.mode.set":"chmod",
-    }[ident]
-    if len(argv)!=7 or argv[:5]!=["sudo","-n","--",command,"--"]:
-        raise SystemExit(1)
-    value,path=argv[5:7]
-    if (not isinstance(path,str) or not path.startswith("/") or
-            any(ord(ch)<32 for ch in path) or ".." in path.split("/")):
-        raise SystemExit(1)
-    roots=("/home/","/srv/","/opt/","/mnt/","/media/","/usr/local/","/var/lib/","/var/www/")
-    if not path.startswith(roots):
-        raise SystemExit(1)
-    if ident in {"system.permissions.owner.set","system.permissions.group.set"}:
-        if not isinstance(value,str) or not value.isdigit():
-            raise SystemExit(1)
-    elif not isinstance(value,str) or __import__("re").fullmatch(r"0[0-7]{3}",value) is None:
-        raise SystemExit(1)
-    commands=spec
-elif ident=="system.network.wifi.connect_known":
-    if not isinstance(spec,list) or len(spec)!=1 or not isinstance(spec[0],list):
-        raise SystemExit(1)
-    argv=spec[0]
-    expected=["sudo","-n","--","nmcli","--wait","30","connection","up","uuid"]
-    if len(argv)!=12 or argv[:9]!=expected or argv[10]!="ifname":
-        raise SystemExit(1)
-    profile,interface=argv[9],argv[11]
-    uuid_re=r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    if __import__("re").fullmatch(uuid_re,profile) is None:
-        raise SystemExit(1)
-    if __import__("re").fullmatch(r"[^\s/:]{1,32}",interface) is None:
-        raise SystemExit(1)
-    commands=spec
-elif ident=="system.package.install":
-    if (not isinstance(spec,list) or len(spec)!=7 or
-            not isinstance(spec[-1],str) or
-            not __import__("re").fullmatch(r"[A-Za-z0-9][A-Za-z0-9+_.:@-]*", spec[-1])):
-        raise SystemExit(1)
-    expected_prefix={
-        "debian":["sudo","-n","--","apt-get","install","-y"],
-        "arch":["sudo","-n","--","pacman","-S","--noconfirm"],
-    }.get(family)
-    if expected_prefix is None or spec[:-1]!=expected_prefix:
-        raise SystemExit(1)
-    commands=[spec]
-elif ident=="system.package.upgrade":
-    expected={
-        "debian":[["sudo","-n","--","apt-get","update"],
-                  ["sudo","-n","--","apt-get","upgrade","-y"]],
-        "arch":[["sudo","-n","--","pacman","-Syu","--noconfirm"]],
-    }.get(family)
-    if spec!=expected:
-        raise SystemExit(1)
-    commands=spec
-elif ident=="system.package.cache.clean":
-    expected={
-        "debian":[["sudo","-n","--","apt-get","clean"]],
-        "arch":[["sudo","-n","--","pacman","-Sc","--noconfirm"]],
-    }.get(family)
-    if spec!=expected:
-        raise SystemExit(1)
-    commands=spec
-else:
-    raise SystemExit(1)
-command_timeout = 120 if ident in {
-    "system.storage.mount", "system.storage.unmount",
-    "system.permissions.owner.set", "system.permissions.group.set",
-    "system.permissions.mode.set", "system.network.wifi.connect_known",
-} else 1800
-for argv in commands:
-    try:
-        result=subprocess.run(argv,check=False,stdin=subprocess.DEVNULL,
-                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                              timeout=command_timeout)
-    except (OSError,subprocess.TimeoutExpired):
-        raise SystemExit(1)
-    if result.returncode:
-        raise SystemExit(result.returncode)
-PY
-        then _exec=succeeded; fi
+        # Python owns the privileged claim and ordered native dispatch. The
+        # shared shell verifier/publication path consumes only its observation.
+        _exec="$("$(_ml_python)" "${_IGOR_LOADER_DIR}/core/lib/capability_runtime.py" \
+            execute-privileged "$_proposal" "$_fresh" "${IGOR_CAPABILITY_APPROVED_DIGEST:-}" \
+            "${IGOR_DATA_DIR:-${IGOR_DIR}/data}" "$IGOR_HISTORY_OPERATION_ID" \
+            "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" "${IGOR_DISTRO_FAMILY:-unknown}")" || return 1
     else
+        _igor_history_update running "$IGOR_HISTORY_OPERATION_ID" "$_fresh" \
+            "${IGOR_CAPABILITY_APPROVAL_STATUS:-approved}" \
+            "$([ "$_fresh_privilege" = required ] && printf authenticated || printf not_required)" || return 1
         if _envelope="$(_igor_capability_invoke_handler "$_fresh" "$_id" "$_fresh_owner" "$_fresh_handler" "$_fresh_timeout" "$_inputs" "$([ "$_version" -ge 2 ] && printf 1 || printf 0)")"; then
             _exec=succeeded
             if [[ "$_id" = core.deployments.* ]]; then
